@@ -335,75 +335,92 @@ export default function EditProfileScreen() {
         {/* ── BASIC INFO ── */}
         {activeTab === 'Basic Info' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Stage Details</Text>
-            <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
-              <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
-            </Field>
-            <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}>
-              <Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} />
-            </Field>
-            <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}>
-              <Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi />
-            </Field>
 
-            <Text style={[s.sectionTitle, { marginTop: 24 }]}>Contact</Text>
-            <Field label="Location *" error={showErrors && !profile.location?.trim()}>
-              <Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="e.g. Frankston City, VIC" error={showErrors && !profile.location?.trim()} />
-            </Field>
-            <Field label="Email *" error={showErrors && !profile.email?.trim()}>
-              <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email address" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
-            </Field>
-            <Field label="Phone">
-              <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" />
-            </Field>
+            {/* Stage Details */}
+            <View style={s.sectionBlock}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Stage Details</Text>
+              <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
+                <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
+              </Field>
+              <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}>
+                <Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} />
+              </Field>
+              <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}>
+                <Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi />
+              </Field>
+            </View>
 
-            <Text style={[s.sectionTitle, { marginTop: 24 }]}>Fee Range</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Field label="Min ($)">
-                  <Input value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="0" keyboardType="numeric" />
-                </Field>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field label="Max ($)">
-                  <Input value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="0" keyboardType="numeric" />
-                </Field>
+            {/* Contact */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Contact</Text>
+              <Field label="Location *" error={showErrors && !profile.location?.trim()}>
+                <Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="e.g. Frankston City, VIC" error={showErrors && !profile.location?.trim()} />
+              </Field>
+              <Field label="Email *" error={showErrors && !profile.email?.trim()}>
+                <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email address" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
+              </Field>
+              <Field label="Phone">
+                <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" />
+              </Field>
+            </View>
+
+            {/* Fee Range */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Fee Range</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Field label="Min ($)">
+                    <Input value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="0" keyboardType="numeric" />
+                  </Field>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field label="Max ($)">
+                    <Input value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="0" keyboardType="numeric" />
+                  </Field>
+                </View>
               </View>
             </View>
 
-            <Text style={[s.sectionTitle, { marginTop: 24 }]}>Social Links</Text>
-            {PLATFORMS.map(p => (
-              <Field key={p.key} label={p.label}>
-                <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={`${p.label} URL`} />
-              </Field>
-            ))}
+            {/* Social Links */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Social Links</Text>
+              {PLATFORMS.map(p => (
+                <Field key={p.key} label={p.label}>
+                  <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={`${p.label} URL`} />
+                </Field>
+              ))}
+            </View>
 
-            <Text style={[s.sectionTitle, { marginTop: 24 }]}>Custom Links</Text>
-            {profile.customLinks.map((link, i) => (
-              <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                <TextInput
-                  style={[s.input, { width: 110 }]}
-                  value={link.label}
-                  onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))}
-                  placeholder="Label"
-                  placeholderTextColor={Colors.greyLight}
-                />
-                <TextInput
-                  style={[s.input, { flex: 1 }]}
-                  value={link.url}
-                  onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))}
-                  placeholder="URL"
-                  placeholderTextColor={Colors.greyLight}
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}>
-                  <Text style={{ fontSize: 18, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-            <TouchableOpacity style={s.addBtn} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}>
-              <Text style={s.addBtnText}>+ Add Link</Text>
-            </TouchableOpacity>
+            {/* Custom Links */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Custom Links</Text>
+              {profile.customLinks.map((link, i) => (
+                <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, width: 110 }]}
+                    value={link.label}
+                    onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))}
+                    placeholder="Label"
+                    placeholderTextColor={Colors.greyLight}
+                  />
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, flex: 1 }]}
+                    value={link.url}
+                    onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))}
+                    placeholder="URL"
+                    placeholderTextColor={Colors.greyLight}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}>
+                    <Text style={{ fontSize: 18, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={s.addBtn} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}>
+                <Text style={s.addBtnText}>+ Add Link</Text>
+              </TouchableOpacity>
+            </View>
+
           </View>
         )}
 
@@ -585,6 +602,7 @@ const s = StyleSheet.create({
   bannerEditBadge:    { position: 'absolute', bottom: 10, left: 12, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
   bannerEditBadgeText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
   section:            { gap: 4 },
+  sectionBlock:       { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
   sectionTitle:       { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 },
   hint:               { fontSize: 13, color: Colors.grey, fontStyle: 'italic', marginBottom: 12 },
   input:              { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },

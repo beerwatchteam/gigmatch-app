@@ -397,34 +397,55 @@ export default function EditVenueScreen() {
         {/* ── BASIC INFO ── */}
         {activeTab === 'Basic Info' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Basic Info</Text>
-            <Field label="Venue name *" error={showErrors && !data.name?.trim()}>
-              <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} />
-            </Field>
-            <Field label="Street address *" error={showErrors && !data.streetAddress?.trim()}>
-              <Input value={data.streetAddress} onChangeText={(v: string) => set('streetAddress', v)} placeholder="123 Main St" error={showErrors && !data.streetAddress?.trim()} />
-            </Field>
-            <Field label="Suburb *" error={showErrors && !data.suburb?.trim()}>
-              <Input value={data.suburb} onChangeText={(v: string) => set('suburb', v)} placeholder="Suburb" error={showErrors && !data.suburb?.trim()} />
-            </Field>
-            <Field label="State *" error={showErrors && !data.state?.trim()}>
-              <Pills options={AU_STATES} value={data.state} onSelect={(v: string) => set('state', v)} />
-            </Field>
-            <Field label="Postcode *" error={showErrors && !data.postcode?.trim()}>
-              <Input value={data.postcode} onChangeText={(v: string) => set('postcode', v)} placeholder="3000" keyboardType="numeric" error={showErrors && !data.postcode?.trim()} />
-            </Field>
-            <Field label="Phone">
-              <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" />
-            </Field>
-            <Field label="Email *" error={showErrors && !data.email?.trim()}>
-              <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
-            </Field>
-            <Field label="Website *" error={showErrors && !data.website?.trim()}>
-              <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://…" error={showErrors && !data.website?.trim()} />
-            </Field>
-            <Field label="Description">
-              <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Tell musicians about your venue…" multiline />
-            </Field>
+
+            {/* Venue Details */}
+            <View style={s.sectionBlock}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Venue Details</Text>
+              <Field label="Venue name *" error={showErrors && !data.name?.trim()}>
+                <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} />
+              </Field>
+              <Field label="Street address *" error={showErrors && !data.streetAddress?.trim()}>
+                <Input value={data.streetAddress} onChangeText={(v: string) => set('streetAddress', v)} placeholder="123 Main St" error={showErrors && !data.streetAddress?.trim()} />
+              </Field>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 2 }}>
+                  <Field label="Suburb *" error={showErrors && !data.suburb?.trim()}>
+                    <Input value={data.suburb} onChangeText={(v: string) => set('suburb', v)} placeholder="Suburb" error={showErrors && !data.suburb?.trim()} />
+                  </Field>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field label="Postcode *" error={showErrors && !data.postcode?.trim()}>
+                    <Input value={data.postcode} onChangeText={(v: string) => set('postcode', v)} placeholder="3000" keyboardType="numeric" error={showErrors && !data.postcode?.trim()} />
+                  </Field>
+                </View>
+              </View>
+              <Field label="State *" error={showErrors && !data.state?.trim()}>
+                <Pills options={AU_STATES} value={data.state} onSelect={(v: string) => set('state', v)} />
+              </Field>
+            </View>
+
+            {/* Contact */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Contact</Text>
+              <Field label="Email *" error={showErrors && !data.email?.trim()}>
+                <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
+              </Field>
+              <Field label="Phone">
+                <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" />
+              </Field>
+              <Field label="Website *" error={showErrors && !data.website?.trim()}>
+                <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://…" error={showErrors && !data.website?.trim()} />
+              </Field>
+            </View>
+
+            {/* Description */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.grey }]}>Description</Text>
+              <Field label="About your venue">
+                <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Tell musicians about your venue…" multiline />
+              </Field>
+            </View>
+
           </View>
         )}
 
@@ -648,6 +669,7 @@ const s = StyleSheet.create({
   bannerEditBadge: { position: 'absolute', bottom: 10, left: 12, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
   bannerEditBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   section:       { gap: 4 },
+  sectionBlock:  { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
   sectionTitle:  { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 },
   input:         { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },
   textarea:      { minHeight: 100, textAlignVertical: 'top' },
