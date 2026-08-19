@@ -13,6 +13,7 @@ export default function RootLayout() {
           <Stack.Screen name="musician/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="edit-venue" options={{ headerShown: false }} />
           <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
+          <Stack.Screen name="enquire" options={{ headerShown: false, presentation: 'modal' }} />
           <Stack.Screen name="login" options={{ headerShown: false, presentation: 'modal' }} />
         </Stack>
         <StatusBar style="dark" />

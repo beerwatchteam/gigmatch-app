@@ -42,7 +42,11 @@ export default function ProfileScreen() {
                 <Text style={styles.rowLabel}>Edit My Profile</Text>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.row} onPress={() => router.push('/inbox')}>
+              <TouchableOpacity style={styles.row} onPress={() => router.push(`/musician/${user.uid}`)}>
+                <Text style={styles.rowLabel}>View Public Profile</Text>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.row} onPress={() => router.push('/(tabs)/inbox')}>
                 <Text style={styles.rowLabel}>Enquiries</Text>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
@@ -54,7 +58,13 @@ export default function ProfileScreen() {
                 <Text style={styles.rowLabel}>Edit Venue Profile</Text>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.row} onPress={() => router.push('/inbox')}>
+              {profile?.venueId && (
+                <TouchableOpacity style={styles.row} onPress={() => router.push(`/venue/${profile.venueId}`)}>
+                  <Text style={styles.rowLabel}>View Public Venue Page</Text>
+                  <Text style={styles.chevron}>›</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.row} onPress={() => router.push('/(tabs)/inbox')}>
                 <Text style={styles.rowLabel}>Enquiries</Text>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>

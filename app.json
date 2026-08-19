@@ -30,7 +30,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GigMatch accesses your photos to upload profile and venue images.",
+          "cameraPermission": "GigMatch uses your camera to upload images."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

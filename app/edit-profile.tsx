@@ -114,7 +114,7 @@ export default function EditProfileScreen() {
 
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
-    getDoc(doc(db, 'musicians', uid)).then(snap => {
+    getDoc(doc(db, 'bandProfiles', uid)).then(snap => {
       const d = snap.exists() ? { ...BLANK, ...snap.data() } as Profile : BLANK;
       d.songs       = d.songs       || [];
       d.gigHistory  = d.gigHistory  || [];
@@ -210,7 +210,7 @@ export default function EditProfileScreen() {
     setSaving(true);
 
     try {
-      await setDoc(doc(db, 'musicians', uid), profile, { merge: true });
+      await setDoc(doc(db, 'bandProfiles', uid), profile, { merge: true });
       setSaved(profile);
       setShowErrors(false);
       Alert.alert('Saved', 'Your profile has been updated.');

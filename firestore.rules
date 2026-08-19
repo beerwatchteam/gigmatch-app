@@ -1,0 +1,91 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isAdmin() {
+      return isSignedIn() && getUserData().type == 'admin';
+    }
+    function isVenueOwner(venueId) {
+      return isSignedIn() && getUserData().venueId == venueId;
+    }
+
+    // ── Users ───────────────────────────────────────────────────────────────
+    // Anyone signed in can read their own user doc; admins can read all
+    match /users/{uid} {
+      allow read:   if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Venues ──────────────────────────────────────────────────────────────
+    // Public read; only the linked venue owner (or admin) can write
+    match /venues/{venueId} {
+      allow read:   if true;
+      allow create: if isSignedIn();
+      allow update: if isVenueOwner(venueId) || isAdmin();
+      allow delete: if isVenueOwner(venueId) || isAdmin();
+
+      // Gig nights sub-collection
+      match /gigNights/{nightId} {
+        allow read:   if true;
+        allow write:  if isVenueOwner(venueId) || isAdmin();
+      }
+
+      // Bookings sub-collection
+      match /bookings/{bookingId} {
+        allow read:   if isSignedIn();
+        allow write:  if isVenueOwner(venueId) || isAdmin();
+      }
+    }
+
+    // ── Musicians ───────────────────────────────────────────────────────────
+    // Public read (unless settings.listed == false — enforced in app);
+    // only the musician themselves (uid == doc id) or admin can write
+    match /musicians/{uid} {
+      allow read:   if true;
+      allow create: if isOwner(uid) || isAdmin();
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // ── Inquiries ───────────────────────────────────────────────────────────
+    // Artist can create; artist (createdBy) or venue owner can read + update;
+    // artist can delete their own
+    match /inquiries/{inquiryId} {
+      allow read: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        isVenueOwner(resource.data.venueId) ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        isVenueOwner(resource.data.venueId) ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // ── Messages ────────────────────────────────────────────────────────────
+    // Participants in the linked inquiry can read + create
+    match /messages/{messageId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.sender == request.auth.uid;
+      allow update, delete: if false; // messages are immutable
+    }
+  }
+}
