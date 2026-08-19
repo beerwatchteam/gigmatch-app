@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView,
+  ScrollView, Image, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,11 +19,35 @@ const isWeb = Platform.OS === 'web';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function getInitials(name: string): string {
-  return (name || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+function fmtMsgTime(iso: string): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDate(iso: string): string {
+function fmtSlotDate(date?: string | null): string {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+}
+
+function getDateLabel(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  const diffMs = today.getTime() - d.getTime();
+  if (diffMs < 7 * 24 * 60 * 60 * 1000) return d.toLocaleDateString('en-AU', { weekday: 'long' });
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function isSameDay(a: string, b: string): boolean {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}
+
+function formatTileDate(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   const today = new Date();
@@ -35,27 +59,13 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
 }
 
-// ── Avatar ─────────────────────────────────────────────────────────────────
-
-function Avatar({ name, size = 38 }: { name: string; size?: number }) {
-  return (
-    <View style={[av.circle, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={[av.text, { fontSize: size * 0.3 }]}>{getInitials(name)}</Text>
-    </View>
-  );
-}
-const av = StyleSheet.create({
-  circle: { backgroundColor: 'rgba(250,131,12,0.12)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  text:   { color: Colors.orange, fontWeight: '700', letterSpacing: 0.3 },
-});
-
 // ── Status badge ───────────────────────────────────────────────────────────
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   pending:    { label: 'Pending',    color: '#888888', bg: 'rgba(0,0,0,0.06)'     },
   discussing: { label: 'Discussing', color: '#f5a623', bg: 'rgba(245,166,35,0.1)' },
-  accepted:   { label: 'Accepted',   color: '#fa830c', bg: 'rgba(250,131,12,0.1)' },
-  declined:   { label: 'Declined',   color: '#999999', bg: 'rgba(0,0,0,0.05)'     },
+  accepted:   { label: 'Accepted',   color: '#00cc6a', bg: 'rgba(0,204,106,0.1)'  },
+  declined:   { label: 'Declined',   color: '#555555', bg: 'rgba(0,0,0,0.05)'     },
   cancelled:  { label: 'Cancelled',  color: '#999999', bg: 'rgba(0,0,0,0.05)'     },
 };
 
@@ -68,52 +78,105 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Enquiry card (shown first in thread, from band's perspective) ───────────
+// ── Date separator ─────────────────────────────────────────────────────────
 
-function EnquiryCard({ enquiry }: { enquiry: Enquiry }) {
+function DateSep({ label }: { label: string }) {
+  return (
+    <View style={ds.wrap}>
+      <View style={ds.line} />
+      <Text style={ds.text}>{label}</Text>
+      <View style={ds.line} />
+    </View>
+  );
+}
+const ds = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 8 },
+  line: { flex: 1, height: 1, backgroundColor: '#eeeeee' },
+  text: { fontSize: 11, color: '#aaaaaa', fontWeight: '600' },
+});
+
+// ── Enquiry card ───────────────────────────────────────────────────────────
+
+function EnquiryCard({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean }) {
   const { day, date, time, room, slotType, setLength } = enquiry.requestedSlot;
-  const slotStr = [day, date, time, room, slotType, setLength].filter(Boolean).join(' · ');
+  const dateStr = date ? fmtSlotDate(date) : '';
+  const slotStr = [day, dateStr, time, room, slotType, setLength].filter(Boolean).join(' · ');
   const genres: string[] = enquiry.genre ?? [];
 
   return (
-    <View style={ec.wrap}>
-      <Text style={ec.label}>{enquiry.bandName} · Enquiry sent {formatDate(enquiry.submittedAt)}</Text>
-      <View style={ec.card}>
-        {/* Identity row */}
+    <View style={isVenue ? ec.wrapVenue : ec.wrapArtist}>
+      <Text style={[ec.label, !isVenue && ec.labelRight]}>
+        {isVenue
+          ? `${enquiry.bandName} · Enquiry sent ${formatTileDate(enquiry.submittedAt)}`
+          : `Enquiry sent to ${enquiry.venueName} · ${formatTileDate(enquiry.submittedAt)}`}
+      </Text>
+      <View style={[ec.card, isVenue ? ec.cardVenue : ec.cardArtist]}>
+        {enquiry.photoUrl ? (
+          <Image source={{ uri: enquiry.photoUrl }} style={ec.photo} />
+        ) : null}
         <View style={ec.identityRow}>
           <Text style={ec.bandName}>{enquiry.bandName}</Text>
           {enquiry.artistType ? (
-            <View style={ec.typePill}>
-              <Text style={ec.typeText}>{enquiry.artistType}</Text>
-            </View>
+            <View style={ec.typePill}><Text style={ec.typeText}>{enquiry.artistType}</Text></View>
           ) : null}
         </View>
         {genres.length > 0 ? (
           <View style={ec.genreRow}>
             {genres.map(g => (
-              <View key={g} style={ec.genrePill}>
-                <Text style={ec.genreText}>{g}</Text>
-              </View>
+              <View key={g} style={ec.genrePill}><Text style={ec.genreText}>{g}</Text></View>
             ))}
           </View>
         ) : null}
         {enquiry.location ? <Text style={ec.location}>📍 {enquiry.location}</Text> : null}
 
-        {/* Slot row */}
         <View style={ec.section}>
           <Text style={ec.sectionLabel}>SLOT REQUEST</Text>
           <Text style={ec.sectionBody}>{slotStr}</Text>
         </View>
-        {enquiry.additionalInfo ? (
-          <View style={ec.section}>
-            <Text style={ec.sectionLabel}>ADDITIONAL INFO</Text>
-            <Text style={ec.sectionBody}>{enquiry.additionalInfo}</Text>
-          </View>
-        ) : null}
+
         {enquiry.about ? (
           <View style={ec.section}>
             <Text style={ec.sectionLabel}>ABOUT</Text>
             <Text style={ec.sectionBody}>{enquiry.about}</Text>
+          </View>
+        ) : null}
+        {enquiry.songs ? (
+          <View style={ec.section}>
+            <Text style={ec.sectionLabel}>MUSIC</Text>
+            <Text style={ec.sectionBody}>{enquiry.songs}</Text>
+          </View>
+        ) : null}
+        {enquiry.gigHistory ? (
+          <View style={ec.section}>
+            <Text style={ec.sectionLabel}>GIG HISTORY</Text>
+            <Text style={ec.sectionBody}>{enquiry.gigHistory}</Text>
+          </View>
+        ) : null}
+        {enquiry.upcomingGigs ? (
+          <View style={ec.section}>
+            <Text style={ec.sectionLabel}>UPCOMING GIGS</Text>
+            <Text style={ec.sectionBody}>{enquiry.upcomingGigs}</Text>
+          </View>
+        ) : null}
+        {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic) ? (
+          <View style={ec.section}>
+            <Text style={ec.sectionLabel}>SOCIALS</Text>
+            {enquiry.instagram  ? <Text style={ec.sectionBody}>Instagram: {enquiry.instagram}</Text>  : null}
+            {enquiry.tiktok     ? <Text style={ec.sectionBody}>TikTok: {enquiry.tiktok}</Text>        : null}
+            {enquiry.spotify    ? <Text style={ec.sectionBody}>Spotify: {enquiry.spotify}</Text>      : null}
+            {enquiry.appleMusic ? <Text style={ec.sectionBody}>Apple Music: {enquiry.appleMusic}</Text> : null}
+          </View>
+        ) : null}
+        {enquiry.techRider ? (
+          <View style={ec.section}>
+            <Text style={ec.sectionLabel}>TECH RIDER</Text>
+            <Text style={ec.sectionBody}>{enquiry.techRider}</Text>
+          </View>
+        ) : null}
+        {enquiry.additionalInfo ? (
+          <View style={ec.section}>
+            <Text style={ec.sectionLabel}>ADDITIONAL INFO</Text>
+            <Text style={ec.sectionBody}>{enquiry.additionalInfo}</Text>
           </View>
         ) : null}
       </View>
@@ -122,9 +185,14 @@ function EnquiryCard({ enquiry }: { enquiry: Enquiry }) {
 }
 
 const ec = StyleSheet.create({
-  wrap:        { alignItems: 'flex-start', marginBottom: 4 },
+  wrapVenue:   { alignItems: 'flex-start', marginBottom: 4 },
+  wrapArtist:  { alignItems: 'flex-end',   marginBottom: 4 },
   label:       { fontSize: 11, color: '#aaaaaa', marginBottom: 4 },
-  card:        { backgroundColor: '#f0f0f0', borderRadius: 12, borderBottomLeftRadius: 2, padding: 14, maxWidth: isWeb ? '70%' : '85%' },
+  labelRight:  { textAlign: 'right' },
+  card:        { borderRadius: 12, padding: 14, maxWidth: isWeb ? '70%' : '85%' },
+  cardVenue:   { backgroundColor: '#f0f0f0', borderBottomLeftRadius: 2 },
+  cardArtist:  { backgroundColor: Colors.orange + '22', borderBottomRightRadius: 2 },
+  photo:       { width: 48, height: 48, borderRadius: 24, marginBottom: 8 },
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const, marginBottom: 4 },
   bandName:    { fontSize: 15, fontWeight: '700', color: '#111111' },
   typePill:    { backgroundColor: '#fa830c', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 2 },
@@ -138,16 +206,106 @@ const ec = StyleSheet.create({
   sectionBody: { fontSize: 13, color: '#111111', lineHeight: 19 },
 });
 
+// ── Band profile panel (venue view — expandable in thread header) ───────────
+
+function BandProfilePanel({ enquiry }: { enquiry: Enquiry }) {
+  const [open, setOpen] = useState(false);
+  const genres: string[] = enquiry.genre ?? [];
+
+  return (
+    <View style={bp.wrap}>
+      <TouchableOpacity style={bp.toggle} onPress={() => setOpen(v => !v)}>
+        <Text style={bp.toggleText}>View Band Profile {open ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+      {open && (
+        <View style={bp.panel}>
+          {enquiry.photoUrl ? (
+            <Image source={{ uri: enquiry.photoUrl }} style={bp.photo} />
+          ) : null}
+          {enquiry.artistType ? (
+            <View style={bp.typePill}><Text style={bp.typeText}>{enquiry.artistType}</Text></View>
+          ) : null}
+          {genres.length > 0 ? (
+            <View style={bp.genreRow}>
+              {genres.map(g => (
+                <View key={g} style={bp.genrePill}><Text style={bp.genreText}>{g}</Text></View>
+              ))}
+            </View>
+          ) : null}
+          {enquiry.location ? <Text style={bp.location}>📍 {enquiry.location}</Text> : null}
+          {enquiry.about ? (
+            <View style={bp.section}>
+              <Text style={bp.sectionLabel}>ABOUT</Text>
+              <Text style={bp.sectionBody}>{enquiry.about}</Text>
+            </View>
+          ) : null}
+          {enquiry.songs ? (
+            <View style={bp.section}>
+              <Text style={bp.sectionLabel}>MUSIC</Text>
+              <Text style={bp.sectionBody}>{enquiry.songs}</Text>
+            </View>
+          ) : null}
+          {enquiry.gigHistory ? (
+            <View style={bp.section}>
+              <Text style={bp.sectionLabel}>GIG HISTORY</Text>
+              <Text style={bp.sectionBody}>{enquiry.gigHistory}</Text>
+            </View>
+          ) : null}
+          {enquiry.upcomingGigs ? (
+            <View style={bp.section}>
+              <Text style={bp.sectionLabel}>UPCOMING GIGS</Text>
+              <Text style={bp.sectionBody}>{enquiry.upcomingGigs}</Text>
+            </View>
+          ) : null}
+          {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic) ? (
+            <View style={bp.section}>
+              <Text style={bp.sectionLabel}>SOCIALS</Text>
+              {enquiry.instagram  ? <TouchableOpacity onPress={() => Linking.openURL(enquiry.instagram!)}><Text style={bp.link}>Instagram: {enquiry.instagram}</Text></TouchableOpacity>  : null}
+              {enquiry.tiktok     ? <TouchableOpacity onPress={() => Linking.openURL(enquiry.tiktok!)}><Text style={bp.link}>TikTok: {enquiry.tiktok}</Text></TouchableOpacity>            : null}
+              {enquiry.spotify    ? <TouchableOpacity onPress={() => Linking.openURL(enquiry.spotify!)}><Text style={bp.link}>Spotify: {enquiry.spotify}</Text></TouchableOpacity>        : null}
+              {enquiry.appleMusic ? <TouchableOpacity onPress={() => Linking.openURL(enquiry.appleMusic!)}><Text style={bp.link}>Apple Music: {enquiry.appleMusic}</Text></TouchableOpacity> : null}
+            </View>
+          ) : null}
+          {enquiry.techRider ? (
+            <View style={bp.section}>
+              <Text style={bp.sectionLabel}>TECH RIDER</Text>
+              <Text style={bp.sectionBody}>{enquiry.techRider}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const bp = StyleSheet.create({
+  wrap:        { borderTopWidth: 1, borderTopColor: '#e8e8e8', paddingTop: 10, marginTop: 10 },
+  toggle:      { alignSelf: 'flex-start' },
+  toggleText:  { fontSize: 13, color: Colors.orange, fontWeight: '600' },
+  panel:       { marginTop: 12, gap: 6 },
+  photo:       { width: 56, height: 56, borderRadius: 28, marginBottom: 8 },
+  typePill:    { alignSelf: 'flex-start', backgroundColor: '#fa830c', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 2, marginBottom: 6 },
+  typeText:    { fontSize: 11, fontWeight: '600', color: '#111111' },
+  genreRow:    { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 6, marginBottom: 6 },
+  genrePill:   { borderWidth: 1, borderColor: '#dddddd', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 1 },
+  genreText:   { fontSize: 12, color: '#444444' },
+  location:    { fontSize: 12, color: '#888888' },
+  section:     { borderTopWidth: 1, borderTopColor: '#eeeeee', paddingTop: 8, marginTop: 8 },
+  sectionLabel:{ fontSize: 10, fontWeight: '700', color: '#888888', letterSpacing: 0.5, marginBottom: 3 },
+  sectionBody: { fontSize: 13, color: '#111111', lineHeight: 19 },
+  link:        { fontSize: 13, color: Colors.orange, lineHeight: 20 },
+});
+
 // ── Thread tile ────────────────────────────────────────────────────────────
 
 function ThreadTile({ item, isVenue, isSelected, onPress }: {
   item: Enquiry; isVenue: boolean; isSelected: boolean; onPress: () => void;
 }) {
   const who = isVenue ? item.bandName : item.venueName;
-  const { day, time, room } = item.requestedSlot;
-  const slotStr = `${day} · ${time}${room ? ` · ${room}` : ''}`;
-  const preview = item.additionalInfo?.trim() || null;
-  const dateStr = formatDate(item.submittedAt);
+  const { day, date, time, slotType } = item.requestedSlot;
+  const dateStr = date ? fmtSlotDate(date) : '';
+  const slotStr = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
+  const statusCfg = STATUS_MAP[item.status] ?? STATUS_MAP.pending;
 
   return (
     <TouchableOpacity
@@ -155,32 +313,28 @@ function ThreadTile({ item, isVenue, isSelected, onPress }: {
       onPress={onPress}
       activeOpacity={0.75}
     >
-      <Avatar name={who} size={38} />
       <View style={tt.info}>
         <View style={tt.row1}>
           <Text style={tt.name} numberOfLines={1}>{who}</Text>
-          <Text style={tt.time}>{dateStr}</Text>
+          <Text style={tt.time}>{formatTileDate(item.submittedAt)}</Text>
         </View>
-        <View style={tt.row2}>
-          <Text style={tt.slot} numberOfLines={1}>{slotStr}</Text>
-          <StatusBadge status={item.status} />
-        </View>
-        {preview ? <Text style={tt.preview} numberOfLines={1}>{preview}</Text> : null}
+        <Text style={tt.slot} numberOfLines={1}>{slotStr}</Text>
+        <StatusBadge status={item.status} />
       </View>
+      <View style={[tt.dot, { backgroundColor: statusCfg.color }]} />
     </TouchableOpacity>
   );
 }
 
 const tt = StyleSheet.create({
-  tile:       { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee', backgroundColor: '#fafafa' },
+  tile:       { flexDirection: 'row', alignItems: 'flex-start', padding: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee', backgroundColor: '#fafafa', position: 'relative' as const },
   tileActive: { backgroundColor: '#fff4e8', borderLeftWidth: 3, borderLeftColor: Colors.orange, paddingLeft: 13 },
-  info:       { flex: 1, minWidth: 0, gap: 3 },
+  info:       { flex: 1, minWidth: 0, gap: 3, paddingRight: 20 },
   row1:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  row2:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   name:       { fontSize: 14, fontWeight: '700', color: '#111111', flex: 1 },
   time:       { fontSize: 11, color: '#aaaaaa', flexShrink: 0 },
-  slot:       { fontSize: 12, color: '#666666', flex: 1 },
-  preview:    { fontSize: 12, color: '#999999' },
+  slot:       { fontSize: 12, color: '#666666' },
+  dot:        { position: 'absolute' as const, top: 14, right: 14, width: 8, height: 8, borderRadius: 4 },
 });
 
 // ── Thread panel (conversation) ────────────────────────────────────────────
@@ -188,6 +342,7 @@ const tt = StyleSheet.create({
 function ThreadPanel({ enquiry, isVenue, onBack }: {
   enquiry: Enquiry; isVenue: boolean; onBack: () => void;
 }) {
+  const router = useRouter();
   const { user } = useAuth();
   const messages = useMessages(enquiry.id);
   const [chatText,      setChatText]      = useState('');
@@ -199,7 +354,9 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
 
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
   const { day, date, time, room, slotType, setLength } = enquiry.requestedSlot;
-  const slotDesc = [day, date, time, room, slotType, setLength].filter(Boolean).join(' · ');
+  const dateStr = date ? fmtSlotDate(date) : '';
+  const slotDesc = [day, dateStr, time, room, slotType, setLength].filter(Boolean).join(' · ');
+  const declineReason = (enquiry as any).declineReason || (enquiry as any).reason;
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
@@ -247,7 +404,6 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
 
   const isClosed = enquiry.status === 'declined' || enquiry.status === 'cancelled';
 
-  // ── Chat input (shared by discussing / accepted / artist) ────────────────
   function ChatInput() {
     return (
       <SafeAreaView edges={['bottom']} style={{ backgroundColor: isWeb ? '#fafafa' : Colors.bgFaint }}>
@@ -282,17 +438,31 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
     >
       {/* Header */}
       <View style={ph.header}>
-        {!isWeb && (
-          <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
-            <Text style={ph.back}>← Back</Text>
+        <View style={ph.headerTop}>
+          {!isWeb && (
+            <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
+              <Text style={ph.back}>← Back</Text>
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={ph.name} numberOfLines={1}>{who}</Text>
+            <Text style={ph.slot} numberOfLines={1}>{slotDesc}</Text>
+          </View>
+          <StatusBadge status={enquiry.status} />
+        </View>
+
+        {/* Venue — expandable band profile */}
+        {isVenue && <BandProfilePanel enquiry={enquiry} />}
+
+        {/* Artist — view venue profile link */}
+        {!isVenue && (
+          <TouchableOpacity
+            style={ph.viewProfileLink}
+            onPress={() => router.push(`/venue/${enquiry.venueId}`)}
+          >
+            <Text style={ph.viewProfileText}>View Venue Profile →</Text>
           </TouchableOpacity>
         )}
-        <Avatar name={who} size={44} />
-        <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-          <Text style={ph.name} numberOfLines={1}>{who}</Text>
-          <Text style={ph.slot} numberOfLines={1}>{slotDesc}</Text>
-        </View>
-        <StatusBadge status={enquiry.status} />
       </View>
 
       {/* Messages */}
@@ -302,8 +472,7 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
         contentContainerStyle={ph.msgList}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        {/* Enquiry card always first */}
-        <EnquiryCard enquiry={enquiry} />
+        <EnquiryCard enquiry={enquiry} isVenue={isVenue} />
 
         {messages.length === 0 && (
           <View style={ph.noMsgs}>
@@ -313,36 +482,43 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
           </View>
         )}
 
-        {messages.map(m => {
+        {messages.map((m, idx) => {
           const mine = m.sender === user?.uid;
+          const prevMsg = idx > 0 ? messages[idx - 1] : null;
+          const showSep = !prevMsg || !isSameDay(prevMsg.timestamp, m.timestamp);
           return (
-            <View key={m.id} style={[ph.msgRow, mine ? ph.msgRowMine : ph.msgRowTheirs]}>
-              {!mine ? <Avatar name={who} size={30} /> : null}
-              <View style={[ph.msgCol, mine && ph.msgColMine]}>
-                <Text style={ph.msgLabel}>{mine ? 'You' : who}</Text>
-                <View style={[ph.bubble, mine ? ph.bubbleMine : ph.bubbleTheirs]}>
-                  <Text style={ph.bubbleText}>{m.text}</Text>
+            <View key={m.id}>
+              {showSep && <DateSep label={getDateLabel(m.timestamp)} />}
+              <View style={[ph.msgRow, mine ? ph.msgRowMine : ph.msgRowTheirs]}>
+                <View style={[ph.msgCol, mine && ph.msgColMine]}>
+                  <Text style={[ph.msgLabel, mine && ph.msgLabelRight]}>{mine ? 'You' : who}</Text>
+                  <View style={[ph.bubble, mine ? ph.bubbleMine : ph.bubbleTheirs]}>
+                    <Text style={[ph.bubbleText, mine && ph.bubbleTextMine]}>{m.text}</Text>
+                  </View>
+                  <Text style={[ph.msgTime, mine && ph.msgTimeRight]}>{fmtMsgTime(m.timestamp)}</Text>
                 </View>
-                <Text style={ph.msgTime}>
-                  {new Date(m.timestamp).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
-                </Text>
               </View>
             </View>
           );
         })}
+
+        {/* Decline reason */}
+        {(enquiry.status === 'declined' || enquiry.status === 'cancelled') && declineReason ? (
+          <View style={ph.bannerReason}>
+            <Text style={ph.bannerReasonLabel}>REASON</Text>
+            <Text style={ph.bannerReasonText}>{declineReason}</Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* ── Bottom action area ── */}
 
-      {/* Closed */}
       {isClosed ? (
         <View style={ph.banner}>
           <Text style={ph.bannerText}>Enquiry {enquiry.status}.</Text>
         </View>
       ) : isVenue && enquiry.status === 'pending' ? (
-        // Venue pending — inline forms + three buttons
         <View style={ph.actionArea}>
-          {/* Inline form */}
           {activeForm === 'decline' ? (
             <View style={ph.actionForm}>
               <Text style={ph.formLabel}>DECLINE — REASON OPTIONAL</Text>
@@ -415,7 +591,6 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
                 textAlignVertical="top"
                 autoFocus
               />
-              {/* Listing choice */}
               <View style={{ gap: 8, marginBottom: 12 }}>
                 {([
                   { value: 'pending', label: 'List as Pending', sub: 'slot reserved, not publicly booked yet' },
@@ -446,7 +621,6 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
             </View>
           ) : null}
 
-          {/* Three trigger buttons */}
           <View style={ph.threeButtons}>
             {([
               { id: 'discuss', label: 'Discuss', activeColor: '#f5a623' },
@@ -473,14 +647,12 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
           </View>
         </View>
       ) : !isVenue && enquiry.status === 'pending' ? (
-        // Artist pending — cancel link + no chat
         <View style={ph.cancelRow}>
           <TouchableOpacity onPress={async () => { await cancelEnquiry(enquiry.id); onBack(); }}>
             <Text style={ph.cancelText}>Cancel enquiry</Text>
           </TouchableOpacity>
         </View>
       ) : isVenue && enquiry.status === 'accepted' ? (
-        // Venue accepted — timetable management bar + chat
         <View>
           <View style={ph.timetableBar}>
             <Text style={ph.timetableLabel}>Timetable:</Text>
@@ -517,7 +689,6 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
           <ChatInput />
         </View>
       ) : (
-        // Discussing / artist accepted — chat input
         <ChatInput />
       )}
     </KeyboardAvoidingView>
@@ -525,24 +696,34 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
 }
 
 const ph = StyleSheet.create({
-  header:          { flexDirection: 'row', alignItems: 'center', padding: 16, paddingHorizontal: isWeb ? 24 : 16, borderBottomWidth: 1, borderBottomColor: '#e8e8e8', backgroundColor: '#fafafa', flexShrink: 0 },
+  header:          { padding: 16, paddingHorizontal: isWeb ? 24 : 16, borderBottomWidth: 1, borderBottomColor: '#e8e8e8', backgroundColor: '#fafafa', flexShrink: 0 },
+  headerTop:       { flexDirection: 'row', alignItems: 'center' },
   back:            { fontSize: 15, color: Colors.orange, fontWeight: '600' },
   name:            { fontSize: isWeb ? 18 : 16, fontWeight: '700', color: '#111111', letterSpacing: -0.3 },
   slot:            { fontSize: 13, color: '#666666', marginTop: 2 },
+  viewProfileLink: { marginTop: 10 },
+  viewProfileText: { fontSize: 13, color: Colors.orange, fontWeight: '600' },
   msgList:         { padding: isWeb ? 24 : 16, gap: 16, flexGrow: 1 },
   noMsgs:          { alignItems: 'center', paddingTop: 12 },
   noMsgsText:      { fontSize: 14, color: '#aaaaaa' },
   msgRow:          { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  msgRowMine:      { flexDirection: 'row-reverse' as const },
+  msgRowMine:      { justifyContent: 'flex-end' },
   msgRowTheirs:    {},
   msgCol:          { flexDirection: 'column', maxWidth: '65%' },
   msgColMine:      { alignItems: 'flex-end' },
   msgLabel:        { fontSize: 11, color: '#aaaaaa', marginBottom: 4 },
+  msgLabelRight:   { textAlign: 'right' },
   bubble:          { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10 },
   bubbleMine:      { backgroundColor: Colors.orange, borderBottomRightRadius: 4 },
   bubbleTheirs:    { backgroundColor: '#f2f2f2', borderBottomLeftRadius: 4 },
   bubbleText:      { fontSize: 14, color: '#111111', lineHeight: 21 },
+  bubbleTextMine:  { color: '#111111' },
   msgTime:         { fontSize: 11, color: '#bbbbbb', marginTop: 4 },
+  msgTimeRight:    { textAlign: 'right' },
+  // Decline reason banner (in message list)
+  bannerReason:    { backgroundColor: '#fef3cd', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#fcd34d', marginTop: 8 },
+  bannerReasonLabel:{ fontSize: 10, fontWeight: '700', color: '#888888', letterSpacing: 0.5, marginBottom: 3 },
+  bannerReasonText: { fontSize: 13, color: '#333333' },
   // Closed banner
   banner:          { padding: 16, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#e8e8e8', backgroundColor: '#fafafa' },
   bannerText:      { fontSize: 14, color: '#aaaaaa', fontStyle: 'italic' },
@@ -563,7 +744,6 @@ const ph = StyleSheet.create({
   triggerBtn:      { flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: 'transparent' },
   triggerBtnBorder:{ borderRightWidth: 1, borderRightColor: '#e8e8e8' },
   triggerText:     { fontSize: 13, fontWeight: '700', color: '#888888' },
-  triggerTextActive:{ color: '#ffffff' },
   // Radio buttons (accept form)
   radioRow:        { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 4 },
   radioCircle:     { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#cccccc', alignItems: 'center', justifyContent: 'center', marginTop: 1, flexShrink: 0 },
