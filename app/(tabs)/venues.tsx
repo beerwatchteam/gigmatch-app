@@ -767,8 +767,8 @@ const st = StyleSheet.create({
   slotsCount:     { fontSize: 13, color: Colors.orange, fontWeight: '700' },
   slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
   cardActions:    { flexDirection: 'row', gap: 8 },
-  profileBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
-  profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  profileBtn:     { borderWidth: 1, borderColor: '#cccccc', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: 'transparent' },
+  profileBtnText: { fontSize: 13, fontWeight: '600', color: '#444444' },
   actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
   actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 });
