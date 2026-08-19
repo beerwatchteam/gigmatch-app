@@ -37,7 +37,8 @@
           "photosPermission": "GigMatch accesses your photos to upload profile and venue images.",
           "cameraPermission": "GigMatch uses your camera to upload images."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
