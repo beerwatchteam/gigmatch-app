@@ -243,47 +243,53 @@ export default function EditProfileScreen() {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
-      {/* Header */}
-      <View style={[s.header, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={handleBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.headerTitle, { color: colors.black }]}>Edit Profile</Text>
-          <Text style={[s.headerSub, { color: colors.grey }]}>{profile.name || '—'}</Text>
-        </View>
-        <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-          <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
-        </TouchableOpacity>
-      </View>
+      <ScrollView stickyHeaderIndices={[1]} showsVerticalScrollIndicator={false}>
 
-      {/* Tab errors */}
-      {tabErrors.length > 0 && (
-        <View style={s.tabErrors}>
-          <Text style={s.tabErrorsLabel}>Please complete: </Text>
-          {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
-        </View>
-      )}
-
-      {/* Tab bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
-        {TABS.map(tab => (
-          <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-            <Text style={[s.tabText, { color: colors.grey }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+        {/* ── Banner + title bar + tab errors ── */}
+        <View>
+          <TouchableOpacity onPress={pickBannerPhoto} style={[s.banner, showErrors && !profile.photoUrl && s.bannerError]}>
+            {profile.photoUrl
+              ? <Image source={{ uri: profile.photoUrl }} style={s.bannerImg} />
+              : <View style={s.bannerPlaceholder}>
+                  <Text style={s.bannerPlaceholderText}>{photoUploading ? 'Uploading…' : 'Tap to add profile photo *'}</Text>
+                </View>
+            }
+            <View style={s.bannerEditBadge}><Text style={s.bannerEditBadgeText}>{profile.photoUrl ? 'Change photo' : '+ Photo'}</Text></View>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
 
-      <ScrollView contentContainerStyle={s.body}>
+          <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.headerTitle, { color: colors.black }]}>Edit Profile</Text>
+              <Text style={[s.headerSub, { color: colors.grey }]}>{profile.name || '—'}</Text>
+            </View>
+            <View style={s.headerBtns}>
+              <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
+                <Text style={[s.backBtnInlineText, { color: colors.grey }]}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+                <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        {/* ── BANNER ── */}
-        <TouchableOpacity onPress={pickBannerPhoto} style={[s.banner, showErrors && !profile.photoUrl && s.bannerError]}>
-          {profile.photoUrl
-            ? <Image source={{ uri: profile.photoUrl }} style={s.bannerImg} />
-            : <View style={s.bannerPlaceholder}>
-                <Text style={s.bannerPlaceholderText}>{photoUploading ? 'Uploading…' : 'Tap to add profile photo *'}</Text>
-              </View>
-          }
-          <View style={s.bannerEditBadge}><Text style={s.bannerEditBadgeText}>{profile.photoUrl ? 'Change photo' : '+ Photo'}</Text></View>
-        </TouchableOpacity>
+          {tabErrors.length > 0 && (
+            <View style={s.tabErrors}>
+              <Text style={s.tabErrorsLabel}>Please complete: </Text>
+              {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
+            </View>
+          )}
+        </View>
+
+        {/* ── Tab bar (sticky) ── */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
+          {TABS.map(tab => (
+            <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
+              <Text style={[s.tabText, { color: colors.grey }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={s.body}>
 
         {/* ── SETTINGS ── */}
         {activeTab === 'Settings' && (
@@ -545,6 +551,7 @@ export default function EditProfileScreen() {
           </View>
         )}
 
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -552,8 +559,10 @@ export default function EditProfileScreen() {
 
 const s = StyleSheet.create({
   safe:               { flex: 1, backgroundColor: Colors.bg },
-  header:             { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border, backgroundColor: Colors.bg },
-  backBtn:            { fontSize: 15, color: Colors.orange, fontWeight: '600' },
+  titleBar:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
+  headerBtns:         { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  backBtnInline:      { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  backBtnInlineText:  { fontSize: 14, fontWeight: '600' },
   headerTitle:        { fontSize: 18, fontWeight: '800', color: Colors.black, letterSpacing: -0.2 },
   headerSub:          { fontSize: 13, color: Colors.grey },
   saveBtn:            { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
@@ -567,8 +576,8 @@ const s = StyleSheet.create({
   tabActive:          { borderBottomColor: Colors.orange },
   tabText:            { fontSize: 13, color: Colors.grey, fontWeight: '500' },
   tabTextActive:      { color: Colors.orange, fontWeight: '700' },
-  body:               { padding: 20, paddingBottom: 60 },
-  banner:             { width: '100%', height: 200, marginBottom: 20, borderRadius: 12, overflow: 'hidden', backgroundColor: Colors.bgFaint },
+  body:               { padding: 20, paddingTop: 24, paddingBottom: 60 },
+  banner:             { width: '100%', height: 220, overflow: 'hidden', backgroundColor: Colors.bgFaint },
   bannerError:        { borderWidth: 2, borderColor: Colors.danger },
   bannerImg:          { width: '100%', height: '100%' },
   bannerPlaceholder:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
