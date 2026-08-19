@@ -83,12 +83,35 @@ export default function EnquireScreen() {
         },
         slotPreference: slotPref,
         sharedSections: sections,
-        // band profile snapshot
+        // band profile snapshot — always send core fields
         genre:      musicianDoc?.genre,
         location:   musicianDoc?.location,
         artistType: musicianDoc?.artistType,
-        about:      musicianDoc?.about,
         photoUrl:   musicianDoc?.photoUrl,
+        // conditionally shared fields based on section toggles
+        ...(sections.about       && { about:       musicianDoc?.about }),
+        ...(sections.music       && {
+          songs:      musicianDoc?.songs,
+          spotify:    musicianDoc?.spotify,
+          appleMusic: musicianDoc?.appleMusic,
+          youtube:    musicianDoc?.youtube,
+        }),
+        ...(sections.gigHistory  && { gigHistory:  musicianDoc?.gigHistory }),
+        ...(sections.upcomingGigs&& { upcomingGigs:musicianDoc?.upcomingGigs }),
+        ...(sections.socials     && {
+          instagram:   musicianDoc?.instagram,
+          tiktok:      musicianDoc?.tiktok,
+          facebook:    musicianDoc?.facebook,
+          customLinks: musicianDoc?.customLinks,
+        }),
+        ...(sections.techRider   && {
+          techRider:  musicianDoc?.techRider,
+          stagePlot:  musicianDoc?.stagePlot,
+          inputList:  musicianDoc?.inputList,
+        }),
+        // contact info
+        email:      musicianDoc?.email,
+        phone:      musicianDoc?.phone,
       });
       setSubmitted(true);
     } catch (e: any) {
