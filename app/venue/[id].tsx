@@ -27,6 +27,7 @@ type Slot = {
   duration?: number;
   notes?: string;
   ticketUrl?: string;
+  featured?: boolean;
 };
 
 type Room = {
@@ -701,6 +702,9 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
   if (slot.status === 'booked') {
     return (
       <View style={ws.card}>
+        {slot.featured ? (
+          <View style={ws.featuredBadge}><Text style={ws.featuredText}>★ Featured</Text></View>
+        ) : null}
         <Text style={ws.time}>{slot.time}</Text>
         <Text style={ws.bandName}>{slot.bandName}</Text>
         {slot.slotType ? <View style={ws.typePill}><Text style={ws.typeText}>{slot.slotType}</Text></View> : null}
@@ -813,12 +817,20 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
 
   return (
     <View style={[ns.card, isBooked && ns.cardBooked, isPending && ns.cardPending, (isOpen && hasEnquired) && ns.cardEnquired]}>
+      {isBooked && slot.featured ? (
+        <View style={ns.featuredBadge}><Text style={ns.featuredText}>★ Featured</Text></View>
+      ) : null}
       <View style={ns.left}>
         <View style={ns.timeRow}>
           <Text style={ns.time}>{slot.time}</Text>
           {slot.room ? <Text style={ns.room}>{slot.room}</Text> : null}
         </View>
         {isBooked  ? <Text style={ns.bandName}>{slot.bandName}</Text> : null}
+        {isBooked && slot.ticketUrl ? (
+          <TouchableOpacity onPress={() => Linking.openURL(slot.ticketUrl!)} style={ns.ticketBtn}>
+            <Text style={ns.ticketBtnText}>Tickets →</Text>
+          </TouchableOpacity>
+        ) : null}
         {isPending ? <Text style={ns.pendingLabel}>Pending</Text> : null}
         {isOpen && hasEnquired ? (
           <Text style={ns.enquiredLabel}>Enquired — Waiting on venue response</Text>
@@ -1130,6 +1142,8 @@ const ws = StyleSheet.create({
   typeText:         { fontSize: 10, fontWeight: '700', color: '#333333', textTransform: 'uppercase' },
   ticketBtn:        { alignSelf: 'flex-start', backgroundColor: Colors.orange, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, marginTop: 2 },
   ticketBtnText:    { fontSize: 11, fontWeight: '700', color: '#111111' },
+  featuredBadge:    { alignSelf: 'flex-start', backgroundColor: '#fbbf24', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 4 },
+  featuredText:     { fontSize: 10, fontWeight: '700', color: '#111111' },
 });
 
 // Month grid styles — 7 equal columns via flexBasis
@@ -1174,6 +1188,10 @@ const ns = StyleSheet.create({
   enquireBtnGhost:  { borderWidth: 1, borderColor: Colors.orange, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   enquireBtnGhostText: { fontSize: 12, color: Colors.orange, fontWeight: '600' },
   dot:              { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4 },
+  featuredBadge:    { alignSelf: 'flex-start', backgroundColor: '#fbbf24', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 4 },
+  featuredText:     { fontSize: 11, fontWeight: '700', color: '#111111' },
+  ticketBtn:        { alignSelf: 'flex-start', marginTop: 4 },
+  ticketBtnText:    { fontSize: 13, color: Colors.orange, fontWeight: '700' },
 });
 
 // Photos tab styles
