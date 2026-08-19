@@ -41,6 +41,41 @@ type VenueDoc = {
 
 const isWeb = Platform.OS === 'web';
 
+// ── Static fallback venues (shown when no live booked slots exist) ────
+
+const FALLBACK_VENUES: FeaturedVenue[] = [
+  {
+    venueId:   'fallback-1',
+    venueName: 'The Corner Hotel',
+    address:   '57 Swan St',
+    suburb:    'Richmond',
+    postcode:  '3121',
+    gigs: [
+      { id: 'f1', title: 'Live Music Night', datetime: '2026-08-22T20:00', ticketUrl: null, imageUrl: null, featured: false },
+    ],
+  },
+  {
+    venueId:   'fallback-2',
+    venueName: 'The Tote',
+    address:   '71 Johnston St',
+    suburb:    'Collingwood',
+    postcode:  '3066',
+    gigs: [
+      { id: 'f2', title: 'Open Mic Night', datetime: '2026-08-23T19:30', ticketUrl: null, imageUrl: null, featured: false },
+    ],
+  },
+  {
+    venueId:   'fallback-3',
+    venueName: 'The Espy',
+    address:   '11 The Esplanade',
+    suburb:    'St Kilda',
+    postcode:  '3182',
+    gigs: [
+      { id: 'f3', title: 'Saturday Sessions', datetime: '2026-08-23T21:00', ticketUrl: null, imageUrl: null, featured: false },
+    ],
+  },
+];
+
 // ── Helpers ────────────────────────────────────────────────────────
 
 function timeTo24h(timeStr?: string): string {
@@ -232,7 +267,9 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Featured Venues ── */}
-        {displayData.length > 0 && (
+        {(() => {
+          const venueData = displayData.length > 0 ? displayData : FALLBACK_VENUES;
+          return (
           <View style={s.featuredSection}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionLabel}>On the lineup</Text>
@@ -240,15 +277,15 @@ export default function HomeScreen() {
             </View>
             <FlatList
               horizontal
-              data={displayData}
+              data={venueData}
               keyExtractor={v => v.venueId}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={s.venueTrack}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={s.venueCard}
-                  onPress={() => router.push(`/venue/${item.venueId}`)}
-                  activeOpacity={0.9}
+                  onPress={() => !item.venueId.startsWith('fallback') && router.push(`/venue/${item.venueId}`)}
+                  activeOpacity={item.venueId.startsWith('fallback') ? 1 : 0.9}
                 >
                   <Text style={s.venueCardName}>{item.venueName}</Text>
                   <Text style={s.venueCardAddr}>
@@ -262,7 +299,8 @@ export default function HomeScreen() {
               )}
             />
           </View>
-        )}
+          );
+        })()}
 
         {/* ── Why GigMatch ── */}
         <View style={s.whySection}>
