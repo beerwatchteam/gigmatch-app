@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { db, storage } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
@@ -61,9 +62,10 @@ const field = StyleSheet.create({
 });
 
 function Input({ value, onChangeText, placeholder, multiline, keyboardType, error }: any) {
+  const { colors } = useTheme();
   return (
     <TextInput
-      style={[s.input, multiline && s.textarea, error && s.inputError]}
+      style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }, multiline && s.textarea, error && s.inputError]}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -77,6 +79,7 @@ function Input({ value, onChangeText, placeholder, multiline, keyboardType, erro
 }
 
 function Pills({ options, value, onSelect, multi }: { options: string[]; value: string | string[]; onSelect: (v: any) => void; multi?: boolean }) {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {options.map(opt => {
@@ -84,7 +87,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
         return (
           <TouchableOpacity
             key={opt}
-            style={[s.pill, active && s.pillActive]}
+            style={[s.pill, { borderColor: colors.border }, active && s.pillActive]}
             onPress={() => {
               if (multi) {
                 const arr = value as string[];
@@ -94,7 +97,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
               }
             }}
           >
-            <Text style={[s.pillText, active && s.pillTextActive]}>{opt}</Text>
+            <Text style={[s.pillText, { color: colors.grey }, active && s.pillTextActive]}>{opt}</Text>
           </TouchableOpacity>
         );
       })}
@@ -107,6 +110,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
 export default function EditVenueScreen() {
   const router = useRouter();
   const { profile } = useAuth();
+  const { colors } = useTheme();
   const venueId = profile?.venueId ?? '';
 
   const [data, setData]           = useState<VenueData>(BLANK);
@@ -282,26 +286,26 @@ export default function EditVenueScreen() {
     }
   }
 
-  if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
+  if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
 
   if (!venueId) {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
         <View style={s.center}>
-          <Text style={s.emptyText}>No venue linked to your account.</Text>
+          <Text style={[s.emptyText, { color: colors.grey }]}>No venue linked to your account.</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={handleBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Edit Venue Profile</Text>
-          <Text style={s.headerSub}>{data.name || '—'}</Text>
+          <Text style={[s.headerTitle, { color: colors.black }]}>Edit Venue Profile</Text>
+          <Text style={[s.headerSub, { color: colors.grey }]}>{data.name || '—'}</Text>
         </View>
         <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
           <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
@@ -317,10 +321,10 @@ export default function EditVenueScreen() {
       )}
 
       {/* Tab bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabBarContent}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
         {TABS.map(tab => (
           <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-            <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+            <Text style={[s.tabText, { color: colors.grey }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -341,9 +345,9 @@ export default function EditVenueScreen() {
         {/* ── SETTINGS ── */}
         {activeTab === 'Settings' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Notification Preferences</Text>
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Email on new enquiry</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Email on new enquiry</Text>
               <Switch
                 value={data.settings.emailOnNewInquiry}
                 onValueChange={v => set('settings', { ...data.settings, emailOnNewInquiry: v })}
@@ -351,8 +355,8 @@ export default function EditVenueScreen() {
                 thumbColor="#fff"
               />
             </View>
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Email on enquiry expiry</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Email on enquiry expiry</Text>
               <Switch
                 value={data.settings.emailOnExpiry}
                 onValueChange={v => set('settings', { ...data.settings, emailOnExpiry: v })}
@@ -361,8 +365,8 @@ export default function EditVenueScreen() {
               />
             </View>
             <Text style={[s.sectionTitle, { marginTop: 24 }]}>Visibility</Text>
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Listed on GigMatch</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Listed on GigMatch</Text>
               <Switch
                 value={data.settings.listed}
                 onValueChange={v => set('settings', { ...data.settings, listed: v })}
@@ -376,7 +380,7 @@ export default function EditVenueScreen() {
         {/* ── BASIC INFO ── */}
         {activeTab === 'Basic Info' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Basic Info</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Basic Info</Text>
             <Field label="Venue name *" error={showErrors && !data.name?.trim()}>
               <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} />
             </Field>
@@ -410,12 +414,12 @@ export default function EditVenueScreen() {
         {/* ── ROOMS ── */}
         {activeTab === 'Rooms' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Rooms</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Rooms</Text>
             {data.rooms.map((room, i) => {
               const isOpen = expandedRoom === i;
               const hasError = showErrors && (!room.name?.trim() || !room.capacity?.toString().trim());
               return (
-                <View key={i} style={[s.card, hasError && s.cardError]}>
+                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedRoom(isOpen ? null : i)}>
                     <Text style={s.cardHeaderText}>{room.name || 'Unnamed room'}{room.capacity ? ` · Cap. ${room.capacity}` : ''}</Text>
                     <Text style={s.cardChevron}>{isOpen ? '▲' : '▼'}</Text>
@@ -454,12 +458,12 @@ export default function EditVenueScreen() {
         {/* ── GIG NIGHTS ── */}
         {activeTab === 'Gig Nights' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Gig Nights</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig Nights</Text>
             {data.gigNights.map((night, i) => {
               const isOpen = expandedNight === i;
               const hasError = showErrors && (!night.day || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
               return (
-                <View key={i} style={[s.card, hasError && s.cardError]}>
+                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)}>
                     <Text style={s.cardHeaderText}>{night.day || 'New night'}{night.startTime ? ` · ${night.startTime}` : ''}</Text>
                     <Text style={s.cardChevron}>{isOpen ? '▲' : '▼'}</Text>
@@ -481,8 +485,8 @@ export default function EditVenueScreen() {
                       <Field label="Start date * (YYYY-MM-DD)" error={showErrors && !night.startDate}>
                         <Input value={night.startDate} onChangeText={(v: string) => setNight(i, 'startDate', v)} placeholder="2025-01-01" error={showErrors && !night.startDate} />
                       </Field>
-                      <View style={s.toggleRow}>
-                        <Text style={s.toggleLabel}>Continuous (no end date)</Text>
+                      <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                        <Text style={[s.toggleLabel, { color: colors.black }]}>Continuous (no end date)</Text>
                         <Switch
                           value={night.continuous}
                           onValueChange={v => { setNight(i, 'continuous', v); if (v) setNight(i, 'endDate', ''); }}
@@ -540,7 +544,7 @@ export default function EditVenueScreen() {
         {/* ── TECH SPECS ── */}
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Tech Specs / Rider</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Specs / Rider</Text>
             {(['pa','monitoring','backline','lighting','parking'] as const).map(f => (
               <Field key={f} label={f.charAt(0).toUpperCase() + f.slice(1)}>
                 <Input
@@ -550,8 +554,8 @@ export default function EditVenueScreen() {
                 />
               </Field>
             ))}
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Green room available</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Green room available</Text>
               <Switch
                 value={data.techSpecs?.greenRoom || false}
                 onValueChange={v => set('techSpecs', { ...data.techSpecs, greenRoom: v })}
@@ -573,7 +577,7 @@ export default function EditVenueScreen() {
         {/* ── PHOTOS ── */}
         {activeTab === 'Photos' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Photo Gallery</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Photo Gallery</Text>
             <View style={s.photoGrid}>
               {data.photos.map((url, i) => (
                 <View key={i} style={s.photoItem}>

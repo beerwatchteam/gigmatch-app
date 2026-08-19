@@ -11,6 +11,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, haversineKm, type AreaResult } from '@/lib/suburbSearch';
+import { useTheme } from '@/lib/theme-context';
 
 const GENRES = [
   'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
@@ -88,6 +89,7 @@ type PanelKey = 'fee' | 'date' | 'capacity' | null;
 
 export default function VenuesScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const [venues, setVenues]         = useState<Venue[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -270,9 +272,9 @@ export default function VenuesScreen() {
 
   // ── Shared sidebar (web) ──────────────────────────────────────────
   const WebSidebar = (
-    <View style={st.sidebar}>
-      <View style={st.sidebarHead}>
-        <Text style={st.sidebarTitle}>Filters</Text>
+    <View style={[st.sidebar, { backgroundColor: colors.bg }]}>
+      <View style={[st.sidebarHead, { borderBottomColor: colors.border }]}>
+        <Text style={[st.sidebarTitle, { color: colors.black }]}>Filters</Text>
         <TouchableOpacity onPress={resetFilters}><Text style={st.resetAll}>Reset all</Text></TouchableOpacity>
       </View>
 
@@ -542,6 +544,7 @@ export default function VenuesScreen() {
 
   // ── Venue card ────────────────────────────────────────────────────
   function VenueCard({ item }: { item: Venue }) {
+    const c = colors;
     const photo      = item.photoUrl || (item.photos?.[0]);
     const venueGenres: string[] = (item as any).genres || item.genre || [];
     const address    = [item.streetAddress, item.suburb, item.state, (item as any).postcode].filter(Boolean).join(', ');
@@ -550,16 +553,16 @@ export default function VenuesScreen() {
     return (
       <TouchableOpacity
         activeOpacity={0.97}
-        style={st.card}
+        style={[st.card, { backgroundColor: c.bg, borderColor: c.border }]}
         onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
       >
         {photo
           ? <Image source={{ uri: photo }} style={st.cardPhoto} />
-          : <View style={st.cardPhotoEmpty}><Text style={st.cardPhotoLabel}>venue photo</Text></View>
+          : <View style={[st.cardPhotoEmpty, { backgroundColor: c.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: c.grey }]}>venue photo</Text></View>
         }
         <View style={st.cardBody}>
-          <Text style={st.venueName}>{item.name}</Text>
-          {address ? <Text style={st.venueAddr}>{address}</Text> : null}
+          <Text style={[st.venueName, { color: c.black }]}>{item.name}</Text>
+          {address ? <Text style={[st.venueAddr, { color: c.grey }]}>{address}</Text> : null}
           {venueGenres.length > 0 && (
             <View style={st.genreRow}>
               {venueGenres.slice(0, 6).map((g: string) => (
@@ -567,15 +570,15 @@ export default function VenuesScreen() {
               ))}
             </View>
           )}
-          {item.description ? <Text style={st.desc} numberOfLines={2}>{item.description}</Text> : null}
-          <View style={st.cardFooter}>
+          {item.description ? <Text style={[st.desc, { color: c.black }]} numberOfLines={2}>{item.description}</Text> : null}
+          <View style={[st.cardFooter, { borderTopColor: c.borderFaint }]}>
             {openSlots === 0
-              ? <Text style={st.slotsNone}>No slots listed yet</Text>
-              : <Text style={st.slotsText}><Text style={st.slotsCount}>{openSlots}</Text>{` open slot${openSlots !== 1 ? 's' : ''}`}</Text>
+              ? <Text style={[st.slotsNone, { color: c.greyLight }]}>No slots listed yet</Text>
+              : <Text style={[st.slotsText, { color: c.grey }]}><Text style={st.slotsCount}>{openSlots}</Text>{` open slot${openSlots !== 1 ? 's' : ''}`}</Text>
             }
             <View style={st.cardActions}>
-              <TouchableOpacity style={st.profileBtn} onPress={() => router.push(`/venue/${item.id}`)}>
-                <Text style={st.profileBtnText}>Profile</Text>
+              <TouchableOpacity style={[st.profileBtn, { borderColor: c.border }]} onPress={() => router.push(`/venue/${item.id}`)}>
+                <Text style={[st.profileBtnText, { color: c.grey }]}>Profile</Text>
               </TouchableOpacity>
               <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}>
                 <Text style={st.actionBtnText}>Timetable</Text>
@@ -590,7 +593,7 @@ export default function VenuesScreen() {
   // ── Web layout ────────────────────────────────────────────────────
   if (isWeb) {
     return (
-      <View style={st.page}>
+      <View style={[st.page, { backgroundColor: colors.bg }]}>
         <ScrollView style={st.sidebarScroll} showsVerticalScrollIndicator={false}>{WebSidebar}</ScrollView>
         <ScrollView
           style={st.contentScroll}
@@ -598,8 +601,8 @@ export default function VenuesScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         >
           <View style={st.content}>
-            <Text style={st.pageTitle}>Find your next gig</Text>
-            <Text style={st.countText}>{filtered.length} venue{filtered.length !== 1 ? 's' : ''} match your filters</Text>
+            <Text style={[st.pageTitle, { color: colors.black }]}>Find your next gig</Text>
+            <Text style={[st.countText, { color: colors.grey }]}>{filtered.length} venue{filtered.length !== 1 ? 's' : ''} match your filters</Text>
             {loading
               ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
               : filtered.length === 0
@@ -615,14 +618,14 @@ export default function VenuesScreen() {
 
   // ── Native layout ─────────────────────────────────────────────────
   return (
-    <SafeAreaView style={st.safe}>
+    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         keyboardShouldPersistTaps="handled"
         stickyHeaderIndices={[0]}
       >
         {/* Sticky filter bar */}
-        <View style={st.nativeFilterBg}>{NativeFilterBar}</View>
+        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>{NativeFilterBar}</View>
 
         {/* Cards */}
         <View style={st.nativeContent}>

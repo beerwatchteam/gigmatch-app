@@ -9,6 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
 const MAX_DESC = 320;
@@ -53,6 +54,7 @@ type Musician = {
 // ── Overview Tab ──────────────────────────────────────────────────
 
 function OverviewTab({ m }: { m: Musician }) {
+  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
@@ -69,10 +71,10 @@ function OverviewTab({ m }: { m: Musician }) {
   const sidebar = (
     <>
       {(hasContact || hasSocials) && (
-        <View style={styles.sideCard}>
+        <View style={[styles.sideCard, { borderColor: colors.border }]}>
           {hasContact && (
             <>
-              <Text style={styles.sideCardTitle}>Contact</Text>
+              <Text style={[styles.sideCardTitle, { color: colors.greyLight }]}>Contact</Text>
               {m.email && (
                 <TouchableOpacity onPress={() => Linking.openURL(`mailto:${m.email}`)}>
                   <Text style={styles.sideLink}>{m.email}</Text>
@@ -87,7 +89,7 @@ function OverviewTab({ m }: { m: Musician }) {
           )}
           {hasSocials && (
             <>
-              <Text style={[styles.sideCardTitle, hasContact && { marginTop: 16 }]}>Socials</Text>
+              <Text style={[styles.sideCardTitle, { color: colors.greyLight }, hasContact && { marginTop: 16 }]}>Socials</Text>
               {socialLinks.map(p => (
                 <TouchableOpacity key={p.key} onPress={() => Linking.openURL((m as any)[p.key])}>
                   <Text style={styles.sideLink}>{p.label} →</Text>
@@ -104,9 +106,9 @@ function OverviewTab({ m }: { m: Musician }) {
       )}
 
       {(m.feeMin != null || m.feeMax != null) && (
-        <View style={styles.sideCard}>
-          <Text style={styles.sideCardTitle}>Fee</Text>
-          <Text style={styles.feeText}>
+        <View style={[styles.sideCard, { borderColor: colors.border }]}>
+          <Text style={[styles.sideCardTitle, { color: colors.greyLight }]}>Fee</Text>
+          <Text style={[styles.feeText, { color: colors.black }]}>
             {m.feeMin != null && m.feeMax != null
               ? `$${m.feeMin.toLocaleString()} – $${m.feeMax.toLocaleString()}`
               : m.feeMin != null
@@ -122,8 +124,8 @@ function OverviewTab({ m }: { m: Musician }) {
     <>
       {about ? (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>ABOUT</Text>
-          <Text style={styles.body}>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>ABOUT</Text>
+          <Text style={[styles.body, { color: colors.black }]}>
             {shouldTruncate && !expanded ? about.slice(0, MAX_DESC) + '…' : about}
           </Text>
           {shouldTruncate && (
@@ -136,12 +138,12 @@ function OverviewTab({ m }: { m: Musician }) {
 
       {upcomingGigs.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>UPCOMING GIGS</Text>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>UPCOMING GIGS</Text>
           {upcomingGigs.map((gig, i) => (
-            <View key={i} style={styles.gigRow}>
+            <View key={i} style={[styles.gigRow, { borderBottomColor: colors.borderFaint }]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.gigVenue}>{gig.venue}</Text>
-                <Text style={styles.gigMeta}>
+                <Text style={[styles.gigVenue, { color: colors.black }]}>{gig.venue}</Text>
+                <Text style={[styles.gigMeta, { color: colors.grey }]}>
                   {[gig.suburb, gig.date].filter(Boolean).join(' · ')}
                 </Text>
               </View>
@@ -152,15 +154,15 @@ function OverviewTab({ m }: { m: Musician }) {
 
       {gigHistory.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>GIG HISTORY</Text>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>GIG HISTORY</Text>
           {gigHistory.map((gig, i) => (
-            <View key={i} style={styles.gigRow}>
+            <View key={i} style={[styles.gigRow, { borderBottomColor: colors.borderFaint }]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.gigVenue}>{gig.venue}</Text>
-                <Text style={styles.gigMeta}>
+                <Text style={[styles.gigVenue, { color: colors.black }]}>{gig.venue}</Text>
+                <Text style={[styles.gigMeta, { color: colors.grey }]}>
                   {[gig.suburb, gig.date].filter(Boolean).join(' · ')}
                 </Text>
-                {gig.notes ? <Text style={styles.gigNotes}>{gig.notes}</Text> : null}
+                {gig.notes ? <Text style={[styles.gigNotes, { color: colors.greyLight }]}>{gig.notes}</Text> : null}
               </View>
               {gig.attendance ? (
                 <Text style={styles.gigAttendance}>{gig.attendance} ppl</Text>
@@ -171,7 +173,7 @@ function OverviewTab({ m }: { m: Musician }) {
       )}
 
       {!about && upcomingGigs.length === 0 && gigHistory.length === 0 && (
-        <Text style={styles.emptyState}>No info listed yet.</Text>
+        <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
     </>
   );
@@ -196,6 +198,7 @@ function OverviewTab({ m }: { m: Musician }) {
 // ── Music & Social Tab ────────────────────────────────────────────
 
 function MusicTab({ m }: { m: Musician }) {
+  const { colors } = useTheme();
   const songs = (m.songs || []).filter(s => s.title);
   const displayPhotos = [
     ...(m.photoUrl ? [m.photoUrl] : []),
@@ -206,30 +209,30 @@ function MusicTab({ m }: { m: Musician }) {
   return (
     <View style={styles.content}>
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>SONGS</Text>
+        <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>SONGS</Text>
         {songs.length > 0 ? (
           songs.map((song, i) => (
             <TouchableOpacity
               key={i}
-              style={styles.songRow}
+              style={[styles.songRow, { borderBottomColor: colors.borderFaint }]}
               onPress={() => song.url && Linking.openURL(song.url)}
               disabled={!song.url}
             >
-              <Text style={styles.songTitle}>{song.title}</Text>
+              <Text style={[styles.songTitle, { color: colors.black }]}>{song.title}</Text>
               {song.url && <Text style={styles.songLink}>Listen →</Text>}
             </TouchableOpacity>
           ))
         ) : (
-          <Text style={styles.emptyState}>No songs listed yet.</Text>
+          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No songs listed yet.</Text>
         )}
       </View>
 
       {hasMedia && (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>PHOTOS & VIDEOS</Text>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>PHOTOS & VIDEOS</Text>
           {displayPhotos.length > 0 && (
             <>
-              <Text style={styles.mediaSub}>Photos</Text>
+              <Text style={[styles.mediaSub, { color: colors.grey }]}>Photos</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
                 {displayPhotos.map((url, i) => (
                   <Image key={i} source={{ uri: url }} style={styles.photoThumb} />
@@ -239,9 +242,9 @@ function MusicTab({ m }: { m: Musician }) {
           )}
           {(m.videos || []).length > 0 && (
             <>
-              <Text style={[styles.mediaSub, { marginTop: 16 }]}>Videos</Text>
+              <Text style={[styles.mediaSub, { color: colors.grey, marginTop: 16 }]}>Videos</Text>
               {(m.videos || []).map((url, i) => (
-                <TouchableOpacity key={i} style={styles.videoCard} onPress={() => Linking.openURL(url)}>
+                <TouchableOpacity key={i} style={[styles.videoCard, { borderColor: colors.border }]} onPress={() => Linking.openURL(url)}>
                   <Text style={styles.videoCardText}>Watch video {i + 1} →</Text>
                 </TouchableOpacity>
               ))}
@@ -259,6 +262,7 @@ export default function MusicianScreen() {
   const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
   const router  = useRouter();
   const { user } = useAuth();
+  const { colors } = useTheme();
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/musicians');
   const [musician, setMusician]   = useState<Musician | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -276,7 +280,7 @@ export default function MusicianScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
         <ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} />
       </SafeAreaView>
     );
@@ -284,11 +288,11 @@ export default function MusicianScreen() {
 
   if (!musician) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
         <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.notFound}>Musician not found.</Text>
+        <Text style={[styles.notFound, { color: colors.grey }]}>Musician not found.</Text>
       </SafeAreaView>
     );
   }
@@ -298,7 +302,7 @@ export default function MusicianScreen() {
     : musician.artistType;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
       <ScrollView>
         {/* Hero banner */}
         {musician.photoUrl ? (
@@ -317,7 +321,7 @@ export default function MusicianScreen() {
         {/* Profile header */}
         <View style={styles.profileHead}>
           <View style={styles.nameRow}>
-            <Text style={styles.name}>{musician.name || 'Unnamed Act'}</Text>
+            <Text style={[styles.name, { color: colors.black }]}>{musician.name || 'Unnamed Act'}</Text>
             {actType ? (
               <View style={styles.typePill}>
                 <Text style={styles.typeText}>{actType}</Text>
@@ -329,8 +333,8 @@ export default function MusicianScreen() {
               </TouchableOpacity>
             )}
           </View>
-          {musician.username ? <Text style={styles.username}>@{musician.username}</Text> : null}
-          {musician.location ? <Text style={styles.location}>{musician.location}</Text> : null}
+          {musician.username ? <Text style={[styles.username, { color: colors.grey }]}>@{musician.username}</Text> : null}
+          {musician.location ? <Text style={[styles.location, { color: colors.grey }]}>{musician.location}</Text> : null}
           {(musician.genre || []).length > 0 && (
             <View style={styles.genres}>
               {(musician.genre || []).map(g => (
@@ -343,7 +347,7 @@ export default function MusicianScreen() {
         </View>
 
         {/* Tab bar */}
-        <View style={styles.tabBar}>
+        <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
           {([
             { id: 'overview', label: 'Overview'       },
             { id: 'music',    label: 'Music & Social' },
@@ -353,7 +357,7 @@ export default function MusicianScreen() {
               style={[styles.tab, activeTab === tab.id && styles.tabActive]}
               onPress={() => setActiveTab(tab.id)}
             >
-              <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
+              <Text style={[styles.tabText, { color: colors.grey }, activeTab === tab.id && styles.tabTextActive]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>

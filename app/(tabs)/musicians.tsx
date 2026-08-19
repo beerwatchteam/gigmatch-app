@@ -10,6 +10,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, type AreaResult } from '@/lib/suburbSearch';
+import { useTheme } from '@/lib/theme-context';
 
 const GENRES = [
   'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
@@ -38,6 +39,7 @@ type PanelKey = 'fee' | 'type' | null;
 
 export default function MusiciansScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const [musicians, setMusicians]   = useState<Musician[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -341,16 +343,16 @@ export default function MusiciansScreen() {
     return (
       <TouchableOpacity
         activeOpacity={0.97}
-        style={st.card}
+        style={[st.card, { backgroundColor: colors.bg, borderColor: colors.border }]}
         onPress={() => router.push(`/musician/${item.id}`)}
       >
         {item.photoUrl
           ? <Image source={{ uri: item.photoUrl }} style={st.cardPhoto} />
-          : <View style={st.cardPhotoEmpty}><Text style={st.cardPhotoLabel}>artist photo</Text></View>
+          : <View style={[st.cardPhotoEmpty, { backgroundColor: colors.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: colors.grey }]}>artist photo</Text></View>
         }
         <View style={st.cardBody}>
           <View style={st.nameRow}>
-            <Text style={st.name}>{item.name || 'Unnamed Act'}</Text>
+            <Text style={[st.name, { color: colors.black }]}>{item.name || 'Unnamed Act'}</Text>
             {actType ? <View style={st.typeBadge}><Text style={st.typeText}>{actType}</Text></View> : null}
           </View>
           {(item.genre || []).length > 0 && (
@@ -360,11 +362,11 @@ export default function MusiciansScreen() {
               ))}
             </View>
           )}
-          {item.location ? <Text style={st.location}>{item.location}</Text> : null}
-          {item.about ? <Text style={st.about} numberOfLines={2}>{item.about}</Text> : null}
-          <View style={st.cardFooter}>
-            <TouchableOpacity style={st.profileBtn} onPress={() => router.push(`/musician/${item.id}`)}>
-              <Text style={st.profileBtnText}>Profile</Text>
+          {item.location ? <Text style={[st.location, { color: colors.grey }]}>{item.location}</Text> : null}
+          {item.about ? <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text> : null}
+          <View style={[st.cardFooter, { borderTopColor: colors.borderFaint }]}>
+            <TouchableOpacity style={[st.profileBtn, { borderColor: colors.border }]} onPress={() => router.push(`/musician/${item.id}`)}>
+              <Text style={[st.profileBtnText, { color: colors.grey }]}>Profile</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/musician/[id]', params: { id: item.id, tab: 'music' } })}>
               <Text style={st.actionBtnText}>Music & Social</Text>
@@ -378,20 +380,20 @@ export default function MusiciansScreen() {
   // ── Web layout ────────────────────────────────────────────────────
   if (isWeb) {
     return (
-      <View style={st.page}>
-        <ScrollView style={st.sidebarScroll} showsVerticalScrollIndicator={false}>{WebSidebar}</ScrollView>
+      <View style={[st.page, { backgroundColor: colors.bg }]}>
+        <ScrollView style={[st.sidebarScroll, { borderRightColor: colors.border }]} showsVerticalScrollIndicator={false}>{WebSidebar}</ScrollView>
         <ScrollView
           style={st.contentScroll}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         >
           <View style={st.content}>
-            <Text style={st.pageTitle}>Find your next act</Text>
-            <Text style={st.countText}>{filtered.length} musician{filtered.length !== 1 ? 's' : ''} match your filters</Text>
+            <Text style={[st.pageTitle, { color: colors.black }]}>Find your next act</Text>
+            <Text style={[st.countText, { color: colors.grey }]}>{filtered.length} musician{filtered.length !== 1 ? 's' : ''} match your filters</Text>
             {loading
               ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
               : filtered.length === 0
-                ? <Text style={st.empty}>No musicians match your filters.</Text>
+                ? <Text style={[st.empty, { color: colors.grey }]}>No musicians match your filters.</Text>
                 : <View style={st.grid}>{filtered.map(item => <View key={item.id} style={{ width: '49%' }}><MusicianCard item={item} /></View>)}</View>
             }
           </View>
@@ -403,22 +405,22 @@ export default function MusiciansScreen() {
 
   // ── Native layout ─────────────────────────────────────────────────
   return (
-    <SafeAreaView style={st.safe}>
+    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         keyboardShouldPersistTaps="handled"
         stickyHeaderIndices={[0]}
       >
-        <View style={st.nativeFilterBg}>{NativeFilterBar}</View>
+        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>{NativeFilterBar}</View>
 
         <View style={st.nativeContent}>
           <View style={st.countRow}>
-            <Text style={st.countText}>{filtered.length} musician{filtered.length !== 1 ? 's' : ''}</Text>
+            <Text style={[st.countText, { color: colors.grey }]}>{filtered.length} musician{filtered.length !== 1 ? 's' : ''}</Text>
           </View>
           {loading
             ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
             : filtered.length === 0
-              ? <Text style={st.empty}>No musicians match your filters.</Text>
+              ? <Text style={[st.empty, { color: colors.grey }]}>No musicians match your filters.</Text>
               : filtered.map(item => <MusicianCard key={item.id} item={item} />)
           }
           <View style={{ height: 48 }} />

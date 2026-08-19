@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useArtistEnquiries, type Enquiry } from '@/lib/useEnquiries';
+import { useTheme } from '@/lib/theme-context';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -217,6 +218,7 @@ export default function VenueScreen() {
   const { id, tab: tabParam } = useLocalSearchParams<{ id: string; tab?: string }>();
   const router = useRouter();
   const { profile, user } = useAuth();
+  const { colors } = useTheme();
   const isArtist = profile?.type === 'artist';
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/venues');
   const { enquiries: userEnquiries } = useArtistEnquiries(isArtist ? (user?.uid ?? null) : null);
@@ -238,11 +240,11 @@ export default function VenueScreen() {
   }, [id]);
 
   if (loading) return (
-    <SafeAreaView style={s.safe}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>
   );
 
   if (!venue) return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
       <TouchableOpacity style={{ padding: 20 }} onPress={handleBack}>
         <Text style={s.backText}>← Back</Text>
       </TouchableOpacity>
@@ -257,7 +259,7 @@ export default function VenueScreen() {
   const hasPhotos = (venue.photos || []).length > 0 || (venue.videos || []).length > 0 || isMyVenue;
 
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
       <ScrollView stickyHeaderIndices={[1]}>
 
         {/* ── Banner ── */}
@@ -272,11 +274,11 @@ export default function VenueScreen() {
         </View>
 
         {/* ── Sticky header: name + tabs ── */}
-        <View style={s.stickyHeader}>
+        <View style={[s.stickyHeader, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
           <View style={s.headerInfo}>
             <View style={{ flex: 1 }}>
-              <Text style={s.name}>{venue.name}</Text>
-              {address ? <Text style={s.address}>{address}</Text> : null}
+              <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
+              {address ? <Text style={[s.address, { color: colors.grey }]}>{address}</Text> : null}
               {genres.length > 0 && (
                 <View style={s.genreRow}>
                   {genres.map(g => (
@@ -303,7 +305,7 @@ export default function VenueScreen() {
                 style={[s.tabBtn, activeTab === tab.id && s.tabBtnActive]}
                 onPress={() => setActiveTab(tab.id as 'overview' | 'timetable' | 'rooms' | 'photos')}
               >
-                <Text style={[s.tabText, activeTab === tab.id && s.tabTextActive]}>
+                <Text style={[s.tabText, { color: colors.grey }, activeTab === tab.id && s.tabTextActive]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -351,6 +353,7 @@ export default function VenueScreen() {
 function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
   venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void;
 }) {
+  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const desc = venue.description || '';
   const shouldTruncate = desc.length > MAX_DESC;
@@ -360,9 +363,9 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
   const genres    = venue.genrePreferences || venue.genre || venue.genres || [];
 
   const StatCard = ({ num, label }: { num: string | number; label: string }) => (
-    <View style={s.statCard}>
-      <Text style={s.statNum}>{num}</Text>
-      <Text style={s.statLabel}>{label}</Text>
+    <View style={[s.statCard, { borderColor: colors.border }]}>
+      <Text style={[s.statNum, { color: colors.black }]}>{num}</Text>
+      <Text style={[s.statLabel, { color: colors.grey }]}>{label}</Text>
     </View>
   );
 
@@ -371,16 +374,16 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
       {(venue.capacity ?? 0) > 0 && <StatCard num={Number(venue.capacity).toLocaleString()} label="Capacity" />}
       {openSlots > 0 && <StatCard num={openSlots} label="Open slots this month" />}
       {thisWeek.length > 0 && (
-        <View style={s.thisWeekCard}>
-          <Text style={s.thisWeekTitle}>This week</Text>
+        <View style={[s.thisWeekCard, { borderColor: colors.border }]}>
+          <Text style={[s.thisWeekTitle, { color: colors.grey }]}>This week</Text>
           {thisWeek.map(({ day, date, slots }) => (
             <View key={day} style={s.thisWeekDay}>
-              <Text style={s.thisWeekDayLabel}>
+              <Text style={[s.thisWeekDayLabel, { color: colors.black }]}>
                 {day.slice(0,3)} {fmtShort(date)}
               </Text>
               {slots.map((slot, i) => (
                 <View key={slot.id || i} style={s.thisWeekSlot}>
-                  <Text style={s.thisWeekSlotTime}>{slot.time}</Text>
+                  <Text style={[s.thisWeekSlotTime, { color: colors.black }]}>{slot.time}</Text>
                   <Text style={[
                     s.thisWeekSlotStatus,
                     slot.status === 'open' ? s.thisWeekOpen : s.thisWeekBooked,
@@ -402,27 +405,27 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
       {/* Venue Info */}
       {(venue.phone || venue.email || venue.website) ? (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Venue Info</Text>
-          <View style={s.infoGrid}>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Venue Info</Text>
+          <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
             {venue.phone ? (
-              <View style={s.infoRow}>
-                <Text style={s.infoLabel}>Phone</Text>
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
                 <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.phone}`)}>
                   <Text style={s.link}>{venue.phone}</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
             {venue.email ? (
-              <View style={s.infoRow}>
-                <Text style={s.infoLabel}>Email</Text>
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
                 <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.email}`)}>
                   <Text style={s.link}>{venue.email}</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
             {venue.website ? (
-              <View style={s.infoRow}>
-                <Text style={s.infoLabel}>Website</Text>
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Website</Text>
                 <TouchableOpacity onPress={() => Linking.openURL(venue.website!)}>
                   <Text style={s.link}>{venue.website}</Text>
                 </TouchableOpacity>
@@ -435,8 +438,8 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
       {/* Description */}
       {desc ? (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>About</Text>
-          <Text style={s.body}>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>About</Text>
+          <Text style={[s.body, { color: colors.black }]}>
             {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '…' : desc}
           </Text>
           {shouldTruncate && (
@@ -450,25 +453,25 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
       {/* Booking Contact */}
       {venue.bookingContact && (venue.bookingContact.name || venue.bookingContact.email || venue.bookingContact.phone) ? (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Booking Contact</Text>
-          <View style={s.infoGrid}>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Booking Contact</Text>
+          <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
             {venue.bookingContact.name ? (
-              <View style={s.infoRow}>
-                <Text style={s.infoLabel}>Name</Text>
-                <Text style={s.infoValue}>{venue.bookingContact.name}</Text>
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Name</Text>
+                <Text style={[s.infoValue, { color: colors.black }]}>{venue.bookingContact.name}</Text>
               </View>
             ) : null}
             {venue.bookingContact.email ? (
-              <View style={s.infoRow}>
-                <Text style={s.infoLabel}>Email</Text>
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
                 <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.bookingContact!.email}`)}>
                   <Text style={s.link}>{venue.bookingContact.email}</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
             {venue.bookingContact.phone ? (
-              <View style={s.infoRow}>
-                <Text style={s.infoLabel}>Phone</Text>
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
                 <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.bookingContact!.phone}`)}>
                   <Text style={s.link}>{venue.bookingContact.phone}</Text>
                 </TouchableOpacity>
@@ -480,12 +483,12 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
 
       {nights.length > 0 ? (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Gig Nights</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig Nights</Text>
           {nights.map((night, i) => (
             <View key={i} style={s.nightRow}>
-              <Text style={s.nightDay}>{night.day}</Text>
-              {night.startTime ? <Text style={s.nightMeta}>{night.startTime}</Text> : null}
-              {night.duration  ? <Text style={s.nightMeta}>{night.duration} min</Text> : null}
+              <Text style={[s.nightDay, { color: colors.black }]}>{night.day}</Text>
+              {night.startTime ? <Text style={[s.nightMeta, { color: colors.grey }]}>{night.startTime}</Text> : null}
+              {night.duration  ? <Text style={[s.nightMeta, { color: colors.grey }]}>{night.duration} min</Text> : null}
               {(night.genres || []).length > 0 && (
                 <View style={s.genreRow}>
                   {(night.genres || []).map(g => (
@@ -501,7 +504,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
 
       {genres.length > 0 ? (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Genre Preferences</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Genre Preferences</Text>
           <View style={s.genreRow}>
             {genres.map(g => (
               <View key={g} style={s.genrePill}><Text style={s.genreText}>{g}</Text></View>
@@ -544,6 +547,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
   userEnquiries: Enquiry[];
   onEnquire: (slot: Slot, day: string, dateISO?: string) => void;
 }) {
+  const { colors } = useTheme();
   const today = new Date();
   const [viewMode, setViewMode]               = useState<'week' | 'month'>('week');
   const [weekStart, setWeekStart]             = useState(() => getMondayOfWeek(today));
@@ -576,26 +580,26 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
       <View style={s.tabBody}>
         {/* Controls */}
         <View style={s.ttControls}>
-          <View style={s.ttToggle}>
+          <View style={[s.ttToggle, { borderColor: colors.border }]}>
             {(['week','month'] as const).map(mode => (
               <TouchableOpacity
                 key={mode}
                 style={[s.ttToggleBtn, viewMode === mode && s.ttToggleBtnActive]}
                 onPress={() => setViewMode(mode)}
               >
-                <Text style={[s.ttToggleText, viewMode === mode && s.ttToggleTextActive]}>
+                <Text style={[s.ttToggleText, { color: colors.grey }, viewMode === mode && s.ttToggleTextActive]}>
                   {mode === 'week' ? 'Week' : 'Month'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={s.ttRangeLabel}>{rangeLabel}</Text>
+          <Text style={[s.ttRangeLabel, { color: colors.black }]}>{rangeLabel}</Text>
           <View style={s.ttNavBtns}>
-            <TouchableOpacity style={s.ttNavBtn} onPress={handlePrev}>
-              <Text style={s.ttNavBtnText}>← Prev</Text>
+            <TouchableOpacity style={[s.ttNavBtn, { borderColor: colors.border }]} onPress={handlePrev}>
+              <Text style={[s.ttNavBtnText, { color: colors.black }]}>← Prev</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.ttNavBtn} onPress={handleNext}>
-              <Text style={s.ttNavBtnText}>Next →</Text>
+            <TouchableOpacity style={[s.ttNavBtn, { borderColor: colors.border }]} onPress={handleNext}>
+              <Text style={[s.ttNavBtnText, { color: colors.black }]}>Next →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -609,12 +613,12 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
                 const dateISO = isoDate(date);
                 const slots  = getSlotsForDate(venue, day, dateISO);
                 return (
-                  <View key={day} style={[s.dayCol, past && s.dayColPast]}>
-                    <Text style={s.dayColHeader}>{day.slice(0,3).toUpperCase()}</Text>
-                    <Text style={s.dayColDate}>{fmtShort(date)}</Text>
-                    {past && <Text style={s.dayColPassed}>Passed</Text>}
+                  <View key={day} style={[s.dayCol, { borderColor: colors.border }, past && s.dayColPast]}>
+                    <Text style={[s.dayColHeader, { color: colors.black }]}>{day.slice(0,3).toUpperCase()}</Text>
+                    <Text style={[s.dayColDate, { color: colors.grey }]}>{fmtShort(date)}</Text>
+                    {past && <Text style={[s.dayColPassed, { color: colors.grey }]}>Passed</Text>}
                     {slots.length === 0
-                      ? <Text style={s.dayColEmpty}>No gigs scheduled</Text>
+                      ? <Text style={[s.dayColEmpty, { color: colors.greyLight }]}>No gigs scheduled</Text>
                       : slots.map((slot, i) => (
                           <WebSlotCard key={slot.id||i} slot={slot} day={day} dateISO={dateISO} past={past} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
                         ))
@@ -642,17 +646,17 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
 
   return (
     <View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dayBar} contentContainerStyle={s.dayBarContent}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.dayBar, { borderBottomColor: colors.border }]} contentContainerStyle={s.dayBarContent}>
         {CANONICAL_DAYS.map(day => {
           const hasSlots = (venue.slots?.[day] || []).length > 0;
           return (
             <TouchableOpacity
               key={day}
-              style={[s.dayBtn, activeDay === day && s.dayBtnActive, !hasSlots && s.dayBtnEmpty]}
+              style={[s.dayBtn, { borderColor: colors.border }, activeDay === day && s.dayBtnActive, !hasSlots && s.dayBtnEmpty]}
               onPress={() => setActiveDay(day)}
               disabled={!hasSlots}
             >
-              <Text style={[s.dayBtnText, activeDay === day && s.dayBtnTextActive, !hasSlots && s.dayBtnTextEmpty]}>
+              <Text style={[s.dayBtnText, { color: colors.grey }, activeDay === day && s.dayBtnTextActive, !hasSlots && s.dayBtnTextEmpty]}>
                 {day.slice(0,3)}
               </Text>
             </TouchableOpacity>
@@ -661,7 +665,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
       </ScrollView>
       <View style={s.slotList}>
         {merged.length === 0
-          ? <View style={s.noSlots}><Text style={s.noSlotsText}>No gig slots for {activeDay}</Text></View>
+          ? <View style={s.noSlots}><Text style={[s.noSlotsText, { color: colors.grey }]}>No gig slots for {activeDay}</Text></View>
           : merged.map((slot, i) => {
               const hasEnquired = userEnquiries.some(enq =>
                 enq.status !== 'declined' && enq.status !== 'cancelled' &&
@@ -693,6 +697,7 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
   isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
   onEnquire: (s: Slot, d: string, date?: string) => void;
 }) {
+  const { colors } = useTheme();
   const hasEnquired = slot.status === 'open' && userEnquiries.some(enq =>
     enq.status !== 'declined' && enq.status !== 'cancelled' &&
     enq.requestedSlot?.day === day && enq.requestedSlot?.time === slot.time &&
@@ -701,13 +706,13 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
 
   if (slot.status === 'booked') {
     return (
-      <View style={ws.card}>
+      <View style={[ws.card, { borderColor: colors.border }]}>
         {slot.featured ? (
           <View style={ws.featuredBadge}><Text style={ws.featuredText}>★ Featured</Text></View>
         ) : null}
-        <Text style={ws.time}>{slot.time}</Text>
-        <Text style={ws.bandName}>{slot.bandName}</Text>
-        {slot.slotType ? <View style={ws.typePill}><Text style={ws.typeText}>{slot.slotType}</Text></View> : null}
+        <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
+        <Text style={[ws.bandName, { color: colors.black }]}>{slot.bandName}</Text>
+        {slot.slotType ? <View style={[ws.typePill, { backgroundColor: colors.bgFaint }]}><Text style={[ws.typeText, { color: colors.grey }]}>{slot.slotType}</Text></View> : null}
         {slot.ticketUrl ? (
           <TouchableOpacity onPress={() => Linking.openURL(slot.ticketUrl!)} style={ws.ticketBtn}>
             <Text style={ws.ticketBtnText}>Tickets</Text>
@@ -718,20 +723,20 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
   }
   if (slot.status === 'pending') {
     return (
-      <View style={[ws.card, ws.cardPending]}>
-        <Text style={ws.time}>{slot.time}</Text>
+      <View style={[ws.card, ws.cardPending, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+        <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
         <Text style={ws.pendingLabel}>Pending</Text>
-        {slot.bandName ? <Text style={ws.bandNameMuted}>{slot.bandName}</Text> : null}
-        {slot.room ? <Text style={ws.room}>{slot.room}</Text> : null}
+        {slot.bandName ? <Text style={[ws.bandNameMuted, { color: colors.grey }]}>{slot.bandName}</Text> : null}
+        {slot.room ? <Text style={[ws.room, { color: colors.grey }]}>{slot.room}</Text> : null}
       </View>
     );
   }
   if (hasEnquired) {
     return (
-      <View style={[ws.card, ws.cardEnquired]}>
-        <Text style={ws.time}>{slot.time}</Text>
+      <View style={[ws.card, ws.cardEnquired, { borderColor: colors.border }]}>
+        <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
         <Text style={ws.enquiredLabel}>Enquired — Waiting on venue response</Text>
-        {slot.room ? <Text style={ws.room}>{slot.room}</Text> : null}
+        {slot.room ? <Text style={[ws.room, { color: colors.grey }]}>{slot.room}</Text> : null}
       </View>
     );
   }
@@ -739,13 +744,13 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
   const canEnquire = !past && (isArtist || isLoggedIn);
   return (
     <TouchableOpacity
-      style={[ws.card, ws.cardOpen, canEnquire && ws.cardOpenClickable]}
+      style={[ws.card, ws.cardOpen, { borderColor: colors.border, backgroundColor: colors.bgFaint }, canEnquire && ws.cardOpenClickable]}
       onPress={canEnquire ? () => onEnquire(slot, day, dateISO) : undefined}
       activeOpacity={canEnquire ? 0.75 : 1}
     >
-      <Text style={ws.time}>{slot.time}</Text>
+      <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
       <Text style={ws.openLabel}>Open{canEnquire ? ' — Enquire' : ''}</Text>
-      {slot.room ? <Text style={ws.room}>{slot.room}</Text> : null}
+      {slot.room ? <Text style={[ws.room, { color: colors.grey }]}>{slot.room}</Text> : null}
     </TouchableOpacity>
   );
 }
@@ -757,6 +762,7 @@ function MonthGrid({ venue, month, year, isArtist, isLoggedIn, userEnquiries, on
   isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
   onEnquire: (s: Slot, d: string, date?: string) => void;
 }) {
+  const { colors } = useTheme();
   const today = new Date();
   const firstDow    = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month+1, 0).getDate();
@@ -767,16 +773,16 @@ function MonthGrid({ venue, month, year, isArtist, isLoggedIn, userEnquiries, on
 
   return (
     <View style={mg.wrap}>
-      {DOW_HEADERS.map(h => <Text key={h} style={mg.dow}>{h}</Text>)}
+      {DOW_HEADERS.map(h => <Text key={h} style={[mg.dow, { color: colors.grey }]}>{h}</Text>)}
       {cells.map((date, i) => {
-        if (!date) return <View key={`e${i}`} style={mg.cell} />;
+        if (!date) return <View key={`e${i}`} style={[mg.cell, { borderColor: colors.border }]} />;
         const isToday = date.getFullYear()===today.getFullYear() && date.getMonth()===today.getMonth() && date.getDate()===today.getDate();
         const slotKey = DOW_TO_DAY[date.getDay()];
         const dateISO = isoDate(date);
         const slots   = getSlotsForDate(venue, slotKey, dateISO);
         return (
-          <View key={`${date.getMonth()}-${date.getDate()}`} style={[mg.cell, isToday && mg.cellToday]}>
-            <Text style={[mg.dayNum, isToday && mg.dayNumToday]}>{date.getDate()}</Text>
+          <View key={`${date.getMonth()}-${date.getDate()}`} style={[mg.cell, { borderColor: colors.border }, isToday && mg.cellToday]}>
+            <Text style={[mg.dayNum, { color: colors.black }, isToday && mg.dayNumToday]}>{date.getDate()}</Text>
             {slots.slice(0,3).map((slot,j) => {
               const hasEnq = slot.status === 'open' && userEnquiries.some(enq =>
                 enq.status !== 'declined' && enq.status !== 'cancelled' &&
@@ -810,20 +816,21 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
   slot: Slot; day: string; isArtist: boolean; isLoggedIn: boolean;
   hasEnquired: boolean; onEnquire: () => void;
 }) {
+  const { colors } = useTheme();
   const isOpen    = slot.status === 'open';
   const isBooked  = slot.status === 'booked';
   const isPending = slot.status === 'pending';
   const fee = fmtFee(slot.feeMin, slot.feeMax);
 
   return (
-    <View style={[ns.card, isBooked && ns.cardBooked, isPending && ns.cardPending, (isOpen && hasEnquired) && ns.cardEnquired]}>
+    <View style={[ns.card, { backgroundColor: colors.bg, borderColor: colors.border }, isBooked && ns.cardBooked, isPending && ns.cardPending, (isOpen && hasEnquired) && ns.cardEnquired]}>
       {isBooked && slot.featured ? (
         <View style={ns.featuredBadge}><Text style={ns.featuredText}>★ Featured</Text></View>
       ) : null}
       <View style={ns.left}>
         <View style={ns.timeRow}>
-          <Text style={ns.time}>{slot.time}</Text>
-          {slot.room ? <Text style={ns.room}>{slot.room}</Text> : null}
+          <Text style={[ns.time, { color: colors.black }]}>{slot.time}</Text>
+          {slot.room ? <Text style={[ns.room, { color: colors.grey }]}>{slot.room}</Text> : null}
         </View>
         {isBooked  ? <Text style={ns.bandName}>{slot.bandName}</Text> : null}
         {isBooked && slot.ticketUrl ? (
@@ -873,6 +880,7 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
 // ── Photos & Videos tab ───────────────────────────────────────────────
 
 function PhotosTab({ venue }: { venue: Venue }) {
+  const { colors } = useTheme();
   const photos = [
     ...(venue.photoUrl ? [venue.photoUrl] : []),
     ...(venue.photos || []).filter(url => url !== venue.photoUrl),
@@ -882,7 +890,7 @@ function PhotosTab({ venue }: { venue: Venue }) {
   if (photos.length === 0 && videos.length === 0) {
     return (
       <View style={[s.tabBody, { alignItems: 'center', paddingTop: 60 }]}>
-        <Text style={s.noSlotsText}>No photos or videos yet.</Text>
+        <Text style={[s.noSlotsText, { color: colors.grey }]}>No photos or videos yet.</Text>
       </View>
     );
   }
@@ -891,7 +899,7 @@ function PhotosTab({ venue }: { venue: Venue }) {
     <View style={s.tabBody}>
       {photos.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Photos</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Photos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {photos.map((url, i) => (
               <Image key={i} source={{ uri: url }} style={pt.photo} />
@@ -901,9 +909,9 @@ function PhotosTab({ venue }: { venue: Venue }) {
       )}
       {videos.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Videos</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Videos</Text>
           {videos.map((url, i) => (
-            <TouchableOpacity key={i} style={pt.videoCard} onPress={() => Linking.openURL(url)}>
+            <TouchableOpacity key={i} style={[pt.videoCard, { borderColor: colors.border }]} onPress={() => Linking.openURL(url)}>
               <Text style={pt.videoCardText}>Watch video {i + 1} →</Text>
             </TouchableOpacity>
           ))}
@@ -916,6 +924,7 @@ function PhotosTab({ venue }: { venue: Venue }) {
 // ── Rooms & Tech Specs tab ───────────────────────────────────────────
 
 function RoomsTab({ venue }: { venue: Venue }) {
+  const { colors } = useTheme();
   const rooms     = venue.rooms || [];
   const techSpecs = venue.techSpecs;
 
@@ -932,7 +941,7 @@ function RoomsTab({ venue }: { venue: Venue }) {
   if (rooms.length === 0 && !techSpecs) {
     return (
       <View style={[s.tabBody, { alignItems: 'center', paddingTop: 60 }]}>
-        <Text style={s.noSlotsText}>Rooms and tech specs haven't been listed yet.</Text>
+        <Text style={[s.noSlotsText, { color: colors.grey }]}>Rooms and tech specs haven't been listed yet.</Text>
       </View>
     );
   }
@@ -941,33 +950,33 @@ function RoomsTab({ venue }: { venue: Venue }) {
     <View style={s.tabBody}>
       {rooms.length > 0 && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Rooms</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Rooms</Text>
           {rooms.map((room, i) => (
-            <View key={i} style={rt.roomCard}>
-              <Text style={rt.roomName}>{room.name}</Text>
+            <View key={i} style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
               <View style={rt.specsGrid}>
                 {room.capacity ? (
                   <View style={rt.specItem}>
-                    <Text style={rt.specLabel}>Capacity</Text>
-                    <Text style={rt.specValue}>{Number(room.capacity).toLocaleString()}</Text>
+                    <Text style={[rt.specLabel, { color: colors.grey }]}>Capacity</Text>
+                    <Text style={[rt.specValue, { color: colors.black }]}>{Number(room.capacity).toLocaleString()}</Text>
                   </View>
                 ) : null}
                 {room.stage ? (
                   <View style={rt.specItem}>
-                    <Text style={rt.specLabel}>Stage</Text>
-                    <Text style={rt.specValue}>{room.stage}</Text>
+                    <Text style={[rt.specLabel, { color: colors.grey }]}>Stage</Text>
+                    <Text style={[rt.specValue, { color: colors.black }]}>{room.stage}</Text>
                   </View>
                 ) : null}
                 {room.lighting ? (
                   <View style={rt.specItem}>
-                    <Text style={rt.specLabel}>Lighting</Text>
-                    <Text style={rt.specValue}>{room.lighting}</Text>
+                    <Text style={[rt.specLabel, { color: colors.grey }]}>Lighting</Text>
+                    <Text style={[rt.specValue, { color: colors.black }]}>{room.lighting}</Text>
                   </View>
                 ) : null}
                 {room.pa ? (
                   <View style={rt.specItem}>
-                    <Text style={rt.specLabel}>PA</Text>
-                    <Text style={rt.specValue}>{room.pa}</Text>
+                    <Text style={[rt.specLabel, { color: colors.grey }]}>PA</Text>
+                    <Text style={[rt.specValue, { color: colors.black }]}>{room.pa}</Text>
                   </View>
                 ) : null}
               </View>
@@ -978,17 +987,17 @@ function RoomsTab({ venue }: { venue: Venue }) {
 
       {techSpecs && (
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Tech Specs</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Specs</Text>
           <View style={rt.specsGrid}>
             {techRows.map(({ label, value }) => (
               <View key={label} style={rt.specItem}>
-                <Text style={rt.specLabel}>{label}</Text>
-                <Text style={rt.specValue}>{value}</Text>
+                <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
+                <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
               </View>
             ))}
           </View>
           <View style={rt.specItem}>
-            <Text style={rt.specLabel}>Green Room</Text>
+            <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
             {techSpecs.greenRoom ? (
               <Text style={[rt.specValue, { color: Colors.orange }]}>
                 ✓ Green room{techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}
@@ -998,8 +1007,8 @@ function RoomsTab({ venue }: { venue: Venue }) {
             )}
           </View>
           {techSpecs.notes ? (
-            <View style={rt.notesBox}>
-              <Text style={rt.notesText}>{techSpecs.notes}</Text>
+            <View style={[rt.notesBox, { backgroundColor: colors.bgFaint }]}>
+              <Text style={[rt.notesText, { color: colors.grey }]}>{techSpecs.notes}</Text>
             </View>
           ) : null}
           {techSpecs.riderUrl ? (

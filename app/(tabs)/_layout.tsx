@@ -2,10 +2,12 @@ import { View, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 
 export default function TabsLayout() {
   const isWeb = Platform.OS === 'web';
   const { user, profile } = useAuth();
+  const { colors } = useTheme();
 
   const profileTabTitle = !user
     ? 'Profile'
@@ -14,17 +16,17 @@ export default function TabsLayout() {
       : 'My Profile';
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Tabs
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: Colors.orange,
-          tabBarInactiveTintColor: Colors.greyLight,
+          tabBarInactiveTintColor: colors.greyLight,
           tabBarStyle: isWeb
             ? { display: 'none' }
             : {
-                backgroundColor: Colors.bg,
-                borderTopColor: Colors.border,
+                backgroundColor: colors.bg,
+                borderTopColor: colors.border,
                 borderTopWidth: 1,
                 paddingBottom: Platform.OS === 'ios' ? 20 : 8,
                 paddingTop: 8,

@@ -15,6 +15,7 @@ import {
 import { doc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
+import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
 const ARTIST_TYPES = ['Band', 'Solo Artist', 'DJ'];
@@ -44,6 +45,7 @@ async function isUsernameTaken(username: string): Promise<boolean> {
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [signupTab, setSignupTab] = useState<'artist' | 'venue'>('artist');
 
@@ -472,7 +474,7 @@ export default function LoginScreen() {
 
   // ── Native: full-screen modal sheet ──────────────────────────────────
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={s.nativeContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>

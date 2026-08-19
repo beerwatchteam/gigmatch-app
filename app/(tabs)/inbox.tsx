@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 import {
   useArtistEnquiries, useVenueEnquiries, useMessages,
   updateEnquiryStatus, sendMessage, cancelEnquiry,
@@ -344,6 +345,7 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
 }) {
   const router = useRouter();
   const { user } = useAuth();
+  const { colors } = useTheme();
   const messages = useMessages(enquiry.id);
   const [chatText,      setChatText]      = useState('');
   const [formText,      setFormText]      = useState('');
@@ -406,12 +408,12 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
 
   function ChatInput() {
     return (
-      <SafeAreaView edges={['bottom']} style={{ backgroundColor: isWeb ? '#fafafa' : Colors.bgFaint }}>
-        <View style={ph.inputArea}>
+      <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
+        <View style={[ph.inputArea, { backgroundColor: colors.bgFaint, borderTopColor: colors.border }]}>
           <TextInput
-            style={ph.input}
+            style={[ph.input, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
             placeholder="Type a message…"
-            placeholderTextColor="#aaaaaa"
+            placeholderTextColor={colors.greyLight}
             value={chatText}
             onChangeText={setChatText}
             multiline
@@ -433,11 +435,11 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: isWeb ? '#ffffff' : Colors.bg }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
-      <View style={ph.header}>
+      <View style={[ph.header, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
         <View style={ph.headerTop}>
           {!isWeb && (
             <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
@@ -445,8 +447,8 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
             </TouchableOpacity>
           )}
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={ph.name} numberOfLines={1}>{who}</Text>
-            <Text style={ph.slot} numberOfLines={1}>{slotDesc}</Text>
+            <Text style={[ph.name, { color: colors.black }]} numberOfLines={1}>{who}</Text>
+            <Text style={[ph.slot, { color: colors.grey }]} numberOfLines={1}>{slotDesc}</Text>
           </View>
           <StatusBadge status={enquiry.status} />
         </View>
@@ -787,6 +789,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 export default function InboxScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const { colors } = useTheme();
   const isVenue = profile?.type === 'venue';
   const venueId = profile?.venueId ?? null;
 
@@ -804,9 +807,9 @@ export default function InboxScreen() {
   // ── Not signed in ────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.listHeader}>
-          <Text style={s.title}>{title}</Text>
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
+        <View style={[s.listHeader, { borderBottomColor: colors.border }]}>
+          <Text style={[s.title, { color: colors.black }]}>{title}</Text>
         </View>
         <View style={s.center}>
           <Text style={s.emptyIcon}>💬</Text>
@@ -851,9 +854,9 @@ export default function InboxScreen() {
       <View style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' as any }}>
 
         {/* Sidebar */}
-        <View style={wb.sidebar}>
-          <View style={wb.sidebarHead}>
-            <Text style={wb.sidebarTitle}>{title}</Text>
+        <View style={[wb.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
+          <View style={[wb.sidebarHead, { borderBottomColor: colors.border }]}>
+            <Text style={[wb.sidebarTitle, { color: colors.black }]}>{title}</Text>
             <FilterBar />
           </View>
 
@@ -879,7 +882,7 @@ export default function InboxScreen() {
         </View>
 
         {/* Right panel */}
-        <View style={wb.panel}>
+        <View style={[wb.panel, { backgroundColor: colors.bg }]}>
           {!selected ? (
             <View style={wb.panelEmpty}>
               <Text style={wb.panelEmptyText}>Select a conversation</Text>
@@ -896,7 +899,7 @@ export default function InboxScreen() {
   // ── NATIVE: thread open — full screen ───────────────────────────────────
   if (selected) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bg }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
         <ThreadPanel enquiry={selected} isVenue={isVenue} onBack={() => setSelected(null)} />
       </SafeAreaView>
     );
@@ -904,9 +907,9 @@ export default function InboxScreen() {
 
   // ── NATIVE: list ─────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
-      <View style={s.listHeader}>
-        <Text style={s.title}>{title}</Text>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
+      <View style={[s.listHeader, { borderBottomColor: colors.border }]}>
+        <Text style={[s.title, { color: colors.black }]}>{title}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ gap: 8 }}>
           {FILTERS.map(f => {
             const count  = f.key === 'all' ? enquiries.length : enquiries.filter(e => e.status === f.key).length;

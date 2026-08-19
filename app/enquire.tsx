@@ -10,6 +10,7 @@ import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { addEnquiry } from '@/lib/useEnquiries';
+import { useTheme } from '@/lib/theme-context';
 
 const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SLOT_PREFS  = ['Headline', 'Support', 'Either'];
@@ -28,6 +29,7 @@ const SECTIONS: { key: SectionKey; label: string }[] = [
 export default function EnquireScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
+  const { colors } = useTheme();
   const params = useLocalSearchParams<{
     venueId: string;
     venueName: string;
@@ -124,7 +126,7 @@ export default function EnquireScreen() {
   // ── Success screen ──────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
         <View style={styles.successWrap}>
           <Text style={styles.successIcon}>🎉</Text>
           <Text style={styles.successTitle}>Enquiry Sent!</Text>
@@ -150,9 +152,9 @@ export default function EnquireScreen() {
 
   // ── Main form ───────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
@@ -162,9 +164,9 @@ export default function EnquireScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Slot summary */}
-        <View style={styles.slotCard}>
-          <Text style={styles.slotVenue}>{params.venueName}</Text>
-          <Text style={styles.slotDetail}>
+        <View style={[styles.slotCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+          <Text style={[styles.slotVenue, { color: colors.black }]}>{params.venueName}</Text>
+          <Text style={[styles.slotDetail, { color: colors.grey }]}>
             {params.day}{params.date ? ` · ${params.date}` : ''} · {params.time}
           </Text>
           {params.room ? (
@@ -176,7 +178,7 @@ export default function EnquireScreen() {
         </View>
 
         {/* Set length */}
-        <Text style={styles.sectionLabel}>Set length *</Text>
+        <Text style={[styles.sectionLabel, { color: colors.black }]}>Set length *</Text>
         <View style={styles.pillRow}>
           {SET_LENGTHS.map(l => (
             <TouchableOpacity
@@ -190,7 +192,7 @@ export default function EnquireScreen() {
         </View>
 
         {/* Slot preference */}
-        <Text style={styles.sectionLabel}>Slot preference</Text>
+        <Text style={[styles.sectionLabel, { color: colors.black }]}>Slot preference</Text>
         <View style={styles.pillRow}>
           {SLOT_PREFS.map(p => (
             <TouchableOpacity
@@ -204,15 +206,15 @@ export default function EnquireScreen() {
         </View>
 
         {/* Share with venue */}
-        <Text style={styles.sectionLabel}>Share with venue</Text>
-        <Text style={styles.sectionSub}>Choose what the venue can see from your profile</Text>
+        <Text style={[styles.sectionLabel, { color: colors.black }]}>Share with venue</Text>
+        <Text style={[styles.sectionSub, { color: colors.grey }]}>Choose what the venue can see from your profile</Text>
         {SECTIONS.map(s => (
           <TouchableOpacity
             key={s.key}
             style={styles.toggleRow}
             onPress={() => toggleSection(s.key)}
           >
-            <Text style={styles.toggleLabel}>{s.label}</Text>
+            <Text style={[styles.toggleLabel, { color: colors.black }]}>{s.label}</Text>
             <View style={[styles.toggle, sections[s.key] && styles.toggleOn]}>
               <View style={[styles.toggleThumb, sections[s.key] && styles.toggleThumbOn]} />
             </View>
@@ -220,9 +222,9 @@ export default function EnquireScreen() {
         ))}
 
         {/* Additional info */}
-        <Text style={styles.sectionLabel}>Additional info</Text>
+        <Text style={[styles.sectionLabel, { color: colors.black }]}>Additional info</Text>
         <TextInput
-          style={styles.textarea}
+          style={[styles.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border }]}
           placeholder="Anything you'd like the venue to know..."
           placeholderTextColor={Colors.greyLight}
           multiline

@@ -8,6 +8,7 @@ import { collection, getDocs, limit, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -230,6 +231,7 @@ const WHY_VENUES = [
 export default function HomeScreen() {
   const router = useRouter();
   const { profile } = useAuth();
+  const { colors } = useTheme();
   const [displayData, setDisplayData] = useState<FeaturedVenue[]>([]);
 
   useEffect(() => {
@@ -244,7 +246,7 @@ export default function HomeScreen() {
   const isArtist = profile?.type === 'artist';
 
   return (
-    <SafeAreaView style={s.safe} edges={['bottom']}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
       <ScrollView showsVerticalScrollIndicator={false}>
 
         {/* ── Hero ── */}
@@ -270,10 +272,10 @@ export default function HomeScreen() {
         {(() => {
           const venueData = displayData.length > 0 ? displayData : FALLBACK_VENUES;
           return (
-          <View style={s.featuredSection}>
+          <View style={[s.featuredSection, { borderBottomColor: colors.border }]}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionLabel}>On the lineup</Text>
-              <Text style={s.sectionTitle}>Featured Venues</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Featured Venues</Text>
             </View>
             <FlatList
               horizontal
@@ -283,12 +285,12 @@ export default function HomeScreen() {
               contentContainerStyle={s.venueTrack}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={s.venueCard}
+                  style={[s.venueCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}
                   onPress={() => !item.venueId.startsWith('fallback') && router.push(`/venue/${item.venueId}`)}
                   activeOpacity={item.venueId.startsWith('fallback') ? 1 : 0.9}
                 >
-                  <Text style={s.venueCardName}>{item.venueName}</Text>
-                  <Text style={s.venueCardAddr}>
+                  <Text style={[s.venueCardName, { color: colors.black }]}>{item.venueName}</Text>
+                  <Text style={[s.venueCardAddr, { color: colors.grey }]}>
                     {[item.address, item.suburb, item.postcode].filter(Boolean).join(', ')}
                   </Text>
                   <View style={s.gigSection}>
@@ -303,24 +305,24 @@ export default function HomeScreen() {
         })()}
 
         {/* ── Why GigMatch ── */}
-        <View style={s.whySection}>
+        <View style={[s.whySection, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
           <View style={s.sectionInner}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionLabel}>Why GigMatch</Text>
-              <Text style={s.sectionTitle}>Built for the way live music actually works</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Built for the way live music actually works</Text>
             </View>
             <View style={s.whyGrid}>
               {[
                 { icon: '🎸', title: 'For Musicians', bullets: WHY_MUSICIANS },
                 { icon: '🏟️', title: 'For Venues',   bullets: WHY_VENUES   },
               ].map(card => (
-                <View key={card.title} style={s.whyCard}>
+                <View key={card.title} style={[s.whyCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
                   <Text style={s.whyIcon}>{card.icon}</Text>
-                  <Text style={s.whyCardTitle}>{card.title}</Text>
+                  <Text style={[s.whyCardTitle, { color: colors.black }]}>{card.title}</Text>
                   {card.bullets.map(b => (
                     <View key={b} style={s.whyRow}>
                       <View style={s.whyBullet} />
-                      <Text style={s.whyText}>{b}</Text>
+                      <Text style={[s.whyText, { color: colors.black }]}>{b}</Text>
                     </View>
                   ))}
                 </View>
@@ -331,14 +333,14 @@ export default function HomeScreen() {
 
         {/* ── Logged-in quick actions (mobile only) ── */}
         {!isWeb && isArtist && (
-          <View style={s.quickSection}>
+          <View style={[s.quickSection, { borderTopColor: colors.border }]}>
             {[
               { label: 'My Profile', href: '/(tabs)/profile' as const },
               { label: 'Enquiries',  href: '/(tabs)/inbox'   as const },
             ].map(item => (
-              <TouchableOpacity key={item.href} style={s.row} onPress={() => router.push(item.href)}>
-                <Text style={s.rowLabel}>{item.label}</Text>
-                <Text style={s.chevron}>›</Text>
+              <TouchableOpacity key={item.href} style={[s.row, { borderBottomColor: colors.borderFaint }]} onPress={() => router.push(item.href)}>
+                <Text style={[s.rowLabel, { color: colors.black }]}>{item.label}</Text>
+                <Text style={[s.chevron, { color: colors.greyLight }]}>›</Text>
               </TouchableOpacity>
             ))}
           </View>

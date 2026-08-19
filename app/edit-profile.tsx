@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { db, storage } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/lib/theme-context';
 
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const ACT_TYPES = ['Band','Solo','Duo','DJ','Other'];
@@ -59,9 +60,10 @@ const f = StyleSheet.create({
 });
 
 function Input({ value, onChangeText, placeholder, multiline, keyboardType, error, secureTextEntry }: any) {
+  const { colors } = useTheme();
   return (
     <TextInput
-      style={[s.input, multiline && s.textarea, error && s.inputError]}
+      style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }, multiline && s.textarea, error && s.inputError]}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -77,12 +79,13 @@ function Input({ value, onChangeText, placeholder, multiline, keyboardType, erro
 }
 
 function Pills({ options, value, onSelect, multi }: { options: string[]; value: string | string[]; onSelect: (v: any) => void; multi?: boolean }) {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
       {options.map(opt => {
         const active = multi ? (value as string[]).includes(opt) : value === opt;
         return (
-          <TouchableOpacity key={opt} style={[s.pill, active && s.pillActive]} onPress={() => {
+          <TouchableOpacity key={opt} style={[s.pill, { borderColor: colors.border }, active && s.pillActive]} onPress={() => {
             if (multi) {
               const arr = value as string[];
               onSelect(active ? arr.filter(x => x !== opt) : [...arr, opt]);
@@ -90,7 +93,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
               onSelect(opt);
             }
           }}>
-            <Text style={[s.pillText, active && s.pillTextActive]}>{opt}</Text>
+            <Text style={[s.pillText, { color: colors.grey }, active && s.pillTextActive]}>{opt}</Text>
           </TouchableOpacity>
         );
       })}
@@ -101,6 +104,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
 export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { colors } = useTheme();
   const uid = user?.uid ?? '';
 
   const [profile, setProfile] = useState<Profile>(BLANK);
@@ -235,16 +239,16 @@ export default function EditProfileScreen() {
 
   const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
 
-  if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
+  if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
 
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={handleBack}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Edit Profile</Text>
-          <Text style={s.headerSub}>{profile.name || '—'}</Text>
+          <Text style={[s.headerTitle, { color: colors.black }]}>Edit Profile</Text>
+          <Text style={[s.headerSub, { color: colors.grey }]}>{profile.name || '—'}</Text>
         </View>
         <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
           <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
@@ -260,10 +264,10 @@ export default function EditProfileScreen() {
       )}
 
       {/* Tab bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabBarContent}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
         {TABS.map(tab => (
           <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-            <Text style={[s.tabText, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+            <Text style={[s.tabText, { color: colors.grey }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -284,18 +288,18 @@ export default function EditProfileScreen() {
         {/* ── SETTINGS ── */}
         {activeTab === 'Settings' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Notification Preferences</Text>
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Email on new enquiry</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Email on new enquiry</Text>
               <Switch value={profile.settings.emailOnNewInquiry} onValueChange={v => set('settings', { ...profile.settings, emailOnNewInquiry: v })} trackColor={{ true: Colors.orange }} thumbColor="#fff" />
             </View>
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Email on enquiry expiry</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Email on enquiry expiry</Text>
               <Switch value={profile.settings.emailOnExpiry} onValueChange={v => set('settings', { ...profile.settings, emailOnExpiry: v })} trackColor={{ true: Colors.orange }} thumbColor="#fff" />
             </View>
             <Text style={[s.sectionTitle, { marginTop: 24 }]}>Visibility</Text>
-            <View style={s.toggleRow}>
-              <Text style={s.toggleLabel}>Listed on GigMatch</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Listed on GigMatch</Text>
               <Switch value={profile.settings.listed} onValueChange={v => set('settings', { ...profile.settings, listed: v })} trackColor={{ true: Colors.orange }} thumbColor="#fff" />
             </View>
           </View>
@@ -304,7 +308,7 @@ export default function EditProfileScreen() {
         {/* ── BASIC INFO ── */}
         {activeTab === 'Basic Info' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Stage Details</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Stage Details</Text>
             <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
               <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
             </Field>
@@ -379,7 +383,7 @@ export default function EditProfileScreen() {
         {/* ── ABOUT ── */}
         {activeTab === 'About' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>About *</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>About *</Text>
             <Text style={s.hint}>Tell venues who you are, what you play, and how many people you draw.</Text>
             <Input value={profile.about} onChangeText={(v: string) => set('about', v)} placeholder="We're a 4-piece indie rock band from Melbourne's south-east…" multiline error={showErrors && !profile.about?.trim()} />
           </View>
@@ -388,11 +392,11 @@ export default function EditProfileScreen() {
         {/* ── MUSIC ── */}
         {activeTab === 'Music' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Music</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Music</Text>
             {profile.songs.map((song, i) => {
               const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
               return (
-                <View key={i} style={[s.card, hasError && s.cardError]}>
+                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <Input value={song.title} onChangeText={(v: string) => setSong(i, 'title', v)} placeholder="Song title *" error={showErrors && !song.title?.trim()} />
                   <View style={{ height: 8 }} />
                   <Input value={song.url} onChangeText={(v: string) => setSong(i, 'url', v)} placeholder="Spotify / stream URL *" error={showErrors && !song.url?.trim()} />
@@ -421,11 +425,11 @@ export default function EditProfileScreen() {
         {/* ── GIG HISTORY ── */}
         {activeTab === 'Gig History' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Gig History</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig History</Text>
             {profile.gigHistory.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
               return (
-                <View key={i} style={[s.card, hasError && s.cardError]}>
+                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setGig(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
                     <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setGig(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
@@ -454,11 +458,11 @@ export default function EditProfileScreen() {
         {/* ── UPCOMING ── */}
         {activeTab === 'Upcoming' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Upcoming Gigs</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Upcoming Gigs</Text>
             {profile.upcomingGigs.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
               return (
-                <View key={i} style={[s.card, hasError && s.cardError]}>
+                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setUpcoming(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
                     <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
@@ -483,7 +487,7 @@ export default function EditProfileScreen() {
         {/* ── TECH SPECS ── */}
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Tech Rider</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Rider</Text>
             {[
               { field: 'monitoring',     label: 'Monitoring',       placeholder: 'e.g. 3 separate monitor mixes' },
               { field: 'backlineNeeded', label: 'Backline needed',  placeholder: 'e.g. Drum kit only' },
@@ -503,7 +507,7 @@ export default function EditProfileScreen() {
         {/* ── PHOTOS ── */}
         {activeTab === 'Photos' && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>Photo Gallery</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Photo Gallery</Text>
             <View style={s.photoGrid}>
               {profile.photos.map((url, i) => (
                 <View key={i} style={s.photoItem}>

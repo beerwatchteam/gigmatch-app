@@ -5,6 +5,7 @@ import { auth } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useInboxBadgeCount } from '@/lib/useEnquiries';
+import { useTheme } from '@/lib/theme-context';
 
 const NAV_LINKS = [
   { label: 'Venues',    href: '/(tabs)/venues'    as const },
@@ -16,8 +17,9 @@ export default function WebHeader() {
   const router   = useRouter();
   const pathname = usePathname();
   const { user, profile } = useAuth();
-  const venueId   = profile?.venueId ?? null;
+  const venueId    = profile?.venueId ?? null;
   const badgeCount = useInboxBadgeCount(user?.uid ?? null, venueId);
+  const { colors, isDark, toggleDark } = useTheme();
 
   const isActive = (href: string) => {
     const segment = href.split('/').pop() ?? '';
@@ -25,10 +27,10 @@ export default function WebHeader() {
   };
 
   return (
-    <View style={styles.bar}>
+    <View style={[styles.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       {/* Logo */}
       <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.logoWrap}>
-        <Text style={styles.logo}>GigMatch</Text>
+        <Text style={[styles.logo, { color: colors.black }]}>GigMatch</Text>
         <View style={styles.beta}>
           <Text style={styles.betaText}>Beta</Text>
         </View>
@@ -45,7 +47,7 @@ export default function WebHeader() {
               onPress={() => router.push(link.href)}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[styles.linkText, isActive(link.href) && styles.linkTextActive]}>
+                <Text style={[styles.linkText, { color: colors.black }, isActive(link.href) && styles.linkTextActive]}>
                   {link.label}
                 </Text>
                 {isInbox && badgeCount > 0 && user && (
@@ -75,9 +77,13 @@ export default function WebHeader() {
 
       {/* Right actions */}
       <View style={styles.right}>
+        {/* Dark mode toggle */}
+        <TouchableOpacity style={[styles.themeBtn, { borderColor: colors.border }]} onPress={toggleDark}>
+          <Text style={styles.themeBtnText}>{isDark ? '☀️' : '🌙'}</Text>
+        </TouchableOpacity>
         {user ? (
-          <TouchableOpacity style={styles.logoutBtn} onPress={() => signOut(auth)}>
-            <Text style={styles.logoutText}>Log out</Text>
+          <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.border }]} onPress={() => signOut(auth)}>
+            <Text style={[styles.logoutText, { color: colors.grey }]}>Log out</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.loginBtn} onPress={() => router.push('/login')}>
@@ -162,6 +168,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   loginText: { fontSize: 14, color: Colors.black, fontWeight: '700' },
+  themeBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  themeBtnText: { fontSize: 14 },
   badge: {
     backgroundColor: '#ef4444',
     borderRadius: 10,
