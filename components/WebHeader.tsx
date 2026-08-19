@@ -4,6 +4,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
+import { useInboxBadgeCount } from '@/lib/useEnquiries';
 
 const NAV_LINKS = [
   { label: 'Venues',    href: '/(tabs)/venues'    as const },
@@ -15,6 +16,8 @@ export default function WebHeader() {
   const router   = useRouter();
   const pathname = usePathname();
   const { user, profile } = useAuth();
+  const venueId   = profile?.venueId ?? null;
+  const badgeCount = useInboxBadgeCount(user?.uid ?? null, venueId);
 
   const isActive = (href: string) => {
     const segment = href.split('/').pop() ?? '';
@@ -33,17 +36,27 @@ export default function WebHeader() {
 
       {/* Nav links */}
       <View style={styles.nav}>
-        {NAV_LINKS.map(link => (
-          <TouchableOpacity
-            key={link.href}
-            style={[styles.link, isActive(link.href) && styles.linkActive]}
-            onPress={() => router.push(link.href)}
-          >
-            <Text style={[styles.linkText, isActive(link.href) && styles.linkTextActive]}>
-              {link.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {NAV_LINKS.map(link => {
+          const isInbox = link.label === 'Inbox';
+          return (
+            <TouchableOpacity
+              key={link.href}
+              style={[styles.link, isActive(link.href) && styles.linkActive]}
+              onPress={() => router.push(link.href)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.linkText, isActive(link.href) && styles.linkTextActive]}>
+                  {link.label}
+                </Text>
+                {isInbox && badgeCount > 0 && user && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{badgeCount}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
         {user ? (
           <TouchableOpacity
             style={[styles.link, isActive('profile') && styles.linkActive]}
@@ -149,4 +162,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   loginText: { fontSize: 14, color: Colors.black, fontWeight: '700' },
+  badge: {
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { fontSize: 11, fontWeight: '700', color: '#ffffff' },
 });

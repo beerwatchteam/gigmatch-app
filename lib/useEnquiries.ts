@@ -30,6 +30,7 @@ export type Enquiry = {
   photoUrl?: string;
   // timetable booking
   listAsBooked?: boolean;
+  declineReason?: string;
   [key: string]: any;
 };
 
@@ -179,6 +180,16 @@ export async function bookSlotOnTimetable(enquiry: Enquiry, listAsBooked: boolea
     updateDoc(doc(db, 'venues', enquiry.venueId), { slots }),
     updateDoc(doc(db, 'inquiries', enquiry.id), { listAsBooked }),
   ]);
+}
+
+// ── Inbox badge count ──
+
+/** Returns the number of pending enquiries for the current user (artist or venue). */
+export function useInboxBadgeCount(uid: string | null, venueId: string | null): number {
+  const { enquiries: artistEnqs } = useArtistEnquiries(!venueId ? uid : null);
+  const { enquiries: venueEnqs  } = useVenueEnquiries(venueId);
+  const enqs = venueId ? venueEnqs : artistEnqs;
+  return enqs.filter(e => e.status === 'pending').length;
 }
 
 /** Remove the booked/pending slot override and move enquiry back to discussing. */
