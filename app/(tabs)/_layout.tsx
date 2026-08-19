@@ -1,14 +1,20 @@
 import { View, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Colors } from '@/constants/colors';
-import WebHeader from '@/components/WebHeader';
+import { useAuth } from '@/lib/auth-context';
 
 export default function TabsLayout() {
   const isWeb = Platform.OS === 'web';
+  const { user, profile } = useAuth();
+
+  const profileTabTitle = !user
+    ? 'Profile'
+    : profile?.type === 'venue'
+      ? 'My Venue'
+      : 'My Profile';
 
   return (
     <View style={{ flex: 1 }}>
-      {isWeb && <WebHeader />}
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -31,7 +37,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox' }} />
-        <Tabs.Screen name="profile"   options={{ title: 'Profile' }} />
+        <Tabs.Screen name="profile"   options={{ title: profileTabTitle }} />
       </Tabs>
     </View>
   );

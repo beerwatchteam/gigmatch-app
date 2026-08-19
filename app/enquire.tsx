@@ -116,7 +116,7 @@ export default function EnquireScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.ghostBtn}
-            onPress={() => router.back()}
+            onPress={() => router.canGoBack() ? router.back() : router.replace(`/venue/${params.venueId}`)}
           >
             <Text style={styles.ghostBtnText}>Back to Venue</Text>
           </TouchableOpacity>

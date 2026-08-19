@@ -47,10 +47,14 @@ export default function WebHeader() {
         {user ? (
           <TouchableOpacity
             style={[styles.link, isActive('profile') && styles.linkActive]}
-            onPress={() => router.push('/(tabs)/profile')}
+            onPress={() =>
+              profile?.type === 'venue' && profile.venueId
+                ? router.push(`/venue/${profile.venueId}`)
+                : router.push('/(tabs)/profile')
+            }
           >
             <Text style={[styles.linkText, isActive('profile') && styles.linkTextActive]}>
-              {profile?.displayName ? profile.displayName : 'My Profile'}
+              {profile?.type === 'venue' ? 'My Venue' : 'My Profile'}
             </Text>
           </TouchableOpacity>
         ) : null}
