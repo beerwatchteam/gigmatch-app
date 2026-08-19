@@ -346,25 +346,26 @@ export default function EditVenueScreen() {
         {activeTab === 'Settings' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
-            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>Email on new enquiry</Text>
-              <Switch
-                value={data.settings.emailOnNewInquiry}
-                onValueChange={v => set('settings', { ...data.settings, emailOnNewInquiry: v })}
-                trackColor={{ true: Colors.orange }}
-                thumbColor="#fff"
-              />
-            </View>
-            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>Email on enquiry expiry</Text>
-              <Switch
-                value={data.settings.emailOnExpiry}
-                onValueChange={v => set('settings', { ...data.settings, emailOnExpiry: v })}
-                trackColor={{ true: Colors.orange }}
-                thumbColor="#fff"
-              />
-            </View>
-            <Text style={[s.sectionTitle, { marginTop: 24 }]}>Visibility</Text>
+            <TouchableOpacity
+              style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
+              onPress={() => set('settings', { ...data.settings, emailOnNewInquiry: !data.settings.emailOnNewInquiry })}
+            >
+              <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailOnNewInquiry && s.checkboxChecked]}>
+                {data.settings.emailOnNewInquiry && <Text style={s.checkmark}>✓</Text>}
+              </View>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new enquiry arrives</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
+              onPress={() => set('settings', { ...data.settings, emailOnExpiry: !data.settings.emailOnExpiry })}
+            >
+              <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailOnExpiry && s.checkboxChecked]}>
+                {data.settings.emailOnExpiry && <Text style={s.checkmark}>✓</Text>}
+              </View>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry expires</Text>
+            </TouchableOpacity>
+
+            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Visibility</Text>
             <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
               <Text style={[s.toggleLabel, { color: colors.black }]}>Listed on GigMatch</Text>
               <Switch
@@ -373,6 +374,16 @@ export default function EditVenueScreen() {
                 trackColor={{ true: Colors.orange }}
                 thumbColor="#fff"
               />
+            </View>
+
+            <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
+              <Text style={s.dangerTitle}>Danger Zone</Text>
+              <Text style={[s.dangerDesc, { color: colors.grey }]}>
+                Deactivating your listing will hide it from all bands browsing GigMatch. This action can be reversed at any time.
+              </Text>
+              <TouchableOpacity style={s.dangerBtn} disabled activeOpacity={1}>
+                <Text style={s.dangerBtnText}>Deactivate Venue Listing</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -653,4 +664,16 @@ const s = StyleSheet.create({
   photoRemove:   { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   center:        { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyText:     { fontSize: 15, color: Colors.grey, textAlign: 'center' },
+  // Checkbox row
+  checkRow:      { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
+  checkbox:      { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  checkboxChecked: { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  checkmark:     { fontSize: 13, color: '#fff', fontWeight: '700', lineHeight: 16 },
+  checkLabel:    { fontSize: 14, flex: 1 },
+  // Danger zone
+  dangerSection: { marginTop: 32, borderWidth: 1, borderRadius: 12, padding: 16 },
+  dangerTitle:   { fontSize: 11, fontWeight: '700', color: Colors.danger, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
+  dangerDesc:    { fontSize: 14, lineHeight: 21, marginBottom: 16 },
+  dangerBtn:     { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
+  dangerBtnText: { fontSize: 14, fontWeight: '600', color: Colors.danger },
 });
