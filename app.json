@@ -15,14 +15,20 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gigmatch.app"
+      "bundleIdentifier": "com.darcymaher.gigmatch",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "com.gigmatch.app",
+      "package": "com.darcymaher.gigmatch",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -44,6 +50,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5d360440-c6a6-4ba9-aafb-ccae3947b67f"
+      }
     }
   }
 }
