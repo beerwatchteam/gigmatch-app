@@ -6,12 +6,12 @@ import {
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { db, storage, auth } from '@/lib/firebase';
-import { signOut } from 'firebase/auth';
+import { signOut, deleteUser } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -33,7 +33,7 @@ type VenueData = {
   website: string; description: string; photoUrl: string;
   rooms: Room[]; gigNights: Night[];
   techSpecs: Record<string, any>;
-  settings: { emailOnNewInquiry: boolean; emailOnExpiry: boolean; listed: boolean };
+  settings: { emailOnNewEnquiry: boolean; emailEnquiryReminders: boolean; listed: boolean };
   photos: string[]; videos: string[];
   slots?: Record<string, any>;
   photoPosition?: { x: number; y: number };
@@ -43,7 +43,7 @@ const BLANK: VenueData = {
   name: '', streetAddress: '', suburb: '', state: '', postcode: '',
   phone: '', email: '', website: '', description: '', photoUrl: '',
   rooms: [], gigNights: [], techSpecs: {},
-  settings: { emailOnNewInquiry: true, emailOnExpiry: false, listed: true },
+  settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
   photos: [], videos: [],
 };
 
@@ -285,7 +285,6 @@ export default function EditVenueScreen() {
   async function handleSave() {
     setShowErrors(true);
     const errors: string[] = [];
-    if (!data.photoUrl)                        errors.push('Venue Photo');
     if (!data.name?.trim() || !data.streetAddress?.trim() || !data.suburb?.trim() ||
         !data.state?.trim() || !data.postcode?.trim() || !data.email?.trim() || !data.website?.trim())
       errors.push('Basic Info');
@@ -347,7 +346,7 @@ export default function EditVenueScreen() {
       return;
     }
     const hasErrors =
-      !data.photoUrl || !data.name?.trim() || !data.streetAddress?.trim() ||
+      !data.name?.trim() || !data.streetAddress?.trim() ||
       !data.suburb?.trim() || !data.state?.trim() || !data.postcode?.trim() ||
       !data.email?.trim() || !data.website?.trim();
     if (hasErrors) {
@@ -379,7 +378,7 @@ export default function EditVenueScreen() {
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
-          <TouchableOpacity onPress={pickBannerPhoto} style={[s.banner, showErrors && !data.photoUrl && s.bannerError]}>
+          <TouchableOpacity onPress={pickBannerPhoto} style={s.banner}>
             {data.photoUrl
               ? <Image source={{ uri: data.photoUrl }} style={s.bannerImg} />
               : <View style={s.bannerPlaceholder}>
@@ -429,21 +428,21 @@ export default function EditVenueScreen() {
             <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
             <TouchableOpacity
               style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('settings', { ...data.settings, emailOnNewInquiry: !data.settings.emailOnNewInquiry })}
+              onPress={() => set('settings', { ...data.settings, emailOnNewEnquiry: !data.settings.emailOnNewEnquiry })}
             >
-              <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailOnNewInquiry && s.checkboxChecked]}>
-                {data.settings.emailOnNewInquiry && <Text style={s.checkmark}>✓</Text>}
+              <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailOnNewEnquiry && s.checkboxChecked]}>
+                {data.settings.emailOnNewEnquiry && <Text style={s.checkmark}>✓</Text>}
               </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new enquiry arrives</Text>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when new enquiry is received</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('settings', { ...data.settings, emailOnExpiry: !data.settings.emailOnExpiry })}
+              onPress={() => set('settings', { ...data.settings, emailEnquiryReminders: !data.settings.emailEnquiryReminders })}
             >
-              <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailOnExpiry && s.checkboxChecked]}>
-                {data.settings.emailOnExpiry && <Text style={s.checkmark}>✓</Text>}
+              <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailEnquiryReminders && s.checkboxChecked]}>
+                {data.settings.emailEnquiryReminders && <Text style={s.checkmark}>✓</Text>}
               </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry expires</Text>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Email me enquiry reminders</Text>
             </TouchableOpacity>
 
             <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Visibility</Text>
@@ -471,8 +470,68 @@ export default function EditVenueScreen() {
               <Text style={[s.dangerDesc, { color: colors.grey }]}>
                 Deactivating your listing will hide it from all bands browsing GigMatch. This action can be reversed at any time.
               </Text>
-              <TouchableOpacity style={s.dangerBtn} disabled activeOpacity={1}>
-                <Text style={s.dangerBtnText}>Deactivate Venue Listing</Text>
+              <TouchableOpacity
+                style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]}
+                onPress={() => {
+                  const willDeactivate = data.settings.listed;
+                  Alert.alert(
+                    willDeactivate ? 'Deactivate Venue Listing?' : 'Reactivate Venue Listing?',
+                    willDeactivate
+                      ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
+                      : 'This will make your venue visible to musicians again.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Confirm',
+                        style: willDeactivate ? 'destructive' : 'default',
+                        onPress: async () => {
+                          const { venueId } = profile ?? {};
+                          if (!venueId) return;
+                          const newListed = !willDeactivate;
+                          await updateDoc(doc(db, 'venues', venueId), { 'settings.listed': newListed });
+                          set('settings', { ...data.settings, listed: newListed });
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={s.dangerBtnText}>
+                  {data.settings.listed ? 'Deactivate Venue Listing' : 'Reactivate Venue Listing'}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>
+                Permanently delete your venue and account. This action cannot be undone.
+              </Text>
+              <TouchableOpacity
+                style={[s.dangerBtn, s.dangerBtnActive]}
+                onPress={() => {
+                  Alert.alert(
+                    'Delete Account',
+                    'Are you sure you want to delete your account? This action cannot be undone.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            const { venueId, uid } = profile ?? {};
+                            if (venueId) await deleteDoc(doc(db, 'venues', venueId));
+                            if (uid)     await deleteDoc(doc(db, 'users', uid));
+                            const cu = auth.currentUser;
+                            if (cu) await deleteUser(cu);
+                          } catch (e: any) {
+                            Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={s.dangerBtnText}>Delete Account</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -859,6 +918,7 @@ const s = StyleSheet.create({
   dangerSection: { marginTop: 32, borderWidth: 1, borderRadius: 12, padding: 16 },
   dangerTitle:   { fontSize: 11, fontWeight: '700', color: Colors.danger, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
   dangerDesc:    { fontSize: 14, lineHeight: 21, marginBottom: 16 },
-  dangerBtn:     { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
-  dangerBtnText: { fontSize: 14, fontWeight: '600', color: Colors.danger },
+  dangerBtn:       { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
+  dangerBtnActive: { opacity: 1 },
+  dangerBtnText:   { fontSize: 14, fontWeight: '600', color: Colors.danger },
 });

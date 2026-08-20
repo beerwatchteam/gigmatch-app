@@ -19,7 +19,7 @@ import { Colors } from '@/constants/colors';
 import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
-const ARTIST_TYPES = ['Band', 'Solo Artist', 'DJ'];
+const ARTIST_TYPES = ['Band', 'Solo Artist', 'Duo', 'DJ', 'Other'];
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -63,6 +63,7 @@ export default function LoginScreen() {
   const [mPassword, setMPassword]       = useState('');
   const [mConfirm, setMConfirm]         = useState('');
   const [mArtistType, setMArtistType]   = useState('');
+  const [mOtherType, setMOtherType]     = useState('');
   const [mTerms, setMTerms]             = useState(false);
   const [mLoading, setMLoading]         = useState(false);
   const [mError, setMError]             = useState('');
@@ -130,7 +131,8 @@ export default function LoginScreen() {
     if (!mPassword)             e.password   = 'Password is required';
     if (mPassword.length < 6)   e.password   = 'At least 6 characters';
     if (mPassword !== mConfirm) e.confirm    = "Passwords don't match";
-    if (!mArtistType)           e.artistType = 'Select an artist type';
+    if (!mArtistType)           e.artistType  = 'Select an artist type';
+    if (mArtistType === 'Other' && !mOtherType.trim()) e.otherType = 'Please describe your act type';
     if (!mTerms)                e.terms      = 'You must accept the Terms & Conditions';
     setMFieldErrors(e); return Object.keys(e).length === 0;
   }
@@ -152,10 +154,13 @@ export default function LoginScreen() {
       });
       await setDoc(doc(db, 'bandProfiles', user.uid), {
         name: mStageName.trim(), username: mUsername.trim().toLowerCase(),
-        artistType: mArtistType, genre: [], location: '', email: mEmail.trim(),
+        artistType: mArtistType,
+        ...(mArtistType === 'Other' ? { otherArtistType: mOtherType.trim() } : {}),
+        genre: [], location: '', email: mEmail.trim(),
         phone: '', instagram: '', tiktok: '', spotify: '', appleMusic: '',
         customLinks: [], about: '', songs: [], gigHistory: [], upcomingGigs: [],
         techRider: { monitoring: '', backlineNeeded: '', stageSize: '', soundcheck: '', notes: '', stagePlot: '', inputList: '' },
+        settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
         createdAt: new Date().toISOString(),
       });
       await sendEmailVerification(user);
@@ -173,7 +178,7 @@ export default function LoginScreen() {
 
   async function handleArtistStartOver() {
     await signOut(auth); setMVerifyPending(false);
-    setMStageName(''); setMUsername(''); setMEmail(''); setMPassword(''); setMConfirm(''); setMArtistType('');
+    setMStageName(''); setMUsername(''); setMEmail(''); setMPassword(''); setMConfirm(''); setMArtistType(''); setMOtherType('');
     setMTerms(false); setMError(''); setMFieldErrors({}); setMUsernameTouched(false); mUserRef.current = null;
   }
 
@@ -327,6 +332,13 @@ export default function LoginScreen() {
                 ))}
               </View>
               {mFieldErrors.artistType ? <Text style={s.fieldError}>{mFieldErrors.artistType}</Text> : null}
+              {mArtistType === 'Other' && (
+                <>
+                  <TextInput style={s.input} placeholder="Describe your act (e.g. Acapella Group)" placeholderTextColor="#999"
+                    value={mOtherType} onChangeText={setMOtherType} autoCapitalize="words" />
+                  {mFieldErrors.otherType ? <Text style={s.fieldError}>{mFieldErrors.otherType}</Text> : null}
+                </>
+              )}
 
               <TouchableOpacity style={s.termsRow} onPress={() => setMTerms(v => !v)}>
                 <View style={[s.checkbox, mTerms && s.checkboxOn]} />

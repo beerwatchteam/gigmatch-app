@@ -82,6 +82,7 @@ type Venue = {
   photoUrl?: string; photos?: string[];
   capacity?: number; feeMin?: number; feeMax?: number;
   slots?: Record<string, { status: string }[]>;
+  settings?: { listed?: boolean };
 };
 
 const isWeb = Platform.OS === 'web';
@@ -252,7 +253,8 @@ export default function VenuesScreen() {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
       const snap = await getDocs(collection(db, 'venues'));
-      setVenues(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Venue[]);
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Venue[];
+      setVenues(all.filter(v => v.settings?.listed !== false));
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);

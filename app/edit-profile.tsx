@@ -6,11 +6,11 @@ import {
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { db, storage, auth } from '@/lib/firebase';
-import { signOut } from 'firebase/auth';
+import { signOut, deleteUser } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -28,7 +28,8 @@ const TABS = ['Settings','Basic Info','About','Music','Gig History','Upcoming','
 type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string };
 type Profile = {
-  name: string; artistType: string; genre: string[]; location: string;
+  name: string; username: string; artistType: string; otherArtistType: string;
+  genre: string[]; location: string;
   email: string; phone: string; feeMin: string; feeMax: string;
   about: string; photoUrl: string;
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
@@ -36,16 +37,16 @@ type Profile = {
   songs: Song[]; gigHistory: Gig[]; upcomingGigs: Gig[];
   techRider: Record<string, string>;
   photos: string[]; videos: string[];
-  settings: { emailOnNewInquiry: boolean; emailOnExpiry: boolean; listed: boolean };
+  settings: { emailOnEnquiryResponse: boolean; emailOnNewConnection: boolean; listed: boolean };
 };
 
 const BLANK: Profile = {
-  name: '', artistType: '', genre: [], location: '', email: '', phone: '',
+  name: '', username: '', artistType: '', otherArtistType: '', genre: [], location: '', email: '', phone: '',
   feeMin: '', feeMax: '', about: '', photoUrl: '',
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
   techRider: {}, photos: [], videos: [],
-  settings: { emailOnNewInquiry: true, emailOnExpiry: false, listed: true },
+  settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
 };
 
 function Field({ label, error, children }: { label: string; error?: boolean; children: React.ReactNode }) {
@@ -199,8 +200,8 @@ export default function EditProfileScreen() {
     setShowErrors(true);
     const errors: string[] = [];
 
-    if (!profile.photoUrl)                           errors.push('Profile Photo');
-    if (!profile.name?.trim() || !profile.artistType?.trim() ||
+    if (!profile.name?.trim() || !profile.username?.trim() || !profile.artistType?.trim() ||
+        (profile.artistType === 'Other' && !profile.otherArtistType?.trim()) ||
         !(profile.genre?.length > 0) || !profile.location?.trim() || !profile.email?.trim())
       errors.push('Basic Info');
     if (!profile.about?.trim())                      errors.push('About');
@@ -237,7 +238,8 @@ export default function EditProfileScreen() {
       return;
     }
     const hasErrors =
-      !profile.photoUrl || !profile.name?.trim() || !profile.artistType?.trim() ||
+      !profile.name?.trim() || !profile.username?.trim() || !profile.artistType?.trim() ||
+      (profile.artistType === 'Other' && !profile.otherArtistType?.trim()) ||
       !(profile.genre?.length > 0) || !profile.location?.trim() || !profile.email?.trim() ||
       !profile.about?.trim();
     if (hasErrors) {
@@ -261,11 +263,11 @@ export default function EditProfileScreen() {
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
-          <TouchableOpacity onPress={pickBannerPhoto} style={[s.banner, showErrors && !profile.photoUrl && s.bannerError]}>
+          <TouchableOpacity onPress={pickBannerPhoto} style={s.banner}>
             {profile.photoUrl
               ? <Image source={{ uri: profile.photoUrl }} style={s.bannerImg} />
               : <View style={s.bannerPlaceholder}>
-                  <Text style={s.bannerPlaceholderText}>{photoUploading ? 'Uploading…' : 'Tap to add profile photo *'}</Text>
+                  <Text style={s.bannerPlaceholderText}>{photoUploading ? 'Uploading…' : 'Tap to add profile photo'}</Text>
                 </View>
             }
             <View style={s.bannerEditBadge}><Text style={s.bannerEditBadgeText}>{profile.photoUrl ? 'Change photo' : '+ Photo'}</Text></View>
@@ -311,21 +313,21 @@ export default function EditProfileScreen() {
             <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
             <TouchableOpacity
               style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('settings', { ...profile.settings, emailOnNewInquiry: !profile.settings.emailOnNewInquiry })}
+              onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}
             >
-              <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewInquiry && s.checkboxChecked]}>
-                {profile.settings.emailOnNewInquiry && <Text style={s.checkmark}>✓</Text>}
+              <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnEnquiryResponse && s.checkboxChecked]}>
+                {profile.settings.emailOnEnquiryResponse && <Text style={s.checkmark}>✓</Text>}
               </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new enquiry arrives</Text>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry is responded to</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('settings', { ...profile.settings, emailOnExpiry: !profile.settings.emailOnExpiry })}
+              onPress={() => set('settings', { ...profile.settings, emailOnNewConnection: !profile.settings.emailOnNewConnection })}
             >
-              <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnExpiry && s.checkboxChecked]}>
-                {profile.settings.emailOnExpiry && <Text style={s.checkmark}>✓</Text>}
+              <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>
+                {profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}
               </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry expires</Text>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
             </TouchableOpacity>
 
             <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Visibility</Text>
@@ -348,8 +350,68 @@ export default function EditProfileScreen() {
               <Text style={[s.dangerDesc, { color: colors.grey }]}>
                 Deactivating your listing will hide it from all venues browsing GigMatch. This action can be reversed at any time.
               </Text>
-              <TouchableOpacity style={s.dangerBtn} disabled activeOpacity={1}>
-                <Text style={s.dangerBtnText}>Deactivate Musician Listing</Text>
+              <TouchableOpacity
+                style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]}
+                onPress={() => {
+                  const willDeactivate = profile.settings.listed;
+                  Alert.alert(
+                    willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?',
+                    willDeactivate
+                      ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
+                      : 'This will make your profile visible to venues again.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Confirm',
+                        style: willDeactivate ? 'destructive' : 'default',
+                        onPress: async () => {
+                          const uid = user?.uid;
+                          if (!uid) return;
+                          const newListed = !willDeactivate;
+                          await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed });
+                          set('settings', { ...profile.settings, listed: newListed });
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={s.dangerBtnText}>
+                  {profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>
+                Permanently delete your profile and account. This action cannot be undone.
+              </Text>
+              <TouchableOpacity
+                style={[s.dangerBtn, s.dangerBtnActive]}
+                onPress={() => {
+                  Alert.alert(
+                    'Delete Account',
+                    'Are you sure you want to delete your account? This action cannot be undone.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            const uid = user?.uid;
+                            if (uid) await deleteDoc(doc(db, 'bandProfiles', uid));
+                            if (uid) await deleteDoc(doc(db, 'users', uid));
+                            const cu = auth.currentUser;
+                            if (cu) await deleteUser(cu);
+                          } catch (e: any) {
+                            Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
+                          }
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Text style={s.dangerBtnText}>Delete Account</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -365,9 +427,17 @@ export default function EditProfileScreen() {
               <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
                 <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
               </Field>
+              <Field label="Username *" error={showErrors && !profile.username?.trim()}>
+                <Input value={profile.username} onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))} placeholder="e.g. thedahlias" error={showErrors && !profile.username?.trim()} />
+              </Field>
               <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}>
                 <Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} />
               </Field>
+              {profile.artistType === 'Other' && (
+                <Field label="Describe your act *" error={showErrors && !profile.otherArtistType?.trim()}>
+                  <Input value={profile.otherArtistType} onChangeText={(v: string) => set('otherArtistType', v)} placeholder="e.g. Acapella Group, String Quartet" error={showErrors && !profile.otherArtistType?.trim()} />
+                </Field>
+              )}
               <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}>
                 <Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi />
               </Field>
@@ -658,5 +728,6 @@ const s = StyleSheet.create({
   dangerTitle:        { fontSize: 11, fontWeight: '700', color: Colors.danger, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
   dangerDesc:         { fontSize: 14, lineHeight: 21, marginBottom: 16 },
   dangerBtn:          { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
+  dangerBtnActive:    { opacity: 1 },
   dangerBtnText:      { fontSize: 14, fontWeight: '600', color: Colors.danger },
 });
