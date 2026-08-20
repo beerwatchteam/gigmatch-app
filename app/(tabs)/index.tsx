@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
-  View, StyleSheet, TouchableOpacity, ScrollView, FlatList, Platform, Image,
+  View, StyleSheet, TouchableOpacity, ScrollView, FlatList, Platform, Image, ActivityIndicator,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, getDocs, limit, query, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
+import { db, storage } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+
+const ADMIN_EMAIL = 'beerwatchbusiness@gmail.com';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -231,10 +235,16 @@ const WHY_VENUES = [
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const { colors } = useTheme();
-  const [displayData, setDisplayData] = useState<FeaturedVenue[]>([]);
+  const [displayData, setDisplayData]   = useState<FeaturedVenue[]>([]);
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null);
+  const [heroUploading, setHeroUploading] = useState(false);
 
+  const isAdmin  = user?.email === ADMIN_EMAIL;
+  const isArtist = profile?.type === 'artist';
+
+  // Live-sync venue data
   useEffect(() => {
     getDocs(query(collection(db, 'venues'), limit(8)))
       .then(snap => {
@@ -244,7 +254,34 @@ export default function HomeScreen() {
       .catch(() => {});
   }, []);
 
-  const isArtist = profile?.type === 'artist';
+  // Live-sync hero image from Firestore
+  useEffect(() => {
+    return onSnapshot(doc(db, 'settings', 'homepage'), snap => {
+      setHeroImageUrl(snap.data()?.heroImageUrl ?? null);
+    });
+  }, []);
+
+  async function pickHeroImage() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.85,
+    });
+    if (result.canceled) return;
+    setHeroUploading(true);
+    try {
+      const uri  = result.assets[0].uri;
+      const blob = await (await fetch(uri)).blob();
+      const storageRef = ref(storage, 'settings/hero-cover');
+      await uploadBytes(storageRef, blob);
+      const url = await getDownloadURL(storageRef);
+      await setDoc(doc(db, 'settings', 'homepage'), { heroImageUrl: url }, { merge: true });
+    } catch (e) {
+      console.error('Hero upload failed', e);
+    } finally {
+      setHeroUploading(false);
+    }
+  }
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
@@ -252,6 +289,14 @@ export default function HomeScreen() {
 
         {/* ── Hero ── */}
         <View style={s.hero}>
+          {/* Background image */}
+          {heroImageUrl ? (
+            <>
+              <Image source={{ uri: heroImageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              <View style={[StyleSheet.absoluteFill, s.heroOverlay]} />
+            </>
+          ) : null}
+
           <Text style={s.headline}>
             Find your next gig or your next act,{' '}
             <Text style={s.headlineAccent}>without the email back-and-forth.</Text>
@@ -267,6 +312,16 @@ export default function HomeScreen() {
               <Text style={s.ctaOutlineText}>I'm a Venue — Find Acts</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Admin: edit cover photo */}
+          {isAdmin && (
+            <TouchableOpacity style={s.editHeroBtn} onPress={pickHeroImage} disabled={heroUploading}>
+              {heroUploading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={s.editHeroBtnText}>Edit Cover Photo</Text>
+              }
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Featured Venues ── */}
@@ -368,7 +423,22 @@ const s = StyleSheet.create({
     paddingTop:    isWeb ? 80 : 52,
     paddingBottom: isWeb ? 72 : 56,
     alignItems: 'center',
+    overflow: 'hidden',
   },
+  heroOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  editHeroBtn: {
+    marginTop: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    minWidth: 44,
+    alignItems: 'center',
+  },
+  editHeroBtnText: { fontSize: 13, fontWeight: '600', color: '#ffffff' },
   headline: {
     fontSize: isWeb ? 42 : 30,
     fontWeight: '800',
