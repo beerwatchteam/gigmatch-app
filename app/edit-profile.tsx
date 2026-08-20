@@ -8,7 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
-import { db, storage } from '@/lib/firebase';
+import { db, storage, auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -104,7 +105,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
 export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, isDark, toggleDark } = useTheme();
   const uid = user?.uid ?? '';
 
   const [profile, setProfile] = useState<Profile>(BLANK);
@@ -232,9 +233,21 @@ export default function EditProfileScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => router.back() },
       ]);
-    } else {
-      router.back();
+      return;
     }
+    const hasErrors =
+      !profile.photoUrl || !profile.name?.trim() || !profile.artistType?.trim() ||
+      !(profile.genre?.length > 0) || !profile.location?.trim() || !profile.email?.trim() ||
+      !profile.about?.trim();
+    if (hasErrors) {
+      setShowErrors(true);
+      Alert.alert('Profile incomplete', 'Some required fields are missing. Your profile won\'t be visible until complete.', [
+        { text: 'Stay & Complete', style: 'cancel' },
+        { text: 'Leave Anyway', style: 'destructive', onPress: () => router.back() },
+      ]);
+      return;
+    }
+    router.back();
   }
 
   const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
@@ -319,6 +332,15 @@ export default function EditProfileScreen() {
               <Text style={[s.toggleLabel, { color: colors.black }]}>Listed on GigMatch</Text>
               <Switch value={profile.settings.listed} onValueChange={v => set('settings', { ...profile.settings, listed: v })} trackColor={{ true: Colors.orange }} thumbColor="#fff" />
             </View>
+
+            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Account</Text>
+            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={toggleDark}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+              <Text style={{ fontSize: 18 }}>{isDark ? '🌙' : '☀️'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={() => signOut(auth)}>
+              <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
+            </TouchableOpacity>
 
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>

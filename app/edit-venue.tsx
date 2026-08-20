@@ -8,7 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
-import { db, storage } from '@/lib/firebase';
+import * as DocumentPicker from 'expo-document-picker';
+import { db, storage, auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -44,7 +46,7 @@ const BLANK: VenueData = {
   photos: [], videos: [],
 };
 
-const TABS = ['Settings','Basic Info','Rooms','Gig Nights','Tech Specs','Photos'];
+const TABS = ['Settings','Basic Info','Rooms','Gig Nights','Tech Specs','Photos & Videos'];
 
 // ── Shared sub-components ────────────────────────────────────────
 
@@ -110,7 +112,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
 export default function EditVenueScreen() {
   const router = useRouter();
   const { profile } = useAuth();
-  const { colors } = useTheme();
+  const { colors, isDark, toggleDark } = useTheme();
   const venueId = profile?.venueId ?? '';
 
   const [data, setData]           = useState<VenueData>(BLANK);
@@ -123,6 +125,9 @@ export default function EditVenueScreen() {
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);
   const [expandedNight, setExpandedNight] = useState<number | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [docUploading, setDocUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [newVideoUrl, setNewVideoUrl] = useState('');
 
   useEffect(() => {
     if (!venueId) { setLoading(false); return; }
@@ -180,6 +185,56 @@ export default function EditVenueScreen() {
   function removeNight(i: number) {
     setData(prev => ({ ...prev, gigNights: prev.gigNights.filter((_, idx) => idx !== i) }));
     setExpandedNight(null);
+  }
+
+  function sortedNights(nights: Night[]) {
+    return [...nights].sort((a, b) => CANONICAL_DAYS.indexOf(a.day) - CANONICAL_DAYS.indexOf(b.day));
+  }
+
+  function addVideo() {
+    const url = newVideoUrl.trim();
+    if (!url) return;
+    set('videos', [...(data.videos || []), url]);
+    setNewVideoUrl('');
+  }
+
+  async function pickDocument() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `riders/${venueId}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      set('techSpecs', { ...data.techSpecs, documents: [...(data.techSpecs?.documents || []), { url, name: asset.name }] });
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setDocUploading(false);
+    }
+  }
+
+  async function pickVideoFile() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 1 });
+    if (result.canceled || !result.assets?.[0]) return;
+    setVideoUploading(true);
+    try {
+      const uri  = result.assets[0].uri;
+      const res  = await fetch(uri);
+      const blob = await res.blob();
+      const ref  = sRef(storage, `photos/venues/${venueId}/gallery/${Date.now()}.mp4`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      set('videos', [...(data.videos || []), url]);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setVideoUploading(false);
+    }
   }
 
   // ── Photo upload ──
@@ -281,9 +336,21 @@ export default function EditVenueScreen() {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: () => router.back() },
       ]);
-    } else {
-      router.back();
+      return;
     }
+    const hasErrors =
+      !data.photoUrl || !data.name?.trim() || !data.streetAddress?.trim() ||
+      !data.suburb?.trim() || !data.state?.trim() || !data.postcode?.trim() ||
+      !data.email?.trim() || !data.website?.trim();
+    if (hasErrors) {
+      setShowErrors(true);
+      Alert.alert('Venue profile incomplete', 'Some required fields are missing. Your venue won\'t be visible until complete.', [
+        { text: 'Stay & Complete', style: 'cancel' },
+        { text: 'Leave Anyway', style: 'destructive', onPress: () => router.back() },
+      ]);
+      return;
+    }
+    router.back();
   }
 
   if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
@@ -381,6 +448,15 @@ export default function EditVenueScreen() {
                 thumbColor="#fff"
               />
             </View>
+
+            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Account</Text>
+            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={toggleDark}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+              <Text style={{ fontSize: 18 }}>{isDark ? '🌙' : '☀️'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={() => signOut(auth)}>
+              <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
+            </TouchableOpacity>
 
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>
@@ -497,13 +573,25 @@ export default function EditVenueScreen() {
         {activeTab === 'Gig Nights' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig Nights</Text>
-            {data.gigNights.map((night, i) => {
+            {sortedNights(data.gigNights).map(night => {
+              const i = data.gigNights.indexOf(night);
               const isOpen = expandedNight === i;
               const hasError = showErrors && (!night.day || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
+              const fmtTime = (t: string) => {
+                if (!t) return '';
+                const [h, m] = t.split(':').map(Number);
+                return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+              };
+              const summaryParts = [
+                night.day || 'New night',
+                night.startTime ? fmtTime(night.startTime) : null,
+                night.room || null,
+                night.duration ? `${night.duration} min` : null,
+              ].filter(Boolean).join(' · ');
               return (
                 <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)}>
-                    <Text style={s.cardHeaderText}>{night.day || 'New night'}{night.startTime ? ` · ${night.startTime}` : ''}</Text>
+                    <Text style={[s.cardHeaderText, { color: colors.black }]}>{summaryParts}</Text>
                     <Text style={s.cardChevron}>{isOpen ? '▲' : '▼'}</Text>
                   </TouchableOpacity>
                   {isOpen && (
@@ -523,20 +611,18 @@ export default function EditVenueScreen() {
                       <Field label="Start date * (YYYY-MM-DD)" error={showErrors && !night.startDate}>
                         <Input value={night.startDate} onChangeText={(v: string) => setNight(i, 'startDate', v)} placeholder="2025-01-01" error={showErrors && !night.startDate} />
                       </Field>
-                      <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-                        <Text style={[s.toggleLabel, { color: colors.black }]}>Continuous (no end date)</Text>
-                        <Switch
-                          value={night.continuous}
-                          onValueChange={v => { setNight(i, 'continuous', v); if (v) setNight(i, 'endDate', ''); }}
-                          trackColor={{ true: Colors.orange }}
-                          thumbColor="#fff"
-                        />
-                      </View>
-                      {!night.continuous && (
-                        <Field label="End date * (YYYY-MM-DD)" error={showErrors && !night.endDate}>
-                          <Input value={night.endDate} onChangeText={(v: string) => setNight(i, 'endDate', v)} placeholder="2025-12-31" error={showErrors && !night.endDate} />
-                        </Field>
-                      )}
+                      <Field label={night.continuous ? 'End date' : 'End date *'} error={showErrors && !night.continuous && !night.endDate}>
+                        <Input value={night.endDate} onChangeText={(v: string) => setNight(i, 'endDate', v)} placeholder="2025-12-31" error={showErrors && !night.continuous && !night.endDate} />
+                        <TouchableOpacity
+                          style={[s.checkRow, { borderBottomColor: colors.borderFaint, marginTop: 8 }]}
+                          onPress={() => { setNight(i, 'continuous', !night.continuous); if (!night.continuous) setNight(i, 'endDate', ''); }}
+                        >
+                          <View style={[s.checkbox, { borderColor: colors.border }, night.continuous && s.checkboxChecked]}>
+                            {night.continuous && <Text style={s.checkmark}>✓</Text>}
+                          </View>
+                          <Text style={[s.checkLabel, { color: colors.black }]}>Continuous (no end date)</Text>
+                        </TouchableOpacity>
+                      </Field>
                       <View style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ flex: 1 }}>
                           <Field label="Fee min ($)">
@@ -560,6 +646,13 @@ export default function EditVenueScreen() {
                           <Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} />
                         </Field>
                       )}
+                      <Field label="Genres (comma-separated)">
+                        <Input
+                          value={(night.genres || []).join(', ')}
+                          onChangeText={(v: string) => setNight(i, 'genres', v.split(',').map((g: string) => g.trim()).filter(Boolean))}
+                          placeholder="e.g. Rock, Blues, Country"
+                        />
+                      </Field>
                       <Field label="Notes">
                         <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="Any notes for acts" />
                       </Field>
@@ -583,8 +676,30 @@ export default function EditVenueScreen() {
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Specs / Rider</Text>
-            {(['pa','monitoring','backline','lighting','parking'] as const).map(f => (
-              <Field key={f} label={f.charAt(0).toUpperCase() + f.slice(1)}>
+
+            {/* Documents */}
+            <Field label="Documents">
+              {(data.techSpecs?.documents || []).map((doc: { url: string; name: string }, idx: number) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name || doc.url}</Text>
+                  <TouchableOpacity style={s.removeBtn} onPress={() => set('techSpecs', { ...data.techSpecs, documents: (data.techSpecs?.documents || []).filter((_: any, i: number) => i !== idx) })}>
+                    <Text style={s.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}>
+                <Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Add Document'}</Text>
+              </TouchableOpacity>
+            </Field>
+
+            {([
+              { f: 'pa',         label: 'PA System' },
+              { f: 'monitoring', label: 'Monitoring' },
+              { f: 'backline',   label: 'Backline' },
+              { f: 'lighting',   label: 'Lighting' },
+              { f: 'parking',    label: 'Parking' },
+            ] as const).map(({ f, label }) => (
+              <Field key={f} label={label}>
                 <Input
                   value={data.techSpecs?.[f] || ''}
                   onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, [f]: v })}
@@ -592,15 +707,16 @@ export default function EditVenueScreen() {
                 />
               </Field>
             ))}
-            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>Green room available</Text>
-              <Switch
-                value={data.techSpecs?.greenRoom || false}
-                onValueChange={v => set('techSpecs', { ...data.techSpecs, greenRoom: v })}
-                trackColor={{ true: Colors.orange }}
-                thumbColor="#fff"
-              />
-            </View>
+
+            <TouchableOpacity
+              style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
+              onPress={() => set('techSpecs', { ...data.techSpecs, greenRoom: !data.techSpecs?.greenRoom })}
+            >
+              <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.greenRoom && s.checkboxChecked]}>
+                {data.techSpecs?.greenRoom && <Text style={s.checkmark}>✓</Text>}
+              </View>
+              <Text style={[s.checkLabel, { color: colors.black }]}>Green room available</Text>
+            </TouchableOpacity>
             {data.techSpecs?.greenRoom && (
               <Field label="Green room details">
                 <Input value={data.techSpecs?.greenRoomDetails || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, greenRoomDetails: v })} placeholder="Describe the green room" />
@@ -612,10 +728,10 @@ export default function EditVenueScreen() {
           </View>
         )}
 
-        {/* ── PHOTOS ── */}
-        {activeTab === 'Photos' && (
+        {/* ── PHOTOS & VIDEOS ── */}
+        {activeTab === 'Photos & Videos' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Photo Gallery</Text>
+            <Text style={[s.sectionTitle, { color: colors.grey }]}>Photos</Text>
             <View style={s.photoGrid}>
               {data.photos.map((url, i) => (
                 <View key={i} style={s.photoItem}>
@@ -632,6 +748,34 @@ export default function EditVenueScreen() {
             <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}>
               <Text style={s.addBtnText}>+ Add Photo</Text>
             </TouchableOpacity>
+
+            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 28 }]}>Videos</Text>
+            {(data.videos || []).map((url, i) => (
+              <View key={i} style={[s.videoRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <Text style={[s.videoUrl, { color: colors.black }]} numberOfLines={1}>{url}</Text>
+                <TouchableOpacity onPress={() => set('videos', data.videos.filter((_, idx) => idx !== i))}>
+                  <Text style={{ fontSize: 16, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity style={[s.addBtn, { marginBottom: 8 }]} onPress={pickVideoFile} disabled={videoUploading}>
+              <Text style={s.addBtnText}>{videoUploading ? 'Uploading…' : '+ Upload Video'}</Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={[s.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+                placeholder="Or paste YouTube / Vimeo URL"
+                placeholderTextColor={Colors.greyLight}
+                value={newVideoUrl}
+                onChangeText={setNewVideoUrl}
+                autoCapitalize="none"
+                onSubmitEditing={addVideo}
+                returnKeyType="done"
+              />
+              <TouchableOpacity style={[s.removeBtn, { borderColor: Colors.orange, justifyContent: 'center' }]} onPress={addVideo}>
+                <Text style={[s.removeBtnText, { color: Colors.orange }]}>+ Link</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -693,6 +837,8 @@ const s = StyleSheet.create({
   photoItem:     { width: '47%', aspectRatio: 4/3, borderRadius: 10, overflow: 'hidden' },
   photoImg:      { width: '100%', height: '100%' },
   photoRemove:   { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  videoRow:      { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8, gap: 8 },
+  videoUrl:      { flex: 1, fontSize: 13 },
   center:        { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyText:     { fontSize: 15, color: Colors.grey, textAlign: 'center' },
   // Checkbox row

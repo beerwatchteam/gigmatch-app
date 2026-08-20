@@ -4,7 +4,6 @@ import {
   TextInput, ActivityIndicator, RefreshControl, Image,
   ScrollView, Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, getDocs } from 'firebase/firestore';
@@ -87,6 +86,146 @@ type Venue = {
 const isWeb = Platform.OS === 'web';
 type PanelKey = 'fee' | 'date' | 'capacity' | null;
 
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_DOW    = ['M','T','W','T','F','S','S'];
+
+function toLocalStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function parseLocal(s: string) {
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+
+function CalIcon({ color }: { color: string }) {
+  return (
+    <View style={{ width: 18, height: 18 }}>
+      <View style={{ position:'absolute', top: 3, left: 0, right: 0, bottom: 0, borderWidth: 1.5, borderColor: color, borderRadius: 2 }} />
+      <View style={{ position:'absolute', top: 3, left: 0, right: 0, height: 6, borderBottomWidth: 1.5, borderColor: color, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+      <View style={{ position:'absolute', top: 0, left: 4, width: 2, height: 6, backgroundColor: color, borderRadius: 1 }} />
+      <View style={{ position:'absolute', top: 0, right: 4, width: 2, height: 6, backgroundColor: color, borderRadius: 1 }} />
+    </View>
+  );
+}
+
+function CalendarPicker({ value, onChange, minDate, colors: c }: {
+  value: string; onChange: (v: string) => void; minDate?: string; colors: any;
+}) {
+  const today    = new Date();
+  const todayStr = toLocalStr(today);
+  const [open, setOpen]           = useState(false);
+  const [viewYear, setViewYear]   = useState(() => (value ? parseLocal(value) : today).getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => (value ? parseLocal(value) : today).getMonth());
+
+  function handleOpen() {
+    const d = value ? parseLocal(value) : today;
+    setViewYear(d.getFullYear()); setViewMonth(d.getMonth());
+    setOpen(o => !o);
+  }
+  function prevMonth() {
+    setViewMonth(m => { if (m === 0) { setViewYear(y => y-1); return 11; } return m-1; });
+  }
+  function nextMonth() {
+    setViewMonth(m => { if (m === 11) { setViewYear(y => y+1); return 0; } return m+1; });
+  }
+  function pick(dateStr: string) { onChange(dateStr); setOpen(false); }
+
+  // Build 42-cell grid (Mon-first)
+  const cells: { date: Date; in: boolean }[] = [];
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const startOffset = firstDow === 0 ? 6 : firstDow - 1;
+  for (let i = startOffset-1; i >= 0; i--) cells.push({ date: new Date(viewYear, viewMonth, -i), in: false });
+  const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ date: new Date(viewYear, viewMonth, d), in: true });
+  for (let n = 1; cells.length < 42; n++) cells.push({ date: new Date(viewYear, viewMonth+1, n), in: false });
+
+  const display = value ? value.split('-').reverse().join('/') : '';
+
+  return (
+    <View>
+      <TouchableOpacity
+        style={[cal.input, { backgroundColor: c.bgFaint, borderColor: open ? Colors.orange : c.border }]}
+        onPress={handleOpen} activeOpacity={0.8}
+      >
+        <Text style={[cal.inputText, { color: value ? c.black : '#999999' }]}>{display || 'dd/mm/yyyy'}</Text>
+        <CalIcon color={open ? Colors.orange : c.grey} />
+      </TouchableOpacity>
+
+      {open && (
+        <View style={[cal.dropdown, { backgroundColor: c.bg, borderColor: c.border }]}>
+          <View style={cal.calHeader}>
+            <Text style={[cal.monthYear, { color: c.black }]}>{CAL_MONTHS[viewMonth]} {viewYear} ▾</Text>
+            <View style={{ flexDirection:'row', gap: 16 }}>
+              <TouchableOpacity onPress={prevMonth}><Text style={[cal.navArrow, { color: c.black }]}>↑</Text></TouchableOpacity>
+              <TouchableOpacity onPress={nextMonth}><Text style={[cal.navArrow, { color: c.black }]}>↓</Text></TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={cal.dowRow}>
+            {CAL_DOW.map((d,i) => (
+              <View key={i} style={cal.dowCell}>
+                <Text style={[cal.dowText, { color: c.grey }]}>{d}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={cal.grid}>
+            {cells.map((cell, i) => {
+              const s = toLocalStr(cell.date);
+              const selected = s === value;
+              const isToday  = s === todayStr;
+              const disabled = !!(minDate && s < minDate);
+              return (
+                <TouchableOpacity
+                  key={i} style={[cal.cell, selected && cal.cellSelected]}
+                  onPress={() => !disabled && pick(s)} disabled={disabled} activeOpacity={0.7}
+                >
+                  <Text style={[
+                    cal.cellText,
+                    { color: cell.in ? c.black : c.greyLight },
+                    selected && { color: '#fff', fontWeight: '700' },
+                    isToday && !selected && { color: Colors.orange, fontWeight: '700' },
+                    disabled && { opacity: 0.3 },
+                  ]}>
+                    {cell.date.getDate()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={[cal.footer, { borderTopColor: c.borderFaint }]}>
+            <TouchableOpacity onPress={() => { onChange(''); setOpen(false); }}>
+              <Text style={cal.footerBtn}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => pick(todayStr)}>
+              <Text style={cal.footerBtn}>Today</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const cal = StyleSheet.create({
+  input:       { flexDirection:'row', alignItems:'center', justifyContent:'space-between', borderWidth:1, borderRadius:10, paddingHorizontal:12, paddingVertical:10, gap:8 },
+  inputText:   { fontSize:14, flex:1 },
+  dropdown:    { borderWidth:1, borderRadius:12, marginTop:6, padding:12, zIndex:100 },
+  calHeader:   { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:12 },
+  monthYear:   { fontSize:15, fontWeight:'700' },
+  navArrow:    { fontSize:16, fontWeight:'600', paddingHorizontal:4 },
+  dowRow:      { flexDirection:'row', marginBottom:4 },
+  dowCell:     { flex:1, alignItems:'center', paddingVertical:4 },
+  dowText:     { fontSize:12, fontWeight:'600' },
+  grid:        { flexDirection:'row', flexWrap:'wrap' },
+  cell:        { width:`${100/7}%` as any, aspectRatio:1, alignItems:'center', justifyContent:'center', borderRadius:4 },
+  cellSelected:{ backgroundColor: Colors.orange },
+  cellText:    { fontSize:13 },
+  footer:      { flexDirection:'row', justifyContent:'space-between', marginTop:10, paddingTop:10, borderTopWidth:1 },
+  footerBtn:   { fontSize:14, fontWeight:'600', color: Colors.orange },
+});
+
 export default function VenuesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -106,8 +245,6 @@ export default function VenuesScreen() {
   const [locationCoords, setLocationCoords]   = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius]                   = useState<number | null>(null);
   const [openPanel, setOpenPanel]             = useState<PanelKey>(null);
-  const [showDatePicker, setShowDatePicker]   = useState(false);
-  const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end'>('start');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -171,23 +308,6 @@ export default function VenuesScreen() {
     if (!iso) return '';
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${y}`;
-  }
-
-  function openNativeDatePicker(target: 'start' | 'end') {
-    setDatePickerTarget(target);
-    setShowDatePicker(true);
-  }
-
-  function onDatePickerChange(_: any, selectedDate?: Date) {
-    setShowDatePicker(false);
-    if (!selectedDate) return;
-    const iso = selectedDate.toISOString().slice(0, 10);
-    if (datePickerTarget === 'start') {
-      setDateStart(iso);
-      if (dateEnd && iso > dateEnd) setDateEnd(iso);
-    } else {
-      setDateEnd(iso);
-    }
   }
 
   function toggleFee(key: string) {
@@ -267,7 +387,8 @@ export default function VenuesScreen() {
   const capActive  = capacity !== 'any';
 
   const feeLabel  = feeActive  ? (feeRanges.length === 1 ? FEE_RANGES.find(r => r.key === feeRanges[0])?.label ?? 'Fee' : `${feeRanges.length} ranges`) : '$ Fee';
-  const dateLabel = dateActive ? (dateEnd ? `${dateStart} – ${dateEnd}` : dateStart) : 'Availability';
+  const fmtDate = (s: string) => s.split('-').reverse().join('/');
+  const dateLabel = dateActive ? (dateEnd ? `${fmtDate(dateStart)} – ${fmtDate(dateEnd)}` : fmtDate(dateStart)) : 'Availability';
   const capLabel  = capActive  ? CAPACITY_OPTIONS.find(o => o.value === capacity)?.label ?? 'Capacity' : 'Capacity';
 
   // ── Shared sidebar (web) ──────────────────────────────────────────
@@ -340,20 +461,11 @@ export default function VenuesScreen() {
       <View style={st.filterSection}>
         <Text style={st.filterLabel}>AVAILABILITY</Text>
         <Text style={st.filterSubLabel}>FROM</Text>
-        <TextInput
-          style={[st.filterInput, { marginBottom: 8 }]}
-          placeholder="YYYY-MM-DD" placeholderTextColor="#999"
-          value={dateStart}
-          onChangeText={val => { setDateStart(val); if (dateEnd && val > dateEnd) setDateEnd(val); }}
-          {...(isWeb ? { type: 'date' } as any : {})}
-        />
+        <View style={{ marginBottom: 8 }}>
+          <CalendarPicker value={dateStart} onChange={v => { setDateStart(v); if (dateEnd && v && v > dateEnd) setDateEnd(v); }} colors={colors} />
+        </View>
         <Text style={st.filterSubLabel}>TO</Text>
-        <TextInput
-          style={st.filterInput}
-          placeholder="YYYY-MM-DD" placeholderTextColor="#999"
-          value={dateEnd} onChangeText={setDateEnd}
-          {...(isWeb ? { type: 'date', min: dateStart || undefined } as any : {})}
-        />
+        <CalendarPicker value={dateEnd} onChange={setDateEnd} minDate={dateStart || undefined} colors={colors} />
       </View>
 
       {/* CAPACITY */}
@@ -577,8 +689,8 @@ export default function VenuesScreen() {
               : <Text style={[st.slotsText, { color: c.grey }]}><Text style={st.slotsCount}>{openSlots}</Text>{` open slot${openSlots !== 1 ? 's' : ''}`}</Text>
             }
             <View style={st.cardActions}>
-              <TouchableOpacity style={[st.profileBtn, { borderColor: c.border }]} onPress={() => router.push(`/venue/${item.id}`)}>
-                <Text style={[st.profileBtnText, { color: c.grey }]}>Profile</Text>
+              <TouchableOpacity style={st.profileBtn} onPress={() => router.push(`/venue/${item.id}`)}>
+                <Text style={st.profileBtnText}>Profile</Text>
               </TouchableOpacity>
               <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}>
                 <Text style={st.actionBtnText}>Timetable</Text>
@@ -641,19 +753,6 @@ export default function VenuesScreen() {
           <View style={{ height: 48 }} />
         </View>
       </ScrollView>
-      {showDatePicker && (
-        <DateTimePicker
-          value={
-            datePickerTarget === 'start'
-              ? (dateStart ? new Date(dateStart) : new Date())
-              : (dateEnd ? new Date(dateEnd) : (dateStart ? new Date(dateStart) : new Date()))
-          }
-          mode="date"
-          display="default"
-          onChange={onDatePickerChange}
-          minimumDate={datePickerTarget === 'end' && dateStart ? new Date(dateStart) : undefined}
-        />
-      )}
     </SafeAreaView>
   );
 }
@@ -770,8 +869,8 @@ const st = StyleSheet.create({
   slotsCount:     { fontSize: 13, color: Colors.orange, fontWeight: '700' },
   slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
   cardActions:    { flexDirection: 'row', gap: 8 },
-  profileBtn:     { borderWidth: 1, borderColor: '#cccccc', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7, backgroundColor: 'transparent' },
-  profileBtnText: { fontSize: 13, fontWeight: '600', color: '#444444' },
+  profileBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
+  profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
   actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 });

@@ -141,22 +141,28 @@ function EnquiryCard({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean 
             <Text style={ec.sectionBody}>{enquiry.about}</Text>
           </View>
         ) : null}
-        {enquiry.songs ? (
+        {enquiry.songs?.length ? (
           <View style={ec.section}>
             <Text style={ec.sectionLabel}>MUSIC</Text>
-            <Text style={ec.sectionBody}>{enquiry.songs}</Text>
+            {enquiry.songs.map((song: any, i: number) => (
+              <Text key={i} style={ec.sectionBody}>{song.title}{song.url ? ` — ${song.url}` : ''}{song.notes ? ` (${song.notes})` : ''}</Text>
+            ))}
           </View>
         ) : null}
-        {enquiry.gigHistory ? (
+        {enquiry.gigHistory?.length ? (
           <View style={ec.section}>
             <Text style={ec.sectionLabel}>GIG HISTORY</Text>
-            <Text style={ec.sectionBody}>{enquiry.gigHistory}</Text>
+            {enquiry.gigHistory.map((gig: any, i: number) => (
+              <Text key={i} style={ec.sectionBody}>{gig.venue}{gig.suburb ? `, ${gig.suburb}` : ''}{gig.date ? ` · ${gig.date}` : ''}{gig.notes ? ` — ${gig.notes}` : ''}</Text>
+            ))}
           </View>
         ) : null}
-        {enquiry.upcomingGigs ? (
+        {enquiry.upcomingGigs?.length ? (
           <View style={ec.section}>
             <Text style={ec.sectionLabel}>UPCOMING GIGS</Text>
-            <Text style={ec.sectionBody}>{enquiry.upcomingGigs}</Text>
+            {enquiry.upcomingGigs.map((gig: any, i: number) => (
+              <Text key={i} style={ec.sectionBody}>{gig.venue}{gig.suburb ? `, ${gig.suburb}` : ''}{gig.date ? ` · ${gig.date}` : ''}{gig.notes ? ` — ${gig.notes}` : ''}</Text>
+            ))}
           </View>
         ) : null}
         {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic) ? (
@@ -168,10 +174,12 @@ function EnquiryCard({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean 
             {enquiry.appleMusic ? <Text style={ec.sectionBody}>Apple Music: {enquiry.appleMusic}</Text> : null}
           </View>
         ) : null}
-        {enquiry.techRider ? (
+        {enquiry.techRider && typeof enquiry.techRider === 'object' && Object.keys(enquiry.techRider).length ? (
           <View style={ec.section}>
             <Text style={ec.sectionLabel}>TECH RIDER</Text>
-            <Text style={ec.sectionBody}>{enquiry.techRider}</Text>
+            {Object.entries(enquiry.techRider).map(([k, v]: [string, any]) => (
+              <Text key={k} style={ec.sectionBody}>{k}: {String(v)}</Text>
+            ))}
           </View>
         ) : null}
         {enquiry.additionalInfo ? (
