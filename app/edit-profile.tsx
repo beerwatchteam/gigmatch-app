@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Switch, Image,
+  TextInput, Alert, ActivityIndicator, Switch, Image, Platform,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -102,6 +102,18 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
       })}
     </View>
   );
+}
+
+// Cross-platform confirm dialog (Alert.alert is a no-op on web)
+function crossConfirm(title: string, message: string, onConfirm: () => void, destructive = false) {
+  if (Platform.OS === 'web') {
+    if ((window as any).confirm(`${title}\n\n${message}`)) onConfirm();
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: destructive ? 'Delete' : 'Confirm', style: destructive ? 'destructive' : 'default', onPress: onConfirm },
+    ]);
+  }
 }
 
 export default function EditProfileScreen() {
@@ -375,25 +387,19 @@ export default function EditProfileScreen() {
                 style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]}
                 onPress={() => {
                   const willDeactivate = profile.settings.listed;
-                  Alert.alert(
+                  crossConfirm(
                     willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?',
                     willDeactivate
                       ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
                       : 'This will make your profile visible to venues again.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Confirm',
-                        style: willDeactivate ? 'destructive' : 'default',
-                        onPress: async () => {
-                          const uid = user?.uid;
-                          if (!uid) return;
-                          const newListed = !willDeactivate;
-                          await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed });
-                          set('settings', { ...profile.settings, listed: newListed });
-                        },
-                      },
-                    ]
+                    async () => {
+                      const uid = user?.uid;
+                      if (!uid) return;
+                      const newListed = !willDeactivate;
+                      await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed });
+                      set('settings', { ...profile.settings, listed: newListed });
+                    },
+                    willDeactivate,
                   );
                 }}
               >
@@ -408,27 +414,21 @@ export default function EditProfileScreen() {
               <TouchableOpacity
                 style={[s.dangerBtn, s.dangerBtnActive]}
                 onPress={() => {
-                  Alert.alert(
+                  crossConfirm(
                     'Delete Account',
                     'Are you sure you want to delete your account? This action cannot be undone.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            const uid = user?.uid;
-                            if (uid) await deleteDoc(doc(db, 'bandProfiles', uid));
-                            if (uid) await deleteDoc(doc(db, 'users', uid));
-                            const cu = auth.currentUser;
-                            if (cu) await deleteUser(cu);
-                          } catch (e: any) {
-                            Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
-                          }
-                        },
-                      },
-                    ]
+                    async () => {
+                      try {
+                        const uid = user?.uid;
+                        if (uid) await deleteDoc(doc(db, 'bandProfiles', uid));
+                        if (uid) await deleteDoc(doc(db, 'users', uid));
+                        const cu = auth.currentUser;
+                        if (cu) await deleteUser(cu);
+                      } catch (e: any) {
+                        Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
+                      }
+                    },
+                    true,
                   );
                 }}
               >

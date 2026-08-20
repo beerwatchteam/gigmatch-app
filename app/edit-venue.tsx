@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Switch, Image,
+  TextInput, Alert, ActivityIndicator, Switch, Image, Platform,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -106,6 +106,18 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
       })}
     </View>
   );
+}
+
+// Cross-platform confirm dialog (Alert.alert is a no-op on web)
+function crossConfirm(title: string, message: string, onConfirm: () => void, destructive = false) {
+  if (Platform.OS === 'web') {
+    if ((window as any).confirm(`${title}\n\n${message}`)) onConfirm();
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: destructive ? 'Delete' : 'Confirm', style: destructive ? 'destructive' : 'default', onPress: onConfirm },
+    ]);
+  }
 }
 
 // ── Main component ────────────────────────────────────────────────
@@ -474,25 +486,19 @@ export default function EditVenueScreen() {
                 style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]}
                 onPress={() => {
                   const willDeactivate = data.settings.listed;
-                  Alert.alert(
+                  crossConfirm(
                     willDeactivate ? 'Deactivate Venue Listing?' : 'Reactivate Venue Listing?',
                     willDeactivate
                       ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
                       : 'This will make your venue visible to musicians again.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Confirm',
-                        style: willDeactivate ? 'destructive' : 'default',
-                        onPress: async () => {
-                          const { venueId } = profile ?? {};
-                          if (!venueId) return;
-                          const newListed = !willDeactivate;
-                          await updateDoc(doc(db, 'venues', venueId), { 'settings.listed': newListed });
-                          set('settings', { ...data.settings, listed: newListed });
-                        },
-                      },
-                    ]
+                    async () => {
+                      const { venueId } = profile ?? {};
+                      if (!venueId) return;
+                      const newListed = !willDeactivate;
+                      await updateDoc(doc(db, 'venues', venueId), { 'settings.listed': newListed });
+                      set('settings', { ...data.settings, listed: newListed });
+                    },
+                    willDeactivate,
                   );
                 }}
               >
@@ -507,27 +513,21 @@ export default function EditVenueScreen() {
               <TouchableOpacity
                 style={[s.dangerBtn, s.dangerBtnActive]}
                 onPress={() => {
-                  Alert.alert(
+                  crossConfirm(
                     'Delete Account',
                     'Are you sure you want to delete your account? This action cannot be undone.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            const { venueId, uid } = profile ?? {};
-                            if (venueId) await deleteDoc(doc(db, 'venues', venueId));
-                            if (uid)     await deleteDoc(doc(db, 'users', uid));
-                            const cu = auth.currentUser;
-                            if (cu) await deleteUser(cu);
-                          } catch (e: any) {
-                            Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
-                          }
-                        },
-                      },
-                    ]
+                    async () => {
+                      try {
+                        const { venueId, uid } = profile ?? {};
+                        if (venueId) await deleteDoc(doc(db, 'venues', venueId));
+                        if (uid)     await deleteDoc(doc(db, 'users', uid));
+                        const cu = auth.currentUser;
+                        if (cu) await deleteUser(cu);
+                      } catch (e: any) {
+                        Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
+                      }
+                    },
+                    true,
                   );
                 }}
               >
