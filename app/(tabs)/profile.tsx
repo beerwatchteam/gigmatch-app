@@ -20,8 +20,12 @@ export default function ProfileTab() {
   if (!user) return <Redirect href="/login" />;
 
   if (profile?.type === 'venue' && profile?.venueId) {
-    return <Redirect href="/edit-venue" />;
+    return <Redirect href={`/venue/${profile.venueId}`} />;
   }
 
-  return <Redirect href="/edit-profile" />;
+  if (user) {
+    return <Redirect href={`/musician/${user.uid}`} />;
+  }
+
+  return <Redirect href="/login" />;
 }
