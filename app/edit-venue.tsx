@@ -134,6 +134,7 @@ export default function EditVenueScreen() {
   const [saved, setSaved]         = useState<VenueData>(BLANK);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('Settings');
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
@@ -160,6 +161,7 @@ export default function EditVenueScreen() {
   }, [venueId]);
 
   function set<K extends keyof VenueData>(field: K, value: VenueData[K]) {
+    setJustSaved(false);
     setData(prev => ({ ...prev, [field]: value }));
   }
 
@@ -342,7 +344,7 @@ export default function EditVenueScreen() {
       await updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots });
       setSaved(data);
       setShowErrors(false);
-      Alert.alert('Saved', 'Your venue profile has been updated.');
+      setJustSaved(true);
     } catch (e: any) {
       Alert.alert('Save failed', e.message);
     } finally {
@@ -411,8 +413,8 @@ export default function EditVenueScreen() {
               <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
                 <Text style={[s.backBtnInlineText, { color: colors.grey }]}>Back</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-                <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+              <TouchableOpacity style={[s.saveBtn, (saving || justSaved) && { opacity: justSaved ? 1 : 0.6 }, justSaved && { backgroundColor: '#22c55e' }]} onPress={handleSave} disabled={saving}>
+                <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -459,16 +461,6 @@ export default function EditVenueScreen() {
               <Text style={[s.checkLabel, { color: colors.black }]}>Email me enquiry reminders</Text>
             </TouchableOpacity>
 
-            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Visibility</Text>
-            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>Listed on GigMatch</Text>
-              <Switch
-                value={data.settings.listed}
-                onValueChange={v => set('settings', { ...data.settings, listed: v })}
-                trackColor={{ true: Colors.orange }}
-                thumbColor="#fff"
-              />
-            </View>
 
             <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Account</Text>
             <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={toggleDark}>

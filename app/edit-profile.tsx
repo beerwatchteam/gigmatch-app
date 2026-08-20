@@ -129,6 +129,7 @@ export default function EditProfileScreen() {
   const [saved,   setSaved]   = useState<Profile>(BLANK);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [activeTab, setActiveTab] = useState('Settings');
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
@@ -151,6 +152,7 @@ export default function EditProfileScreen() {
   }, [uid]);
 
   function set<K extends keyof Profile>(field: K, value: Profile[K]) {
+    setJustSaved(false);
     setProfile(prev => ({ ...prev, [field]: value }));
   }
 
@@ -254,7 +256,7 @@ export default function EditProfileScreen() {
       originalUsername.current = newUsername;
       setSaved(profile);
       setShowErrors(false);
-      Alert.alert('Saved', 'Your profile has been updated.');
+      setJustSaved(true);
     } catch (e: any) {
       Alert.alert('Save failed', e.message);
     } finally {
@@ -316,8 +318,8 @@ export default function EditProfileScreen() {
               <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
                 <Text style={[s.backBtnInlineText, { color: colors.grey }]}>Back</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
-                <Text style={s.saveBtnText}>{saving ? 'Saving…' : 'Save'}</Text>
+              <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }, justSaved && { backgroundColor: '#22c55e' }]} onPress={handleSave} disabled={saving}>
+                <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -363,12 +365,6 @@ export default function EditProfileScreen() {
               </View>
               <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
             </TouchableOpacity>
-
-            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Visibility</Text>
-            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>Listed on GigMatch</Text>
-              <Switch value={profile.settings.listed} onValueChange={v => set('settings', { ...profile.settings, listed: v })} trackColor={{ true: Colors.orange }} thumbColor="#fff" />
-            </View>
 
             <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Account</Text>
             <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={toggleDark}>
