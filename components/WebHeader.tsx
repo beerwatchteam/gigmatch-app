@@ -26,6 +26,11 @@ export default function WebHeader() {
     return pathname.includes(segment);
   };
 
+  const isProfileActive =
+    pathname.includes('profile') ||
+    pathname.includes('edit-venue') ||
+    pathname.includes('edit-profile');
+
   return (
     <View style={[styles.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       {/* Logo */}
@@ -36,8 +41,8 @@ export default function WebHeader() {
         </View>
       </TouchableOpacity>
 
-      {/* Nav links */}
-      <View style={styles.nav}>
+      {/* Nav links — absolutely centred in the bar */}
+      <View style={styles.nav} pointerEvents="box-none">
         {NAV_LINKS.map(link => {
           const isInbox = link.label === 'Inbox';
           return (
@@ -61,14 +66,10 @@ export default function WebHeader() {
         })}
         {user ? (
           <TouchableOpacity
-            style={[styles.link, isActive('profile') && styles.linkActive]}
-            onPress={() =>
-              profile?.type === 'venue' && profile.venueId
-                ? router.push(`/venue/${profile.venueId}`)
-                : router.push('/(tabs)/profile')
-            }
+            style={[styles.link, isProfileActive && styles.linkActive]}
+            onPress={() => router.push('/(tabs)/profile')}
           >
-            <Text style={[styles.linkText, isActive('profile') && styles.linkTextActive]}>
+            <Text style={[styles.linkText, { color: colors.black }, isProfileActive && styles.linkTextActive]}>
               {profile?.type === 'venue' ? 'My Venue' : 'My Profile'}
             </Text>
           </TouchableOpacity>
@@ -126,15 +127,18 @@ const styles = StyleSheet.create({
   },
   betaText: { fontSize: 10, color: Colors.grey, fontWeight: '600' },
   nav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
-    flex: 1,
   },
   link: {
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 8,
   },
   linkActive: {
     backgroundColor: 'rgba(250,131,12,0.12)',
@@ -152,6 +156,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginLeft: 'auto',
   },
   logoutBtn: {
     borderWidth: 1,
