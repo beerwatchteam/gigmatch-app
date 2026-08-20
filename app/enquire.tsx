@@ -97,12 +97,21 @@ export default function EnquireScreen() {
     }
   }
 
+  // Firestore rejects undefined values — strip them before saving
+  function clean(obj: Record<string, any>): Record<string, any> {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, v && typeof v === 'object' && !Array.isArray(v) ? clean(v) : v])
+    );
+  }
+
   async function handleSubmit() {
     if (!user || !profile) return;
     setSubmitting(true);
     setError(null);
     try {
-      await addEnquiry({
+      await addEnquiry(clean({
         bandName:    band.name || profile?.displayName || user.email || 'Unknown',
         venueName:   params.venueName,
         venueId:     params.venueId,
@@ -131,7 +140,7 @@ export default function EnquireScreen() {
         ...(sections.techRider   && { techRider: band.techRider, stagePlot: band.stagePlot, inputList: band.inputList }),
         email: band.email,
         phone: band.phone,
-      });
+      }) as any);
       setSubmitted(true);
     } catch (e: any) {
       setError(e.message || 'Could not submit enquiry. Please try again.');
