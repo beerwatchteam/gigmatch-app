@@ -15,6 +15,7 @@ import { signOut, deleteUser } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
@@ -45,6 +46,7 @@ const BLANK: VenueData = {
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
   photos: [], videos: [],
+  photoPosition: { x: 50, y: 50 },
 };
 
 const TABS = ['Settings','Basic Info','Rooms','Gig Nights','Tech Specs','Photos & Videos'];
@@ -390,15 +392,15 @@ export default function EditVenueScreen() {
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
-          <TouchableOpacity onPress={pickBannerPhoto} style={s.banner}>
-            {data.photoUrl
-              ? <Image source={{ uri: data.photoUrl }} style={s.bannerImg} />
-              : <View style={s.bannerPlaceholder}>
-                  <Text style={s.bannerPlaceholderText}>{photoUploading ? 'Uploading…' : 'Tap to add venue photo *'}</Text>
-                </View>
-            }
-            <View style={s.bannerEditBadge}><Text style={s.bannerEditBadgeText}>{data.photoUrl ? 'Change photo' : '+ Photo'}</Text></View>
-          </TouchableOpacity>
+          <RepositionablePhoto
+            uri={data.photoUrl || null}
+            position={data.photoPosition ?? { x: 50, y: 50 }}
+            onPositionChange={pos => set('photoPosition', pos)}
+            onChangePhoto={pickBannerPhoto}
+            height={220}
+            uploading={photoUploading}
+            placeholderText="Tap to add venue photo"
+          />
 
           <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>

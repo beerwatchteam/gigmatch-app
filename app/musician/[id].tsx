@@ -13,6 +13,28 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
+const BANNER_SCALE = 1.6;
+
+function PositionedBanner({ uri, position, height }: { uri: string; position?: { x: number; y: number }; height: number }) {
+  const [w, setW] = useState(0);
+  const pos = position ?? { x: 50, y: 50 };
+  const tx = w ? -(pos.x / 100) * (BANNER_SCALE - 1) * w : 0;
+  const ty = -(pos.y / 100) * (BANNER_SCALE - 1) * height;
+  return (
+    <View style={{ height, overflow: 'hidden' }} onLayout={e => setW(e.nativeEvent.layout.width)}>
+      <Image
+        source={{ uri }}
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          width: `${BANNER_SCALE * 100}%` as any,
+          height: BANNER_SCALE * height,
+          transform: [{ translateX: tx }, { translateY: ty }],
+        } as any}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
 const MAX_DESC = 320;
 
 const PLATFORMS = [
@@ -35,6 +57,7 @@ type Musician = {
   genre?: string[];
   otherGenres?: string;
   otherArtistType?: string;
+  photoPosition?: { x: number; y: number };
   about?: string;
   photoUrl?: string;
   email?: string;
@@ -311,7 +334,7 @@ export default function MusicianScreen() {
       <ScrollView>
         {/* Hero banner */}
         {musician.photoUrl ? (
-          <Image source={{ uri: musician.photoUrl }} style={styles.banner} />
+          <PositionedBanner uri={musician.photoUrl} position={musician.photoPosition} height={280} />
         ) : (
           <View style={styles.bannerPlaceholder} />
         )}

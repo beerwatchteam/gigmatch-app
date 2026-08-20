@@ -14,6 +14,7 @@ import { signOut, deleteUser } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const ACT_TYPES = ['Band','Solo','Duo','DJ','Other'];
@@ -31,7 +32,7 @@ type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; location: string;
   email: string; phone: string; feeMin: string; feeMax: string;
-  about: string; photoUrl: string;
+  about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
   customLinks: { label: string; url: string }[];
   songs: Song[]; gigHistory: Gig[]; upcomingGigs: Gig[];
@@ -42,7 +43,7 @@ type Profile = {
 
 const BLANK: Profile = {
   name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', location: '', email: '', phone: '',
-  feeMin: '', feeMax: '', about: '', photoUrl: '',
+  feeMin: '', feeMax: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
   techRider: {}, photos: [], videos: [],
@@ -296,15 +297,15 @@ export default function EditProfileScreen() {
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
-          <TouchableOpacity onPress={pickBannerPhoto} style={s.banner}>
-            {profile.photoUrl
-              ? <Image source={{ uri: profile.photoUrl }} style={s.bannerImg} />
-              : <View style={s.bannerPlaceholder}>
-                  <Text style={s.bannerPlaceholderText}>{photoUploading ? 'Uploading…' : 'Tap to add profile photo'}</Text>
-                </View>
-            }
-            <View style={s.bannerEditBadge}><Text style={s.bannerEditBadgeText}>{profile.photoUrl ? 'Change photo' : '+ Photo'}</Text></View>
-          </TouchableOpacity>
+          <RepositionablePhoto
+            uri={profile.photoUrl || null}
+            position={profile.photoPosition ?? { x: 50, y: 50 }}
+            onPositionChange={pos => set('photoPosition', pos)}
+            onChangePhoto={pickBannerPhoto}
+            height={220}
+            uploading={photoUploading}
+            placeholderText="Tap to add profile photo"
+          />
 
           <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>

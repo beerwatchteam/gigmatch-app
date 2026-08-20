@@ -75,6 +75,7 @@ type Venue = {
   genres?: string[];
   genrePreferences?: string[];
   photoUrl?: string;
+  photoPosition?: { x: number; y: number };
   photos?: string[];
   videos?: string[];
   capacity?: number;
@@ -105,6 +106,29 @@ const LONG_MONTHS  = ['January','February','March','April','May','June','July','
 const DOW_HEADERS  = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const MAX_DESC = 280;
 const isWeb = Platform.OS === 'web';
+const BANNER_SCALE = 1.6;
+
+// ── Positioned banner image (respects saved focal point) ─────────────
+function PositionedBanner({ uri, position, height }: { uri: string; position?: { x: number; y: number }; height: number }) {
+  const [w, setW] = useState(0);
+  const pos = position ?? { x: 50, y: 50 };
+  const tx = w ? -(pos.x / 100) * (BANNER_SCALE - 1) * w : 0;
+  const ty = -(pos.y / 100) * (BANNER_SCALE - 1) * height;
+  return (
+    <View style={{ height, overflow: 'hidden' }} onLayout={e => setW(e.nativeEvent.layout.width)}>
+      <Image
+        source={{ uri }}
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          width: `${BANNER_SCALE * 100}%` as any,
+          height: BANNER_SCALE * height,
+          transform: [{ translateX: tx }, { translateY: ty }],
+        } as any}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
 
 // ── Date helpers ─────────────────────────────────────────────────────
 
@@ -267,7 +291,7 @@ export default function VenueScreen() {
         {/* ── Banner ── */}
         <View>
           {photo
-            ? <Image source={{ uri: photo }} style={s.banner} />
+            ? <PositionedBanner uri={photo} position={venue.photoPosition} height={isWeb ? 220 : 240} />
             : <View style={s.bannerPlaceholder}><Text style={s.bannerPlaceholderText}>venue photo</Text></View>
           }
           <TouchableOpacity style={s.backOverlay} onPress={handleBack}>
