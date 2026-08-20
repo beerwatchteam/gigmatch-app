@@ -127,7 +127,6 @@ export function RepositionablePhoto({
       <View
         style={[styles.container, { height }, repositioning && styles.containerActive]}
         onLayout={onLayout}
-        {...(uri && repositioning ? panResponder.panHandlers : {})}
       >
         {uri ? (
           <Animated.Image
@@ -149,6 +148,12 @@ export function RepositionablePhoto({
               {uploading ? 'Uploading…' : placeholderText}
             </Text>
           </TouchableOpacity>
+        )}
+
+        {/* Transparent overlay captures drag events when repositioning,
+            preventing the browser from triggering native image drag */}
+        {uri && repositioning && (
+          <View style={styles.dragOverlay} {...panResponder.panHandlers} />
         )}
 
         {repositioning && (
@@ -190,7 +195,6 @@ const styles = StyleSheet.create({
   containerActive: {
     borderWidth: 2,
     borderColor: Colors.orange,
-    cursor: 'grab' as any,
   },
   img: {
     position: 'absolute',
@@ -205,6 +209,11 @@ const styles = StyleSheet.create({
   placeholderText: {
     fontSize: 14,
     color: Colors.greyLight,
+  },
+  dragOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    cursor: 'grab' as any,
   },
   hint: {
     position: 'absolute',
