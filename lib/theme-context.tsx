@@ -25,7 +25,7 @@ const STORAGE_KEY = '@gigmatch_theme';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemScheme            = useColorScheme();
-  const [themeMode, setMode]    = useState<ThemeMode>('system');
+  const [themeMode, setMode]    = useState<ThemeMode>('light');
   const [ready, setReady]       = useState(false);
 
   useEffect(() => {
