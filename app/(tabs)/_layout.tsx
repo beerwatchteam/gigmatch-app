@@ -1,5 +1,6 @@
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Tabs, usePathname } from 'expo-router';
+import { Text } from '@/components/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
@@ -28,9 +29,8 @@ function TopTabBar({ state, descriptors, navigation }: any) {
       ]}
     >
       {state.routes.map((route: any, i: number) => {
-        if (route.name === 'index') return null;
-
         const { options } = descriptors[route.key];
+        if (route.name === 'index' || options.href === null) return null;
         const focused = (state.index === i) || (route.name === 'profile' && onProfileScreen);
         const badge   = options.tabBarBadge;
 
@@ -153,7 +153,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="index"     options={{ href: null }} />
         <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
-        <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined }} />
+        <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
         <Tabs.Screen name="profile"   options={{ title: profileTabTitle }} />
       </Tabs>
     </View>

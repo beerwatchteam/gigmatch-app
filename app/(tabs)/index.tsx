@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, Platform, Image,
+  View, StyleSheet, TouchableOpacity, ScrollView, FlatList, Platform, Image,
 } from 'react-native';
+import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, getDocs, limit, query } from 'firebase/firestore';

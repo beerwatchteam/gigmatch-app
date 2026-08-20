@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from '@/components/Text';
 import { useRouter, usePathname } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -45,6 +46,7 @@ export default function WebHeader() {
       <View style={styles.nav} pointerEvents="box-none">
         {NAV_LINKS.map(link => {
           const isInbox = link.label === 'Inbox';
+          if (isInbox && !user) return null;
           return (
             <TouchableOpacity
               key={link.href}

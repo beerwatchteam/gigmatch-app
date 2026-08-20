@@ -1,10 +1,15 @@
+import { useEffect } from 'react';
 import { View, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider, useTheme } from '@/lib/theme-context';
 import WebHeader from '@/components/WebHeader';
+
+SplashScreen.preventAutoHideAsync();
 
 const isWeb = Platform.OS === 'web';
 
@@ -28,6 +33,19 @@ function AppShell() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    'Satoshi-Regular': require('../assets/fonts/Satoshi-Regular.ttf'),
+    'Satoshi-Medium':  require('../assets/fonts/Satoshi-Medium.ttf'),
+    'Satoshi-Bold':    require('../assets/fonts/Satoshi-Bold.ttf'),
+    'Satoshi-Black':   require('../assets/fonts/Satoshi-Black.ttf'),
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>

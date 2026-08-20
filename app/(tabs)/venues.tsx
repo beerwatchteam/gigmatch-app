@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, RefreshControl, Image,
   ScrollView, Platform,
 } from 'react-native';
+import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, getDocs } from 'firebase/firestore';

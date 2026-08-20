@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Image, Platform, Linking,
 } from 'react-native';
+import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, onSnapshot } from 'firebase/firestore';

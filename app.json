@@ -38,7 +38,9 @@
           "cameraPermission": "GigMatch uses your camera to upload images."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-font",
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true
