@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image, Platform, Linking,
+  ActivityIndicator, Image, Platform, Linking, Dimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
+import WebView from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -878,17 +879,153 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
   );
 }
 
+// ── Media helpers ──────────────────────────────────────────────────────
+
+function toEmbedUrl(url: string): string {
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}?playsinline=1`;
+  const vimeo = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  return url;
+}
+
+function isEmbedVideo(url: string): boolean {
+  return /youtube\.com|youtu\.be|vimeo\.com/.test(url);
+}
+
+// ── MediaCarousel ──────────────────────────────────────────────────────
+
+const screenW = Dimensions.get('window').width;
+const isWeb   = Platform.OS === 'web';
+
+function MediaCarousel({
+  items,
+  renderSlide,
+}: {
+  items: string[];
+  renderSlide: (url: string, i: number) => React.ReactNode;
+}) {
+  const [index, setIndex] = useState(0);
+  if (!items.length) return null;
+
+  const prev = () => setIndex(i => (i - 1 + items.length) % items.length);
+  const next = () => setIndex(i => (i + 1) % items.length);
+
+  return (
+    <View style={mc.wrap}>
+      {renderSlide(items[index], index)}
+
+      {items.length > 1 && (
+        <>
+          <TouchableOpacity style={[mc.arrow, mc.arrowLeft]} onPress={prev} activeOpacity={0.8}>
+            <Text style={mc.arrowText}>‹</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[mc.arrow, mc.arrowRight]} onPress={next} activeOpacity={0.8}>
+            <Text style={mc.arrowText}>›</Text>
+          </TouchableOpacity>
+          <View style={mc.dots}>
+            {items.map((_, i) => (
+              <TouchableOpacity key={i} onPress={() => setIndex(i)}>
+                <View style={[mc.dot, i === index && mc.dotActive]} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+const mc = StyleSheet.create({
+  wrap:      { position: 'relative', borderRadius: 12, overflow: 'hidden', backgroundColor: '#111111', aspectRatio: 16 / 9, width: '100%' },
+  arrow: {
+    position: 'absolute', top: '50%' as any, marginTop: -19,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center', justifyContent: 'center', zIndex: 2,
+  },
+  arrowLeft:  { left: 10 },
+  arrowRight: { right: 10 },
+  arrowText:  { fontSize: 24, color: '#ffffff', lineHeight: 30 },
+  dots:       { position: 'absolute', bottom: 10, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6, zIndex: 2 },
+  dot:        { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)' },
+  dotActive:  { backgroundColor: '#ffffff' },
+});
+
+// ── VideoPlayer ────────────────────────────────────────────────────────
+
+function VideoPlayer({ url }: { url: string }) {
+  const embed    = isEmbedVideo(url);
+  const embedUrl = toEmbedUrl(url);
+
+  // Web: use native browser elements via inline style trick
+  if (isWeb) {
+    if (embed) {
+      return (
+        <WebView
+          source={{ uri: embedUrl }}
+          style={{ flex: 1 }}
+          allowsFullscreenVideo
+          allowsInlineMediaPlayback
+        />
+      );
+    }
+    // Direct video on web — WebView on web renders as iframe, so wrap in HTML
+    return (
+      <WebView
+        source={{
+          html: `<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100vh">
+            <video src="${url}" controls playsinline style="width:100%;max-height:100%;outline:none"></video>
+          </body></html>`,
+        }}
+        style={{ flex: 1 }}
+        allowsFullscreenVideo
+        allowsInlineMediaPlayback
+      />
+    );
+  }
+
+  // Native
+  if (embed) {
+    return (
+      <WebView
+        source={{ uri: embedUrl }}
+        style={{ flex: 1 }}
+        allowsFullscreenVideo
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+      />
+    );
+  }
+
+  // Native direct video — HTML5 video in WebView
+  return (
+    <WebView
+      source={{
+        html: `<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100vh">
+          <video src="${url}" controls playsinline style="width:100%;max-height:100%;outline:none"></video>
+        </body></html>`,
+      }}
+      style={{ flex: 1 }}
+      allowsFullscreenVideo
+      allowsInlineMediaPlayback
+      mediaPlaybackRequiresUserAction={false}
+    />
+  );
+}
+
 // ── Photos & Videos tab ───────────────────────────────────────────────
 
 function PhotosTab({ venue }: { venue: Venue }) {
   const { colors } = useTheme();
   const photos = [
     ...(venue.photoUrl ? [venue.photoUrl] : []),
-    ...(venue.photos || []).filter(url => url !== venue.photoUrl),
+    ...(venue.photos || []).filter((url: string) => url !== venue.photoUrl),
   ];
   const videos = venue.videos || [];
+  const hasContent = photos.length > 0 || videos.length > 0;
 
-  if (photos.length === 0 && videos.length === 0) {
+  if (!hasContent) {
     return (
       <View style={[s.tabBody, { alignItems: 'center', paddingTop: 60 }]}>
         <Text style={[s.noSlotsText, { color: colors.grey }]}>No photos or videos yet.</Text>
@@ -897,25 +1034,25 @@ function PhotosTab({ venue }: { venue: Venue }) {
   }
 
   return (
-    <View style={s.tabBody}>
+    <View style={[s.tabBody, isWeb && pt.webGrid]}>
       {photos.length > 0 && (
-        <View style={s.section}>
+        <View style={[pt.mediaSection, isWeb && pt.mediaSectionWeb]}>
           <Text style={[s.sectionTitle, { color: colors.grey }]}>Photos</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {photos.map((url, i) => (
-              <Image key={i} source={{ uri: url }} style={pt.photo} />
-            ))}
-          </ScrollView>
+          <MediaCarousel
+            items={photos}
+            renderSlide={(url) => (
+              <Image source={{ uri: url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            )}
+          />
         </View>
       )}
       {videos.length > 0 && (
-        <View style={s.section}>
+        <View style={[pt.mediaSection, isWeb && pt.mediaSectionWeb]}>
           <Text style={[s.sectionTitle, { color: colors.grey }]}>Videos</Text>
-          {videos.map((url, i) => (
-            <TouchableOpacity key={i} style={[pt.videoCard, { borderColor: colors.border }]} onPress={() => Linking.openURL(url)}>
-              <Text style={pt.videoCardText}>Watch video {i + 1} →</Text>
-            </TouchableOpacity>
-          ))}
+          <MediaCarousel
+            items={videos}
+            renderSlide={(url) => <VideoPlayer url={url} />}
+          />
         </View>
       )}
     </View>
@@ -1204,11 +1341,11 @@ const ns = StyleSheet.create({
   ticketBtnText:    { fontSize: 13, color: Colors.orange, fontWeight: '700' },
 });
 
-// Photos tab styles
+// Photos & Videos tab styles
 const pt = StyleSheet.create({
-  photo:        { width: 240, height: 160, borderRadius: 10, marginRight: 12, backgroundColor: '#eeeeee' },
-  videoCard:    { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 8, padding: 14, marginBottom: 8 },
-  videoCardText:{ fontSize: 14, color: Colors.orange, fontWeight: '600' },
+  webGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 32, alignItems: 'flex-start' },
+  mediaSection:     { marginBottom: 24 },
+  mediaSectionWeb:  { flex: 1, minWidth: 280 },
 });
 
 // Rooms & tech styles

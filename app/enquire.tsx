@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator,
+  TextInput, ActivityIndicator, Platform,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,50 +13,53 @@ import { useAuth } from '@/lib/auth-context';
 import { addEnquiry } from '@/lib/useEnquiries';
 import { useTheme } from '@/lib/theme-context';
 
-const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
-const SLOT_PREFS  = ['Headline', 'Support', 'Either'];
+const isWeb = Platform.OS === 'web';
+
+const SET_LENGTHS  = ['30 min', '45 min', '60 min', '90 min'];
+const SLOT_PREFS   = ['Headline', 'Support Act', 'Either'];
 
 type SectionKey = 'about' | 'music' | 'gigHistory' | 'upcomingGigs' | 'socials' | 'techRider' | 'photos';
 const SECTIONS: { key: SectionKey; label: string }[] = [
-  { key: 'about',       label: 'Bio / About' },
-  { key: 'music',       label: 'Music Links' },
-  { key: 'gigHistory',  label: 'Gig History' },
-  { key: 'upcomingGigs',label: 'Upcoming Gigs' },
-  { key: 'socials',     label: 'Social Links' },
-  { key: 'techRider',   label: 'Tech Rider' },
-  { key: 'photos',      label: 'Photos' },
+  { key: 'about',        label: 'About'           },
+  { key: 'music',        label: 'Music'            },
+  { key: 'gigHistory',   label: 'Gig History'      },
+  { key: 'upcomingGigs', label: 'Upcoming Gigs'    },
+  { key: 'socials',      label: 'Socials'          },
+  { key: 'techRider',    label: 'Tech Rider'       },
+  { key: 'photos',       label: 'Photos & Videos'  },
 ];
+
+function truncate(str: string | undefined, n: number): string {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
 
 export default function EnquireScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { colors } = useTheme();
   const params = useLocalSearchParams<{
-    venueId: string;
-    venueName: string;
-    day: string;
-    date?: string;
-    time: string;
-    room?: string;
-    slotType: string;
+    venueId: string; venueName: string;
+    day: string; date?: string; time: string;
+    room?: string; slotType: string;
   }>();
 
-  const [musicianDoc, setMusicianDoc] = useState<Record<string, any> | null>(null);
-  const [setLength,     setSetLength]     = useState('45 min');
-  const [slotPref,      setSlotPref]      = useState('Either');
-  const [additionalInfo,setAdditionalInfo]= useState('');
+  const [band, setBand]               = useState<Record<string, any>>({});
+  const [setLength, setSetLength]     = useState('45 min');
+  const [slotPref, setSlotPref]       = useState('Either');
+  const [additionalInfo, setAdditionalInfo] = useState('');
   const [sections, setSections] = useState<Record<SectionKey, boolean>>({
     about: true, music: true, gigHistory: true, upcomingGigs: true,
-    socials: true, techRider: false, photos: true,
+    socials: true, techRider: true, photos: true,
   });
   const [submitting, setSubmitting] = useState(false);
-  const [submitted,  setSubmitted]  = useState(false);
+  const [submitted, setSubmitted]   = useState(false);
+  const [error, setError]           = useState<string | null>(null);
 
-  // Load full musician profile for snapshot fields
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
-      if (snap.exists()) setMusicianDoc(snap.data());
+      if (snap.exists()) setBand(snap.data());
     }).catch(() => {});
   }, [user?.uid]);
 
@@ -64,16 +67,47 @@ export default function EnquireScreen() {
     setSections(prev => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function sectionPreview(key: SectionKey): string {
+    switch (key) {
+      case 'about':       return truncate(band.about, 80);
+      case 'music':       return (band.songs || []).map((s: any) => s.title).filter(Boolean).join(' · ') || '—';
+      case 'gigHistory':  return (band.gigHistory || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || '—';
+      case 'upcomingGigs':return (band.upcomingGigs || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || '—';
+      case 'socials': {
+        const parts: string[] = [];
+        if (band.email)      parts.push('Email');
+        if (band.phone)      parts.push('Phone');
+        if (band.instagram)  parts.push('Instagram');
+        if (band.tiktok)     parts.push('TikTok');
+        if (band.spotify)    parts.push('Spotify');
+        if (band.appleMusic) parts.push('Apple Music');
+        (band.customLinks || []).filter((l: any) => l.label && l.url).forEach((l: any) => parts.push(l.label));
+        return parts.join(', ') || '—';
+      }
+      case 'techRider': {
+        const parts: string[] = [];
+        if (band.stagePlot)                 parts.push(`Stage plot: ${band.stagePlot}`);
+        if (band.inputList)                 parts.push(`Input list: ${band.inputList}`);
+        if (band.techRider?.monitoring)     parts.push(band.techRider.monitoring);
+        if (band.techRider?.backlineNeeded) parts.push(band.techRider.backlineNeeded);
+        return truncate(parts.join(' · '), 80) || '—';
+      }
+      case 'photos': return band.photoUrl ? 'Profile photo included' : 'No photos uploaded yet';
+      default: return '';
+    }
+  }
+
   async function handleSubmit() {
     if (!user || !profile) return;
     setSubmitting(true);
+    setError(null);
     try {
       await addEnquiry({
-        bandName:   musicianDoc?.name || profile?.displayName || user.email || 'Unknown',
-        venueName:  params.venueName,
-        venueId:    params.venueId,
-        createdBy:  user.uid,
-        status:     'pending',
+        bandName:    band.name || profile?.displayName || user.email || 'Unknown',
+        venueName:   params.venueName,
+        venueId:     params.venueId,
+        createdBy:   user.uid,
+        status:      'pending',
         submittedAt: new Date().toISOString(),
         additionalInfo,
         requestedSlot: {
@@ -81,315 +115,469 @@ export default function EnquireScreen() {
           date:     params.date ?? null,
           time:     params.time,
           room:     params.room ?? null,
-          slotType: params.slotType,
+          slotType: slotPref,
           setLength,
         },
-        slotPreference: slotPref,
         sharedSections: sections,
-        // band profile snapshot — always send core fields
-        genre:      musicianDoc?.genre,
-        location:   musicianDoc?.location,
-        artistType: musicianDoc?.artistType,
-        photoUrl:   musicianDoc?.photoUrl,
-        // conditionally shared fields based on section toggles
-        ...(sections.about       && { about:       musicianDoc?.about }),
-        ...(sections.music       && {
-          songs:      musicianDoc?.songs,
-          spotify:    musicianDoc?.spotify,
-          appleMusic: musicianDoc?.appleMusic,
-          youtube:    musicianDoc?.youtube,
-        }),
-        ...(sections.gigHistory  && { gigHistory:  musicianDoc?.gigHistory }),
-        ...(sections.upcomingGigs&& { upcomingGigs:musicianDoc?.upcomingGigs }),
-        ...(sections.socials     && {
-          instagram:   musicianDoc?.instagram,
-          tiktok:      musicianDoc?.tiktok,
-          facebook:    musicianDoc?.facebook,
-          customLinks: musicianDoc?.customLinks,
-        }),
-        ...(sections.techRider   && {
-          techRider:  musicianDoc?.techRider,
-          stagePlot:  musicianDoc?.stagePlot,
-          inputList:  musicianDoc?.inputList,
-        }),
-        // contact info
-        email:      musicianDoc?.email,
-        phone:      musicianDoc?.phone,
+        genre:      band.genre,
+        location:   band.location,
+        artistType: band.artistType,
+        photoUrl:   sections.photos ? band.photoUrl : undefined,
+        ...(sections.about       && { about:       band.about }),
+        ...(sections.music       && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
+        ...(sections.gigHistory  && { gigHistory:   band.gigHistory }),
+        ...(sections.upcomingGigs&& { upcomingGigs: band.upcomingGigs }),
+        ...(sections.socials     && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
+        ...(sections.techRider   && { techRider: band.techRider, stagePlot: band.stagePlot, inputList: band.inputList }),
+        email: band.email,
+        phone: band.phone,
       });
       setSubmitted(true);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not submit enquiry.');
+      setError(e.message || 'Could not submit enquiry. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  // ── Success screen ──────────────────────────────────────────────────────────
+  const genres: string[] = band.genre ?? [];
+
+  // ── Success ────────────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
-        <View style={styles.successWrap}>
-          <Text style={styles.successIcon}>🎉</Text>
-          <Text style={styles.successTitle}>Enquiry Sent!</Text>
-          <Text style={styles.successSub}>
-            Your enquiry to {params.venueName} has been submitted. You'll hear back via your inbox.
-          </Text>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => router.replace('/(tabs)/inbox')}
-          >
-            <Text style={styles.primaryBtnText}>View Inbox</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.ghostBtn}
-            onPress={() => router.canGoBack() ? router.back() : router.replace(`/venue/${params.venueId}`)}
-          >
-            <Text style={styles.ghostBtnText}>Back to Venue</Text>
-          </TouchableOpacity>
+      <SafeAreaView style={[s.safe, { backgroundColor: isWeb ? 'rgba(0,0,0,0.45)' : colors.bg }]}>
+        <View style={isWeb ? s.webOverlay : { flex: 1 }}>
+          <View style={[s.card, isWeb && s.cardWeb, { backgroundColor: colors.bg }]}>
+            <View style={s.successWrap}>
+              <View style={s.successCircle}>
+                <Text style={s.successCheck}>✓</Text>
+              </View>
+              <Text style={[s.successTitle, { color: colors.black }]}>Enquiry sent to {params.venueName}</Text>
+              <Text style={[s.successSub, { color: colors.grey }]}>You can track this in your Inbox</Text>
+              <TouchableOpacity style={s.sendBtn} onPress={() => router.replace('/(tabs)/inbox')}>
+                <Text style={s.sendBtnText}>View Inbox</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => router.canGoBack() ? router.back() : router.replace(`/venue/${params.venueId}`)}
+              >
+                <Text style={[s.cancelBtnText, { color: colors.black }]}>Back to Venue</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  // ── Main form ───────────────────────────────────────────────────────────────
-  return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top']}>
+  // ── Form ───────────────────────────────────────────────────────────────────
+  const formContent = (
+    <ScrollView
+      contentContainerStyle={[s.scroll, isWeb && s.scrollWeb]}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Enquire</Text>
-        <View style={{ width: 64 }} />
+      <View style={s.formHeader}>
+        <Text style={[s.title, { color: colors.black }]}>Review your enquiry</Text>
+        {isWeb ? (
+          <TouchableOpacity onPress={() => router.back()} style={s.closeBtn}>
+            <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Slot summary */}
-        <View style={[styles.slotCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-          <Text style={[styles.slotVenue, { color: colors.black }]}>{params.venueName}</Text>
-          <Text style={[styles.slotDetail, { color: colors.grey }]}>
-            {params.day}{params.date ? ` · ${params.date}` : ''} · {params.time}
-          </Text>
-          {params.room ? (
-            <Text style={styles.slotDetail}>Room: {params.room}</Text>
-          ) : null}
-          <View style={styles.slotPill}>
-            <Text style={styles.slotPillText}>{params.slotType}</Text>
+      {/* Slot summary */}
+      <View style={[s.slotCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+        <Text style={[s.slotVenue, { color: colors.black }]}>{params.venueName}</Text>
+        <Text style={s.slotDetail}>
+          {params.day}{params.date ? ` · ${params.date}` : ''} · {params.time}
+          {params.room ? ` · ${params.room}` : ''}
+        </Text>
+        {params.slotType ? <Text style={s.slotDetail}>{params.slotType}</Text> : null}
+      </View>
+
+      {/* Set length + Slot preference — side by side */}
+      <View style={s.fieldRow}>
+        <View style={s.fieldCol}>
+          <Text style={[s.fieldLabel, { color: colors.black }]}>Set length</Text>
+          <View style={s.pillGroup}>
+            {SET_LENGTHS.map(l => (
+              <TouchableOpacity
+                key={l}
+                style={[s.pill, { borderColor: colors.border }, setLength === l && s.pillActive]}
+                onPress={() => setSetLength(l)}
+              >
+                <Text style={[s.pillText, { color: colors.grey }, setLength === l && s.pillTextActive]}>{l}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
-
-        {/* Set length */}
-        <Text style={[styles.sectionLabel, { color: colors.black }]}>Set length *</Text>
-        <View style={styles.pillRow}>
-          {SET_LENGTHS.map(l => (
-            <TouchableOpacity
-              key={l}
-              style={[styles.pill, setLength === l && styles.pillActive]}
-              onPress={() => setSetLength(l)}
-            >
-              <Text style={[styles.pillText, setLength === l && styles.pillTextActive]}>{l}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={s.fieldCol}>
+          <Text style={[s.fieldLabel, { color: colors.black }]}>Slot preference</Text>
+          <View style={s.pillGroup}>
+            {SLOT_PREFS.map(p => (
+              <TouchableOpacity
+                key={p}
+                style={[s.pill, { borderColor: colors.border }, slotPref === p && s.pillActive]}
+                onPress={() => setSlotPref(p)}
+              >
+                <Text style={[s.pillText, { color: colors.grey }, slotPref === p && s.pillTextActive]}>{p}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
+      </View>
 
-        {/* Slot preference */}
-        <Text style={[styles.sectionLabel, { color: colors.black }]}>Slot preference</Text>
-        <View style={styles.pillRow}>
-          {SLOT_PREFS.map(p => (
-            <TouchableOpacity
-              key={p}
-              style={[styles.pill, slotPref === p && styles.pillActive]}
-              onPress={() => setSlotPref(p)}
-            >
-              <Text style={[styles.pillText, slotPref === p && styles.pillTextActive]}>{p}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Share with venue */}
-        <Text style={[styles.sectionLabel, { color: colors.black }]}>Share with venue</Text>
-        <Text style={[styles.sectionSub, { color: colors.grey }]}>Choose what the venue can see from your profile</Text>
-        {SECTIONS.map(s => (
-          <TouchableOpacity
-            key={s.key}
-            style={styles.toggleRow}
-            onPress={() => toggleSection(s.key)}
-          >
-            <Text style={[styles.toggleLabel, { color: colors.black }]}>{s.label}</Text>
-            <View style={[styles.toggle, sections[s.key] && styles.toggleOn]}>
-              <View style={[styles.toggleThumb, sections[s.key] && styles.toggleThumbOn]} />
-            </View>
-          </TouchableOpacity>
-        ))}
-
-        {/* Additional info */}
-        <Text style={[styles.sectionLabel, { color: colors.black }]}>Additional info</Text>
+      {/* Additional info */}
+      <View style={s.fieldBlock}>
+        <Text style={[s.fieldLabel, { color: colors.black }]}>Additional information</Text>
         <TextInput
-          style={[styles.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border }]}
-          placeholder="Anything you'd like the venue to know..."
-          placeholderTextColor={Colors.greyLight}
+          style={[s.textarea, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
+          placeholder="Optional — anything you'd like the venue to know (e.g. draw size, PA requirements, past experience at similar venues)"
+          placeholderTextColor={colors.greyLight}
           multiline
-          numberOfLines={4}
+          numberOfLines={3}
           value={additionalInfo}
           onChangeText={setAdditionalInfo}
           textAlignVertical="top"
         />
+      </View>
 
-        {/* Submit */}
+      {/* What the venue will see */}
+      <View style={[s.previewCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+        <Text style={[s.previewTitle, { color: colors.black }]}>WHAT THE VENUE WILL SEE</Text>
+
+        {/* Always-shown identity */}
+        <View style={s.identityBlock}>
+          <View style={s.identityRow}>
+            <Text style={[s.bandName, { color: colors.black }]}>
+              {band.name || profile?.displayName || 'Your Band'}
+            </Text>
+            {band.artistType ? (
+              <View style={s.typePill}>
+                <Text style={s.typePillText}>{band.artistType}</Text>
+              </View>
+            ) : null}
+          </View>
+          {genres.length > 0 && (
+            <View style={s.genreRow}>
+              {genres.map(g => (
+                <View key={g} style={s.genrePill}>
+                  <Text style={s.genreText}>{g}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {band.location ? (
+            <Text style={[s.locationText, { color: colors.grey }]}>📍 {band.location}</Text>
+          ) : null}
+        </View>
+
+        {/* Section toggles */}
+        <View style={[s.sectionList, { borderTopColor: colors.border }]}>
+          {SECTIONS.map((sec, idx) => {
+            const included = sections[sec.key];
+            const preview  = sectionPreview(sec.key);
+            const isLast   = idx === SECTIONS.length - 1;
+            return (
+              <View
+                key={sec.key}
+                style={[s.sectionRow, { borderBottomColor: colors.border }, isLast && s.sectionRowLast]}
+              >
+                <View style={s.sectionLeft}>
+                  <Text style={[
+                    s.sectionLabel,
+                    { color: included ? colors.black : colors.greyLight },
+                    !included && s.sectionLabelHidden,
+                  ]}>
+                    {sec.label}
+                  </Text>
+                  {included && preview ? (
+                    <Text style={[s.sectionPreview, { color: colors.grey }]} numberOfLines={1}>
+                      {preview}
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity onPress={() => toggleSection(sec.key)} style={[s.toggle, included && s.toggleOn]} activeOpacity={0.8}>
+                  <View style={[s.toggleThumb, included && s.toggleThumbOn]} />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Error */}
+      {error ? (
+        <Text style={s.errorText}>{error}</Text>
+      ) : null}
+
+      {/* Actions */}
+      <View style={s.actions}>
         <TouchableOpacity
-          style={[styles.primaryBtn, submitting && { opacity: 0.6 }]}
+          style={[s.cancelBtn, { borderColor: colors.border }, isWeb && s.cancelBtnWeb]}
+          onPress={() => router.back()}
+        >
+          <Text style={[s.cancelBtnText, { color: colors.black }]}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.sendBtn, s.sendBtnFlex, submitting && { opacity: 0.6 }]}
           onPress={handleSubmit}
           disabled={submitting}
         >
           {submitting
-            ? <ActivityIndicator color={Colors.black} />
-            : <Text style={styles.primaryBtnText}>Send Enquiry</Text>
+            ? <ActivityIndicator color="#111111" size="small" />
+            : <Text style={s.sendBtnText}>Send Enquiry</Text>
           }
         </TouchableOpacity>
+      </View>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+      <View style={{ height: 32 }} />
+    </ScrollView>
+  );
+
+  if (isWeb) {
+    return (
+      <View style={s.webOverlayFull}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => router.back()} activeOpacity={1} />
+        <View style={[s.card, s.cardWeb, { backgroundColor: colors.bg }]}>
+          {formContent}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
+      {/* Native header */}
+      <View style={[s.nativeHeader, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+          <Text style={s.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={[s.nativeTitle, { color: colors.black }]}>Enquire</Text>
+        <View style={{ width: 64 }} />
+      </View>
+      {formContent}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.bg },
+const s = StyleSheet.create({
+  safe: { flex: 1 },
 
-  header: {
+  // ── Web overlay ───────────────────────────────────────────────────────────
+  webOverlayFull: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  webOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  card: {
+    width: '100%',
+    borderRadius: 16,
+  },
+  cardWeb: {
+    maxWidth: 620,
+    maxHeight: '90%' as any,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 40,
+  },
+
+  // ── Scroll content ────────────────────────────────────────────────────────
+  scroll:    { padding: 20, gap: 20 },
+  scrollWeb: { padding: 36 },
+
+  // ── Form header ───────────────────────────────────────────────────────────
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: { fontSize: 20, fontWeight: '700' },
+  closeBtn: { padding: 4, paddingHorizontal: 8 },
+  closeBtnText: { fontSize: 18 },
+
+  // ── Native header ─────────────────────────────────────────────────────────
+  nativeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
-  backBtn: { width: 64 },
-  backText: { fontSize: 15, color: Colors.orange, fontWeight: '600' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.black },
+  backBtn:     { width: 64 },
+  backText:    { fontSize: 15, color: Colors.orange, fontWeight: '600' },
+  nativeTitle: { fontSize: 18, fontWeight: '700' },
 
-  scroll: { padding: 20, gap: 4 },
-
+  // ── Slot card ─────────────────────────────────────────────────────────────
   slotCard: {
-    backgroundColor: Colors.bgFaint,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 10,
+    padding: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: 20,
     gap: 4,
   },
-  slotVenue:  { fontSize: 17, fontWeight: '700', color: Colors.black },
-  slotDetail: { fontSize: 14, color: Colors.grey },
-  slotPill: {
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    backgroundColor: Colors.orange + '22',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  slotPillText: { fontSize: 12, color: Colors.orange, fontWeight: '600' },
+  slotVenue:  { fontSize: 15, fontWeight: '600' },
+  slotDetail: { fontSize: 13, color: Colors.orange },
 
-  sectionLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.black,
-    marginTop: 20,
-    marginBottom: 10,
+  // ── Field row (set length + slot pref side by side) ───────────────────────
+  fieldRow: {
+    flexDirection: isWeb ? 'row' : 'column',
+    gap: 16,
   },
-  sectionSub: {
-    fontSize: 13,
-    color: Colors.grey,
-    marginTop: -8,
-    marginBottom: 10,
-  },
-
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fieldCol:   { flex: 1, gap: 10 },
+  fieldBlock: { gap: 10 },
+  fieldLabel: { fontSize: 13, fontWeight: '500' },
+  pillGroup:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pill: {
-    borderRadius: 20,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  pillActive: { borderColor: Colors.orange, backgroundColor: Colors.orange + '18' },
-  pillText:   { fontSize: 13, color: Colors.grey, fontWeight: '500' },
+  pillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '18' },
+  pillText:       { fontSize: 13, fontWeight: '500' },
   pillTextActive: { color: Colors.orange, fontWeight: '700' },
 
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderFaint,
+  // ── Textarea ──────────────────────────────────────────────────────────────
+  textarea: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    minHeight: 80,
+    lineHeight: 20,
   },
-  toggleLabel: { fontSize: 14, color: Colors.black },
+
+  // ── What the venue will see ───────────────────────────────────────────────
+  previewCard: {
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    gap: 16,
+  },
+  previewTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
+
+  // Identity block
+  identityBlock: { gap: 6 },
+  identityRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  bandName:      { fontSize: 15, fontWeight: '700' },
+  typePill: {
+    backgroundColor: Colors.orange,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+  },
+  typePillText: { fontSize: 11, fontWeight: '600', color: '#111111' },
+  genreRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  genrePill: {
+    borderWidth: 1,
+    borderColor: Colors.orange,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  genreText:    { fontSize: 12, color: Colors.orange, fontWeight: '500' },
+  locationText: { fontSize: 12 },
+
+  // Section list
+  sectionList:    { borderTopWidth: 1 },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  sectionRowLast: { borderBottomWidth: 0 },
+  sectionLeft:    { flex: 1, gap: 3, paddingRight: 12 },
+  sectionLabel:   { fontSize: 14, fontWeight: '500' },
+  sectionLabelHidden: { textDecorationLine: 'line-through' },
+  sectionPreview: { fontSize: 12, opacity: 0.55 },
   toggle: {
     width: 44,
     height: 26,
     borderRadius: 13,
-    backgroundColor: Colors.border,
+    backgroundColor: '#dddddd',
     padding: 2,
     justifyContent: 'center',
+    marginLeft: 12,
+    flexShrink: 0,
   },
-  toggleOn: { backgroundColor: Colors.orange },
+  toggleOn:      { backgroundColor: Colors.orange },
   toggleThumb: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     alignSelf: 'flex-start',
   },
   toggleThumbOn: { alignSelf: 'flex-end' },
 
-  textarea: {
+  // ── Error ─────────────────────────────────────────────────────────────────
+  errorText: { fontSize: 13, color: '#e94560', textAlign: 'center' },
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  actions: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: isWeb ? 'flex-end' : 'stretch',
+  },
+  cancelBtn: {
     borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 14,
-    color: Colors.black,
-    backgroundColor: Colors.bgFaint,
-    minHeight: 100,
-    marginTop: 4,
-  },
-
-  primaryBtn: {
-    backgroundColor: Colors.orange,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  primaryBtnText: { fontSize: 16, fontWeight: '800', color: Colors.black },
-
-  ghostBtn: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  ghostBtnText: { fontSize: 15, fontWeight: '600', color: Colors.grey },
-
-  // Success
-  successWrap: {
-    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
   },
-  successIcon:  { fontSize: 64, marginBottom: 20 },
-  successTitle: { fontSize: 26, fontWeight: '800', color: Colors.black, marginBottom: 12 },
-  successSub: {
-    fontSize: 15,
-    color: Colors.grey,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
+  cancelBtnWeb: { alignSelf: 'flex-end' },
+  cancelBtnText: { fontSize: 14, fontWeight: '600' },
+  sendBtn: {
+    backgroundColor: Colors.orange,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 140,
   },
+  sendBtnFlex: { flex: isWeb ? 0 : 1 },
+  sendBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+
+  // ── Success ───────────────────────────────────────────────────────────────
+  successWrap: {
+    alignItems: 'center',
+    gap: 14,
+    padding: isWeb ? 32 : 48,
+  },
+  successCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.orange + '1f',
+    borderWidth: 2,
+    borderColor: Colors.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCheck: { fontSize: 26, color: Colors.orange, fontWeight: '700' },
+  successTitle: { fontSize: 20, fontWeight: '700', textAlign: 'center' },
+  successSub:   { fontSize: 14, textAlign: 'center' },
 });

@@ -24,7 +24,7 @@ function AppShell() {
         <Stack.Screen name="musician/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="edit-venue" options={{ headerShown: false }} />
         <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
-        <Stack.Screen name="enquire" options={{ headerShown: false, presentation: 'modal' }} />
+        <Stack.Screen name="enquire" options={{ headerShown: false, presentation: isWeb ? 'transparentModal' : 'modal', animation: 'fade', contentStyle: isWeb ? { backgroundColor: 'transparent' } : undefined }} />
         <Stack.Screen name="login" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade' }} />
       </Stack>
       <StatusBar style={isDark ? 'light' : 'dark'} />

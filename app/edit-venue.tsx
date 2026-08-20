@@ -250,7 +250,14 @@ export default function EditVenueScreen() {
       const ref  = sRef(storage, `photos/venues/${venueId}/photo`);
       await uploadBytes(ref, blob);
       const url  = await getDownloadURL(ref);
+      // Sync into photos gallery: replace old profile photo entry, or prepend
+      const oldUrl    = data.photoUrl;
+      const existing  = data.photos || [];
+      const nextPhotos = oldUrl && existing.includes(oldUrl)
+        ? existing.map((p: string) => p === oldUrl ? url : p)
+        : [url, ...existing];
       set('photoUrl', url);
+      set('photos', nextPhotos);
     } catch (e) {
       Alert.alert('Upload failed', String(e));
     } finally {
