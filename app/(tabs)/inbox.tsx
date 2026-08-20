@@ -807,6 +807,18 @@ export default function InboxScreen() {
 
   const [selected, setSelected] = useState<Enquiry | null>(null);
   const [filter, setFilter]     = useState<FilterKey>('all');
+  const autoSelected = useRef(false);
+
+  // Auto-open the most recent message on first load
+  useEffect(() => {
+    if (!loading && !autoSelected.current && enquiries.length > 0) {
+      autoSelected.current = true;
+      const mostRecent = [...enquiries].sort(
+        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+      )[0];
+      setSelected(mostRecent);
+    }
+  }, [loading, enquiries.length]);
 
   const sorted   = [...enquiries].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   const filtered = filter === 'all' ? sorted : sorted.filter(e => e.status === filter);
