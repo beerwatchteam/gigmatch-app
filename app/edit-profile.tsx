@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Switch, Image,
@@ -6,7 +6,7 @@ import {
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { db, storage, auth } from '@/lib/firebase';
@@ -29,7 +29,7 @@ type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string };
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
-  genre: string[]; location: string;
+  genre: string[]; otherGenres: string; location: string;
   email: string; phone: string; feeMin: string; feeMax: string;
   about: string; photoUrl: string;
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
@@ -41,7 +41,7 @@ type Profile = {
 };
 
 const BLANK: Profile = {
-  name: '', username: '', artistType: '', otherArtistType: '', genre: [], location: '', email: '', phone: '',
+  name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', location: '', email: '', phone: '',
   feeMin: '', feeMax: '', about: '', photoUrl: '',
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
@@ -110,6 +110,8 @@ export default function EditProfileScreen() {
   const { colors, isDark, toggleDark } = useTheme();
   const uid = user?.uid ?? '';
 
+  const originalUsername = useRef('');
+
   const [profile, setProfile] = useState<Profile>(BLANK);
   const [saved,   setSaved]   = useState<Profile>(BLANK);
   const [loading, setLoading] = useState(true);
@@ -130,6 +132,7 @@ export default function EditProfileScreen() {
       d.videos      = d.videos      || [];
       d.customLinks = d.customLinks || [];
       d.settings    = d.settings    || BLANK.settings;
+      originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
     }).finally(() => setLoading(false));
   }, [uid]);
@@ -214,10 +217,28 @@ export default function EditProfileScreen() {
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
+
+    // Username uniqueness check if it changed
+    const newUsername = profile.username.trim().toLowerCase();
+    if (newUsername !== originalUsername.current) {
+      const [bpSnap, uSnap] = await Promise.all([
+        getDocs(query(collection(db, 'bandProfiles'), where('username', '==', newUsername))),
+        getDocs(query(collection(db, 'users'),        where('username', '==', newUsername))),
+      ]);
+      const taken = bpSnap.docs.some(d => d.id !== uid) || !uSnap.empty;
+      if (taken) {
+        Alert.alert('Username taken', 'That username is already in use. Please choose a different one.');
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
-      await setDoc(doc(db, 'bandProfiles', uid), profile, { merge: true });
+      await setDoc(doc(db, 'bandProfiles', uid), { ...profile, username: newUsername }, { merge: true });
+      // Also update username in users doc
+      await updateDoc(doc(db, 'users', uid), { username: newUsername });
+      originalUsername.current = newUsername;
       setSaved(profile);
       setShowErrors(false);
       Alert.alert('Saved', 'Your profile has been updated.');
@@ -441,6 +462,15 @@ export default function EditProfileScreen() {
               <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}>
                 <Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi />
               </Field>
+              {profile.genre?.includes('Other') && (
+                <Field label="Other genres">
+                  <Input
+                    value={profile.otherGenres}
+                    onChangeText={(v: string) => set('otherGenres', v)}
+                    placeholder="e.g. Bluegrass, Afrobeat, Cumbia"
+                  />
+                </Field>
+              )}
             </View>
 
             {/* Contact */}

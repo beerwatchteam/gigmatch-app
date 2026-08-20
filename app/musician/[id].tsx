@@ -33,6 +33,8 @@ type Musician = {
   artistType?: string | string[];
   location?: string;
   genre?: string[];
+  otherGenres?: string;
+  otherArtistType?: string;
   about?: string;
   photoUrl?: string;
   email?: string;
@@ -300,7 +302,9 @@ export default function MusicianScreen() {
 
   const actType = Array.isArray(musician.artistType)
     ? musician.artistType.join(' / ')
-    : musician.artistType;
+    : musician.artistType === 'Other' && musician.otherArtistType
+      ? musician.otherArtistType
+      : musician.artistType;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
@@ -336,15 +340,22 @@ export default function MusicianScreen() {
           </View>
           {musician.username ? <Text style={[styles.username, { color: colors.grey }]}>@{musician.username}</Text> : null}
           {musician.location ? <Text style={[styles.location, { color: colors.grey }]}>{musician.location}</Text> : null}
-          {(musician.genre || []).length > 0 && (
-            <View style={styles.genres}>
-              {(musician.genre || []).map(g => (
-                <View key={g} style={styles.genrePill}>
-                  <Text style={styles.genreText}>{g}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          {(() => {
+            const baseGenres = (musician.genre || []).filter(g => g !== 'Other');
+            const customGenres = musician.otherGenres
+              ? musician.otherGenres.split(',').map(g => g.trim()).filter(Boolean)
+              : [];
+            const allGenres = [...baseGenres, ...customGenres];
+            return allGenres.length > 0 ? (
+              <View style={styles.genres}>
+                {allGenres.map(g => (
+                  <View key={g} style={styles.genrePill}>
+                    <Text style={styles.genreText}>{g}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null;
+          })()}
         </View>
 
         {/* Tab bar */}
