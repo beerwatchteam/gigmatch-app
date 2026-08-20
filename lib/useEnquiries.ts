@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   collection, addDoc, onSnapshot, updateDoc, deleteDoc,
-  doc, query, orderBy, where, getDoc,
+  doc, query, orderBy, where, getDoc, arrayUnion,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -51,7 +51,10 @@ export function useArtistEnquiries(uid: string | null) {
     if (!uid) { setLoading(false); return; }
     const q = query(collection(db, 'inquiries'), where('createdBy', '==', uid));
     const unsub = onSnapshot(q, snap => {
-      setEnquiries(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[]);
+      setEnquiries(
+        (snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[])
+          .filter(e => !e.deletedBy?.includes(uid))
+      );
       setLoading(false);
     }, err => {
       console.error('useArtistEnquiries:', err.message);
@@ -72,7 +75,10 @@ export function useVenueEnquiries(venueId: string | null) {
     if (!venueId) { setLoading(false); return; }
     const q = query(collection(db, 'inquiries'), where('venueId', '==', venueId));
     const unsub = onSnapshot(q, snap => {
-      setEnquiries(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[]);
+      setEnquiries(
+        (snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[])
+          .filter(e => !e.deletedBy?.includes(venueId))
+      );
       setLoading(false);
     }, err => {
       console.error('useVenueEnquiries:', err.message);
@@ -133,6 +139,11 @@ export async function sendMessage(inquiryId: string, sender: string, text: strin
 
 export async function cancelEnquiry(id: string) {
   await deleteDoc(doc(db, 'inquiries', id));
+}
+
+/** Soft-delete an enquiry for one party — hides it from their inbox only */
+export async function archiveEnquiry(id: string, uid: string) {
+  await updateDoc(doc(db, 'inquiries', id), { deletedBy: arrayUnion(uid) });
 }
 
 // ── Timetable helpers ──

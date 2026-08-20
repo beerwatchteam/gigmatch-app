@@ -12,10 +12,15 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import {
   useArtistEnquiries, useVenueEnquiries, useMessages,
-  updateEnquiryStatus, sendMessage, cancelEnquiry,
+  updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
   bookSlotOnTimetable, cancelAcceptance,
   type Enquiry,
 } from '@/lib/useEnquiries';
+import {
+  useDMConversations, useDMMessages,
+  sendDMMessage, acceptDMRequest, deleteDMConv, mkDMId,
+  type DMConv,
+} from '@/lib/useDirectMessages';
 
 const isWeb = Platform.OS === 'web';
 
@@ -349,8 +354,8 @@ const tt = StyleSheet.create({
 
 // ── Thread panel (conversation) ────────────────────────────────────────────
 
-function ThreadPanel({ enquiry, isVenue, onBack }: {
-  enquiry: Enquiry; isVenue: boolean; onBack: () => void;
+function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
+  enquiry: Enquiry; isVenue: boolean; venueId: string | null; onBack: () => void;
 }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -702,6 +707,17 @@ function ThreadPanel({ enquiry, isVenue, onBack }: {
       ) : (
         <ChatInput />
       )}
+
+      {/* Delete — bottom right, always visible */}
+      <View style={[dm.deleteRow, { borderTopColor: colors.border }]}>
+        <TouchableOpacity onPress={async () => {
+          if (!user) return;
+          await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
+          onBack();
+        }}>
+          <Text style={dm.deleteText}>Delete conversation</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -782,6 +798,166 @@ const ph = StyleSheet.create({
   sendTextDisabled:{ color: '#aaaaaa' },
 });
 
+// ── DM conversation tile ───────────────────────────────────────────────────
+
+function DMTile({ conv, myUid, isSelected, onPress }: {
+  conv: DMConv; myUid: string; isSelected: boolean; onPress: () => void;
+}) {
+  const otherUid   = conv.participants.find(p => p !== myUid) ?? '';
+  const otherName  = conv.participantNames[otherUid] ?? 'Unknown';
+  const isRequest  = conv.initiatedBy !== myUid && !conv.acceptedBy.includes(myUid);
+  return (
+    <TouchableOpacity style={[tt.tile, isSelected && tt.tileActive]} onPress={onPress}>
+      <View style={[tt.info, { paddingRight: 12 }]}>
+        <View style={tt.row1}>
+          <Text style={tt.name} numberOfLines={1}>{otherName}</Text>
+          <Text style={tt.time}>{formatTileDate(conv.lastMessageAt)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={tt.slot} numberOfLines={1}>{conv.lastMessage}</Text>
+          {isRequest && (
+            <View style={dm.reqBadge}><Text style={dm.reqBadgeText}>Request</Text></View>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ── DM thread panel (web inline view) ─────────────────────────────────────
+
+function DMThreadPanel({ conv, myUid, myName, myPhoto, onBack, colors }: {
+  conv: DMConv; myUid: string; myName: string; myPhoto: string | null;
+  onBack: () => void; colors: any;
+}) {
+  const messages     = useDMMessages(conv.id);
+  const otherUid     = conv.participants.find(p => p !== myUid) ?? '';
+  const otherName    = conv.participantNames[otherUid]  ?? 'User';
+  const otherPhoto   = conv.participantPhotos[otherUid] ?? null;
+  const isAccepted   = conv.acceptedBy.includes(myUid);
+  const isInitiator  = conv.initiatedBy === myUid;
+  const otherAccepted = conv.acceptedBy.includes(otherUid);
+  const canSend      = isAccepted && (isInitiator ? otherAccepted : true);
+
+  const [text, setText]     = useState('');
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
+  }, [messages.length]);
+
+  async function handleSend() {
+    if (!text.trim()) return;
+    setSending(true);
+    await sendDMMessage(conv.id, myUid, text.trim());
+    setText('');
+    setSending(false);
+  }
+
+  async function handleDelete() {
+    await deleteDMConv(conv.id, myUid);
+    onBack();
+  }
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* Header */}
+      <View style={[ph.header, { borderBottomColor: colors.border, backgroundColor: colors.bgFaint }]}>
+        <View style={ph.headerTop}>
+          <TouchableOpacity onPress={onBack}>
+            <Text style={ph.back}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={[ph.name, { color: colors.black }]}>{otherName}</Text>
+        </View>
+      </View>
+
+      {/* Messages */}
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={ph.msgList}>
+        {messages.length === 0 && (
+          <View style={ph.noMsgs}><Text style={ph.noMsgsText}>No messages yet.</Text></View>
+        )}
+        {messages.map(msg => {
+          const isMine = msg.senderId === myUid;
+          return (
+            <View key={msg.id} style={[ph.msgRow, isMine ? ph.msgRowMine : ph.msgRowTheirs]}>
+              <View style={[ph.msgCol, isMine && ph.msgColMine]}>
+                <View style={[ph.bubble, isMine ? ph.bubbleMine : ph.bubbleTheirs]}>
+                  <Text style={[ph.bubbleText, isMine && ph.bubbleTextMine]}>{msg.text}</Text>
+                </View>
+                <Text style={[ph.msgTime, isMine && ph.msgTimeRight]}>
+                  {fmtMsgTime(msg.createdAt)}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Accept banner */}
+      {!isAccepted && !isInitiator && (
+        <View style={[dm.banner, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          <Text style={[dm.bannerText, { color: colors.grey }]}>{otherName} sent you a message request.</Text>
+          <TouchableOpacity style={dm.acceptBtn} onPress={() => acceptDMRequest(conv.id, myUid)}>
+            <Text style={dm.acceptBtnText}>Accept</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Waiting banner */}
+      {isInitiator && !otherAccepted && (
+        <View style={[dm.banner, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          <Text style={[dm.bannerText, { color: colors.grey }]}>
+            Waiting for {otherName} to accept your message request.
+          </Text>
+        </View>
+      )}
+
+      {/* Chat input */}
+      {canSend && (
+        <View style={[ph.inputArea, { backgroundColor: colors.bgFaint, borderTopColor: colors.border }]}>
+          <TextInput
+            style={[ph.input, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
+            placeholder="Type a message…"
+            placeholderTextColor="#aaaaaa"
+            value={text}
+            onChangeText={setText}
+            multiline
+          />
+          <TouchableOpacity
+            style={[ph.sendBtn, !text.trim() && ph.sendBtnDisabled]}
+            onPress={handleSend}
+            disabled={!text.trim() || sending}
+          >
+            {sending
+              ? <ActivityIndicator color="#111111" size="small" />
+              : <Text style={[ph.sendText, !text.trim() && ph.sendTextDisabled]}>Send</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Delete — bottom right */}
+      <View style={[dm.deleteRow, { borderTopColor: colors.border }]}>
+        <TouchableOpacity onPress={handleDelete}>
+          <Text style={dm.deleteText}>Delete conversation</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const dm = StyleSheet.create({
+  reqBadge:     { backgroundColor: Colors.orange + '22', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 },
+  reqBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.orange },
+  banner:       { padding: 16, paddingHorizontal: isWeb ? 24 : 16, borderTopWidth: 1, alignItems: 'center', gap: 12 },
+  bannerText:   { fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  acceptBtn:    { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 10 },
+  acceptBtnText:{ fontSize: 14, fontWeight: '700', color: '#111111' },
+  deleteRow:    { paddingHorizontal: isWeb ? 24 : 16, paddingVertical: 10, alignItems: 'flex-end', borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  deleteText:   { fontSize: 13, color: '#ef4444', fontWeight: '600' },
+});
+
 // ── Filter config ──────────────────────────────────────────────────────────
 
 type FilterKey = 'all' | 'pending' | 'discussing' | 'accepted' | 'declined';
@@ -809,6 +985,21 @@ export default function InboxScreen() {
   const [selected, setSelected] = useState<Enquiry | null>(null);
   const [filter, setFilter]     = useState<FilterKey>('all');
   const autoSelected = useRef(false);
+
+  // ── DM state ────────────────────────────────────────────────────────────
+  const [inboxTab,      setInboxTab]      = useState<'enquiries' | 'messages'>('enquiries');
+  const [dmFilter,      setDmFilter]      = useState<'accepted' | 'requests'>('accepted');
+  const [selectedDMId,  setSelectedDMId]  = useState<string | null>(null);
+
+  const myUid    = user?.uid ?? '';
+  const myName   = (profile as any)?.name || user?.email || '';
+  const myPhoto  = (profile as any)?.photoUrl ?? null;
+
+  const dmConvs    = useDMConversations(user?.uid ?? null);
+  const acceptedDMs = dmConvs.filter(c => c.acceptedBy.includes(myUid));
+  const requestDMs  = dmConvs.filter(c => !c.acceptedBy.includes(myUid) && c.initiatedBy !== myUid);
+  const filteredDMs = dmFilter === 'accepted' ? acceptedDMs : requestDMs;
+  const selectedDM  = dmConvs.find(c => c.id === selectedDMId) ?? null;
 
   // Auto-open the most recent message on first load
   useEffect(() => {
@@ -840,6 +1031,53 @@ export default function InboxScreen() {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+    );
+  }
+
+  // ── Tab switcher (Enquiries | Messages) ─────────────────────────────────
+  function InboxTabs() {
+    return (
+      <View style={ib.tabRow}>
+        {(['enquiries', 'messages'] as const).map(tab => (
+          <TouchableOpacity
+            key={tab}
+            style={[ib.tabBtn, inboxTab === tab && ib.tabBtnActive]}
+            onPress={() => setInboxTab(tab)}
+          >
+            <Text style={[ib.tabText, inboxTab === tab && ib.tabTextActive]}>
+              {tab === 'enquiries' ? 'Enquiries' : `Messages${dmConvs.length > 0 ? ` (${dmConvs.length})` : ''}`}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  }
+
+  // ── DM sub-filter (Accepted | Requests) ─────────────────────────────────
+  function DmFilterBar() {
+    return (
+      <View style={ib.dmFilterRow}>
+        {(['accepted', 'requests'] as const).map(f => {
+          const count = f === 'accepted' ? acceptedDMs.length : requestDMs.length;
+          const active = dmFilter === f;
+          return (
+            <TouchableOpacity
+              key={f}
+              style={[wb.filterBtn, active && wb.filterBtnActive]}
+              onPress={() => setDmFilter(f)}
+            >
+              <Text style={[wb.filterText, active && wb.filterTextActive]}>
+                {f === 'accepted' ? 'Accepted' : 'Requests'}
+              </Text>
+              {count > 0 && (
+                <View style={[wb.filterCount, active && wb.filterCountActive]}>
+                  <Text style={[wb.filterCountText, active && wb.filterCountTextActive]}>{count}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     );
   }
 
@@ -877,39 +1115,78 @@ export default function InboxScreen() {
         {/* Sidebar */}
         <View style={[wb.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
           <View style={[wb.sidebarHead, { borderBottomColor: colors.border }]}>
-            <Text style={[wb.sidebarTitle, { color: colors.black }]}>{title}</Text>
-            <FilterBar />
+            <Text style={[wb.sidebarTitle, { color: colors.black }]}>Inbox</Text>
+            <InboxTabs />
+            {inboxTab === 'enquiries' && <FilterBar />}
+            {inboxTab === 'messages'  && <DmFilterBar />}
           </View>
 
-          {loading ? (
-            <View style={s.center}><ActivityIndicator color={Colors.orange} /></View>
-          ) : filtered.length === 0 ? (
-            <Text style={wb.emptyText}>
-              {enquiries.length === 0 ? 'No enquiries yet' : 'No conversations'}
-            </Text>
+          {inboxTab === 'enquiries' ? (
+            loading ? (
+              <View style={s.center}><ActivityIndicator color={Colors.orange} /></View>
+            ) : filtered.length === 0 ? (
+              <Text style={wb.emptyText}>
+                {enquiries.length === 0 ? 'No enquiries yet' : 'No conversations'}
+              </Text>
+            ) : (
+              <ScrollView style={{ flex: 1 }}>
+                {filtered.map(item => (
+                  <ThreadTile
+                    key={item.id}
+                    item={item}
+                    isVenue={isVenue}
+                    isSelected={selected?.id === item.id}
+                    onPress={() => setSelected(item)}
+                  />
+                ))}
+              </ScrollView>
+            )
           ) : (
-            <ScrollView style={{ flex: 1 }}>
-              {filtered.map(item => (
-                <ThreadTile
-                  key={item.id}
-                  item={item}
-                  isVenue={isVenue}
-                  isSelected={selected?.id === item.id}
-                  onPress={() => setSelected(item)}
-                />
-              ))}
-            </ScrollView>
+            filteredDMs.length === 0 ? (
+              <Text style={wb.emptyText}>
+                {dmFilter === 'requests' ? 'No message requests' : 'No accepted messages yet'}
+              </Text>
+            ) : (
+              <ScrollView style={{ flex: 1 }}>
+                {filteredDMs.map(c => (
+                  <DMTile
+                    key={c.id}
+                    conv={c}
+                    myUid={myUid}
+                    isSelected={selectedDMId === c.id}
+                    onPress={() => setSelectedDMId(c.id)}
+                  />
+                ))}
+              </ScrollView>
+            )
           )}
         </View>
 
         {/* Right panel */}
         <View style={[wb.panel, { backgroundColor: colors.bg }]}>
-          {!selected ? (
-            <View style={wb.panelEmpty}>
-              <Text style={wb.panelEmptyText}>Select a conversation</Text>
-            </View>
+          {inboxTab === 'enquiries' ? (
+            !selected ? (
+              <View style={wb.panelEmpty}>
+                <Text style={wb.panelEmptyText}>Select a conversation</Text>
+              </View>
+            ) : (
+              <ThreadPanel enquiry={selected} isVenue={isVenue} venueId={venueId} onBack={() => setSelected(null)} />
+            )
           ) : (
-            <ThreadPanel enquiry={selected} isVenue={isVenue} onBack={() => setSelected(null)} />
+            !selectedDM ? (
+              <View style={wb.panelEmpty}>
+                <Text style={wb.panelEmptyText}>Select a conversation</Text>
+              </View>
+            ) : (
+              <DMThreadPanel
+                conv={selectedDM}
+                myUid={myUid}
+                myName={myName}
+                myPhoto={myPhoto}
+                colors={colors}
+                onBack={() => setSelectedDMId(null)}
+              />
+            )
           )}
         </View>
 
@@ -921,7 +1198,7 @@ export default function InboxScreen() {
   if (selected) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-        <ThreadPanel enquiry={selected} isVenue={isVenue} onBack={() => setSelected(null)} />
+        <ThreadPanel enquiry={selected} isVenue={isVenue} venueId={venueId} onBack={() => setSelected(null)} />
       </SafeAreaView>
     );
   }
@@ -930,43 +1207,93 @@ export default function InboxScreen() {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
       <View style={[s.listHeader, { borderBottomColor: colors.border }]}>
-        <Text style={[s.title, { color: colors.black }]}>{title}</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }} contentContainerStyle={{ gap: 8 }}>
-          {FILTERS.map(f => {
-            const count  = f.key === 'all' ? enquiries.length : enquiries.filter(e => e.status === f.key).length;
-            const active = filter === f.key;
-            return (
-              <TouchableOpacity key={f.key} style={[s.filterPill, active && s.filterPillActive]} onPress={() => setFilter(f.key)}>
-                <Text style={[s.filterText, active && s.filterTextActive]}>
-                  {f.label}{count > 0 ? ` (${count})` : ''}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <Text style={[s.title, { color: colors.black }]}>Inbox</Text>
+        {/* Main tab switcher */}
+        <InboxTabs />
+        {/* Sub-filters */}
+        {inboxTab === 'enquiries' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
+            {FILTERS.map(f => {
+              const count  = f.key === 'all' ? enquiries.length : enquiries.filter(e => e.status === f.key).length;
+              const active = filter === f.key;
+              return (
+                <TouchableOpacity key={f.key} style={[s.filterPill, active && s.filterPillActive]} onPress={() => setFilter(f.key)}>
+                  <Text style={[s.filterText, active && s.filterTextActive]}>
+                    {f.label}{count > 0 ? ` (${count})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+        {inboxTab === 'messages' && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ gap: 8 }}>
+            {(['accepted', 'requests'] as const).map(f => {
+              const count  = f === 'accepted' ? acceptedDMs.length : requestDMs.length;
+              const active = dmFilter === f;
+              return (
+                <TouchableOpacity key={f} style={[s.filterPill, active && s.filterPillActive]} onPress={() => setDmFilter(f)}>
+                  <Text style={[s.filterText, active && s.filterTextActive]}>
+                    {f === 'accepted' ? 'Accepted' : 'Requests'}{count > 0 ? ` (${count})` : ''}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
-      {loading ? (
-        <View style={s.center}><ActivityIndicator color={Colors.orange} /></View>
-      ) : filtered.length === 0 ? (
-        <View style={s.center}>
-          <Text style={s.emptyIcon}>📭</Text>
-          <Text style={s.emptyTitle}>{enquiries.length === 0 ? 'No enquiries yet' : 'No matches'}</Text>
-          <Text style={s.emptySub}>
-            {enquiries.length === 0
-              ? (isVenue ? 'Enquiries from musicians will appear here' : 'Your enquiries to venues will appear here')
-              : 'Try a different filter'}
-          </Text>
-        </View>
+      {inboxTab === 'enquiries' ? (
+        loading ? (
+          <View style={s.center}><ActivityIndicator color={Colors.orange} /></View>
+        ) : filtered.length === 0 ? (
+          <View style={s.center}>
+            <Text style={s.emptyIcon}>📭</Text>
+            <Text style={s.emptyTitle}>{enquiries.length === 0 ? 'No enquiries yet' : 'No matches'}</Text>
+            <Text style={s.emptySub}>
+              {enquiries.length === 0
+                ? (isVenue ? 'Enquiries from musicians will appear here' : 'Your enquiries to venues will appear here')
+                : 'Try a different filter'}
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ paddingVertical: 8, paddingBottom: 40 }}
+            renderItem={({ item }) => (
+              <ThreadTile item={item} isVenue={isVenue} isSelected={false} onPress={() => setSelected(item)} />
+            )}
+          />
+        )
       ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingVertical: 8, paddingBottom: 40 }}
-          renderItem={({ item }) => (
-            <ThreadTile item={item} isVenue={isVenue} isSelected={false} onPress={() => setSelected(item)} />
-          )}
-        />
+        filteredDMs.length === 0 ? (
+          <View style={s.center}>
+            <Text style={s.emptyIcon}>💬</Text>
+            <Text style={s.emptyTitle}>{dmFilter === 'requests' ? 'No message requests' : 'No messages yet'}</Text>
+            <Text style={s.emptySub}>
+              {dmFilter === 'accepted' ? 'Accepted conversations will appear here' : 'Message requests from others will appear here'}
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredDMs}
+            keyExtractor={item => item.id}
+            contentContainerStyle={{ paddingVertical: 8, paddingBottom: 40 }}
+            renderItem={({ item }) => (
+              <DMTile
+                conv={item}
+                myUid={myUid}
+                isSelected={false}
+                onPress={() => {
+                  const otherUid = item.participants.find(p => p !== myUid) ?? '';
+                  const otherName = item.participantNames[otherUid] ?? 'User';
+                  router.push({ pathname: '/messages/[id]', params: { id: otherUid, name: otherName } });
+                }}
+              />
+            )}
+          />
+        )
       )}
     </SafeAreaView>
   );
@@ -977,7 +1304,7 @@ export default function InboxScreen() {
 const wb = StyleSheet.create({
   sidebar:          { width: 320, borderRightWidth: 1, borderRightColor: '#e8e8e8', flexDirection: 'column', backgroundColor: '#fafafa' },
   sidebarHead:      { padding: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#e8e8e8' },
-  sidebarTitle:     { fontSize: 18, fontWeight: '700', color: '#111111', letterSpacing: -0.3, marginBottom: 12 },
+  sidebarTitle:     { fontSize: 18, fontWeight: '700', color: '#111111', letterSpacing: -0.3, marginBottom: 8 },
   filters:          { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
   filterBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: 'transparent' },
   filterBtnActive:  { backgroundColor: Colors.orange, borderColor: Colors.orange },
@@ -991,6 +1318,17 @@ const wb = StyleSheet.create({
   panel:            { flex: 1, flexDirection: 'column', backgroundColor: '#ffffff' },
   panelEmpty:       { flex: 1, alignItems: 'center', justifyContent: 'center' },
   panelEmptyText:   { fontSize: 15, color: '#aaaaaa' },
+});
+
+// ── Inbox tab styles ──────────────────────────────────────────────────────
+
+const ib = StyleSheet.create({
+  tabRow:        { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  tabBtn:        { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0' },
+  tabBtnActive:  { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  tabText:       { fontSize: 13, fontWeight: '600', color: '#666666' },
+  tabTextActive: { color: '#111111' },
+  dmFilterRow:   { flexDirection: 'row', gap: 6, marginTop: 8 },
 });
 
 // ── Native styles ─────────────────────────────────────────────────────────

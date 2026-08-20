@@ -390,7 +390,7 @@ export default function MusiciansScreen() {
           {item.location ? <Text style={[st.location, { color: colors.grey }]}>{item.location}</Text> : null}
           {item.about ? <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text> : null}
           <View style={[st.cardFooter, { borderTopColor: colors.borderFaint }]}>
-            <TouchableOpacity style={st.profileBtn} onPress={() => router.push('/(tabs)/inbox')}>
+            <TouchableOpacity style={st.profileBtn} onPress={() => router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name || 'Musician' } })}>
               <Text style={st.profileBtnText}>Message</Text>
             </TouchableOpacity>
             <View style={st.cardFooterRight}>
