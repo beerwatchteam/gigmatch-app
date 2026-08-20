@@ -390,12 +390,17 @@ export default function MusiciansScreen() {
           {item.location ? <Text style={[st.location, { color: colors.grey }]}>{item.location}</Text> : null}
           {item.about ? <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text> : null}
           <View style={[st.cardFooter, { borderTopColor: colors.borderFaint }]}>
-            <TouchableOpacity style={st.profileBtn} onPress={() => router.push(`/musician/${item.id}`)}>
-              <Text style={st.profileBtnText}>Profile</Text>
+            <TouchableOpacity style={st.profileBtn} onPress={() => router.push('/(tabs)/inbox')}>
+              <Text style={st.profileBtnText}>Message</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/musician/[id]', params: { id: item.id, tab: 'music' } })}>
-              <Text style={st.actionBtnText}>Music & Social</Text>
-            </TouchableOpacity>
+            <View style={st.cardFooterRight}>
+              <TouchableOpacity style={st.actionBtn} onPress={() => router.push(`/musician/${item.id}`)}>
+                <Text style={st.actionBtnText}>Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/musician/[id]', params: { id: item.id, tab: 'music' } })}>
+                <Text style={st.actionBtnText}>Music & Social</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -546,7 +551,8 @@ const st = StyleSheet.create({
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
   location:       { fontSize: 12, color: '#666666' },
   about:          { fontSize: 13, color: '#111111', lineHeight: 19 },
-  cardFooter:     { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  cardFooter:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  cardFooterRight: { flexDirection: 'row', gap: 8 },
   profileBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
   profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
