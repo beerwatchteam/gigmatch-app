@@ -4,8 +4,9 @@
  * Shows a photo with drag-to-reposition.  Works on both web (PanResponder
  * maps to mouse events via react-native-web) and native (touch events).
  *
- * The image is rendered at SCALE × the container size so the user can pan
- * to choose the focal point.  Position is stored as { x: 0-100, y: 0-100 }.
+ * The image is rendered at cover-fit size so the user can pan through the
+ * entire photo to choose the focal point.
+ * Position is stored as { x: 0-100, y: 0-100 }.
  *
  * When no photo exists yet, the whole tile is tappable to add one.
  */
@@ -13,14 +14,10 @@
 import { useRef, useState, useEffect } from 'react';
 import {
   View, StyleSheet, PanResponder, Animated,
-  TouchableOpacity, LayoutChangeEvent,
+  TouchableOpacity, LayoutChangeEvent, Image,
 } from 'react-native';
 import { Text }   from '@/components/Text';
 import { Colors } from '@/constants/colors';
-
-// Image is rendered SCALE× larger than the container → allows (SCALE-1)×100%
-// of panning room in each axis.
-const SCALE = 1.6;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v));
@@ -44,51 +41,74 @@ export function RepositionablePhoto({
   placeholderText = 'Tap to add photo',
 }: Props) {
   const [repositioning, setRepositioning] = useState(false);
-  const repoRef    = useRef(false);
-  const containerW = useRef(300);
+  const repoRef = useRef(false);
 
-  // Animated translation values (in px, negative = shifted left/up)
-  const tx    = useRef(new Animated.Value(0)).current;
-  const ty    = useRef(new Animated.Value(0)).current;
-  const txCur = useRef(0);
-  const tyCur = useRef(0);
+  // Container width: ref for PanResponder (avoids stale closures), state to trigger renders
+  const [cw, setCw] = useState(300);
+  const cwRef = useRef(300);
+
+  // Natural image dimensions: ref for PanResponder, state to trigger renders
+  const nwRef = useRef(0);
+  const nhRef = useRef(0);
+  const [imgDims, setImgDims] = useState({ w: 0, h: 0 });
+
+  // Animated translation values (negative = shifted left/up)
+  const tx      = useRef(new Animated.Value(0)).current;
+  const ty      = useRef(new Animated.Value(0)).current;
+  const txCur   = useRef(0);
+  const tyCur   = useRef(0);
   const txStart = useRef(0);
   const tyStart = useRef(0);
 
-  // ── position ↔ translation helpers ────────────────────────────────
-  function posToTx(x: number, w: number) { return -(x / 100) * (SCALE - 1) * w; }
-  function posToTy(y: number)             { return -(y / 100) * (SCALE - 1) * height; }
-
-  function txToX(t: number, w: number): number {
-    if (!w) return 50;
-    return clamp((-t / ((SCALE - 1) * w)) * 100, 0, 100);
-  }
-  function tyToY(t: number): number {
-    return clamp((-t / ((SCALE - 1) * height)) * 100, 0, 100);
+  // ── Pan bounds: how far the image can travel (always positive px) ──
+  function getPanBounds(w: number, nW: number, nH: number) {
+    if (!nW || !nH || !w) return { maxTx: 0, maxTy: 0 };
+    const scale = Math.max(w / nW, height / nH);
+    return {
+      maxTx: Math.max(0, nW * scale - w),
+      maxTy: Math.max(0, nH * scale - height),
+    };
   }
 
-  function applyPosition(pos: PhotoPosition, w: number) {
-    const newTx = posToTx(pos.x, w);
-    const newTy = posToTy(pos.y);
+  function applyPosition(pos: PhotoPosition, w: number, nW: number, nH: number) {
+    const { maxTx, maxTy } = getPanBounds(w, nW, nH);
+    const newTx = -(pos.x / 100) * maxTx;
+    const newTy = -(pos.y / 100) * maxTy;
     txCur.current = newTx;
     tyCur.current = newTy;
     tx.setValue(newTx);
     ty.setValue(newTy);
   }
 
+  // Load natural image size when URI changes
+  useEffect(() => {
+    if (!uri) {
+      nwRef.current = 0; nhRef.current = 0;
+      setImgDims({ w: 0, h: 0 });
+      return;
+    }
+    Image.getSize(uri, (w, h) => {
+      nwRef.current = w; nhRef.current = h;
+      setImgDims({ w, h });
+      applyPosition(position, cwRef.current, w, h);
+    }, () => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uri]);
+
   // Sync when position prop changes (e.g. loaded from Firestore)
   useEffect(() => {
-    applyPosition(position, containerW.current);
+    applyPosition(position, cwRef.current, nwRef.current, nhRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [position.x, position.y]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
-    containerW.current = w;
-    applyPosition(position, w);
+    cwRef.current = w;
+    setCw(w);
+    applyPosition(position, w, nwRef.current, nhRef.current);
   };
 
-  // ── PanResponder (works on native via touch, on web via mouse) ────
+  // ── PanResponder — all values accessed via refs, no stale closures ──
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => repoRef.current,
@@ -98,9 +118,7 @@ export function RepositionablePhoto({
         tyStart.current = tyCur.current;
       },
       onPanResponderMove: (_, { dx, dy }) => {
-        const w     = containerW.current;
-        const maxTx = (SCALE - 1) * w;
-        const maxTy = (SCALE - 1) * height;
+        const { maxTx, maxTy } = getPanBounds(cwRef.current, nwRef.current, nhRef.current);
         const newTx = clamp(txStart.current + dx, -maxTx, 0);
         const newTy = clamp(tyStart.current + dy, -maxTy, 0);
         txCur.current = newTx;
@@ -109,9 +127,10 @@ export function RepositionablePhoto({
         ty.setValue(newTy);
       },
       onPanResponderRelease: () => {
+        const { maxTx, maxTy } = getPanBounds(cwRef.current, nwRef.current, nhRef.current);
         onPositionChange({
-          x: txToX(txCur.current, containerW.current),
-          y: tyToY(tyCur.current),
+          x: maxTx ? clamp((-txCur.current / maxTx) * 100, 0, 100) : 50,
+          y: maxTy ? clamp((-tyCur.current / maxTy) * 100, 0, 100) : 50,
         });
       },
     })
@@ -119,6 +138,13 @@ export function RepositionablePhoto({
 
   function enterReposition() { repoRef.current = true;  setRepositioning(true); }
   function exitReposition()  { repoRef.current = false; setRepositioning(false); }
+
+  // Cover-fit display dimensions for render
+  const coverScale = (imgDims.w && imgDims.h && cw)
+    ? Math.max(cw / imgDims.w, height / imgDims.h)
+    : 1.6;
+  const displayW = imgDims.w ? imgDims.w * coverScale : cw * 1.6;
+  const displayH = imgDims.h ? imgDims.h * coverScale : height * 1.6;
 
   // ── Render ─────────────────────────────────────────────────────────
   return (
@@ -134,8 +160,8 @@ export function RepositionablePhoto({
             style={[
               styles.img,
               {
-                width:  `${SCALE * 100}%` as any,
-                height: SCALE * height,
+                width:  displayW,
+                height: displayH,
                 transform: [{ translateX: tx }, { translateY: ty }],
               },
             ]}
@@ -201,6 +227,11 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
   },
+  dragOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    cursor: 'grab' as any,
+  },
   placeholder: {
     flex: 1,
     alignItems: 'center',
@@ -209,11 +240,6 @@ const styles = StyleSheet.create({
   placeholderText: {
     fontSize: 14,
     color: Colors.greyLight,
-  },
-  dragOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    cursor: 'grab' as any,
   },
   hint: {
     position: 'absolute',

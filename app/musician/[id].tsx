@@ -13,21 +13,31 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
-const BANNER_SCALE = 1.6;
 
 function PositionedBanner({ uri, position, height }: { uri: string; position?: { x: number; y: number }; height: number }) {
   const [w, setW] = useState(0);
+  const [dims, setDims] = useState({ nw: 0, nh: 0 });
   const pos = position ?? { x: 50, y: 50 };
-  const tx = w ? -(pos.x / 100) * (BANNER_SCALE - 1) * w : 0;
-  const ty = -(pos.y / 100) * (BANNER_SCALE - 1) * height;
+
+  useEffect(() => {
+    if (uri) Image.getSize(uri, (nw, nh) => setDims({ nw, nh }), () => {});
+  }, [uri]);
+
+  const coverScale = (dims.nw && dims.nh && w) ? Math.max(w / dims.nw, height / dims.nh) : 1.6;
+  const displayW   = dims.nw ? dims.nw * coverScale : w * 1.6;
+  const displayH   = dims.nh ? dims.nh * coverScale : height * 1.6;
+  const maxTx      = Math.max(0, displayW - w);
+  const maxTy      = Math.max(0, displayH - height);
+  const tx         = -(pos.x / 100) * maxTx;
+  const ty         = -(pos.y / 100) * maxTy;
+
   return (
     <View style={{ height, overflow: 'hidden' }} onLayout={e => setW(e.nativeEvent.layout.width)}>
       <Image
         source={{ uri }}
         style={{
           position: 'absolute', top: 0, left: 0,
-          width: `${BANNER_SCALE * 100}%` as any,
-          height: BANNER_SCALE * height,
+          width: displayW, height: displayH,
           transform: [{ translateX: tx }, { translateY: ty }],
         } as any}
         resizeMode="cover"
