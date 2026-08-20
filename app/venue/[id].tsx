@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image, Platform, Linking, Dimensions,
+  ActivityIndicator, Image, Platform, Linking,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import WebView from 'react-native-webview';
@@ -894,9 +894,6 @@ function isEmbedVideo(url: string): boolean {
 }
 
 // ── MediaCarousel ──────────────────────────────────────────────────────
-
-const screenW = Dimensions.get('window').width;
-const isWeb   = Platform.OS === 'web';
 
 function MediaCarousel({
   items,

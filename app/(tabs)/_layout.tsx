@@ -15,7 +15,12 @@ function TopTabBar({ state, descriptors, navigation }: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const pathname = usePathname();
-  const onProfileScreen = pathname.includes('edit-venue') || pathname.includes('edit-profile');
+  const { user: tabUser, profile: tabProfile } = useAuth();
+  const onProfileScreen =
+    pathname.includes('edit-venue') ||
+    pathname.includes('edit-profile') ||
+    (tabProfile?.venueId ? pathname.includes(tabProfile.venueId) : false) ||
+    (tabUser?.uid ? pathname.startsWith('/musician/') && pathname.includes(tabUser.uid) : false);
 
   return (
     <View

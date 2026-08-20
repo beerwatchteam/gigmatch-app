@@ -30,7 +30,9 @@ export default function WebHeader() {
   const isProfileActive =
     pathname.includes('profile') ||
     pathname.includes('edit-venue') ||
-    pathname.includes('edit-profile');
+    pathname.includes('edit-profile') ||
+    (profile?.venueId ? pathname.includes(profile.venueId) : false) ||
+    (user?.uid ? pathname.startsWith('/musician/') && pathname.includes(user.uid) : false);
 
   return (
     <View style={[styles.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
