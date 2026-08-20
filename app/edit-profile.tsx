@@ -299,15 +299,17 @@ export default function EditProfileScreen() {
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
-          <RepositionablePhoto
-            uri={profile.photoUrl || null}
-            position={profile.photoPosition ?? { x: 50, y: 50 }}
-            onPositionChange={pos => set('photoPosition', pos)}
-            onChangePhoto={pickBannerPhoto}
-            height={220}
-            uploading={photoUploading}
-            placeholderText="Tap to add profile photo"
-          />
+          <View style={{ marginTop: 20 }}>
+            <RepositionablePhoto
+              uri={profile.photoUrl || null}
+              position={profile.photoPosition ?? { x: 50, y: 50 }}
+              onPositionChange={pos => set('photoPosition', pos)}
+              onChangePhoto={pickBannerPhoto}
+              height={270}
+              uploading={photoUploading}
+              placeholderText="Tap to add profile photo"
+            />
+          </View>
 
           <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
