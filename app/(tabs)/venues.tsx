@@ -80,10 +80,34 @@ type Venue = {
   suburb?: string; state?: string; streetAddress?: string;
   description?: string; genre?: string[]; genres?: string[];
   photoUrl?: string; photos?: string[];
+  photoPosition?: { x: number; y: number };
   capacity?: number; feeMin?: number; feeMax?: number;
   slots?: Record<string, { status: string }[]>;
   settings?: { listed?: boolean };
 };
+
+const CARD_H = 160;
+function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: number } }) {
+  const [w, setW] = useState(0);
+  const [dims, setDims] = useState({ nw: 0, nh: 0 });
+  const pos = position ?? { x: 50, y: 50 };
+  useEffect(() => { Image.getSize(uri, (nw, nh) => setDims({ nw, nh }), () => {}); }, [uri]);
+  const scale = (dims.nw && dims.nh && w) ? Math.max(w / dims.nw, CARD_H / dims.nh) : 1;
+  const dispW = dims.nw ? dims.nw * scale : (w || 300);
+  const dispH = dims.nh ? dims.nh * scale : CARD_H;
+  const maxTx = Math.max(0, dispW - w);
+  const maxTy = Math.max(0, dispH - CARD_H);
+  return (
+    <View style={{ width: '100%', height: CARD_H, overflow: 'hidden' }} onLayout={e => setW(e.nativeEvent.layout.width)}>
+      <Image
+        source={{ uri }}
+        style={{ position: 'absolute', top: 0, left: 0, width: dispW, height: dispH,
+          transform: [{ translateX: -(pos.x / 100) * maxTx }, { translateY: -(pos.y / 100) * maxTy }] } as any}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
 
 const isWeb = Platform.OS === 'web';
 type PanelKey = 'fee' | 'date' | 'capacity' | null;
@@ -672,7 +696,7 @@ export default function VenuesScreen() {
         onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
       >
         {photo
-          ? <Image source={{ uri: photo }} style={st.cardPhoto} />
+          ? <CardPhoto uri={photo} position={item.photoPosition} />
           : <View style={[st.cardPhotoEmpty, { backgroundColor: c.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: c.grey }]}>venue photo</Text></View>
         }
         <View style={st.cardBody}>
