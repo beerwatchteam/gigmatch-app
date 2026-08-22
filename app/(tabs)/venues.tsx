@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, RefreshControl, Image,
-  ScrollView, Platform,
+  ScrollView, Platform, Animated, Modal, Dimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -109,8 +109,8 @@ function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: 
   );
 }
 
-const isWeb = Platform.OS === 'web';
-type PanelKey = 'fee' | 'date' | 'capacity' | null;
+const isWeb  = Platform.OS === 'web';
+const PANEL_W = Dimensions.get('window').width * 0.87;
 
 const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const CAL_DOW    = ['M','T','W','T','F','S','S'];
@@ -270,7 +270,8 @@ export default function VenuesScreen() {
   const [areaSuggestions, setAreaSuggestions] = useState<AreaResult[]>([]);
   const [locationCoords, setLocationCoords]   = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius]                   = useState<number | null>(null);
-  const [openPanel, setOpenPanel]             = useState<PanelKey>(null);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const slideAnim   = useRef(new Animated.Value(-PANEL_W)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -308,7 +309,16 @@ export default function VenuesScreen() {
     setSearch(''); setGenres([]); setFeeRanges([]);
     setDateStart(''); setDateEnd(''); setCapacity('any');
     setShowDropdown(false); setAreaSuggestions([]);
-    setLocationCoords(null); setRadius(null); setOpenPanel(null);
+    setLocationCoords(null); setRadius(null);
+  }
+
+  function openFilterPanel() {
+    slideAnim.setValue(-PANEL_W);
+    setShowFilterPanel(true);
+    Animated.timing(slideAnim, { toValue: 0, duration: 240, useNativeDriver: true }).start();
+  }
+  function closeFilterPanel() {
+    Animated.timing(slideAnim, { toValue: -PANEL_W, duration: 200, useNativeDriver: true }).start(() => setShowFilterPanel(false));
   }
 
   function handleSearchChange(val: string) {
@@ -343,10 +353,6 @@ export default function VenuesScreen() {
   function toggleGenre(g: string) {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   }
-  function togglePanel(p: PanelKey) {
-    setOpenPanel(prev => prev === p ? null : p);
-  }
-
   const filtered = venues.filter(v => {
     // Location radius
     if (locationCoords && radius) {
@@ -408,15 +414,25 @@ export default function VenuesScreen() {
     return true;
   });
 
-  // ── Filter pill labels ────────────────────────────────────────────
+  // ── Active filter state ───────────────────────────────────────────
   const feeActive  = feeRanges.length > 0;
   const dateActive = !!dateStart;
   const capActive  = capacity !== 'any';
+  const fmtDate    = (s: string) => s.split('-').reverse().join('/');
 
-  const feeLabel  = feeActive  ? (feeRanges.length === 1 ? FEE_RANGES.find(r => r.key === feeRanges[0])?.label ?? 'Fee' : `${feeRanges.length} ranges`) : '$ Fee';
-  const fmtDate = (s: string) => s.split('-').reverse().join('/');
-  const dateLabel = dateActive ? (dateEnd ? `${fmtDate(dateStart)} – ${fmtDate(dateEnd)}` : fmtDate(dateStart)) : 'Availability';
-  const capLabel  = capActive  ? CAPACITY_OPTIONS.find(o => o.value === capacity)?.label ?? 'Capacity' : 'Capacity';
+  const activeFilterCount =
+    (feeActive ? 1 : 0) + (dateActive ? 1 : 0) + (capActive ? 1 : 0) + (genres.length > 0 ? 1 : 0);
+
+  const activeChips: { key: string; label: string; onRemove: () => void }[] = [
+    ...feeRanges.map(k => ({
+      key: `fee-${k}`,
+      label: FEE_RANGES.find(r => r.key === k)?.label ?? k,
+      onRemove: () => setFeeRanges(prev => prev.filter(x => x !== k)),
+    })),
+    ...(dateStart ? [{ key: 'date', label: dateEnd ? `${fmtDate(dateStart)}–${fmtDate(dateEnd)}` : fmtDate(dateStart), onRemove: () => { setDateStart(''); setDateEnd(''); } }] : []),
+    ...(capacity !== 'any' ? [{ key: 'cap', label: CAPACITY_OPTIONS.find(o => o.value === capacity)?.label ?? capacity, onRemove: () => setCapacity('any') }] : []),
+    ...genres.map(g => ({ key: `genre-${g}`, label: g, onRemove: () => setGenres(prev => prev.filter(x => x !== g)) })),
+  ];
 
   // ── Shared sidebar (web) ──────────────────────────────────────────
   const WebSidebar = (
@@ -547,21 +563,32 @@ export default function VenuesScreen() {
   // ── Native filter bar (top of content) ───────────────────────────
   const NativeFilterBar = (
     <View style={st.nativeFilterWrap}>
-      {/* Search */}
-      <View style={st.nativeSearchRow}>
-        <TextInput
-          style={st.nativeSearchInput}
-          placeholder="Venue, suburb or postcode…" placeholderTextColor="#999"
-          value={search} onChangeText={handleSearchChange}
-          onFocus={() => hasDropdown && setShowDropdown(true)}
-          onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-        />
-        {search ? <TouchableOpacity style={st.nativeClearX} onPress={clearSearch}><Text style={st.clearXText}>✕</Text></TouchableOpacity> : null}
+      {/* Search + Filters button */}
+      <View style={st.nativeTopRow}>
+        <View style={st.nativeSearchBox}>
+          <TextInput
+            style={st.nativeSearchInput}
+            placeholder="Venue, suburb or postcode…" placeholderTextColor="#999"
+            value={search} onChangeText={handleSearchChange}
+            onFocus={() => hasDropdown && setShowDropdown(true)}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+          />
+          {search ? <TouchableOpacity style={st.nativeClearX} onPress={clearSearch}><Text style={st.clearXText}>✕</Text></TouchableOpacity> : null}
+        </View>
+        <TouchableOpacity
+          style={[st.filtersBtn, activeFilterCount > 0 && st.filtersBtnOn]}
+          onPress={openFilterPanel}
+          activeOpacity={0.8}
+        >
+          <Text style={[st.filtersBtnText, activeFilterCount > 0 && st.filtersBtnTextOn]}>
+            {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Search dropdown */}
       {showDropdown && hasDropdown && (
-        <View style={[st.dropdown, { top: 52, left: 16, right: 16 }]}>
+        <View style={[st.dropdown, { top: 54, left: 16, right: 16, zIndex: 9999 }]}>
           {venueMatches.length > 0 && (<>
             <Text style={st.dropSection}>VENUES</Text>
             {venueMatches.map(v => (
@@ -593,92 +620,100 @@ export default function VenuesScreen() {
         </ScrollView>
       )}
 
-      {/* Filter pills row */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.nativePillScroll} contentContainerStyle={st.nativePillRow}>
-        <TouchableOpacity style={[st.filterPill, feeActive && st.filterPillOn, openPanel === 'fee' && st.filterPillOpen]} onPress={() => togglePanel('fee')}>
-          <Text style={[st.filterPillText, feeActive && st.filterPillTextOn]}>{feeLabel} ▾</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[st.filterPill, dateActive && st.filterPillOn, openPanel === 'date' && st.filterPillOpen]} onPress={() => togglePanel('date')}>
-          <Text style={[st.filterPillText, dateActive && st.filterPillTextOn]}>{dateLabel} ▾</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[st.filterPill, capActive && st.filterPillOn, openPanel === 'capacity' && st.filterPillOpen]} onPress={() => togglePanel('capacity')}>
-          <Text style={[st.filterPillText, capActive && st.filterPillTextOn]}>{capLabel} ▾</Text>
-        </TouchableOpacity>
-        {(feeActive || dateActive || capActive || genres.length > 0) && (
+      {/* Active filter chips */}
+      {activeChips.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.nativePillScroll} contentContainerStyle={st.nativePillRow}>
+          {activeChips.map(chip => (
+            <TouchableOpacity key={chip.key} style={st.activeChip} onPress={chip.onRemove}>
+              <Text style={st.activeChipText}>{chip.label}  ✕</Text>
+            </TouchableOpacity>
+          ))}
           <TouchableOpacity style={st.resetPill} onPress={resetFilters}>
             <Text style={st.resetPillText}>Reset All</Text>
           </TouchableOpacity>
-        )}
-      </ScrollView>
-
-      {/* Fee panel */}
-      {openPanel === 'fee' && (
-        <View style={st.panel}>
-          {FEE_RANGES.map(r => (
-            <TouchableOpacity key={r.key} style={st.panelOption} onPress={() => toggleFee(r.key)}>
-              <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
-              <Text style={st.panelOptionText}>{r.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        </ScrollView>
       )}
-
-      {/* Availability panel */}
-      {openPanel === 'date' && (
-        <View style={st.panel}>
-          <Text style={st.panelDateLabel}>FROM</Text>
-          <TouchableOpacity style={st.dateRow} onPress={() => openNativeDatePicker('start')}>
-            <Text style={[st.dateRowText, dateStart ? st.dateRowTextActive : null]}>
-              {dateStart ? formatDateDisplay(dateStart) : 'dd/mm/yyyy'}
-            </Text>
-            <Text style={st.calIcon}>📅</Text>
-          </TouchableOpacity>
-          <Text style={[st.panelDateLabel, { marginTop: 12 }]}>TO</Text>
-          <TouchableOpacity style={st.dateRow} onPress={() => openNativeDatePicker('end')}>
-            <Text style={[st.dateRowText, dateEnd ? st.dateRowTextActive : null]}>
-              {dateEnd ? formatDateDisplay(dateEnd) : 'dd/mm/yyyy'}
-            </Text>
-            <Text style={st.calIcon}>📅</Text>
-          </TouchableOpacity>
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-            {(dateStart || dateEnd) && (
-              <TouchableOpacity style={st.panelClear} onPress={() => { setDateStart(''); setDateEnd(''); }}>
-                <Text style={st.panelClearText}>Clear</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={st.panelDone} onPress={() => setOpenPanel(null)}>
-              <Text style={st.panelDoneText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Capacity panel */}
-      {openPanel === 'capacity' && (
-        <View style={st.panel}>
-          <View style={st.genreGrid}>
-            {CAPACITY_OPTIONS.map(o => (
-              <TouchableOpacity key={o.value} style={[st.genrePill, capacity === o.value && st.genrePillOn]}
-                onPress={() => { setCapacity(o.value); setOpenPanel(null); }}>
-                <Text style={[st.genrePillText, capacity === o.value && st.genrePillTextOn]}>{o.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* Genre pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.nativePillScroll} contentContainerStyle={st.nativePillRow}>
-        <TouchableOpacity style={[st.genrePill, genres.length === 0 && st.genrePillOn]} onPress={() => setGenres([])}>
-          <Text style={[st.genrePillText, genres.length === 0 && st.genrePillTextOn]}>All</Text>
-        </TouchableOpacity>
-        {GENRES.map(g => (
-          <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
-            <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
     </View>
+  );
+
+  // ── Filter panel (slide in from left) ────────────────────────────
+  const FilterPanel = (
+    <Modal visible={showFilterPanel} transparent animationType="none" onRequestClose={closeFilterPanel}>
+      <View style={st.fpOverlay}>
+        <Animated.View style={[st.fpPanel, { transform: [{ translateX: slideAnim }] }]}>
+          {/* Header */}
+          <View style={st.fpHeader}>
+            <Text style={st.fpTitle}>Filters</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <TouchableOpacity onPress={() => { resetFilters(); }} activeOpacity={0.7}>
+                <Text style={st.fpReset}>Reset All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={st.fpDoneBtn} onPress={closeFilterPanel} activeOpacity={0.8}>
+                <Text style={st.fpDoneBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
+            {/* FEE RANGE */}
+            <View style={st.fpSection}>
+              <Text style={st.fpSectionTitle}>FEE RANGE</Text>
+              {FEE_RANGES.map(r => (
+                <TouchableOpacity key={r.key} style={st.fpOptionRow} onPress={() => toggleFee(r.key)}>
+                  <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
+                  <Text style={st.fpOptionText}>{r.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* AVAILABILITY */}
+            <View style={st.fpSection}>
+              <Text style={st.fpSectionTitle}>AVAILABILITY</Text>
+              <Text style={st.fpSubLabel}>FROM</Text>
+              <View style={{ marginBottom: 10 }}>
+                <CalendarPicker
+                  value={dateStart}
+                  onChange={v => { setDateStart(v); if (dateEnd && v && v > dateEnd) setDateEnd(v); }}
+                  colors={colors}
+                />
+              </View>
+              <Text style={st.fpSubLabel}>TO</Text>
+              <CalendarPicker value={dateEnd} onChange={setDateEnd} minDate={dateStart || undefined} colors={colors} />
+            </View>
+
+            {/* CAPACITY */}
+            <View style={st.fpSection}>
+              <Text style={st.fpSectionTitle}>CAPACITY</Text>
+              <View style={st.genreGrid}>
+                {CAPACITY_OPTIONS.map(o => (
+                  <TouchableOpacity key={o.value} style={[st.genrePill, capacity === o.value && st.genrePillOn]} onPress={() => setCapacity(o.value)}>
+                    <Text style={[st.genrePillText, capacity === o.value && st.genrePillTextOn]}>{o.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* GENRE */}
+            <View style={st.fpSection}>
+              <Text style={st.fpSectionTitle}>GENRE</Text>
+              <View style={st.genreGrid}>
+                <TouchableOpacity style={[st.genrePill, genres.length === 0 && st.genrePillOn]} onPress={() => setGenres([])}>
+                  <Text style={[st.genrePillText, genres.length === 0 && st.genrePillTextOn]}>All</Text>
+                </TouchableOpacity>
+                {GENRES.map(g => (
+                  <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
+                    <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+        </Animated.View>
+
+        {/* Backdrop — tap to close */}
+        <TouchableOpacity style={st.fpBackdrop} activeOpacity={1} onPress={closeFilterPanel} />
+      </View>
+    </Modal>
   );
 
   // ── Venue card ────────────────────────────────────────────────────
@@ -780,6 +815,7 @@ export default function VenuesScreen() {
           <View style={{ height: 48 }} />
         </View>
       </ScrollView>
+      {FilterPanel}
     </SafeAreaView>
   );
 }
@@ -844,37 +880,45 @@ const st = StyleSheet.create({
   empty:     { color: '#111111', fontSize: 14, marginTop: 40 },
 
   // Native filter bar
-  nativeFilterBg:  { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
-  nativeFilterWrap:{ paddingTop: 12, paddingBottom: 8 },
-  nativeSearchRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10 },
-  nativeSearchInput:{
+  nativeFilterBg:   { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  nativeFilterWrap: { paddingTop: 12, paddingBottom: 8 },
+  nativeTopRow:     { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, gap: 10 },
+  nativeSearchBox:  { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  nativeSearchInput: {
     flex: 1, borderWidth: 1.5, borderColor: '#e0e0e0', borderRadius: 10,
     padding: 10, paddingHorizontal: 14, fontSize: 14, color: '#111111', backgroundColor: '#fafafa',
   },
   nativeClearX: { paddingLeft: 8 },
-  nativePillScroll:{ flexGrow: 0 },
-  nativePillRow:   { paddingHorizontal: 16, gap: 8, flexDirection: 'row', paddingBottom: 6 },
+  nativePillScroll: { flexGrow: 0 },
+  nativePillRow:    { paddingHorizontal: 16, gap: 8, flexDirection: 'row', paddingBottom: 6 },
 
-  filterPill:     { borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0', paddingHorizontal: 14, paddingVertical: 7, backgroundColor: '#fafafa' },
-  filterPillOn:   { backgroundColor: Colors.orange, borderColor: Colors.orange },
-  filterPillOpen: { borderColor: '#111111', backgroundColor: '#f5f5f5' },
-  filterPillText: { fontSize: 13, fontWeight: '600', color: '#555555' },
-  filterPillTextOn:{ color: '#ffffff' },
+  filtersBtn:      { borderRadius: 10, borderWidth: 1.5, borderColor: '#dddddd', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#fafafa' },
+  filtersBtnOn:    { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  filtersBtnText:  { fontSize: 14, fontWeight: '600', color: '#555555' },
+  filtersBtnTextOn:{ color: '#ffffff' },
+
+  activeChip:     { borderRadius: 20, borderWidth: 1, borderColor: Colors.orange, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: Colors.orange + '18' },
+  activeChipText: { fontSize: 12, fontWeight: '600', color: Colors.orange },
   resetPill:      { borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0', paddingHorizontal: 14, paddingVertical: 7 },
   resetPillText:  { fontSize: 13, fontWeight: '600', color: Colors.orange },
 
-  panel:          { marginHorizontal: 16, marginBottom: 8, padding: 14, backgroundColor: '#fafafa', borderRadius: 12, borderWidth: 1, borderColor: '#eeeeee' },
-  panelOption:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  panelOptionText:{ fontSize: 14, color: '#111111' },
-  panelDateLabel: { fontSize: 11, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6 },
-  dateRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 10, paddingHorizontal: 14, backgroundColor: '#ffffff' },
-  dateRowText:    { fontSize: 14, color: '#aaaaaa' },
-  dateRowTextActive: { color: '#111111' },
-  calIcon:        { fontSize: 16 },
-  panelDone:      { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.orange, borderRadius: 8 },
-  panelDoneText:  { fontSize: 13, fontWeight: '700', color: '#111111' },
-  panelClear:     { paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1, borderColor: '#dddddd', borderRadius: 8 },
-  panelClearText: { fontSize: 13, fontWeight: '600', color: '#666666' },
+  // Filter panel (slide-in from left)
+  fpOverlay:    { flex: 1, flexDirection: 'row' },
+  fpPanel: {
+    width: PANEL_W, backgroundColor: '#ffffff',
+    shadowColor: '#000', shadowOffset: { width: 6, height: 0 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 16,
+  },
+  fpBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' },
+  fpHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 52, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  fpTitle:      { fontSize: 18, fontWeight: '700', color: '#111111' },
+  fpReset:      { fontSize: 13, fontWeight: '600', color: Colors.orange },
+  fpDoneBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  fpDoneBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  fpSection:    { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 4 },
+  fpSectionTitle:{ fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  fpSubLabel:   { fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 12 },
+  fpOptionRow:  { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
+  fpOptionText: { fontSize: 14, color: '#111111' },
 
   nativeContent:  { paddingHorizontal: 16 },
   countRow:       { paddingTop: 14, paddingBottom: 8 },
