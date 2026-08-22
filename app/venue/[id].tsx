@@ -249,8 +249,10 @@ function fmtFee(min?: number | null, max?: number | null) {
 
 // ── Main screen ───────────────────────────────────────────────────────
 
-export default function VenueScreen() {
-  const { id, tab: tabParam } = useLocalSearchParams<{ id: string; tab?: string }>();
+export default function VenueScreen({ _overrideId }: { _overrideId?: string } = {}) {
+  const { id: paramId, tab: tabParam } = useLocalSearchParams<{ id: string; tab?: string }>();
+  const id = _overrideId ?? String(paramId);
+  const isProfileTab = !!_overrideId;
   const router = useRouter();
   const { profile, user } = useAuth();
   const { colors } = useTheme();
@@ -274,15 +276,19 @@ export default function VenueScreen() {
     }, () => setLoading(false));
   }, [id]);
 
+  const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
+
   if (loading) return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>
   );
 
   if (!venue) return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
-      <TouchableOpacity style={{ padding: 20 }} onPress={handleBack}>
-        <Text style={s.backText}>← Back</Text>
-      </TouchableOpacity>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
+      {!isProfileTab && (
+        <TouchableOpacity style={{ padding: 20 }} onPress={handleBack}>
+          <Text style={s.backText}>← Back</Text>
+        </TouchableOpacity>
+      )}
       <Text style={s.notFound}>Venue not found.</Text>
     </SafeAreaView>
   );
@@ -294,7 +300,7 @@ export default function VenueScreen() {
   const hasPhotos = (venue.photos || []).length > 0 || (venue.videos || []).length > 0 || isMyVenue;
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
       <ScrollView stickyHeaderIndices={[1]}>
 
         {/* ── Banner ── */}
@@ -303,9 +309,11 @@ export default function VenueScreen() {
             ? <PositionedBanner uri={photo} position={venue.photoPosition} height={isWeb ? 220 : 240} />
             : <View style={s.bannerPlaceholder}><Text style={s.bannerPlaceholderText}>venue photo</Text></View>
           }
-          <TouchableOpacity style={s.backOverlay} onPress={handleBack}>
-            <Text style={s.backOverlayText}>← Back</Text>
-          </TouchableOpacity>
+          {!isProfileTab && (
+            <TouchableOpacity style={s.backOverlay} onPress={handleBack}>
+              <Text style={s.backOverlayText}>← Back</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Sticky header: name + tabs ── */}

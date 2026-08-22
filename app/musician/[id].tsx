@@ -294,8 +294,10 @@ function MusicTab({ m }: { m: Musician }) {
 
 // ── Main Screen ───────────────────────────────────────────────────
 
-export default function MusicianScreen() {
-  const { id, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
+export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
+  const { id: paramId, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
+  const id = _overrideId ?? String(paramId);
+  const isProfileTab = !!_overrideId;
   const router  = useRouter();
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -314,9 +316,11 @@ export default function MusicianScreen() {
     }).catch(console.error).finally(() => setLoading(false));
   }, [id]);
 
+  const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
+
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
         <ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} />
       </SafeAreaView>
     );
@@ -324,10 +328,12 @@ export default function MusicianScreen() {
 
   if (!musician) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
+        {!isProfileTab && (
+          <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+        )}
         <Text style={[styles.notFound, { color: colors.grey }]}>Musician not found.</Text>
       </SafeAreaView>
     );
@@ -340,7 +346,7 @@ export default function MusicianScreen() {
       : musician.artistType;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges ?? ['bottom']}>
       <ScrollView>
         {/* Hero banner */}
         {musician.photoUrl ? (
@@ -350,11 +356,13 @@ export default function MusicianScreen() {
         )}
 
         {/* Back button overlay */}
-        <SafeAreaView edges={['top']} style={styles.backOverlayWrap}>
-          <TouchableOpacity style={styles.backOverlay} onPress={handleBack}>
-            <Text style={styles.backOverlayText}>← Back</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
+        {!isProfileTab && (
+          <SafeAreaView edges={['top']} style={styles.backOverlayWrap}>
+            <TouchableOpacity style={styles.backOverlay} onPress={handleBack}>
+              <Text style={styles.backOverlayText}>← Back</Text>
+            </TouchableOpacity>
+          </SafeAreaView>
+        )}
 
         {/* Profile header */}
         <View style={styles.profileHead}>

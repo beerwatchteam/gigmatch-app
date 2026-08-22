@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import {
   View, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -984,7 +984,6 @@ export default function InboxScreen() {
 
   const [selected, setSelected] = useState<Enquiry | null>(null);
   const [filter, setFilter]     = useState<FilterKey>('all');
-  const autoSelected = useRef(false);
 
   // ── DM state ────────────────────────────────────────────────────────────
   const [inboxTab,      setInboxTab]      = useState<'enquiries' | 'messages'>('enquiries');
@@ -1001,16 +1000,6 @@ export default function InboxScreen() {
   const filteredDMs = dmFilter === 'accepted' ? acceptedDMs : requestDMs;
   const selectedDM  = dmConvs.find(c => c.id === selectedDMId) ?? null;
 
-  // Auto-open the most recent message on first load
-  useEffect(() => {
-    if (!loading && !autoSelected.current && enquiries.length > 0) {
-      autoSelected.current = true;
-      const mostRecent = [...enquiries].sort(
-        (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-      )[0];
-      setSelected(mostRecent);
-    }
-  }, [loading, enquiries.length]);
 
   const sorted   = [...enquiries].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   const filtered = filter === 'all' ? sorted : sorted.filter(e => e.status === filter);
@@ -1019,7 +1008,7 @@ export default function InboxScreen() {
   // ── Not signed in ────────────────────────────────────────────────────────
   if (!user) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
         <View style={[s.listHeader, { borderBottomColor: colors.border }]}>
           <Text style={[s.title, { color: colors.black }]}>{title}</Text>
         </View>
@@ -1197,15 +1186,15 @@ export default function InboxScreen() {
   // ── NATIVE: thread open — full screen ───────────────────────────────────
   if (selected) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <ThreadPanel enquiry={selected} isVenue={isVenue} venueId={venueId} onBack={() => setSelected(null)} />
-      </SafeAreaView>
+      </View>
     );
   }
 
   // ── NATIVE: list ─────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
       <View style={[s.listHeader, { borderBottomColor: colors.border }]}>
         <Text style={[s.title, { color: colors.black }]}>Inbox</Text>
         {/* Main tab switcher */}
