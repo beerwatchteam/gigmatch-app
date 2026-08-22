@@ -12,6 +12,10 @@ import {
   sendEmailVerification,
   updateProfile,
   signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
 } from 'firebase/auth';
 import { doc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
@@ -51,10 +55,11 @@ export default function LoginScreen() {
   const [signupTab, setSignupTab] = useState<'artist' | 'venue'>('artist');
 
   // ── Login ──────────────────────────────────────────────────────────────
-  const [siEmail, setSiEmail]       = useState('');
-  const [siPassword, setSiPassword] = useState('');
-  const [siLoading, setSiLoading]   = useState(false);
-  const [siError, setSiError]       = useState('');
+  const [siEmail, setSiEmail]         = useState('');
+  const [siPassword, setSiPassword]   = useState('');
+  const [siRemember, setSiRemember]   = useState(true);
+  const [siLoading, setSiLoading]     = useState(false);
+  const [siError, setSiError]         = useState('');
 
   // ── Artist signup ──────────────────────────────────────────────────────
   const [mStageName, setMStageName]     = useState('');
@@ -115,6 +120,11 @@ export default function LoginScreen() {
         const resolved = await resolveUsernameToEmail(email);
         if (!resolved) { setSiError('No account found with that username.'); setSiLoading(false); return; }
         email = resolved;
+      }
+      if (isWeb) {
+        await setPersistence(auth, siRemember ? browserLocalPersistence : browserSessionPersistence);
+      } else if (!siRemember) {
+        await setPersistence(auth, inMemoryPersistence);
       }
       await signInWithEmailAndPassword(auth, email, siPassword);
       router.back();
@@ -271,6 +281,10 @@ export default function LoginScreen() {
             value={siEmail} onChangeText={setSiEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
           <TextInput style={s.input} placeholder="Password" placeholderTextColor="#999"
             value={siPassword} onChangeText={setSiPassword} secureTextEntry />
+          <TouchableOpacity style={s.rememberRow} onPress={() => setSiRemember(v => !v)} activeOpacity={0.7}>
+            <View style={[s.checkbox, siRemember && s.checkboxOn]} />
+            <Text style={s.rememberText}>Remember me</Text>
+          </TouchableOpacity>
           {siError ? <Text style={s.errorText}>{siError}</Text> : null}
           <TouchableOpacity style={[s.submitBtn, siLoading && s.submitBtnDim]} onPress={handleSignIn} disabled={siLoading}>
             {siLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.submitBtnText}>Log In</Text>}
@@ -572,6 +586,9 @@ const s = StyleSheet.create({
   typePillActive:     { backgroundColor: Colors.orange, borderColor: Colors.orange },
   typePillText:       { fontSize: 13, fontWeight: '600', color: '#666666' },
   typePillTextActive: { color: '#ffffff' },
+
+  rememberRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  rememberText: { fontSize: 13, color: '#555555' },
 
   termsRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   checkbox:   { width: 16, height: 16, borderRadius: 3, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: '#fafafa' },
