@@ -3,6 +3,7 @@ import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Image, Linking, Platform,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -53,6 +54,36 @@ const PLATFORMS = [
   { key: 'spotify',    label: 'Spotify'     },
   { key: 'appleMusic', label: 'Apple Music' },
 ];
+
+/** Convert a Spotify share URL to the embeddable URL */
+function toSpotifyEmbedUrl(url: string): string | null {
+  if (!url) return null;
+  const m = url.match(/open\.spotify\.com\/(artist|track|album|playlist|episode)\/([A-Za-z0-9]+)/);
+  if (!m) return null;
+  return `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator`;
+}
+
+function spotifyEmbedHeight(embedUrl: string): number {
+  return embedUrl.includes('/track/') || embedUrl.includes('/episode/') ? 152 : 352;
+}
+
+/** If the URL is a post or reel, return its embeddable URL */
+function toInstagramPostEmbedUrl(url: string): string | null {
+  if (!url) return null;
+  const m = url.match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/);
+  return m ? `https://www.instagram.com/${m[1]}/${m[2]}/embed/` : null;
+}
+
+/** Extract a plain Instagram handle from a profile URL or raw handle */
+function getInstagramHandle(val: string): string | null {
+  if (!val) return null;
+  // Full profile URL
+  const urlMatch = val.match(/instagram\.com\/(?!p\/|reel\/)([^/?#\s]+)/);
+  if (urlMatch) return urlMatch[1].replace(/\/$/, '');
+  // Bare handle (with or without @)
+  if (/^@?[\w.][\w.]{0,28}$/.test(val.trim())) return val.trim().replace(/^@/, '');
+  return null;
+}
 
 type CustomLink = { label: string; url: string };
 type Song      = { title?: string; url?: string };
@@ -242,8 +273,65 @@ function MusicTab({ m }: { m: Musician }) {
   ];
   const hasMedia = displayPhotos.length > 0 || (m.videos || []).length > 0;
 
+  const spotifyEmbedUrl  = toSpotifyEmbedUrl(m.spotify || '');
+  const igPostEmbedUrl   = toInstagramPostEmbedUrl(m.instagram || '');
+  const igHandle         = igPostEmbedUrl ? null : getInstagramHandle(m.instagram || '');
+  const spHeight         = spotifyEmbedUrl ? spotifyEmbedHeight(spotifyEmbedUrl) : 0;
+
   return (
     <View style={styles.content}>
+
+      {/* ── Spotify embed ── */}
+      {spotifyEmbedUrl && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>SPOTIFY</Text>
+          <View style={[styles.embedWrap, { borderColor: colors.border }]}>
+            <WebView
+              source={{ uri: spotifyEmbedUrl }}
+              style={{ height: spHeight }}
+              scrollEnabled={false}
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+            />
+          </View>
+        </View>
+      )}
+
+      {/* ── Instagram ── */}
+      {igPostEmbedUrl ? (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>INSTAGRAM</Text>
+          <View style={[styles.embedWrap, { borderColor: colors.border }]}>
+            <WebView
+              source={{ uri: igPostEmbedUrl }}
+              style={{ height: 500 }}
+              scrollEnabled={false}
+            />
+          </View>
+        </View>
+      ) : igHandle ? (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>INSTAGRAM</Text>
+          <TouchableOpacity
+            style={[styles.igCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
+            onPress={() => Linking.openURL(`https://www.instagram.com/${igHandle}`)}
+            activeOpacity={0.75}
+          >
+            <View style={styles.igCardLeft}>
+              <View style={styles.igAvatar}>
+                <Text style={styles.igAvatarText}>IG</Text>
+              </View>
+              <View>
+                <Text style={[styles.igHandle, { color: colors.black }]}>@{igHandle}</Text>
+                <Text style={[styles.igSub, { color: colors.grey }]}>View profile on Instagram</Text>
+              </View>
+            </View>
+            <Text style={[styles.igArrow, { color: Colors.orange }]}>→</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {/* ── Songs ── */}
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>SONGS</Text>
         {songs.length > 0 ? (
@@ -263,6 +351,7 @@ function MusicTab({ m }: { m: Musician }) {
         )}
       </View>
 
+      {/* ── Photos & Videos ── */}
       {hasMedia && (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>PHOTOS & VIDEOS</Text>
@@ -523,4 +612,16 @@ const styles = StyleSheet.create({
 
   videoCard:     { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 14, marginBottom: 8 },
   videoCardText: { fontSize: 14, color: Colors.orange, fontWeight: '600' },
+
+  // Embeds
+  embedWrap: { borderRadius: 12, overflow: 'hidden', borderWidth: 1 },
+
+  // Instagram profile card
+  igCard:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 12, borderWidth: 1 },
+  igCardLeft:   { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  igAvatar:     { width: 48, height: 48, borderRadius: 14, backgroundColor: '#C13584', alignItems: 'center', justifyContent: 'center' },
+  igAvatarText: { color: '#ffffff', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
+  igHandle:     { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  igSub:        { fontSize: 13 },
+  igArrow:      { fontSize: 20, fontWeight: '300' },
 });

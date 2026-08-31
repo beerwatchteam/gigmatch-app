@@ -19,10 +19,10 @@ import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const ACT_TYPES = ['Band','Solo','Duo','DJ','Other'];
 const PLATFORMS = [
-  { key: 'instagram',  label: 'Instagram' },
-  { key: 'tiktok',     label: 'TikTok' },
-  { key: 'spotify',    label: 'Spotify' },
-  { key: 'appleMusic', label: 'Apple Music' },
+  { key: 'instagram',  label: 'Instagram',   placeholder: 'Profile URL or a post/reel URL to embed' },
+  { key: 'tiktok',     label: 'TikTok',      placeholder: 'TikTok profile URL' },
+  { key: 'spotify',    label: 'Spotify',     placeholder: 'Artist, track, album or playlist URL' },
+  { key: 'appleMusic', label: 'Apple Music', placeholder: 'Apple Music URL' },
 ];
 const TABS = ['Settings','Basic Info','About','Music','Gig History','Upcoming','Tech Specs','Photos'];
 
@@ -508,7 +508,7 @@ export default function EditProfileScreen() {
               <Text style={[s.sectionTitle, { color: colors.grey }]}>Social Links</Text>
               {PLATFORMS.map(p => (
                 <Field key={p.key} label={p.label}>
-                  <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={`${p.label} URL`} />
+                  <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} />
                 </Field>
               ))}
             </View>
