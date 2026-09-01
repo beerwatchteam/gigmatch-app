@@ -3,8 +3,9 @@ import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Image, Linking, Platform,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { Text } from '@/components/Text';
+import { SpotifyEmbed } from '@/components/SpotifyEmbed';
+import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc } from 'firebase/firestore';
@@ -67,11 +68,11 @@ function spotifyEmbedHeight(embedUrl: string): number {
   return embedUrl.includes('/track/') || embedUrl.includes('/episode/') ? 152 : 352;
 }
 
-/** If the URL is a post or reel, return its embeddable URL */
-function toInstagramPostEmbedUrl(url: string): string | null {
+/** If the URL is a post or reel, return the canonical post URL (not /embed/) */
+function toInstagramPostUrl(url: string): string | null {
   if (!url) return null;
   const m = url.match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/);
-  return m ? `https://www.instagram.com/${m[1]}/${m[2]}/embed/` : null;
+  return m ? `https://www.instagram.com/${m[1]}/${m[2]}/` : null;
 }
 
 /** Extract a plain Instagram handle from a profile URL or raw handle */
@@ -274,8 +275,8 @@ function MusicTab({ m }: { m: Musician }) {
   const hasMedia = displayPhotos.length > 0 || (m.videos || []).length > 0;
 
   const spotifyEmbedUrl  = toSpotifyEmbedUrl(m.spotify || '');
-  const igPostEmbedUrl   = toInstagramPostEmbedUrl(m.instagram || '');
-  const igHandle         = igPostEmbedUrl ? null : getInstagramHandle(m.instagram || '');
+  const igPostUrl        = toInstagramPostUrl(m.instagram || '');
+  const igHandle         = igPostUrl ? null : getInstagramHandle(m.instagram || '');
   const spHeight         = spotifyEmbedUrl ? spotifyEmbedHeight(spotifyEmbedUrl) : 0;
 
   return (
@@ -286,27 +287,17 @@ function MusicTab({ m }: { m: Musician }) {
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>SPOTIFY</Text>
           <View style={[styles.embedWrap, { borderColor: colors.border }]}>
-            <WebView
-              source={{ uri: spotifyEmbedUrl }}
-              style={{ height: spHeight }}
-              scrollEnabled={false}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-            />
+            <SpotifyEmbed url={spotifyEmbedUrl} height={spHeight} />
           </View>
         </View>
       )}
 
       {/* ── Instagram ── */}
-      {igPostEmbedUrl ? (
+      {igPostUrl ? (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>INSTAGRAM</Text>
           <View style={[styles.embedWrap, { borderColor: colors.border }]}>
-            <WebView
-              source={{ uri: igPostEmbedUrl }}
-              style={{ height: 500 }}
-              scrollEnabled={false}
-            />
+            <InstagramPostEmbed postUrl={igPostUrl} />
           </View>
         </View>
       ) : igHandle ? (
