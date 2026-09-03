@@ -485,13 +485,30 @@ export default function LoginScreen() {
                 </View>
               )}
 
+              <TextInput style={s.input} placeholder="Email address" placeholderTextColor="#999"
+                value={vEmail} onChangeText={setVEmail} autoCapitalize="none" keyboardType="email-address" />
+              {vFieldErrors.email ? <Text style={s.fieldError}>{vFieldErrors.email}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Password (min 6 characters)" placeholderTextColor="#999"
+                value={vPassword} onChangeText={setVPassword} secureTextEntry />
+              {vFieldErrors.password ? <Text style={s.fieldError}>{vFieldErrors.password}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Confirm password" placeholderTextColor="#999"
+                value={vConfirm} onChangeText={setVConfirm} secureTextEntry />
+              {vFieldErrors.confirm ? <Text style={s.fieldError}>{vFieldErrors.confirm}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Username" placeholderTextColor="#999"
+                value={vUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setVUsername(val); setVUsernameTouched(val.length > 0); }} autoCapitalize="none" />
+              <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
+              {vFieldErrors.username ? <Text style={s.fieldError}>{vFieldErrors.username}</Text> : null}
+
               {/* Verification info + manual review option — shown once venue is selected */}
               {vSelectedVenueId !== undefined && (
                 <>
                   {!vManualReview ? (
                     <>
                       <Text style={[s.hint, { color: '#444', marginBottom: 4 }]}>
-                        Once we review your claim, we'll send a verification code to your email address above. You'll enter it on your Profile tab to complete the process.
+                        Once we review your claim, we'll send a verification code to your email above. You'll enter it on your Profile tab to complete the process.
                       </Text>
                       <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
                         <Text style={[s.hint, { color: Colors.orange }]}>
@@ -523,23 +540,6 @@ export default function LoginScreen() {
                   )}
                 </>
               )}
-
-              <TextInput style={s.input} placeholder="Email address" placeholderTextColor="#999"
-                value={vEmail} onChangeText={setVEmail} autoCapitalize="none" keyboardType="email-address" />
-              {vFieldErrors.email ? <Text style={s.fieldError}>{vFieldErrors.email}</Text> : null}
-
-              <TextInput style={s.input} placeholder="Password (min 6 characters)" placeholderTextColor="#999"
-                value={vPassword} onChangeText={setVPassword} secureTextEntry />
-              {vFieldErrors.password ? <Text style={s.fieldError}>{vFieldErrors.password}</Text> : null}
-
-              <TextInput style={s.input} placeholder="Confirm password" placeholderTextColor="#999"
-                value={vConfirm} onChangeText={setVConfirm} secureTextEntry />
-              {vFieldErrors.confirm ? <Text style={s.fieldError}>{vFieldErrors.confirm}</Text> : null}
-
-              <TextInput style={s.input} placeholder="Username" placeholderTextColor="#999"
-                value={vUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setVUsername(val); setVUsernameTouched(val.length > 0); }} autoCapitalize="none" />
-              <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
-              {vFieldErrors.username ? <Text style={s.fieldError}>{vFieldErrors.username}</Text> : null}
 
               <TouchableOpacity style={s.termsRow} onPress={() => setVTerms(v => !v)}>
                 <View style={[s.checkbox, vTerms && s.checkboxOn]} />
