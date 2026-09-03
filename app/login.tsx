@@ -92,7 +92,6 @@ export default function LoginScreen() {
   const [vFieldErrors, setVFieldErrors]         = useState<Record<string, string>>({});
   const [vUsernameTouched, setVUsernameTouched] = useState(false);
   const [vSignUpState, setVSignUpState]         = useState<'form' | 'claim-submitted'>('form');
-  const [vVerificationContact, setVVerificationContact] = useState('');
   const [vManualReview, setVManualReview]       = useState(false);
   const [vManualNotes, setVManualNotes]         = useState('');
   const [vAlreadyClaimed, setVAlreadyClaimed]   = useState(false);
@@ -214,9 +213,6 @@ export default function LoginScreen() {
     if (vPassword.length < 6)           e.password  = 'At least 6 characters';
     if (vPassword !== vConfirm)         e.confirm   = "Passwords don't match";
     if (!vTerms)                        e.terms     = 'You must accept the Terms & Conditions';
-    if (!vManualReview && !vVerificationContact.trim()) {
-      e.verificationContact = 'Provide a business email or phone number for verification';
-    }
     setVFieldErrors(e); return Object.keys(e).length === 0;
   }
 
@@ -246,9 +242,7 @@ export default function LoginScreen() {
         setVLoading(false); return;
       }
 
-      const contactType: 'email' | 'phone' | 'manual' = vManualReview
-        ? 'manual'
-        : vVerificationContact.includes('@') ? 'email' : 'phone';
+      const contactType: 'email' | 'manual' = vManualReview ? 'manual' : 'email';
 
       const { user } = await createUserWithEmailAndPassword(auth, vEmail.trim(), vPassword);
       await updateProfile(user, { displayName: vVenueName.trim() });
@@ -274,7 +268,7 @@ export default function LoginScreen() {
         isNewVenue: vSelectedVenueId === null,
         status: 'pending',
         submittedAt: serverTimestamp(),
-        verificationContact: vManualReview ? '' : vVerificationContact.trim(),
+        verificationContact: vManualReview ? '' : vEmail.trim(),
         verificationContactType: contactType,
         notes: vManualNotes.trim() || '',
         isDispute: vAlreadyClaimed,
@@ -308,7 +302,7 @@ export default function LoginScreen() {
     setVVenueName(''); setVSelectedVenueId(undefined); setVUsername(''); setVEmail('');
     setVPassword(''); setVConfirm(''); setVTerms(false); setVError(''); setVFieldErrors({});
     setVUsernameTouched(false); vUserRef.current = null;
-    setVVerificationContact(''); setVManualReview(false); setVManualNotes('');
+    setVManualReview(false); setVManualNotes('');
     setVAlreadyClaimed(false); setVCurrentOwnerId('');
   }
 
@@ -491,38 +485,25 @@ export default function LoginScreen() {
                 </View>
               )}
 
-              {/* Verification contact — shown once venue is selected */}
+              {/* Verification info + manual review option — shown once venue is selected */}
               {vSelectedVenueId !== undefined && (
                 <>
-                  <Text style={[s.hint, { marginBottom: 4, marginTop: 4, color: '#444' }]}>
-                    We verify ownership via a business email or phone number linked to your venue.
-                  </Text>
                   {!vManualReview ? (
                     <>
-                      <TextInput
-                        style={s.input}
-                        placeholder="Business email or phone (e.g. bookings@yourvenue.com.au)"
-                        placeholderTextColor="#999"
-                        value={vVerificationContact}
-                        onChangeText={setVVerificationContact}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        autoCorrect={false}
-                      />
-                      {vFieldErrors.verificationContact
-                        ? <Text style={s.fieldError}>{vFieldErrors.verificationContact}</Text>
-                        : null}
-                      <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7}>
+                      <Text style={[s.hint, { color: '#444', marginBottom: 4 }]}>
+                        Once we review your claim, we'll send a verification code to your email address above. You'll enter it on your Profile tab to complete the process.
+                      </Text>
+                      <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
                         <Text style={[s.hint, { color: Colors.orange }]}>
-                          I don't have a business email or phone number
+                          I can't be verified by email — request manual review
                         </Text>
                       </TouchableOpacity>
                     </>
                   ) : (
                     <View style={s.manualReviewBox}>
-                      <Text style={s.manualReviewTitle}>Manual Review Path</Text>
+                      <Text style={s.manualReviewTitle}>Manual Review</Text>
                       <Text style={s.manualReviewBody}>
-                        Our team will contact you after reviewing your claim. You may be asked to provide proof of association with this venue.
+                        Our team will review your claim and contact you directly. You may be asked to provide proof of association with this venue.
                       </Text>
                       <TextInput
                         style={[s.input, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
@@ -535,7 +516,7 @@ export default function LoginScreen() {
                       />
                       <TouchableOpacity onPress={() => { setVManualReview(false); setVManualNotes(''); }} activeOpacity={0.7}>
                         <Text style={[s.hint, { color: Colors.orange }]}>
-                          I do have a business email or phone number
+                          Cancel — verify by email instead
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -587,7 +568,7 @@ export default function LoginScreen() {
               <Text style={s.verifyHint}>
                 {vManualReview
                   ? "Our team will be in touch once your claim has been manually reviewed."
-                  : `Once approved, we'll send a verification code to ${vVerificationContact}. Enter it on your Profile tab to complete verification.`}
+                  : `Once approved, we'll send a verification code to ${vEmail.trim()}. Enter it on your Profile tab to complete verification.`}
               </Text>
               <Text style={s.verifyHint}>This usually takes 1–2 business days.</Text>
               <TouchableOpacity style={[s.submitBtn, { marginTop: 20 }]} onPress={() => router.back()}>
