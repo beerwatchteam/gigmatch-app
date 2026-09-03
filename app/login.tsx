@@ -494,13 +494,13 @@ export default function LoginScreen() {
                 ? <Text style={s.fieldError}>{vFieldErrors.email}</Text>
                 : <>
                     <Text style={s.hint}>
-                      We verify your claim by checking this email is publicly linked to your venue; on your website, Google or socials.{' '}
+                      We verify your claim by checking this email is publicly linked to your venue; on your website, Google, or socials.{' '}
                       <Text style={{ fontStyle: 'italic' }}>This can be changed later.</Text>
                     </Text>
                     {vSelectedVenueId !== undefined && !vManualReview && (
                       <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
                         <Text style={[s.hint, { color: Colors.orange }]}>
-                          Request Manual Review (My venue doesn't have a public listing email, or I am using a different email)
+                          Request Manual Review (My venue doesn't have a public listing email or I am using a different email)
                         </Text>
                       </TouchableOpacity>
                     )}
