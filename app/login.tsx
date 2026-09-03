@@ -92,7 +92,6 @@ export default function LoginScreen() {
   const [vFieldErrors, setVFieldErrors]         = useState<Record<string, string>>({});
   const [vUsernameTouched, setVUsernameTouched] = useState(false);
   const [vSignUpState, setVSignUpState]         = useState<'form' | 'claim-submitted'>('form');
-  const [vVerificationContact, setVVerificationContact] = useState('');
   const [vManualReview, setVManualReview]       = useState(false);
   const [vManualNotes, setVManualNotes]         = useState('');
   const [vAlreadyClaimed, setVAlreadyClaimed]   = useState(false);
@@ -214,13 +213,8 @@ export default function LoginScreen() {
     if (vPassword.length < 6)           e.password  = 'At least 6 characters';
     if (vPassword !== vConfirm)         e.confirm   = "Passwords don't match";
     if (!vTerms)                        e.terms     = 'You must accept the Terms & Conditions';
-    if (vSelectedVenueId !== undefined) {
-      if (!vManualReview && !vVerificationContact.trim()) {
-        e.verificationContact = 'Enter the public business email for this venue';
-      }
-      if (vManualReview && !vManualNotes.trim()) {
-        e.manualNotes = 'Please describe your connection to this venue';
-      }
+    if (vSelectedVenueId !== undefined && vManualReview && !vManualNotes.trim()) {
+      e.manualNotes = 'Please describe your connection to this venue';
     }
     setVFieldErrors(e); return Object.keys(e).length === 0;
   }
@@ -253,7 +247,6 @@ export default function LoginScreen() {
 
       const contactType: 'email' | 'manual' = vManualReview ? 'manual' : 'email';
 
-
       const { user } = await createUserWithEmailAndPassword(auth, vEmail.trim(), vPassword);
       await updateProfile(user, { displayName: vVenueName.trim() });
 
@@ -278,7 +271,7 @@ export default function LoginScreen() {
         isNewVenue: vSelectedVenueId === null,
         status: 'pending',
         submittedAt: serverTimestamp(),
-        verificationContact: vManualReview ? '' : vVerificationContact.trim(),
+        verificationContact: vManualReview ? '' : vEmail.trim(),
         verificationContactType: contactType,
         notes: vManualNotes.trim() || '',
         isDispute: vAlreadyClaimed,
@@ -312,7 +305,7 @@ export default function LoginScreen() {
     setVVenueName(''); setVSelectedVenueId(undefined); setVUsername(''); setVEmail('');
     setVPassword(''); setVConfirm(''); setVTerms(false); setVError(''); setVFieldErrors({});
     setVUsernameTouched(false); vUserRef.current = null;
-    setVVerificationContact(''); setVManualReview(false); setVManualNotes('');
+    setVManualReview(false); setVManualNotes('');
     setVAlreadyClaimed(false); setVCurrentOwnerId('');
   }
 
@@ -497,7 +490,13 @@ export default function LoginScreen() {
 
               <TextInput style={s.input} placeholder="Email address" placeholderTextColor="#999"
                 value={vEmail} onChangeText={setVEmail} autoCapitalize="none" keyboardType="email-address" />
-              {vFieldErrors.email ? <Text style={s.fieldError}>{vFieldErrors.email}</Text> : null}
+              {vFieldErrors.email
+                ? <Text style={s.fieldError}>{vFieldErrors.email}</Text>
+                : <Text style={s.hint}>
+                    We verify your claim by checking this email is publicly linked to your venue — on your website, Google, or socials.{' '}
+                    <Text style={{ fontStyle: 'italic' }}>This can be changed later.</Text>
+                  </Text>
+              }
 
               <TextInput style={s.input} placeholder="Password (min 6 characters)" placeholderTextColor="#999"
                 value={vPassword} onChangeText={setVPassword} secureTextEntry />
@@ -512,33 +511,15 @@ export default function LoginScreen() {
               <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
               {vFieldErrors.username ? <Text style={s.fieldError}>{vFieldErrors.username}</Text> : null}
 
-              {/* Verification — shown once venue is selected */}
+              {/* Manual review option — shown once venue is selected */}
               {vSelectedVenueId !== undefined && (
                 <>
                   {!vManualReview ? (
-                    <>
-                      <Text style={[s.hint, { color: '#444', marginBottom: 4, marginTop: 2 }]}>
-                        We verify your claim by checking this email matches what's publicly listed for your venue — on your website, Google, or socials.
+                    <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
+                      <Text style={[s.hint, { color: Colors.orange }]}>
+                        My venue doesn't have a public email listing — request manual review
                       </Text>
-                      <TextInput
-                        style={s.input}
-                        placeholder="Venue's public business email"
-                        placeholderTextColor="#999"
-                        value={vVerificationContact}
-                        onChangeText={setVVerificationContact}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        autoCorrect={false}
-                      />
-                      {vFieldErrors.verificationContact
-                        ? <Text style={s.fieldError}>{vFieldErrors.verificationContact}</Text>
-                        : null}
-                      <TouchableOpacity onPress={() => { setVManualReview(true); setVVerificationContact(''); }} activeOpacity={0.7} style={{ marginBottom: 8 }}>
-                        <Text style={[s.hint, { color: Colors.orange }]}>
-                          My venue doesn't have a public email listing — request manual review
-                        </Text>
-                      </TouchableOpacity>
-                    </>
+                    </TouchableOpacity>
                   ) : (
                     <View style={s.manualReviewBox}>
                       <Text style={s.manualReviewTitle}>Manual Review</Text>
@@ -559,7 +540,7 @@ export default function LoginScreen() {
                         : null}
                       <TouchableOpacity onPress={() => { setVManualReview(false); setVManualNotes(''); }} activeOpacity={0.7}>
                         <Text style={[s.hint, { color: Colors.orange }]}>
-                          Cancel — verify by public email instead
+                          Cancel — verify by email instead
                         </Text>
                       </TouchableOpacity>
                     </View>
