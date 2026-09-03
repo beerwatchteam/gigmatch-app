@@ -494,7 +494,7 @@ export default function LoginScreen() {
                 ? <Text style={s.fieldError}>{vFieldErrors.email}</Text>
                 : <>
                     <Text style={s.hint}>
-                      We verify your claim by checking this email is publicly linked to your venue — on your website, Google, or socials.{' '}
+                      We verify your claim by checking this email is publicly linked to your venue; on your website, Google, or socials.{' '}
                       <Text style={{ fontStyle: 'italic' }}>This can be changed later.</Text>
                     </Text>
                     {vSelectedVenueId !== undefined && !vManualReview && (
