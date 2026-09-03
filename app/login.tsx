@@ -492,10 +492,19 @@ export default function LoginScreen() {
                 value={vEmail} onChangeText={setVEmail} autoCapitalize="none" keyboardType="email-address" />
               {vFieldErrors.email
                 ? <Text style={s.fieldError}>{vFieldErrors.email}</Text>
-                : <Text style={s.hint}>
-                    We verify your claim by checking this email is publicly linked to your venue — on your website, Google, or socials.{' '}
-                    <Text style={{ fontStyle: 'italic' }}>This can be changed later.</Text>
-                  </Text>
+                : <>
+                    <Text style={s.hint}>
+                      We verify your claim by checking this email is publicly linked to your venue — on your website, Google, or socials.{' '}
+                      <Text style={{ fontStyle: 'italic' }}>This can be changed later.</Text>
+                    </Text>
+                    {vSelectedVenueId !== undefined && !vManualReview && (
+                      <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
+                        <Text style={[s.hint, { color: Colors.orange }]}>
+                          Request Manual Review (My venue doesn't have a public listing email, or I am using a different email)
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
               }
 
               <TextInput style={s.input} placeholder="Password (min 6 characters)" placeholderTextColor="#999"
@@ -511,41 +520,31 @@ export default function LoginScreen() {
               <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
               {vFieldErrors.username ? <Text style={s.fieldError}>{vFieldErrors.username}</Text> : null}
 
-              {/* Manual review option — shown once venue is selected */}
-              {vSelectedVenueId !== undefined && (
-                <>
-                  {!vManualReview ? (
-                    <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7} style={{ marginBottom: 8 }}>
-                      <Text style={[s.hint, { color: Colors.orange }]}>
-                        My venue doesn't have a public email listing — request manual review
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={s.manualReviewBox}>
-                      <Text style={s.manualReviewTitle}>Manual Review</Text>
-                      <Text style={s.manualReviewBody}>
-                        Our team will contact you via your account email to verify your connection to this venue.
-                      </Text>
-                      <TextInput
-                        style={[s.input, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
-                        placeholder="Describe your connection to this venue (e.g. I'm the owner, manager, booker...)"
-                        placeholderTextColor="#999"
-                        value={vManualNotes}
-                        onChangeText={setVManualNotes}
-                        multiline
-                        numberOfLines={3}
-                      />
-                      {vFieldErrors.manualNotes
-                        ? <Text style={s.fieldError}>{vFieldErrors.manualNotes}</Text>
-                        : null}
-                      <TouchableOpacity onPress={() => { setVManualReview(false); setVManualNotes(''); }} activeOpacity={0.7}>
-                        <Text style={[s.hint, { color: Colors.orange }]}>
-                          Cancel — verify by email instead
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </>
+              {/* Manual review box — shown when manual review is requested */}
+              {vSelectedVenueId !== undefined && vManualReview && (
+                <View style={s.manualReviewBox}>
+                  <Text style={s.manualReviewTitle}>Manual Review</Text>
+                  <Text style={s.manualReviewBody}>
+                    Our team will contact you via your account email to verify your connection to this venue.
+                  </Text>
+                  <TextInput
+                    style={[s.input, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                    placeholder="Describe your connection to this venue (e.g. I'm the owner, manager, booker...)"
+                    placeholderTextColor="#999"
+                    value={vManualNotes}
+                    onChangeText={setVManualNotes}
+                    multiline
+                    numberOfLines={3}
+                  />
+                  {vFieldErrors.manualNotes
+                    ? <Text style={s.fieldError}>{vFieldErrors.manualNotes}</Text>
+                    : null}
+                  <TouchableOpacity onPress={() => { setVManualReview(false); setVManualNotes(''); }} activeOpacity={0.7}>
+                    <Text style={[s.hint, { color: Colors.orange }]}>
+                      Cancel — verify by email instead
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
               <TouchableOpacity style={s.termsRow} onPress={() => setVTerms(v => !v)}>
