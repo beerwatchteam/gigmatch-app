@@ -17,7 +17,7 @@ import {
   browserSessionPersistence,
   inMemoryPersistence,
 } from 'firebase/auth';
-import { doc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, setDoc, getDoc, addDoc, collection, getDocs, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useTheme } from '@/lib/theme-context';
@@ -91,10 +91,12 @@ export default function LoginScreen() {
   const [vError, setVError]                     = useState('');
   const [vFieldErrors, setVFieldErrors]         = useState<Record<string, string>>({});
   const [vUsernameTouched, setVUsernameTouched] = useState(false);
-  const [vSignUpState, setVSignUpState]         = useState<'form' | 'verify-pending'>('form');
-  const [vVerifyEmail, setVVerifyEmail]         = useState('');
-  const [vResendLoading, setVResendLoading]     = useState(false);
-  const [vResendSent, setVResendSent]           = useState(false);
+  const [vSignUpState, setVSignUpState]         = useState<'form' | 'claim-submitted'>('form');
+  const [vVerificationContact, setVVerificationContact] = useState('');
+  const [vManualReview, setVManualReview]       = useState(false);
+  const [vManualNotes, setVManualNotes]         = useState('');
+  const [vAlreadyClaimed, setVAlreadyClaimed]   = useState(false);
+  const [vCurrentOwnerId, setVCurrentOwnerId]   = useState('');
   const vUserRef = useRef<any>(null);
 
   // Venue name search
@@ -194,6 +196,7 @@ export default function LoginScreen() {
 
   function handleVenueNameChange(val: string) {
     setVVenueName(val); setVSelectedVenueId(undefined);
+    setVAlreadyClaimed(false); setVCurrentOwnerId('');
     if (!vUsernameTouched) setVUsername(slugify(val));
     if (val.trim().length < 1) { setVenueDropdown([]); setShowVenueDropdown(false); return; }
     const matches = allVenues.filter(v => v.name?.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
@@ -211,7 +214,27 @@ export default function LoginScreen() {
     if (vPassword.length < 6)           e.password  = 'At least 6 characters';
     if (vPassword !== vConfirm)         e.confirm   = "Passwords don't match";
     if (!vTerms)                        e.terms     = 'You must accept the Terms & Conditions';
+    if (!vManualReview && !vVerificationContact.trim()) {
+      e.verificationContact = 'Provide a business email or phone number for verification';
+    }
     setVFieldErrors(e); return Object.keys(e).length === 0;
+  }
+
+  async function handleVenueSelect(venue: { id: string; name: string; suburb?: string }) {
+    setVVenueName(venue.name);
+    setVSelectedVenueId(venue.id);
+    if (!vUsernameTouched) setVUsername(slugify(venue.name));
+    setShowVenueDropdown(false);
+    setVAlreadyClaimed(false);
+    setVCurrentOwnerId('');
+    try {
+      const snap = await getDoc(doc(db, 'venues', venue.id));
+      const claimedBy = snap.data()?.claimedBy;
+      if (claimedBy) {
+        setVAlreadyClaimed(true);
+        setVCurrentOwnerId(claimedBy);
+      }
+    } catch {}
   }
 
   async function handleVenueSignUp() {
@@ -222,25 +245,62 @@ export default function LoginScreen() {
         setVFieldErrors(p => ({ ...p, username: 'Username already taken.' }));
         setVLoading(false); return;
       }
+
+      const contactType: 'email' | 'phone' | 'manual' = vManualReview
+        ? 'manual'
+        : vVerificationContact.includes('@') ? 'email' : 'phone';
+
       const { user } = await createUserWithEmailAndPassword(auth, vEmail.trim(), vPassword);
       await updateProfile(user, { displayName: vVenueName.trim() });
-      await setDoc(doc(db, 'venueApplications', user.uid), {
-        uid: user.uid, venueName: vVenueName.trim(),
-        username: vUsername.trim().toLowerCase(), email: vEmail.trim(),
-        selectedVenueId: vSelectedVenueId || null, isNewVenue: vSelectedVenueId === null,
-        status: 'pending', submittedAt: new Date().toISOString(),
+
+      // Create users doc so profile tab can show pending state immediately
+      await setDoc(doc(db, 'users', user.uid), {
+        type: 'venue',
+        displayName: vVenueName.trim(),
+        username: vUsername.trim().toLowerCase(),
+        email: vEmail.trim(),
+        venueId: null,
+        claimStatus: 'pending',
+        createdAt: new Date().toISOString(),
       });
-      await sendEmailVerification(user);
-      vUserRef.current = user; setVVerifyEmail(vEmail.trim()); setVSignUpState('verify-pending');
+
+      // Create venue application
+      await setDoc(doc(db, 'venueApplications', user.uid), {
+        uid: user.uid,
+        venueName: vVenueName.trim(),
+        username: vUsername.trim().toLowerCase(),
+        email: vEmail.trim(),
+        selectedVenueId: vSelectedVenueId || null,
+        isNewVenue: vSelectedVenueId === null,
+        status: 'pending',
+        submittedAt: serverTimestamp(),
+        verificationContact: vManualReview ? '' : vVerificationContact.trim(),
+        verificationContactType: contactType,
+        notes: vManualNotes.trim() || '',
+        isDispute: vAlreadyClaimed,
+      });
+
+      // If claiming an already-claimed venue, start a dispute
+      if (vAlreadyClaimed && vCurrentOwnerId && vSelectedVenueId) {
+        const disputeExpiry = new Date();
+        disputeExpiry.setDate(disputeExpiry.getDate() + 7);
+        await addDoc(collection(db, 'venueDisputes'), {
+          venueDocId: vSelectedVenueId,
+          venueName: vVenueName.trim(),
+          claimId: user.uid,
+          currentOwnerId: vCurrentOwnerId,
+          challengerUserId: user.uid,
+          challengerEmail: vEmail.trim(),
+          status: 'pending_owner',
+          createdAt: serverTimestamp(),
+          disputeWindowExpiry: Timestamp.fromDate(disputeExpiry),
+        });
+      }
+
+      vUserRef.current = user;
+      setVSignUpState('claim-submitted');
     } catch (err: any) { setVError(err.message || 'Failed to submit application.'); }
     finally { setVLoading(false); }
-  }
-
-  async function handleVenueResend() {
-    if (!vUserRef.current) return;
-    setVResendLoading(true);
-    try { await sendEmailVerification(vUserRef.current); setVResendSent(true); setTimeout(() => setVResendSent(false), 3000); } catch {}
-    finally { setVResendLoading(false); }
   }
 
   async function handleVenueStartOver() {
@@ -248,6 +308,8 @@ export default function LoginScreen() {
     setVVenueName(''); setVSelectedVenueId(undefined); setVUsername(''); setVEmail('');
     setVPassword(''); setVConfirm(''); setVTerms(false); setVError(''); setVFieldErrors({});
     setVUsernameTouched(false); vUserRef.current = null;
+    setVVerificationContact(''); setVManualReview(false); setVManualNotes('');
+    setVAlreadyClaimed(false); setVCurrentOwnerId('');
   }
 
   // ── Form content (shared between modal card and native scroll) ──────
@@ -399,12 +461,12 @@ export default function LoginScreen() {
                 {showVenueDropdown && (
                   <View style={s.venueDrop}>
                     {venueDropdown.map(v => (
-                      <TouchableOpacity key={v.id} style={s.venueDropItem} onPress={() => { setVVenueName(v.name); setVSelectedVenueId(v.id); if (!vUsernameTouched) setVUsername(slugify(v.name)); setShowVenueDropdown(false); }}>
+                      <TouchableOpacity key={v.id} style={s.venueDropItem} onPress={() => handleVenueSelect(v)}>
                         <Text style={s.venueDropName}>{v.name}</Text>
                         {v.suburb ? <Text style={s.venueDropSub}>{v.suburb}</Text> : null}
                       </TouchableOpacity>
                     ))}
-                    <TouchableOpacity style={s.venueDropItem} onPress={() => { setVSelectedVenueId(null); setShowVenueDropdown(false); }}>
+                    <TouchableOpacity style={s.venueDropItem} onPress={() => { setVSelectedVenueId(null); setVAlreadyClaimed(false); setVCurrentOwnerId(''); setShowVenueDropdown(false); }}>
                       <Text style={[s.venueDropName, { color: Colors.orange }]}>This venue isn't listed yet — register as new</Text>
                     </TouchableOpacity>
                   </View>
@@ -418,6 +480,68 @@ export default function LoginScreen() {
                 </View>
               )}
               {vFieldErrors.venueName ? <Text style={s.fieldError}>{vFieldErrors.venueName}</Text> : null}
+
+              {/* Already-claimed warning */}
+              {vAlreadyClaimed && (
+                <View style={s.claimWarningBox}>
+                  <Text style={s.claimWarningTitle}>This venue is already claimed</Text>
+                  <Text style={s.claimWarningBody}>
+                    Submitting will start a dispute. The current manager has 7 days to respond. GigMatch admin will oversee the process.
+                  </Text>
+                </View>
+              )}
+
+              {/* Verification contact — shown once venue is selected */}
+              {vSelectedVenueId !== undefined && (
+                <>
+                  <Text style={[s.hint, { marginBottom: 4, marginTop: 4, color: '#444' }]}>
+                    We verify ownership via a business email or phone number linked to your venue.
+                  </Text>
+                  {!vManualReview ? (
+                    <>
+                      <TextInput
+                        style={s.input}
+                        placeholder="Business email or phone (e.g. bookings@yourvenue.com.au)"
+                        placeholderTextColor="#999"
+                        value={vVerificationContact}
+                        onChangeText={setVVerificationContact}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoCorrect={false}
+                      />
+                      {vFieldErrors.verificationContact
+                        ? <Text style={s.fieldError}>{vFieldErrors.verificationContact}</Text>
+                        : null}
+                      <TouchableOpacity onPress={() => setVManualReview(true)} activeOpacity={0.7}>
+                        <Text style={[s.hint, { color: Colors.orange }]}>
+                          I don't have a business email or phone number
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <View style={s.manualReviewBox}>
+                      <Text style={s.manualReviewTitle}>Manual Review Path</Text>
+                      <Text style={s.manualReviewBody}>
+                        Our team will contact you after reviewing your claim. You may be asked to provide proof of association with this venue.
+                      </Text>
+                      <TextInput
+                        style={[s.input, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
+                        placeholder="Tell us your connection to this venue (optional)"
+                        placeholderTextColor="#999"
+                        value={vManualNotes}
+                        onChangeText={setVManualNotes}
+                        multiline
+                        numberOfLines={3}
+                      />
+                      <TouchableOpacity onPress={() => { setVManualReview(false); setVManualNotes(''); }} activeOpacity={0.7}>
+                        <Text style={[s.hint, { color: Colors.orange }]}>
+                          I do have a business email or phone number
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
 
               <TextInput style={s.input} placeholder="Email address" placeholderTextColor="#999"
                 value={vEmail} onChangeText={setVEmail} autoCapitalize="none" keyboardType="email-address" />
@@ -452,20 +576,24 @@ export default function LoginScreen() {
             </>
           )}
 
-          {/* VENUE VERIFY PENDING */}
-          {signupTab === 'venue' && vSignUpState === 'verify-pending' && (
+          {/* VENUE CLAIM SUBMITTED */}
+          {signupTab === 'venue' && vSignUpState === 'claim-submitted' && (
             <View style={s.verifyWrap}>
-              <Text style={s.verifyIcon}>✉️</Text>
-              <Text style={s.verifyTitle}>Verify your email to submit your application</Text>
+              <Text style={s.verifyIcon}>⏳</Text>
+              <Text style={s.verifyTitle}>Application submitted</Text>
               <Text style={s.verifySub}>
-                We've sent a link to <Text style={{ fontWeight: '700', color: '#111' }}>{vVerifyEmail}</Text>. Click it to confirm — once verified your application will be submitted for review.
+                Your claim for <Text style={{ fontWeight: '700', color: '#111' }}>{vVenueName}</Text> is under review.
               </Text>
-              <Text style={s.verifyHint}>We'll review within 1–2 business days.</Text>
-              {vResendSent
-                ? <Text style={s.resendSent}>Sent!</Text>
-                : <TouchableOpacity onPress={handleVenueResend} disabled={vResendLoading}><Text style={s.resendBtn}>{vResendLoading ? 'Sending…' : 'Resend email'}</Text></TouchableOpacity>
-              }
-              <TouchableOpacity onPress={handleVenueStartOver} style={{ marginTop: 8 }}>
+              <Text style={s.verifyHint}>
+                {vManualReview
+                  ? "Our team will be in touch once your claim has been manually reviewed."
+                  : `Once approved, we'll send a verification code to ${vVerificationContact}. Enter it on your Profile tab to complete verification.`}
+              </Text>
+              <Text style={s.verifyHint}>This usually takes 1–2 business days.</Text>
+              <TouchableOpacity style={[s.submitBtn, { marginTop: 20 }]} onPress={() => router.back()}>
+                <Text style={s.submitBtnText}>Done</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleVenueStartOver} style={{ marginTop: 12 }}>
                 <Text style={s.startOver}>Wrong email? Start over</Text>
               </TouchableOpacity>
             </View>
@@ -624,4 +752,18 @@ const s = StyleSheet.create({
   startOver:   { fontSize: 12, color: '#888888' },
 
   support: { textAlign: 'center', fontSize: 12, color: '#888888', marginTop: 20 },
+
+  claimWarningBox: {
+    backgroundColor: '#fff5f5', borderRadius: 8, borderWidth: 1, borderColor: '#fca5a5',
+    padding: 12, marginBottom: 12,
+  },
+  claimWarningTitle: { fontSize: 13, fontWeight: '700', color: '#dc2626', marginBottom: 4 },
+  claimWarningBody:  { fontSize: 12, color: '#7f1d1d', lineHeight: 18 },
+
+  manualReviewBox: {
+    backgroundColor: '#fffbeb', borderRadius: 8, borderWidth: 1, borderColor: '#fde68a',
+    padding: 12, marginBottom: 10, gap: 8,
+  },
+  manualReviewTitle: { fontSize: 13, fontWeight: '700', color: '#92400e' },
+  manualReviewBody:  { fontSize: 12, color: '#78350f', lineHeight: 18 },
 });

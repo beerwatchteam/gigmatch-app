@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 
 export type UserProfile = {
@@ -9,6 +9,7 @@ export type UserProfile = {
   venueId?: string;
   username?: string;
   uid: string;
+  claimStatus?: 'pending' | 'awaiting_code' | 'manual_review' | 'approved';
 };
 
 type AuthContextType = {
@@ -31,22 +32,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubProfile: (() => void) | undefined;
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      if (unsubProfile) { unsubProfile(); unsubProfile = undefined; }
       setUser(firebaseUser);
       if (firebaseUser) {
-        try {
-          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (snap.exists()) {
-            setProfile({ uid: firebaseUser.uid, ...snap.data() } as UserProfile);
-          }
-        } catch {
-          setProfile(null);
-        }
+        unsubProfile = onSnapshot(
+          doc(db, 'users', firebaseUser.uid),
+          (snap) => {
+            setProfile(snap.exists() ? { uid: firebaseUser.uid, ...snap.data() } as UserProfile : null);
+            setLoading(false);
+          },
+          () => { setProfile(null); setLoading(false); },
+        );
       } else {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
+    return () => { unsubAuth(); if (unsubProfile) unsubProfile(); };
   }, []);
 
   const isAdmin = profile?.type === 'admin' ||

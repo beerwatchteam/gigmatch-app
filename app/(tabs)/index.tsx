@@ -313,14 +313,22 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Admin: edit cover photo */}
+          {/* Admin: edit cover photo + open claims panel */}
           {isAdmin && (
-            <TouchableOpacity style={s.editHeroBtn} onPress={pickHeroImage} disabled={heroUploading}>
-              {heroUploading
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={s.editHeroBtnText}>Edit Cover Photo</Text>
-              }
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={s.editHeroBtn} onPress={pickHeroImage} disabled={heroUploading}>
+                {heroUploading
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.editHeroBtnText}>Edit Cover</Text>
+                }
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.editHeroBtn, { backgroundColor: 'rgba(250,131,12,0.85)' }]}
+                onPress={() => router.push('/(tabs)/profile')}
+              >
+                <Text style={s.editHeroBtnText}>Admin Panel</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
