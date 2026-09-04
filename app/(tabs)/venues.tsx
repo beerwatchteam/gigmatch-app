@@ -82,6 +82,8 @@ type Venue = {
   photoUrl?: string; photos?: string[];
   photoPosition?: { x: number; y: number };
   capacity?: number; feeMin?: number; feeMax?: number;
+  drawMin?: number; drawMax?: number;
+  gigsThisYear?: number;
   slots?: Record<string, any[]>;
   settings?: { listed?: boolean };
 };
@@ -691,10 +693,7 @@ export default function VenuesScreen() {
     const shown      = allSlots.slice(0, 2);
     const totalSlots = countOpenSlotsForRange(item, d0, d42);
     const extraCount = Math.max(0, totalSlots - 2);
-    const feeStr = item.feeMin != null && item.feeMax != null
-      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
-      : item.feeMin != null ? `$${item.feeMin.toLocaleString()}+` : null;
-    const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity}` : null, feeStr].filter(Boolean);
+    const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity.toLocaleString()}` : null].filter(Boolean);
     const venueGenres = (item.genre || item.genres || []).slice(0, 4);
 
     return (
@@ -735,6 +734,33 @@ export default function VenuesScreen() {
             )}
           </View>
         </View>
+
+        {/* ── Stats strip ── */}
+        {(item.drawMin != null || item.feeMin != null || item.gigsThisYear != null) && (() => {
+          const year = new Date().getFullYear().toString().slice(2);
+          const drawStr = item.drawMin != null && item.drawMax != null
+            ? `${item.drawMin}–${item.drawMax}`
+            : item.drawMin != null ? `${item.drawMin}+` : null;
+          const feeStr2 = item.feeMin != null && item.feeMax != null
+            ? `$${item.feeMin}–$${item.feeMax}`
+            : item.feeMin != null ? `$${item.feeMin}` : null;
+          const stats = [
+            drawStr          ? { value: drawStr,                        label: 'DRAW'        } : null,
+            feeStr2          ? { value: feeStr2,                        label: 'FEE'         } : null,
+            item.gigsThisYear != null ? { value: String(item.gigsThisYear), label: `GIGS '${year}` } : null,
+          ].filter(Boolean) as { value: string; label: string }[];
+          if (stats.length === 0) return null;
+          return (
+            <View style={[st.statsStrip, { borderTopColor: colors.border }]}>
+              {stats.map((stat, i) => (
+                <View key={stat.label} style={[st.statItem, i < stats.length - 1 && { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                  <Text style={[st.statValue, { color: colors.black }]}>{stat.value}</Text>
+                  <Text style={[st.statLabel, { color: colors.grey }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          );
+        })()}
 
         {/* ── Slot rows ── */}
         <View style={[st.cardSlots, { borderTopColor: colors.border }]}>
@@ -1369,6 +1395,11 @@ const st = StyleSheet.create({
   pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
 
+  // Stats strip
+  statsStrip:     { flexDirection: 'row', borderTopWidth: 1, paddingHorizontal: 14 },
+  statItem:       { flex: 1, paddingVertical: 10, paddingRight: 12, gap: 2 },
+  statValue:      { fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
+  statLabel:      { fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' as const },
   // Card slots section
   cardSlots:      { paddingHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, paddingTop: 12, gap: 0 },
   slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
