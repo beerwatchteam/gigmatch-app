@@ -33,6 +33,8 @@ type Musician = {
   location?: string; genre?: string[]; about?: string;
   photoUrl?: string; photoPosition?: { x: number; y: number };
   feeMin?: number; feeMax?: number;
+  drawMin?: number; drawMax?: number;
+  gigsThisYear?: number;
   settings?: { listed?: boolean };
 };
 
@@ -349,10 +351,19 @@ export default function MusiciansScreen() {
     const actType = Array.isArray(item.artistType)
       ? item.artistType.join(' / ')
       : item.artistType;
+    const metaParts = [item.location].filter(Boolean);
+    const year = new Date().getFullYear().toString().slice(2);
+    const drawStr = item.drawMin != null && item.drawMax != null
+      ? `${item.drawMin}–${item.drawMax}`
+      : item.drawMin != null ? `${item.drawMin}+` : null;
     const feeStr = item.feeMin != null && item.feeMax != null
-      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
-      : item.feeMin != null ? `$${item.feeMin.toLocaleString()}+` : null;
-    const metaParts = [item.location, feeStr].filter(Boolean);
+      ? `$${item.feeMin}–$${item.feeMax}`
+      : item.feeMin != null ? `$${item.feeMin}+` : null;
+    const stats = [
+      drawStr               ? { value: drawStr,                         label: 'DRAW'        } : null,
+      feeStr                ? { value: feeStr,                          label: 'FEE'         } : null,
+      item.gigsThisYear != null ? { value: String(item.gigsThisYear),  label: `GIGS '${year}` } : null,
+    ].filter(Boolean) as { value: string; label: string }[];
 
     return (
       <TouchableOpacity
@@ -382,6 +393,18 @@ export default function MusiciansScreen() {
           {item.about ? (
             <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text>
           ) : null}
+
+          {/* Stats strip */}
+          {stats.length > 0 && (
+            <View style={[st.statsStrip, { borderTopColor: colors.borderFaint }]}>
+              {stats.map((stat, i) => (
+                <View key={stat.label} style={[st.statItem, i < stats.length - 1 && { borderRightWidth: 1, borderRightColor: colors.borderFaint }]}>
+                  <Text style={[st.statValue, { color: colors.black }]}>{stat.value}</Text>
+                  <Text style={[st.statLabel, { color: colors.grey }]}>{stat.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
 
           {/* Action buttons */}
           <View style={[st.cardFooter, { borderTopColor: colors.borderFaint }]}>
@@ -785,6 +808,10 @@ const st = StyleSheet.create({
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
   about:          { fontSize: 13, lineHeight: 19 },
 
+  statsStrip:    { flexDirection: 'row', borderTopWidth: 1, marginTop: 10, paddingTop: 10 },
+  statItem:      { flex: 1, gap: 3 },
+  statValue:     { fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
+  statLabel:     { fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' as const },
   cardFooter:    { flexDirection: 'row', gap: 10, paddingTop: 14, marginTop: 4, borderTopWidth: 1 },
   listenBtn:     { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.orange, paddingVertical: 9, alignItems: 'center' },
   listenBtnText: { fontSize: 14, fontWeight: '700', color: Colors.orange },
