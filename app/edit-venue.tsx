@@ -474,7 +474,7 @@ export default function EditVenueScreen() {
                 thumbColor="#ffffff"
               />
             </View>
-            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={() => signOut(auth)}>
+            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={async () => { await signOut(auth); router.replace('/'); }}>
               <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
             </TouchableOpacity>
 

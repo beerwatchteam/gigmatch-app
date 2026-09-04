@@ -340,7 +340,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                   <Text style={s.editProfileBtnText}>Edit Profile</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.logoutBtn} onPress={() => signOut(auth)}>
+                <TouchableOpacity style={s.logoutBtn} onPress={async () => { await signOut(auth); router.replace('/'); }}>
                   <Text style={s.logoutBtnText}>Log out</Text>
                 </TouchableOpacity>
               </View>

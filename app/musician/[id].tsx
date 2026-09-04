@@ -500,7 +500,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
-                  onPress={() => signOut(auth)}
+                  onPress={async () => { await signOut(auth); router.replace('/'); }}
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.outlineBtnText, { color: colors.grey }]}>Log out</Text>
