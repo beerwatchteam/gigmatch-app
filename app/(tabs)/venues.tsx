@@ -843,87 +843,83 @@ export default function VenuesScreen() {
 
     return (
       <View style={{ flex: 1, backgroundColor: '#f2ede6' }}>
-        {/* Dropdown backdrop */}
+
+        {/* ── Hero (outside ScrollView so search dropdown z-index works) ── */}
+        <View style={st.webHero}>
+          <View style={st.webHeroInner}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.webHeroLabel}>
+                OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
+              </Text>
+              <Text style={st.webHeroTitle}>Find your next gig</Text>
+              <Text style={st.webHeroSub}>
+                {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
+              </Text>
+            </View>
+
+            {/* Search */}
+            <View style={{ width: 340, zIndex: 200 } as any}>
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <View style={st.webSearchRow}>
+                  <TextInput
+                    style={st.webSearchInput}
+                    placeholder="Venue, suburb or postcode"
+                    placeholderTextColor="#999"
+                    value={search}
+                    onChangeText={handleSearchChange}
+                    onFocus={() => hasDropdown && setShowDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                  />
+                  <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
+                    <Text style={st.webSearchBtnText}>Search</Text>
+                  </TouchableOpacity>
+                </View>
+                {showDropdown && hasDropdown && (
+                  <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
+                    {venueMatches.length > 0 && (<>
+                      <Text style={st.dropSection}>VENUES</Text>
+                      {venueMatches.map(v => (
+                        <TouchableOpacity key={v.id} style={st.dropItem} onPress={() => selectVenueMatch(v)}>
+                          <Text style={st.dropItemText}>🏛 {v.name}</Text>
+                          {v.suburb ? <Text style={st.dropItemMeta}>{v.suburb}</Text> : null}
+                        </TouchableOpacity>
+                      ))}
+                    </>)}
+                    {areaSuggestions.length > 0 && (<>
+                      <Text style={st.dropSection}>AREAS</Text>
+                      {areaSuggestions.map((s, i) => (
+                        <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
+                          <Text style={st.dropItemText}>📍 {s.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </>)}
+                  </View>
+                )}
+              </View>
+              {locationCoords && (
+                <View style={[st.radiusPills, { marginTop: 10 }]}>
+                  {RADIUS_OPTIONS.map(km => (
+                    <TouchableOpacity key={km} style={[st.radiusPill, radius === km && st.radiusPillOn]} onPress={() => setRadius(km)}>
+                      <Text style={[st.radiusPillText, radius === km && st.radiusPillTextOn]}>{km}km</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* ── Filter chip bar (outside ScrollView — zIndex competes directly with backdrop) ── */}
+        {/* Backdrop: zIndex 10, filter bar: zIndex 20 → filter bar always wins */}
         {webDropdown !== null && (
           <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 } as any}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 } as any}
             activeOpacity={1}
             onPress={() => setWebDropdown(null)}
           />
         )}
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
-        >
-          {/* ── Hero ──────────────────────────────────────────────── */}
-          <View style={st.webHero}>
-            <View style={st.webHeroInner}>
-              <View style={{ flex: 1 }}>
-                <Text style={st.webHeroLabel}>
-                  OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
-                </Text>
-                <Text style={st.webHeroTitle}>Find your next gig</Text>
-                <Text style={st.webHeroSub}>
-                  {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
-                </Text>
-              </View>
-
-              {/* Search */}
-              <View style={{ width: 340, zIndex: 200 } as any}>
-                <View style={{ position: 'relative' as any, zIndex: 200 }}>
-                  <View style={st.webSearchRow}>
-                    <TextInput
-                      style={st.webSearchInput}
-                      placeholder="Venue, suburb or postcode"
-                      placeholderTextColor="#999"
-                      value={search}
-                      onChangeText={handleSearchChange}
-                      onFocus={() => hasDropdown && setShowDropdown(true)}
-                      onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                    />
-                    <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
-                      <Text style={st.webSearchBtnText}>Search</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {showDropdown && hasDropdown && (
-                    <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
-                      {venueMatches.length > 0 && (<>
-                        <Text style={st.dropSection}>VENUES</Text>
-                        {venueMatches.map(v => (
-                          <TouchableOpacity key={v.id} style={st.dropItem} onPress={() => selectVenueMatch(v)}>
-                            <Text style={st.dropItemText}>🏛 {v.name}</Text>
-                            {v.suburb ? <Text style={st.dropItemMeta}>{v.suburb}</Text> : null}
-                          </TouchableOpacity>
-                        ))}
-                      </>)}
-                      {areaSuggestions.length > 0 && (<>
-                        <Text style={st.dropSection}>AREAS</Text>
-                        {areaSuggestions.map((s, i) => (
-                          <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
-                            <Text style={st.dropItemText}>📍 {s.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </>)}
-                    </View>
-                  )}
-                </View>
-                {locationCoords && (
-                  <View style={[st.radiusPills, { marginTop: 10 }]}>
-                    {RADIUS_OPTIONS.map(km => (
-                      <TouchableOpacity key={km} style={[st.radiusPill, radius === km && st.radiusPillOn]} onPress={() => setRadius(km)}>
-                        <Text style={[st.radiusPillText, radius === km && st.radiusPillTextOn]}>{km}km</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* ── Filter chip bar ───────────────────────────────────── */}
-          <View style={[st.webFilterBar, { zIndex: 100 }]}>
-            <View style={st.webFilterInner}>
+        <View style={[st.webFilterBar, { zIndex: 20, position: 'relative' as any }]}>
+          <View style={st.webFilterInner}>
               {/* Available dropdown */}
               <View style={{ position: 'relative' as any, zIndex: 200 }}>
                 <TouchableOpacity
@@ -1069,8 +1065,13 @@ export default function VenuesScreen() {
             </View>
           </View>
 
-          {/* ── Venue cards ───────────────────────────────────────── */}
-          <View style={{ backgroundColor: '#ffffff', paddingHorizontal: 32, paddingTop: 24, paddingBottom: 80 }}>
+        {/* ── Venue cards (scrollable) ──────────────────────────── */}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: '#ffffff' }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
+        >
+          <View style={{ paddingHorizontal: 32, paddingTop: 24, paddingBottom: 80 }}>
             {loading
               ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
               : filtered.length === 0
@@ -1087,7 +1088,6 @@ export default function VenuesScreen() {
             }
           </View>
         </ScrollView>
-        {FilterPanel}
       </View>
     );
   }

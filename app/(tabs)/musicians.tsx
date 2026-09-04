@@ -461,180 +461,182 @@ export default function MusiciansScreen() {
     // ── Desktop web ───────────────────────────────────────────────
     return (
       <View style={{ flex: 1, backgroundColor: '#f2ede6' }}>
-        {/* Dropdown backdrop */}
+
+        {/* ── Hero (outside ScrollView) ─────────────────────────── */}
+        <View style={st.webHero}>
+          <View style={st.webHeroInner}>
+            <View style={{ flex: 1 }}>
+              <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
+              <Text style={st.webHeroTitle}>Find your next act</Text>
+              <Text style={st.webHeroSub}>
+                {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+              </Text>
+            </View>
+            {/* Search */}
+            <View style={{ width: 340, zIndex: 200 } as any}>
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <View style={st.webSearchRow}>
+                  <TextInput
+                    style={st.webSearchInput}
+                    placeholder="Name or location"
+                    placeholderTextColor="#999"
+                    value={search}
+                    onChangeText={handleSearchChange}
+                    onFocus={() => hasDropdown && setShowDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                  />
+                  <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
+                    <Text style={st.webSearchBtnText}>Search</Text>
+                  </TouchableOpacity>
+                </View>
+                {showDropdown && hasDropdown && (
+                  <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
+                    {musicianMatches.length > 0 && (<>
+                      <Text style={st.dropSection}>MUSICIANS</Text>
+                      {musicianMatches.map(m => (
+                        <TouchableOpacity key={m.id} style={st.dropItem} onPress={() => selectMusicianMatch(m)}>
+                          <Text style={st.dropItemText}>🎵 {m.name}</Text>
+                          {m.location ? <Text style={st.dropItemMeta}>{m.location}</Text> : null}
+                        </TouchableOpacity>
+                      ))}
+                    </>)}
+                    {areaSuggestions.length > 0 && (<>
+                      <Text style={st.dropSection}>AREAS</Text>
+                      {areaSuggestions.map((s, i) => (
+                        <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
+                          <Text style={st.dropItemText}>📍 {s.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </>)}
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Backdrop: zIndex 10, filter bar: zIndex 20 → filter bar always wins */}
         {webDropdown !== null && (
           <TouchableOpacity
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 } as any}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 } as any}
             activeOpacity={1}
             onPress={() => setWebDropdown(null)}
           />
         )}
 
+        {/* ── Filter chip bar (outside ScrollView) ──────────────── */}
+        <View style={[st.webFilterBar, { zIndex: 20, position: 'relative' as any }]}>
+          <View style={st.webFilterInner}>
+
+            {/* Genre dropdown */}
+            <View style={{ position: 'relative' as any, zIndex: 200 }}>
+              <TouchableOpacity
+                style={[st.webFilterPill, genres.length > 0 && st.webFilterPillActive]}
+                onPress={() => setWebDropdown(d => d === 'genre' ? null : 'genre')}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.webFilterPillText, genres.length > 0 && st.webFilterPillTextActive]}>
+                  {genreLabel} ▾
+                </Text>
+              </TouchableOpacity>
+              {webDropdown === 'genre' && (
+                <View style={[st.webFilterDropdown, { width: 260 }]}>
+                  <View style={st.genreGrid}>
+                    {GENRES.map(g => (
+                      <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
+                        <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {genres.length > 0 && (
+                    <TouchableOpacity style={{ marginTop: 12 }} onPress={() => setGenres([])}>
+                      <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear genres</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Act Type dropdown */}
+            <View style={{ position: 'relative' as any, zIndex: 200 }}>
+              <TouchableOpacity
+                style={[st.webFilterPill, actTypes.length > 0 && st.webFilterPillActive]}
+                onPress={() => setWebDropdown(d => d === 'acttype' ? null : 'acttype')}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.webFilterPillText, actTypes.length > 0 && st.webFilterPillTextActive]}>
+                  {typeLabel} ▾
+                </Text>
+              </TouchableOpacity>
+              {webDropdown === 'acttype' && (
+                <View style={st.webFilterDropdown}>
+                  {ACT_TYPES.map(t => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[st.webDropdownOption, actTypes.includes(t) && st.webDropdownOptionActive]}
+                      onPress={() => toggleActType(t)}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={[st.checkbox, actTypes.includes(t) && st.checkboxOn]} />
+                        <Text style={[st.webDropdownOptionText, actTypes.includes(t) && st.webDropdownOptionTextActive]}>{t}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  {actTypes.length > 0 && (
+                    <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setActTypes([])}>
+                      <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Fee dropdown */}
+            <View style={{ position: 'relative' as any, zIndex: 200 }}>
+              <TouchableOpacity
+                style={[st.webFilterPill, feeActive && st.webFilterPillActive]}
+                onPress={() => setWebDropdown(d => d === 'fee' ? null : 'fee')}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.webFilterPillText, feeActive && st.webFilterPillTextActive]}>
+                  {feeLabel} ▾
+                </Text>
+              </TouchableOpacity>
+              {webDropdown === 'fee' && (
+                <View style={st.webFilterDropdown}>
+                  {FEE_RANGES.map(r => (
+                    <TouchableOpacity key={r.key} style={[st.webDropdownOption, feeRanges.includes(r.key) && st.webDropdownOptionActive]} onPress={() => toggleFee(r.key)}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
+                        <Text style={[st.webDropdownOptionText, feeRanges.includes(r.key) && st.webDropdownOptionTextActive]}>{r.label}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  {feeRanges.length > 0 && (
+                    <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setFeeRanges([])}>
+                      <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Clear all */}
+            {activeFilterCount > 0 && (
+              <TouchableOpacity onPress={resetFilters}>
+                <Text style={st.webClearText}>Clear all</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* ── Card grid (scrollable) ────────────────────────────── */}
         <ScrollView
+          style={{ flex: 1, backgroundColor: '#ffffff' }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         >
-          {/* ── Hero ──────────────────────────────────────────────── */}
-          <View style={st.webHero}>
-            <View style={st.webHeroInner}>
-              <View style={{ flex: 1 }}>
-                <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
-                <Text style={st.webHeroTitle}>Find your next act</Text>
-                <Text style={st.webHeroSub}>
-                  {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
-                </Text>
-              </View>
-              {/* Search */}
-              <View style={{ width: 340, zIndex: 200 } as any}>
-                <View style={{ position: 'relative' as any, zIndex: 200 }}>
-                  <View style={st.webSearchRow}>
-                    <TextInput
-                      style={st.webSearchInput}
-                      placeholder="Name or location"
-                      placeholderTextColor="#999"
-                      value={search}
-                      onChangeText={handleSearchChange}
-                      onFocus={() => hasDropdown && setShowDropdown(true)}
-                      onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                    />
-                    <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
-                      <Text style={st.webSearchBtnText}>Search</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {showDropdown && hasDropdown && (
-                    <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
-                      {musicianMatches.length > 0 && (<>
-                        <Text style={st.dropSection}>MUSICIANS</Text>
-                        {musicianMatches.map(m => (
-                          <TouchableOpacity key={m.id} style={st.dropItem} onPress={() => selectMusicianMatch(m)}>
-                            <Text style={st.dropItemText}>🎵 {m.name}</Text>
-                            {m.location ? <Text style={st.dropItemMeta}>{m.location}</Text> : null}
-                          </TouchableOpacity>
-                        ))}
-                      </>)}
-                      {areaSuggestions.length > 0 && (<>
-                        <Text style={st.dropSection}>AREAS</Text>
-                        {areaSuggestions.map((s, i) => (
-                          <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
-                            <Text style={st.dropItemText}>📍 {s.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </>)}
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* ── Filter chip bar ───────────────────────────────────── */}
-          <View style={[st.webFilterBar, { zIndex: 100 }]}>
-            <View style={st.webFilterInner}>
-
-              {/* Genre dropdown */}
-              <View style={{ position: 'relative' as any, zIndex: 200 }}>
-                <TouchableOpacity
-                  style={[st.webFilterPill, genres.length > 0 && st.webFilterPillActive]}
-                  onPress={() => setWebDropdown(d => d === 'genre' ? null : 'genre')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[st.webFilterPillText, genres.length > 0 && st.webFilterPillTextActive]}>
-                    {genreLabel} ▾
-                  </Text>
-                </TouchableOpacity>
-                {webDropdown === 'genre' && (
-                  <View style={[st.webFilterDropdown, { width: 260 }]}>
-                    <View style={st.genreGrid}>
-                      {GENRES.map(g => (
-                        <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
-                          <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    {genres.length > 0 && (
-                      <TouchableOpacity style={{ marginTop: 12 }} onPress={() => setGenres([])}>
-                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear genres</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Act Type dropdown */}
-              <View style={{ position: 'relative' as any, zIndex: 200 }}>
-                <TouchableOpacity
-                  style={[st.webFilterPill, actTypes.length > 0 && st.webFilterPillActive]}
-                  onPress={() => setWebDropdown(d => d === 'acttype' ? null : 'acttype')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[st.webFilterPillText, actTypes.length > 0 && st.webFilterPillTextActive]}>
-                    {typeLabel} ▾
-                  </Text>
-                </TouchableOpacity>
-                {webDropdown === 'acttype' && (
-                  <View style={st.webFilterDropdown}>
-                    {ACT_TYPES.map(t => (
-                      <TouchableOpacity
-                        key={t}
-                        style={[st.webDropdownOption, actTypes.includes(t) && st.webDropdownOptionActive]}
-                        onPress={() => toggleActType(t)}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          <View style={[st.checkbox, actTypes.includes(t) && st.checkboxOn]} />
-                          <Text style={[st.webDropdownOptionText, actTypes.includes(t) && st.webDropdownOptionTextActive]}>{t}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                    {actTypes.length > 0 && (
-                      <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setActTypes([])}>
-                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Fee dropdown */}
-              <View style={{ position: 'relative' as any, zIndex: 200 }}>
-                <TouchableOpacity
-                  style={[st.webFilterPill, feeActive && st.webFilterPillActive]}
-                  onPress={() => setWebDropdown(d => d === 'fee' ? null : 'fee')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[st.webFilterPillText, feeActive && st.webFilterPillTextActive]}>
-                    {feeLabel} ▾
-                  </Text>
-                </TouchableOpacity>
-                {webDropdown === 'fee' && (
-                  <View style={st.webFilterDropdown}>
-                    {FEE_RANGES.map(r => (
-                      <TouchableOpacity key={r.key} style={[st.webDropdownOption, feeRanges.includes(r.key) && st.webDropdownOptionActive]} onPress={() => toggleFee(r.key)}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
-                          <Text style={[st.webDropdownOptionText, feeRanges.includes(r.key) && st.webDropdownOptionTextActive]}>{r.label}</Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                    {feeRanges.length > 0 && (
-                      <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setFeeRanges([])}>
-                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Clear all */}
-              {activeFilterCount > 0 && (
-                <TouchableOpacity onPress={resetFilters}>
-                  <Text style={st.webClearText}>Clear all</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-
-          {/* ── Card grid ─────────────────────────────────────────── */}
-          <View style={{ backgroundColor: '#ffffff', padding: 32, paddingTop: 28 }}>
+          <View style={{ padding: 32, paddingTop: 28 }}>
             {loading
               ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
               : filtered.length === 0
