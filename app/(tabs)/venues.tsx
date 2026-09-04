@@ -728,7 +728,7 @@ export default function VenuesScreen() {
       <TouchableOpacity
         activeOpacity={0.97}
         style={[st.card, { backgroundColor: c.bg, borderColor: c.border }]}
-        onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+        onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
       >
         {photo
           ? <CardPhoto uri={photo} position={item.photoPosition} />

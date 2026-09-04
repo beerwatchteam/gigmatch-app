@@ -1,3 +1,9 @@
+# About GigMatch
+
+GigMatch is an Australian live music booking platform that connects artists/bands with venues. Artists browse venues, view available gig slots on a timetable, and send booking enquiries. Venues manage their slots, review incoming enquiries, and accept or decline them. There is an in-app messaging system for both parties to communicate throughout the process. Three user types: artist, venue, and admin (who verifies venues before they go live).
+
+**Design intent:** Premium industry tool — confident, clean, and built for people who take live music seriously. Not a consumer social app, not corporate software. Somewhere between a music discovery platform and a professional booking tool. Every screen should reflect that.
+
 # Pending / Notes
 
 Things that still need to be done — check here when asked "what's left to do":
