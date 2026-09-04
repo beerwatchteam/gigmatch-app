@@ -92,6 +92,19 @@ function VenuesIcon({ color }: { color: string }) {
   );
 }
 
+function DiscoverIcon({ color }: { color: string }) {
+  // Compass-style icon: circle with crosshair
+  return (
+    <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 1.5, height: 10, backgroundColor: color, position: 'absolute' }} />
+        <View style={{ width: 10, height: 1.5, backgroundColor: color, position: 'absolute' }} />
+        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: color }} />
+      </View>
+    </View>
+  );
+}
+
 function MusiciansIcon({ color }: { color: string }) {
   return (
     <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
@@ -108,10 +121,11 @@ function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
   const { user: tabUser } = useAuth();
   const router = useRouter();
 
-  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox'];
+  const BOTTOM_ROUTES = ['venues', 'musicians', 'discover', 'inbox'];
   const LABELS: Record<string, string> = {
     venues:    'Venues',
     musicians: 'Musicians',
+    discover:  'Discover',
     inbox:     'Inbox',
   };
 
@@ -204,11 +218,12 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox'];
+  const BOTTOM_ROUTES = ['venues', 'musicians', 'discover', 'inbox'];
 
   const LABELS: Record<string, string> = {
     venues:    'Venues',
     musicians: 'Musicians',
+    discover:  'Discover',
     inbox:     'Inbox',
   };
 
@@ -234,6 +249,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
           switch (route.name) {
             case 'venues':    return <SlotsIcon color={iconColor} />;
             case 'musicians': return <MusiciansIcon color={iconColor} />;
+            case 'discover':  return <DiscoverIcon color={iconColor} />;
             case 'inbox':     return <InboxIcon color={iconColor} />;
             default:          return <ProfileIcon color={iconColor} />;
           }
@@ -408,6 +424,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="index"     options={{ href: null }} />
         <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
+        <Tabs.Screen name="discover"  options={{ title: 'Discover' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
         <Tabs.Screen name="profile"   options={{ href: null }} />
       </Tabs>
