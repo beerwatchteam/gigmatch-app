@@ -167,8 +167,8 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, profileTabTitle
       </View>
 
       {tabUser ? (
-        <TouchableOpacity style={wb.logoutBtn} onPress={() => signOut(auth)} activeOpacity={0.8}>
-          <Text style={wb.logoutText}>Log out</Text>
+        <TouchableOpacity style={wb.myProfileBtn} onPress={() => router.push('/(tabs)/profile')} activeOpacity={0.8}>
+          <Text style={wb.myProfileText}>My Profile</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity style={wb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
@@ -320,10 +320,10 @@ const wb = StyleSheet.create({
     paddingHorizontal: 4,
   },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 16 },
-  loginBtn:   { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  loginText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
-  logoutBtn:  { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  logoutText: { fontSize: 13, fontWeight: '600', color: Colors.grey },
+  loginBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  loginText:     { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  myProfileBtn:  { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  myProfileText: { fontSize: 13, fontWeight: '600', color: Colors.grey },
 });
 
 const tb = StyleSheet.create({

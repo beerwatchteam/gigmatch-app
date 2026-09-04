@@ -8,7 +8,8 @@ import WebView from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useArtistEnquiries, type Enquiry } from '@/lib/useEnquiries';
@@ -335,9 +336,14 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               )}
             </View>
             {isMyVenue ? (
-              <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
-                <Text style={s.editProfileBtnText}>Edit Profile</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, marginLeft: 12, marginTop: 4 }}>
+                <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
+                  <Text style={s.editProfileBtnText}>Edit Profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.logoutBtn} onPress={() => signOut(auth)}>
+                  <Text style={s.logoutBtnText}>Log out</Text>
+                </TouchableOpacity>
+              </View>
             ) : isArtist ? (
               <TouchableOpacity style={s.enquireHeaderBtn} onPress={() => setActiveTab('timetable')}>
                 <Text style={s.enquireHeaderBtnText}>Enquire about a slot</Text>
@@ -1253,8 +1259,10 @@ const s = StyleSheet.create({
   genrePillSmall:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   genreTextSmall:     { fontSize: 11, color: Colors.orange },
   breadcrumb:         { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1.4, marginBottom: 6 },
-  editProfileBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
+  editProfileBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start' },
   editProfileBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+  logoutBtn:          { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, alignSelf: 'flex-start' },
+  logoutBtnText:      { fontSize: 13, fontWeight: '600', color: Colors.grey },
   enquireHeaderBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
   enquireHeaderBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
   sidebarEnquireBtn:     { backgroundColor: Colors.orange, borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12 },

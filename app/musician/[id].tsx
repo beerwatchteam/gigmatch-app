@@ -9,7 +9,8 @@ import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -498,6 +499,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.orangeBtn} activeOpacity={0.75}>
                   <Text style={styles.orangeBtnText}>Preview as venue</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.outlineBtn, { borderColor: colors.border }]}
+                  onPress={() => signOut(auth)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.outlineBtnText, { color: colors.grey }]}>Log out</Text>
                 </TouchableOpacity>
               </View>
             )}
