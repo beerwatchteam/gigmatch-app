@@ -86,6 +86,36 @@ type Venue = {
   settings?: { listed?: boolean };
 };
 
+function getNextOpenSlots(venue: Venue, count: number): string[] {
+  const slots = venue.slots;
+  if (!slots) return [];
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming: { ms: number; label: string }[] = [];
+  for (const [day, daySlots] of Object.entries(slots)) {
+    const open = (daySlots as any[]).filter(s => s.status === 'open');
+    for (const slot of open) {
+      let d: Date;
+      if (slot.date) {
+        const [y, m, dd] = slot.date.split('-').map(Number);
+        d = new Date(y, m - 1, dd);
+        if (d < today) continue;
+      } else {
+        const dow = DAY_NAMES.indexOf(day);
+        if (dow === -1) continue;
+        d = new Date(today);
+        const diff = (dow - d.getDay() + 7) % 7;
+        d.setDate(d.getDate() + (diff === 0 ? 7 : diff));
+      }
+      const dl = d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
+      upcoming.push({ ms: d.getTime(), label: `${dl} · ${slot.time || ''}` });
+    }
+  }
+  upcoming.sort((a, b) => a.ms - b.ms);
+  return upcoming.slice(0, count).map(u => u.label);
+}
+
 const CARD_H = 160;
 function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: number } }) {
   const [w, setW] = useState(0);
@@ -271,6 +301,7 @@ export default function VenuesScreen() {
   const [locationCoords, setLocationCoords]   = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius]                   = useState<number | null>(null);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [webDropdown, setWebDropdown]         = useState<'date' | 'capacity' | null>(null);
   const slideAnim   = useRef(new Animated.Value(-PANEL_W)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -434,131 +465,86 @@ export default function VenuesScreen() {
     ...genres.map(g => ({ key: `genre-${g}`, label: g, onRemove: () => setGenres(prev => prev.filter(x => x !== g)) })),
   ];
 
-  // ── Shared sidebar (web) ──────────────────────────────────────────
-  const WebSidebar = (
-    <View style={[st.sidebar, { backgroundColor: colors.bg }]}>
-      <View style={[st.sidebarHead, { borderBottomColor: colors.border }]}>
-        <Text style={[st.sidebarTitle, { color: colors.black }]}>Filters</Text>
-        <TouchableOpacity onPress={resetFilters}><Text style={st.resetAll}>Reset all</Text></TouchableOpacity>
-      </View>
+  // ── Web ledger row ────────────────────────────────────────────────
+  function WebVenueRow({ item }: { item: Venue }) {
+    const photo = item.photoUrl || (item.photos?.[0]);
+    const venueGenres: string[] = (item as any).genres || item.genre || [];
+    const d0 = toLocalStr(new Date());
+    const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
+    const nextSlots = getNextOpenSlots(item, 2);
+    const hasSlots = nextSlots.length > 0;
+    const totalSlots = countOpenSlotsForRange(item, d0, d42);
+    const extraCount = Math.max(0, totalSlots - 2);
+    const feeStr = item.feeMin != null && item.feeMax != null
+      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
+      : item.feeMin != null ? `from $${item.feeMin.toLocaleString()}`
+      : '—';
 
-      {/* SEARCH */}
-      <View style={[st.filterSection, { zIndex: 200, overflow: 'visible' as any }]}>
-        <Text style={st.filterLabel}>SEARCH</Text>
-        <View style={st.searchWrap}>
-          <View style={st.searchRow}>
-            <TextInput
-              style={[st.filterInput, st.searchInput, search ? st.filterInputOn : null]}
-              placeholder="Venue, suburb or postcode…" placeholderTextColor="#999"
-              value={search} onChangeText={handleSearchChange}
-              onFocus={() => hasDropdown && setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-            />
-            {search ? <TouchableOpacity style={st.clearX} onPress={clearSearch}><Text style={st.clearXText}>✕</Text></TouchableOpacity> : null}
-          </View>
-          {showDropdown && hasDropdown && (
-            <View style={st.dropdown}>
-              {venueMatches.length > 0 && (<>
-                <Text style={st.dropSection}>VENUES</Text>
-                {venueMatches.map(v => (
-                  <TouchableOpacity key={v.id} style={st.dropItem} onPress={() => selectVenueMatch(v)}>
-                    <Text style={st.dropItemText}>🏛 {v.name}</Text>
-                    {v.suburb ? <Text style={st.dropItemMeta}>{v.suburb}</Text> : null}
-                  </TouchableOpacity>
-                ))}
-              </>)}
-              {areaSuggestions.length > 0 && (<>
-                <Text style={st.dropSection}>AREAS</Text>
-                {areaSuggestions.map((s, i) => (
-                  <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
-                    <Text style={st.dropItemText}>📍 {s.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </>)}
+    return (
+      <TouchableOpacity
+        style={[st.webRow, !hasSlots && st.webRowDimmed]}
+        onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
+        activeOpacity={0.8}
+      >
+        <View style={[st.webRowCell, { flex: 3 }]}>
+          <View style={st.webRowVenue}>
+            {photo
+              ? <Image source={{ uri: photo }} style={st.webRowThumb} resizeMode="cover" />
+              : <View style={[st.webRowThumb, st.webRowThumbEmpty]}><Text style={st.webRowThumbLabel}>photo</Text></View>
+            }
+            <View style={{ flex: 1 }}>
+              <Text style={st.webRowName}>{item.name}</Text>
+              <Text style={st.webRowMeta}>
+                {[item.suburb, venueGenres.slice(0, 3).join(', ')].filter(Boolean).join(' · ')}
+              </Text>
             </View>
+          </View>
+        </View>
+
+        <View style={[st.webRowCell, { width: 100 }]}>
+          <Text style={st.webRowCap}>{item.capacity ?? '—'}</Text>
+        </View>
+
+        <View style={[st.webRowCell, { flex: 4 }]}>
+          {hasSlots ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' as any, gap: 6 }}>
+              {nextSlots.map((label, i) => (
+                <View key={i} style={st.webSlotChip}>
+                  <Text style={st.webSlotChipText}>{label}</Text>
+                </View>
+              ))}
+              {extraCount > 0 && <Text style={st.webSlotExtra}>+{extraCount} more</Text>}
+            </View>
+          ) : (
+            <Text style={st.webSlotNone}>No open slots</Text>
           )}
         </View>
-        {locationCoords && (
-          <View style={st.radiusPills}>
-            {RADIUS_OPTIONS.map(km => (
-              <TouchableOpacity key={km} style={[st.radiusPill, radius === km && st.radiusPillOn]} onPress={() => setRadius(km)}>
-                <Text style={[st.radiusPillText, radius === km && st.radiusPillTextOn]}>{km}km</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
 
-      {/* FEE RANGE */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>FEE RANGE</Text>
-        {FEE_RANGES.map(r => (
-          <TouchableOpacity key={r.key} style={st.checkRow} onPress={() => toggleFee(r.key)}>
-            <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
-            <Text style={st.checkLabel}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* AVAILABILITY */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>AVAILABILITY</Text>
-        <Text style={st.filterSubLabel}>FROM</Text>
-        <View style={{ marginBottom: 8 }}>
-          <CalendarPicker value={dateStart} onChange={v => { setDateStart(v); if (dateEnd && v && v > dateEnd) setDateEnd(v); }} colors={colors} />
+        <View style={[st.webRowCell, { width: 140 }]}>
+          <Text style={st.webRowFee}>{feeStr}</Text>
         </View>
-        <Text style={st.filterSubLabel}>TO</Text>
-        <CalendarPicker value={dateEnd} onChange={setDateEnd} minDate={dateStart || undefined} colors={colors} />
-      </View>
 
-      {/* CAPACITY */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>CAPACITY</Text>
-        {isWeb ? (
-          // @ts-ignore — web-only <select> element
-          <select
-            value={capacity}
-            onChange={(e: any) => setCapacity(e.target.value)}
-            style={{
-              width: '100%', padding: '9px 12px',
-              border: '1px solid #e0e0e0', borderRadius: 8,
-              fontSize: 13, color: '#111111',
-              backgroundColor: '#fafafa', cursor: 'pointer',
-              outline: 'none', appearance: 'auto',
-            } as any}
-          >
-            {CAPACITY_OPTIONS.map(o => (
-              // @ts-ignore
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        ) : (
-          <View style={st.genreGrid}>
-            {CAPACITY_OPTIONS.map(o => (
-              <TouchableOpacity key={o.value} style={[st.genrePill, capacity === o.value && st.genrePillOn]} onPress={() => setCapacity(o.value)}>
-                <Text style={[st.genrePillText, capacity === o.value && st.genrePillTextOn]}>{o.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* GENRE */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>GENRE</Text>
-        <View style={st.genreGrid}>
-          <TouchableOpacity style={[st.genrePill, genres.length === 0 && st.genrePillOn]} onPress={() => setGenres([])}>
-            <Text style={[st.genrePillText, genres.length === 0 && st.genrePillTextOn]}>All</Text>
-          </TouchableOpacity>
-          {GENRES.map(g => (
-            <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
-              <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
+        <View style={[st.webRowCell, { width: 110, alignItems: 'flex-end' }]}>
+          {hasSlots ? (
+            <TouchableOpacity
+              style={st.webEnquireBtn}
+              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+            >
+              <Text style={st.webEnquireBtnText}>Enquire</Text>
             </TouchableOpacity>
-          ))}
+          ) : (
+            <TouchableOpacity
+              style={st.webWatchBtn}
+              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
+            >
+              <Text style={st.webWatchBtnText}>Watch</Text>
+            </TouchableOpacity>
+          )}
         </View>
-      </View>
-    </View>
-  );
+      </TouchableOpacity>
+    );
+  }
+
 
   // ── Native filter bar (top of content) ───────────────────────────
   const NativeFilterBar = (
@@ -766,26 +752,208 @@ export default function VenuesScreen() {
 
   // ── Web layout ────────────────────────────────────────────────────
   if (isWeb) {
+    const d0 = toLocalStr(new Date());
+    const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
+    const totalOpenSlots = venues.reduce((sum, v) => sum + countOpenSlotsForRange(v, d0, d42), 0);
+    const heroLocation = locationCoords && search ? search : null;
+    const capacityLabel = capacity === 'any' ? 'any' : (CAPACITY_OPTIONS.find(o => o.value === capacity)?.label ?? capacity);
+    const dateLabel = dateStart
+      ? (dateEnd ? `${formatDateDisplay(dateStart)}–${formatDateDisplay(dateEnd)}` : formatDateDisplay(dateStart))
+      : 'any date';
+
     return (
-      <View style={[st.page, { backgroundColor: colors.bg }]}>
-        <ScrollView style={st.sidebarScroll} showsVerticalScrollIndicator={false}>{WebSidebar}</ScrollView>
+      <View style={{ flex: 1, backgroundColor: '#f2ede6' }}>
+        {/* Dropdown backdrop */}
+        {webDropdown !== null && (
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 } as any}
+            activeOpacity={1}
+            onPress={() => setWebDropdown(null)}
+          />
+        )}
+
         <ScrollView
-          style={st.contentScroll}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         >
-          <View style={st.content}>
-            <Text style={[st.pageTitle, { color: colors.black }]}>Find your next gig</Text>
-            <Text style={[st.countText, { color: colors.grey }]}>{filtered.length} venue{filtered.length !== 1 ? 's' : ''} match your filters</Text>
-            {loading
-              ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
-              : filtered.length === 0
-                ? <Text style={st.empty}>No venues match your filters.</Text>
-                : <View style={st.grid}>{filtered.map(item => <View key={item.id} style={{ width: '49%' }}><VenueCard item={item} /></View>)}</View>
-            }
+          {/* ── Hero ──────────────────────────────────────────────── */}
+          <View style={st.webHero}>
+            <View style={st.webHeroInner}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.webHeroLabel}>
+                  OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
+                </Text>
+                <Text style={st.webHeroTitle}>Find your next gig</Text>
+                <Text style={st.webHeroSub}>
+                  {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
+                </Text>
+              </View>
+
+              {/* Search */}
+              <View style={{ width: 340, zIndex: 200 } as any}>
+                <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                  <View style={st.webSearchRow}>
+                    <TextInput
+                      style={st.webSearchInput}
+                      placeholder="Venue, suburb or postcode"
+                      placeholderTextColor="#999"
+                      value={search}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => hasDropdown && setShowDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    />
+                    <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
+                      <Text style={st.webSearchBtnText}>Search</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {showDropdown && hasDropdown && (
+                    <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
+                      {venueMatches.length > 0 && (<>
+                        <Text style={st.dropSection}>VENUES</Text>
+                        {venueMatches.map(v => (
+                          <TouchableOpacity key={v.id} style={st.dropItem} onPress={() => selectVenueMatch(v)}>
+                            <Text style={st.dropItemText}>🏛 {v.name}</Text>
+                            {v.suburb ? <Text style={st.dropItemMeta}>{v.suburb}</Text> : null}
+                          </TouchableOpacity>
+                        ))}
+                      </>)}
+                      {areaSuggestions.length > 0 && (<>
+                        <Text style={st.dropSection}>AREAS</Text>
+                        {areaSuggestions.map((s, i) => (
+                          <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
+                            <Text style={st.dropItemText}>📍 {s.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>)}
+                    </View>
+                  )}
+                </View>
+                {locationCoords && (
+                  <View style={[st.radiusPills, { marginTop: 10 }]}>
+                    {RADIUS_OPTIONS.map(km => (
+                      <TouchableOpacity key={km} style={[st.radiusPill, radius === km && st.radiusPillOn]} onPress={() => setRadius(km)}>
+                        <Text style={[st.radiusPillText, radius === km && st.radiusPillTextOn]}>{km}km</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
-          <View style={{ height: 60 }} />
+
+          {/* ── Filter chip bar ───────────────────────────────────── */}
+          <View style={[st.webFilterBar, { zIndex: 100 }]}>
+            <View style={st.webFilterInner}>
+              {/* Available dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, dateActive && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'date' ? null : 'date')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, dateActive && st.webFilterPillTextActive]}>
+                    Available {dateLabel} ▾
+                  </Text>
+                </TouchableOpacity>
+                {webDropdown === 'date' && (
+                  <View style={[st.webFilterDropdown, { width: 260 }]}>
+                    <Text style={st.webFilterDropLabel}>FROM</Text>
+                    {/* @ts-ignore */}
+                    <input
+                      type="date"
+                      value={dateStart}
+                      onChange={(e: any) => { setDateStart(e.target.value); if (dateEnd && e.target.value > dateEnd) setDateEnd(''); }}
+                      style={{ width: '100%', padding: '8px 10px', border: '1px solid #e0e0e0', borderRadius: 6, fontSize: 13, marginBottom: 10, outline: 'none', cursor: 'pointer', boxSizing: 'border-box' } as any}
+                    />
+                    <Text style={st.webFilterDropLabel}>TO</Text>
+                    {/* @ts-ignore */}
+                    <input
+                      type="date"
+                      value={dateEnd}
+                      min={dateStart || undefined}
+                      onChange={(e: any) => setDateEnd(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', border: '1px solid #e0e0e0', borderRadius: 6, fontSize: 13, outline: 'none', cursor: 'pointer', boxSizing: 'border-box' } as any}
+                    />
+                    {dateStart && (
+                      <TouchableOpacity style={{ marginTop: 12 }} onPress={() => { setDateStart(''); setDateEnd(''); setWebDropdown(null); }}>
+                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear dates</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Capacity dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, capActive && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'capacity' ? null : 'capacity')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, capActive && st.webFilterPillTextActive]}>
+                    Capacity {capacityLabel} ▾
+                  </Text>
+                </TouchableOpacity>
+                {webDropdown === 'capacity' && (
+                  <View style={st.webFilterDropdown}>
+                    {CAPACITY_OPTIONS.map(o => (
+                      <TouchableOpacity
+                        key={o.value}
+                        style={[st.webDropdownOption, capacity === o.value && st.webDropdownOptionActive]}
+                        onPress={() => { setCapacity(o.value); setWebDropdown(null); }}
+                      >
+                        <Text style={[st.webDropdownOptionText, capacity === o.value && st.webDropdownOptionTextActive]}>
+                          {o.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {/* Active filter chips (genre + fee) */}
+              {activeChips.map(chip => (
+                <TouchableOpacity key={chip.key} style={st.webActiveChip} onPress={chip.onRemove}>
+                  <Text style={st.webActiveChipText}>{chip.label}  ×</Text>
+                </TouchableOpacity>
+              ))}
+
+              {/* Clear all */}
+              {activeFilterCount > 0 && (
+                <TouchableOpacity onPress={resetFilters}>
+                  <Text style={st.webClearText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+
+              <View style={{ flex: 1 }} />
+
+              {/* Open full filter panel */}
+              <TouchableOpacity style={st.webFilterMoreBtn} onPress={() => { setWebDropdown(null); openFilterPanel(); }}>
+                <Text style={st.webFilterMoreBtnText}>+ Filter</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ── Ledger table ──────────────────────────────────────── */}
+          <View style={{ backgroundColor: '#ffffff' }}>
+            <View style={st.webTableHeader}>
+              <Text style={[st.webTableHeaderCell, { flex: 3 }]}>VENUE</Text>
+              <Text style={[st.webTableHeaderCell, { width: 100 }]}>CAPACITY</Text>
+              <Text style={[st.webTableHeaderCell, { flex: 4 }]}>NEXT OPEN SLOTS</Text>
+              <Text style={[st.webTableHeaderCell, { width: 140 }]}>TYPICAL FEE</Text>
+              <Text style={[st.webTableHeaderCell, { width: 110, textAlign: 'right' }]}>ACTION</Text>
+            </View>
+
+            {loading
+              ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
+              : filtered.length === 0
+                ? <Text style={[st.empty, { paddingHorizontal: 60, paddingTop: 40 }]}>No venues match your filters.</Text>
+                : filtered.map(item => <WebVenueRow key={item.id} item={item} />)
+            }
+            <View style={{ height: 80 }} />
+          </View>
         </ScrollView>
+        {FilterPanel}
       </View>
     );
   }
@@ -944,4 +1112,66 @@ const st = StyleSheet.create({
   profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
   actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+
+  // ── Web hero ─────────────────────────────────────────────────────
+  webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 60, paddingTop: 48, paddingBottom: 40 },
+  webHeroInner:   { flexDirection: 'row', alignItems: 'flex-end', gap: 40 },
+  webHeroLabel:   { fontSize: 11, fontWeight: '700', letterSpacing: 2, color: Colors.orange, textTransform: 'uppercase' as any },
+  webHeroTitle:   { fontSize: 48, fontWeight: '800', color: '#111111', letterSpacing: -1.5 as any, marginTop: 6, lineHeight: 52 },
+  webHeroSub:     { fontSize: 14, color: '#666666', marginTop: 8 },
+  webSearchRow:   { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
+  webSearchInput: {
+    flex: 1, borderWidth: 1.5, borderColor: '#d8d3cd', borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: '#111111',
+    backgroundColor: '#ffffff',
+  },
+  webSearchBtn:     { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 22, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' },
+  webSearchBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+
+  // ── Web filter bar ────────────────────────────────────────────────
+  webFilterBar:   { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8' },
+  webFilterInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 60, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any },
+  webFilterPill:  { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#ffffff' },
+  webFilterPillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '12' },
+  webFilterPillText:       { fontSize: 13, color: '#333333', fontWeight: '500' },
+  webFilterPillTextActive: { color: Colors.orange, fontWeight: '600' },
+  webFilterDropdown: {
+    position: 'absolute' as any, top: '110%' as any, left: 0, marginTop: 4,
+    backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e0e0e0',
+    borderRadius: 10, padding: 14, zIndex: 300, minWidth: 180,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 12,
+  },
+  webFilterDropLabel:       { fontSize: 10, fontWeight: '700', color: '#888888', letterSpacing: 0.8, textTransform: 'uppercase' as any, marginBottom: 6 },
+  webDropdownOption:        { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 6 },
+  webDropdownOptionActive:  { backgroundColor: Colors.orange + '18' },
+  webDropdownOptionText:    { fontSize: 13, color: '#333333' },
+  webDropdownOptionTextActive: { color: Colors.orange, fontWeight: '600' },
+  webActiveChip:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: Colors.orange + '12' },
+  webActiveChipText: { fontSize: 13, fontWeight: '600', color: Colors.orange },
+  webClearText:      { fontSize: 13, color: '#888888', textDecorationLine: 'underline' as any, paddingHorizontal: 4 },
+  webFilterMoreBtn:     { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fafafa' },
+  webFilterMoreBtnText: { fontSize: 13, color: '#555555', fontWeight: '500' },
+
+  // ── Web ledger table ──────────────────────────────────────────────
+  webTableHeader:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 60, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  webTableHeaderCell: { fontSize: 10, fontWeight: '700', color: '#aaaaaa', letterSpacing: 1.2, textTransform: 'uppercase' as any },
+  webRow:             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 60, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  webRowDimmed:       { opacity: 0.45 },
+  webRowCell:         { paddingRight: 16 },
+  webRowVenue:        { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  webRowThumb:        { width: 54, height: 54, borderRadius: 8 },
+  webRowThumbEmpty:   { backgroundColor: '#e8e3dc', alignItems: 'center', justifyContent: 'center' },
+  webRowThumbLabel:   { fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
+  webRowName:         { fontSize: 15, fontWeight: '700', color: '#111111' },
+  webRowMeta:         { fontSize: 12, color: '#888888', marginTop: 2 },
+  webRowCap:          { fontSize: 15, color: '#111111' },
+  webSlotChip:        { backgroundColor: Colors.orange + '20', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  webSlotChipText:    { fontSize: 12, color: Colors.orange, fontWeight: '600' },
+  webSlotExtra:       { fontSize: 12, color: '#888888' },
+  webSlotNone:        { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
+  webRowFee:          { fontSize: 14, fontWeight: '600', color: '#111111' },
+  webEnquireBtn:      { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 8 },
+  webEnquireBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  webWatchBtn:        { borderWidth: 1, borderColor: '#d0d0d0', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 8 },
+  webWatchBtnText:    { fontSize: 13, fontWeight: '500', color: '#888888' },
 });
