@@ -497,9 +497,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                 >
                   <Text style={[styles.outlineBtnText, { color: colors.black }]}>Edit profile</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.orangeBtn} activeOpacity={0.75}>
-                  <Text style={styles.orangeBtnText}>Preview as venue</Text>
-                </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
                   onPress={() => signOut(auth)}
