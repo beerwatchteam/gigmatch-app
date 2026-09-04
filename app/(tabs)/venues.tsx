@@ -800,7 +800,7 @@ export default function VenuesScreen() {
   // ── Web venue row (desktop) ───────────────────────────────────────
   function WebVenueRow({ item }: { item: Venue }) {
     const photo = item.photoUrl || item.photos?.[0];
-    const venueGenres = (item.genre || item.genres || []).slice(0, 4);
+    const venueGenres = (item.genre || item.genres || []).slice(0, 6);
     const d0  = toLocalStr(new Date());
     const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
     const allSlots   = getNextOpenSlotsDetailed(item);
@@ -1170,11 +1170,11 @@ export default function VenuesScreen() {
 
         {/* ── Column headers ─────────────────────────────────────── */}
         <View style={st.webTableHeader}>
-          <Text style={[st.webTh, { flex: 3 }]}>VENUE</Text>
+          <Text style={[st.webTh, { flex: 4.5 }]}>VENUE</Text>
           <Text style={[st.webTh, { flex: 1 }]}>CAPACITY</Text>
           <Text style={[st.webTh, { flex: 2.5 }]}>NEXT OPEN SLOTS</Text>
-          <Text style={[st.webTh, { flex: 1.5 }]}>TYPICAL FEE</Text>
-          <Text style={[st.webTh, { flex: 1.5, textAlign: 'right' as any }]}>ACTION</Text>
+          <Text style={[st.webTh, { flex: 0.8 }]}>TYPICAL FEE</Text>
+          <Text style={[st.webTh, { flex: 1.2, textAlign: 'right' as any }]}>ACTION</Text>
         </View>
 
         {/* ── Venue rows (scrollable) ───────────────────────────── */}
@@ -1425,23 +1425,23 @@ const st = StyleSheet.create({
   // ── Web table header ─────────────────────────────────────────────
   webTableHeader: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 32, paddingVertical: 10,
+    paddingHorizontal: 20, paddingVertical: 10,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1, borderBottomColor: '#e8e8e8',
-    gap: 20,
+    gap: 16,
   },
   webTh: { fontSize: 10, fontWeight: '700', color: '#aaaaaa', textTransform: 'uppercase' as any, letterSpacing: 0.9 },
 
   // ── Web venue rows ────────────────────────────────────────────────
-  webRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 20 },
-  webColVenue:      { flex: 3, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  webColVenueInfo:  { flex: 1, gap: 4 },
+  webRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 16 },
+  webColVenue:      { flex: 4.5, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  webColVenueInfo:  { flex: 1, gap: 5 },
   webColCapacity:   { flex: 1 },
   webColSlots:      { flex: 2.5 },
-  webColFee:        { flex: 1.5 },
-  webColAction:     { flex: 1.5, alignItems: 'flex-end' as any },
+  webColFee:        { flex: 0.8 },
+  webColAction:     { flex: 1.2, alignItems: 'flex-end' as any },
   webColValue:      { fontSize: 14, color: '#333333', fontWeight: '500' },
-  webRowThumb:      { width: 72, height: 72, borderRadius: 8 },
+  webRowThumb:      { width: 88, height: 88, borderRadius: 10 },
   webRowThumbEmpty: { backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
   webRowThumbLabel: { fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
   webRowName:       { fontSize: 15, fontWeight: '700', color: '#111111' },
