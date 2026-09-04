@@ -1,4 +1,4 @@
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Text } from '@/components/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,10 +6,13 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { useInboxBadgeCount } from '@/lib/useEnquiries';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 const isWeb = Platform.OS === 'web';
 export const TOP_TAB_H   = 52;
 export const BOTTOM_TAB_H = 60;
+export const WEB_TAB_H   = 48;
 
 // ── Inline SVG-style icons ────────────────────────────────────────
 
@@ -98,6 +101,84 @@ function MusiciansIcon({ color }: { color: string }) {
   );
 }
 
+// ── Web tab bar (text-only, horizontal) ──────────────────────────
+
+function WebTabBar({ state, descriptors, navigation, badgeCount, profileTabTitle }: any) {
+  const { colors } = useTheme();
+  const { user: tabUser, profile: tabProfile } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const onProfileScreen =
+    pathname.includes('edit-venue') ||
+    pathname.includes('edit-profile') ||
+    (tabProfile?.venueId ? pathname.includes(tabProfile.venueId) : false) ||
+    (tabUser?.uid ? pathname.startsWith('/musician/') && pathname.includes(tabUser.uid) : false);
+
+  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox', 'profile'];
+  const LABELS: Record<string, string> = {
+    venues:    'Venues',
+    musicians: 'Musicians',
+    inbox:     'Inbox',
+    profile:   profileTabTitle,
+  };
+
+  return (
+    <View style={[wb.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+      {/* Logo */}
+      <TouchableOpacity style={wb.logo} onPress={() => router.push('/')} activeOpacity={0.8}>
+        <Text style={[wb.logoText, { color: colors.black }]}>GigMatch</Text>
+        <View style={wb.betaBadge}><Text style={wb.betaText}>Beta</Text></View>
+      </TouchableOpacity>
+
+      {/* Centred tabs */}
+      <View style={wb.tabsCenter}>
+      <View style={wb.tabs}>
+        {state.routes.map((route: any, i: number) => {
+          const { options } = descriptors[route.key];
+          if (!BOTTOM_ROUTES.includes(route.name) || options.href === null) return null;
+          const focused = (state.index === i) || (route.name === 'profile' && onProfileScreen);
+          const badge   = route.name === 'inbox' ? badgeCount : 0;
+          const label   = LABELS[route.name] ?? route.name;
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              style={wb.tab}
+              onPress={() => {
+                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+                if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={[wb.label, { color: focused ? colors.black : colors.grey }]}>
+                {label}
+              </Text>
+              {badge > 0 && (
+                <View style={wb.badge}>
+                  <Text style={wb.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+                </View>
+              )}
+              {focused && <View style={wb.activeIndicator} />}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      </View>
+
+      {tabUser ? (
+        <TouchableOpacity style={wb.logoutBtn} onPress={() => signOut(auth)} activeOpacity={0.8}>
+          <Text style={wb.logoutText}>Log out</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={wb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
+          <Text style={wb.loginText}>Log In</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 // ── Top bar (logo + login only) ───────────────────────────────────
 
 function TopTabBar(_props: any) {
@@ -158,16 +239,16 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
         const { options } = descriptors[route.key];
         if (!BOTTOM_ROUTES.includes(route.name) || options.href === null) return null;
         const focused = (state.index === i) || (route.name === 'profile' && onProfileScreen);
-        const color   = focused ? Colors.orange : colors.grey;
+        const iconColor = focused ? colors.black : colors.grey;
         const badge   = route.name === 'inbox' ? badgeCount : 0;
         const label   = LABELS[route.name] ?? route.name;
 
         function renderIcon() {
           switch (route.name) {
-            case 'venues':    return <SlotsIcon color={color} />;
-            case 'musicians': return <MusiciansIcon color={color} />;
-            case 'inbox':     return <InboxIcon color={color} />;
-            default:          return <ProfileIcon color={color} />;
+            case 'venues':    return <SlotsIcon color={iconColor} />;
+            case 'musicians': return <MusiciansIcon color={iconColor} />;
+            case 'inbox':     return <InboxIcon color={iconColor} />;
+            default:          return <ProfileIcon color={iconColor} />;
           }
         }
 
@@ -182,6 +263,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
             onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
             activeOpacity={0.75}
           >
+            {focused && <View style={bb.activeBar} />}
             <View style={bb.iconWrap}>
               {renderIcon()}
               {badge > 0 && (
@@ -190,13 +272,59 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
                 </View>
               )}
             </View>
-            <Text style={[bb.label, { color }]}>{label}</Text>
+            <Text style={[bb.label, { color: focused ? colors.black : colors.grey }]}>{label}</Text>
           </TouchableOpacity>
         );
       })}
     </View>
   );
 }
+
+const wb = StyleSheet.create({
+  bar: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    zIndex: 1000,
+    height: WEB_TAB_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    paddingHorizontal: 24,
+  },
+  logo:       { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  logoText:   { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  betaBadge:  { backgroundColor: '#f0f0f0', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  betaText:   { fontSize: 10, fontWeight: '600', color: Colors.grey },
+  tabsCenter: { position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'box-none' as any },
+  tabs: { flexDirection: 'row', height: WEB_TAB_H },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    height: WEB_TAB_H,
+    gap: 6,
+  },
+  activeIndicator: {
+    position: 'absolute',
+    bottom: 0, left: 14, right: 14,
+    height: 2,
+    backgroundColor: Colors.orange,
+    borderRadius: 1,
+  },
+  label: { fontSize: 14, fontWeight: '600' },
+  badge: {
+    backgroundColor: Colors.orange,
+    borderRadius: 8, minWidth: 16, height: 16,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 16 },
+  loginBtn:   { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  loginText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  logoutBtn:  { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  logoutText: { fontSize: 13, fontWeight: '600', color: Colors.grey },
+});
 
 const tb = StyleSheet.create({
   bar: {
@@ -230,9 +358,10 @@ const bb = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
   },
-  tab:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 8 },
-  iconWrap: { position: 'relative' },
-  label:    { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
+  tab:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 8 },
+  activeBar: { position: 'absolute', top: 0, left: 12, right: 12, height: 2, backgroundColor: Colors.orange, borderRadius: 1 },
+  iconWrap:  { position: 'relative' },
+  label:     { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
   badge: {
     position: 'absolute', top: -4, right: -8,
     backgroundColor: Colors.orange,
@@ -248,6 +377,7 @@ export default function TabsLayout() {
   const { user, profile } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const badgeCount = useInboxBadgeCount(
     user?.uid ?? null,
     profile?.venueId ?? null,
@@ -259,12 +389,21 @@ export default function TabsLayout() {
       ? 'My Venue'
       : 'My Profile';
 
-  const bottomPad = !isWeb ? BOTTOM_TAB_H + insets.bottom : 0;
+  // Mobile web: treat like native (top logo bar + bottom tabs)
+  const isMobileWeb = isWeb && width < 768;
+  const useNativeLayout = !isWeb || isMobileWeb;
+  const bottomPad = useNativeLayout ? BOTTOM_TAB_H + insets.bottom : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Tabs
-        tabBar={isWeb ? () => null : props => (
+        tabBar={props => !isMobileWeb && isWeb ? (
+          <WebTabBar
+            {...props}
+            badgeCount={badgeCount}
+            profileTabTitle={profileTabTitle}
+          />
+        ) : (
           <>
             <TopTabBar {...props} />
             <BottomTabBar
@@ -277,12 +416,12 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
           tabBarStyle: { display: 'none' },
-          ...(isWeb ? {} : {
-            sceneContainerStyle: {
-              paddingTop: insets.top + TOP_TAB_H,
-              paddingBottom: bottomPad,
-            },
-          }),
+          sceneContainerStyle: !isMobileWeb && isWeb
+            ? { paddingTop: WEB_TAB_H }
+            : {
+                paddingTop: insets.top + TOP_TAB_H,
+                paddingBottom: bottomPad,
+              },
         }}
       >
         <Tabs.Screen name="index"     options={{ href: null }} />

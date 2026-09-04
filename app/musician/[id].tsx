@@ -47,6 +47,7 @@ function PositionedBanner({ uri, position, height }: { uri: string; position?: {
     </View>
   );
 }
+
 const MAX_DESC = 320;
 
 const PLATFORMS = [
@@ -56,7 +57,6 @@ const PLATFORMS = [
   { key: 'appleMusic', label: 'Apple Music' },
 ];
 
-/** Convert a Spotify share URL to the embeddable URL */
 function toSpotifyEmbedUrl(url: string): string | null {
   if (!url) return null;
   const m = url.match(/open\.spotify\.com\/(artist|track|album|playlist|episode)\/([A-Za-z0-9]+)/);
@@ -68,33 +68,30 @@ function spotifyEmbedHeight(embedUrl: string): number {
   return embedUrl.includes('/track/') || embedUrl.includes('/episode/') ? 152 : 352;
 }
 
-/** If the URL is a post or reel, return the canonical post URL (not /embed/) */
 function toInstagramPostUrl(url: string): string | null {
   if (!url) return null;
   const m = url.match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/);
   return m ? `https://www.instagram.com/${m[1]}/${m[2]}/` : null;
 }
 
-/** Extract a plain Instagram handle from a profile URL or raw handle */
 function getInstagramHandle(val: string): string | null {
   if (!val) return null;
-  // Full profile URL
   const urlMatch = val.match(/instagram\.com\/(?!p\/|reel\/)([^/?#\s]+)/);
   if (urlMatch) return urlMatch[1].replace(/\/$/, '');
-  // Bare handle (with or without @)
   if (/^@?[\w.][\w.]{0,28}$/.test(val.trim())) return val.trim().replace(/^@/, '');
   return null;
 }
 
 type CustomLink = { label: string; url: string };
-type Song      = { title?: string; url?: string };
-type GigEntry  = { venue?: string; suburb?: string; date?: string; attendance?: number; notes?: string };
+type Song       = { title?: string; url?: string; duration?: string };
+type GigEntry   = { venue?: string; suburb?: string; date?: string; attendance?: number; notes?: string };
 
 type Musician = {
   id: string;
   name?: string;
   username?: string;
   artistType?: string | string[];
+  actSize?: string;
   location?: string;
   genre?: string[];
   otherGenres?: string;
@@ -117,6 +114,9 @@ type Musician = {
   upcomingGigs?: GigEntry[];
   feeMin?: number;
   feeMax?: number;
+  averageDraw?: number;
+  backline?: string;
+  availability?: string;
 };
 
 // ── Overview Tab ──────────────────────────────────────────────────
@@ -126,70 +126,81 @@ function OverviewTab({ m }: { m: Musician }) {
   const [expanded, setExpanded] = useState(false);
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
+  const gigHistory     = (m.gigHistory || [])
+    .filter(g => g.venue || g.date)
+    .slice()
+    .sort((a, b) => {
+      const da = a.date ? Date.parse(a.date) : NaN;
+      const db = b.date ? Date.parse(b.date) : NaN;
+      if (isNaN(da) && isNaN(db)) return 0;
+      if (isNaN(da)) return 1;
+      if (isNaN(db)) return -1;
+      return db - da;
+    });
+  const socialLinks    = PLATFORMS.filter(p => (m as any)[p.key]);
+  const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
+  const hasContact     = !!(m.email || m.phone);
+  const hasSocials     = socialLinks.length > 0 || customLinks.length > 0;
+  const hasFee         = m.feeMin != null || m.feeMax != null;
+  const hasSidebar     = hasFee || hasContact || hasSocials || !!m.availability;
 
-  const upcomingGigs = (m.upcomingGigs || []).filter(g => g.venue || g.date);
-  const gigHistory   = (m.gigHistory   || []).filter(g => g.venue || g.date);
-
-  const socialLinks = PLATFORMS.filter(p => (m as any)[p.key]);
-  const customLinks = (m.customLinks || []).filter(l => l.label && l.url);
-  const hasContact  = !!(m.email || m.phone);
-  const hasSocials  = socialLinks.length > 0 || customLinks.length > 0;
-  const hasSidebar  = hasContact || hasSocials || m.feeMin != null || m.feeMax != null;
+  const feeStr = hasFee
+    ? (m.feeMin != null && m.feeMax != null
+        ? `$${m.feeMin.toLocaleString()} – $${m.feeMax.toLocaleString()}`
+        : m.feeMin != null
+          ? `From $${m.feeMin.toLocaleString()}`
+          : `Up to $${m.feeMax!.toLocaleString()}`)
+    : null;
 
   const sidebar = (
-    <>
-      {(hasContact || hasSocials) && (
+    <View style={isWeb ? styles.overviewSidebar : styles.mobileSidebar}>
+      {feeStr && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          {hasContact && (
-            <>
-              <Text style={[styles.sideCardTitle, { color: colors.greyLight }]}>Contact</Text>
-              {m.email && (
-                <TouchableOpacity onPress={() => Linking.openURL(`mailto:${m.email}`)}>
-                  <Text style={styles.sideLink}>{m.email}</Text>
-                </TouchableOpacity>
-              )}
-              {m.phone && (
-                <TouchableOpacity onPress={() => Linking.openURL(`tel:${m.phone}`)}>
-                  <Text style={styles.sideLink}>{m.phone}</Text>
-                </TouchableOpacity>
-              )}
-            </>
+          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>FEE</Text>
+          <Text style={[styles.sideFee, { color: colors.black }]}>{feeStr}</Text>
+        </View>
+      )}
+      {hasContact && (
+        <View style={[styles.sideCard, { borderColor: colors.border }]}>
+          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>CONTACT</Text>
+          {m.email && (
+            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${m.email}`)}>
+              <Text style={styles.sideLink}>{m.email}</Text>
+            </TouchableOpacity>
           )}
-          {hasSocials && (
-            <>
-              <Text style={[styles.sideCardTitle, { color: colors.greyLight }, hasContact && { marginTop: 16 }]}>Socials</Text>
-              {socialLinks.map(p => (
-                <TouchableOpacity key={p.key} onPress={() => Linking.openURL((m as any)[p.key])}>
-                  <Text style={styles.sideLink}>{p.label} →</Text>
-                </TouchableOpacity>
-              ))}
-              {customLinks.map((link, i) => (
-                <TouchableOpacity key={i} onPress={() => Linking.openURL(link.url)}>
-                  <Text style={styles.sideLink}>{link.label} →</Text>
-                </TouchableOpacity>
-              ))}
-            </>
+          {m.phone && (
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${m.phone}`)}>
+              <Text style={styles.sideLink}>{m.phone}</Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
-
-      {(m.feeMin != null || m.feeMax != null) && (
+      {hasSocials && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideCardTitle, { color: colors.greyLight }]}>Fee</Text>
-          <Text style={[styles.feeText, { color: colors.black }]}>
-            {m.feeMin != null && m.feeMax != null
-              ? `$${m.feeMin.toLocaleString()} – $${m.feeMax.toLocaleString()}`
-              : m.feeMin != null
-                ? `From $${m.feeMin.toLocaleString()}`
-                : `Up to $${m.feeMax!.toLocaleString()}`}
-          </Text>
+          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>SOCIALS</Text>
+          {socialLinks.map(p => (
+            <TouchableOpacity key={p.key} onPress={() => Linking.openURL((m as any)[p.key])}>
+              <Text style={styles.sideLink}>{p.label} →</Text>
+            </TouchableOpacity>
+          ))}
+          {customLinks.map((link, i) => (
+            <TouchableOpacity key={i} onPress={() => Linking.openURL(link.url)}>
+              <Text style={styles.sideLink}>{link.label} →</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
-    </>
+      {m.availability && (
+        <View style={[styles.sideCard, { borderColor: colors.border }]}>
+          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>AVAILABILITY</Text>
+          <Text style={[styles.sideBody, { color: colors.black }]}>{m.availability}</Text>
+        </View>
+      )}
+    </View>
   );
 
   const main = (
-    <>
+    <View style={isWeb ? styles.overviewMain : undefined}>
       {about ? (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>ABOUT</Text>
@@ -204,61 +215,49 @@ function OverviewTab({ m }: { m: Musician }) {
         </View>
       ) : null}
 
-      {upcomingGigs.length > 0 && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>UPCOMING GIGS</Text>
-          {upcomingGigs.map((gig, i) => (
-            <View key={i} style={[styles.gigRow, { borderBottomColor: colors.borderFaint }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.gigVenue, { color: colors.black }]}>{gig.venue}</Text>
-                <Text style={[styles.gigMeta, { color: colors.grey }]}>
-                  {[gig.suburb, gig.date].filter(Boolean).join(' · ')}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-
       {gigHistory.length > 0 && (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>GIG HISTORY</Text>
+          <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
+            <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
+            <Text style={[styles.gigColDraw, styles.gigTableHdr, { color: colors.greyLight }]}>DRAW</Text>
+          </View>
           {gigHistory.map((gig, i) => (
-            <View key={i} style={[styles.gigRow, { borderBottomColor: colors.borderFaint }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.gigVenue, { color: colors.black }]}>{gig.venue}</Text>
-                <Text style={[styles.gigMeta, { color: colors.grey }]}>
-                  {[gig.suburb, gig.date].filter(Boolean).join(' · ')}
-                </Text>
-                {gig.notes ? <Text style={[styles.gigNotes, { color: colors.greyLight }]}>{gig.notes}</Text> : null}
-              </View>
-              {gig.attendance ? (
-                <Text style={styles.gigAttendance}>{gig.attendance} ppl</Text>
-              ) : null}
+            <View key={i} style={[styles.gigTableRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[styles.gigColVenue, styles.gigCellText, { color: colors.black }]} numberOfLines={1}>
+                {gig.venue || '—'}
+              </Text>
+              <Text style={[styles.gigColSuburb, styles.gigCellText, { color: colors.grey }]} numberOfLines={1}>
+                {gig.suburb || '—'}
+              </Text>
+              <Text style={[styles.gigColDraw, styles.gigCellText, { color: colors.black }]}>
+                {gig.attendance ?? '—'}
+              </Text>
             </View>
           ))}
         </View>
       )}
 
-      {!about && upcomingGigs.length === 0 && gigHistory.length === 0 && (
+      {!about && gigHistory.length === 0 && (
         <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
-    </>
+    </View>
   );
 
   if (isWeb) {
     return (
       <View style={styles.overviewLayout}>
-        <View style={styles.overviewMain}>{main}</View>
-        {hasSidebar && <View style={styles.overviewSidebar}>{sidebar}</View>}
+        {main}
+        {hasSidebar && <View>{sidebar}</View>}
       </View>
     );
   }
 
   return (
     <>
-      {hasSidebar && <View style={styles.content}>{sidebar}</View>}
-      <View style={styles.content}>{main}</View>
+      {hasSidebar && <View style={styles.mobileContent}>{sidebar}</View>}
+      <View style={styles.mobileContent}>{main}</View>
     </>
   );
 }
@@ -268,31 +267,64 @@ function OverviewTab({ m }: { m: Musician }) {
 function MusicTab({ m }: { m: Musician }) {
   const { colors } = useTheme();
   const songs = (m.songs || []).filter(s => s.title);
-  const displayPhotos = [
-    ...(m.photoUrl ? [m.photoUrl] : []),
-    ...(m.photos || []).filter(url => url !== m.photoUrl),
-  ];
-  const hasMedia = displayPhotos.length > 0 || (m.videos || []).length > 0;
 
-  const spotifyEmbedUrl  = toSpotifyEmbedUrl(m.spotify || '');
-  const igPostUrl        = toInstagramPostUrl(m.instagram || '');
-  const igHandle         = igPostUrl ? null : getInstagramHandle(m.instagram || '');
-  const spHeight         = spotifyEmbedUrl ? spotifyEmbedHeight(spotifyEmbedUrl) : 0;
+  const spotifyEmbedUrl = toSpotifyEmbedUrl(m.spotify || '');
+  const igPostUrl       = toInstagramPostUrl(m.instagram || '');
+  const igHandle        = igPostUrl ? null : getInstagramHandle(m.instagram || '');
+  const spHeight        = spotifyEmbedUrl ? spotifyEmbedHeight(spotifyEmbedUrl) : 0;
+
+  const linkItems = [
+    m.instagram  ? { label: 'Instagram',   url: m.instagram                 } : null,
+    m.spotify    ? { label: 'Spotify',     url: m.spotify                   } : null,
+    m.appleMusic ? { label: 'Apple Music', url: m.appleMusic                } : null,
+    m.tiktok     ? { label: 'TikTok',      url: m.tiktok                    } : null,
+    m.website    ? { label: 'Website',     url: m.website                   } : null,
+    m.email      ? { label: 'Email',       url: `mailto:${m.email}`         } : null,
+    ...(m.customLinks || []).filter(l => l.label && l.url),
+  ].filter(Boolean) as { label: string; url: string }[];
 
   return (
-    <View style={styles.content}>
+    <View style={styles.tabContent}>
 
-      {/* ── Spotify embed ── */}
-      {spotifyEmbedUrl && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>SPOTIFY</Text>
-          <View style={[styles.embedWrap, { borderColor: colors.border }]}>
+      {/* TOP TRACKS */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>TOP TRACKS</Text>
+        {spotifyEmbedUrl && (
+          <View style={[styles.embedWrap, { borderColor: colors.border, marginBottom: songs.length > 0 ? 16 : 0 }]}>
             <SpotifyEmbed url={spotifyEmbedUrl} height={spHeight} />
           </View>
-        </View>
-      )}
+        )}
+        {songs.length > 0 ? (
+          songs.map((song, i) => (
+            <TouchableOpacity
+              key={i}
+              style={[styles.trackRow, { borderBottomColor: colors.borderFaint }]}
+              onPress={() => song.url && Linking.openURL(song.url)}
+              disabled={!song.url}
+              activeOpacity={song.url ? 0.7 : 1}
+            >
+              <View style={[styles.trackNum, { backgroundColor: colors.bgFaint }]}>
+                <Text style={[styles.trackNumText, { color: colors.grey }]}>{i + 1}</Text>
+              </View>
+              <Text style={[styles.trackTitle, { color: colors.black }]}>{song.title}</Text>
+              <View style={styles.trackMeta}>
+                {song.duration
+                  ? <Text style={[styles.trackDuration, { color: colors.grey }]}>{song.duration}</Text>
+                  : null}
+                {song.url && (
+                  <View style={styles.playBtn}>
+                    <Text style={styles.playBtnText}>▶</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : !spotifyEmbedUrl ? (
+          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No tracks listed yet.</Text>
+        ) : null}
+      </View>
 
-      {/* ── Instagram ── */}
+      {/* Instagram */}
       {igPostUrl ? (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>INSTAGRAM</Text>
@@ -322,50 +354,23 @@ function MusicTab({ m }: { m: Musician }) {
         </View>
       ) : null}
 
-      {/* ── Songs ── */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>SONGS</Text>
-        {songs.length > 0 ? (
-          songs.map((song, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[styles.songRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => song.url && Linking.openURL(song.url)}
-              disabled={!song.url}
-            >
-              <Text style={[styles.songTitle, { color: colors.black }]}>{song.title}</Text>
-              {song.url && <Text style={styles.songLink}>Listen →</Text>}
-            </TouchableOpacity>
-          ))
-        ) : (
-          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No songs listed yet.</Text>
-        )}
-      </View>
-
-      {/* ── Photos & Videos ── */}
-      {hasMedia && (
+      {/* LINKS */}
+      {linkItems.length > 0 && (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>PHOTOS & VIDEOS</Text>
-          {displayPhotos.length > 0 && (
-            <>
-              <Text style={[styles.mediaSub, { color: colors.grey }]}>Photos</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
-                {displayPhotos.map((url, i) => (
-                  <Image key={i} source={{ uri: url }} style={styles.photoThumb} />
-                ))}
-              </ScrollView>
-            </>
-          )}
-          {(m.videos || []).length > 0 && (
-            <>
-              <Text style={[styles.mediaSub, { color: colors.grey, marginTop: 16 }]}>Videos</Text>
-              {(m.videos || []).map((url, i) => (
-                <TouchableOpacity key={i} style={[styles.videoCard, { borderColor: colors.border }]} onPress={() => Linking.openURL(url)}>
-                  <Text style={styles.videoCardText}>Watch video {i + 1} →</Text>
-                </TouchableOpacity>
-              ))}
-            </>
-          )}
+          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>LINKS</Text>
+          <View style={styles.linksGrid}>
+            {linkItems.map((link, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.linkCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
+                onPress={() => Linking.openURL(link.url)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.linkCardLabel, { color: colors.black }]}>{link.label}</Text>
+                <Text style={[styles.linkCardArrow, { color: Colors.orange }]}>→</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       )}
     </View>
@@ -376,12 +381,15 @@ function MusicTab({ m }: { m: Musician }) {
 
 export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
   const { id: paramId, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
-  const id = _overrideId ?? String(paramId);
+  const id           = _overrideId ?? String(paramId);
   const isProfileTab = !!_overrideId;
-  const router  = useRouter();
-  const { user } = useAuth();
-  const { colors } = useTheme();
+  const router       = useRouter();
+  const { user }     = useAuth();
+  const { colors }   = useTheme();
+  const year         = new Date().getFullYear();
+
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/musicians');
+
   const [musician, setMusician]   = useState<Musician | null>(null);
   const [loading, setLoading]     = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'music'>(
@@ -425,14 +433,34 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
       ? musician.otherArtistType
       : musician.artistType;
 
+  const baseGenres   = (musician.genre || []).filter(g => g !== 'Other');
+  const customGenres = musician.otherGenres
+    ? musician.otherGenres.split(',').map(g => g.trim()).filter(Boolean)
+    : [];
+  const allGenres = [...baseGenres, ...customGenres];
+
+  // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
+  const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
+
+  // Auto-count gigs from gigHistory entries whose date contains the current year
+  const gigsThisYear = (musician.gigHistory || []).filter(g => g.date && g.date.includes(String(year))).length;
+
+  const statsItems = [
+    musician.averageDraw != null ? { value: String(musician.averageDraw), label: 'TYPICAL DRAW' } : null,
+    musician.actSize             ? { value: musician.actSize,             label: 'ACT SIZE'     } : null,
+    gigsThisYear > 0             ? { value: String(gigsThisYear),         label: `GIGS IN ${year}` } : null,
+    musician.backline            ? { value: musician.backline,            label: 'BACKLINE'     } : null,
+  ].filter(Boolean) as { value: string; label: string }[];
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges ?? ['bottom']}>
       <ScrollView>
+
         {/* Hero banner */}
         {musician.photoUrl ? (
-          <PositionedBanner uri={musician.photoUrl} position={musician.photoPosition} height={280} />
+          <PositionedBanner uri={musician.photoUrl} position={musician.photoPosition} height={isWeb ? 360 : 280} />
         ) : (
-          <View style={styles.bannerPlaceholder} />
+          <View style={[styles.bannerPlaceholder, { backgroundColor: colors.bgFaint }]} />
         )}
 
         {/* Back button overlay */}
@@ -445,39 +473,71 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         )}
 
         {/* Profile header */}
-        <View style={styles.profileHead}>
+        <View style={[styles.profileHead, { borderBottomColor: colors.border }]}>
+
+          {/* Breadcrumb */}
+          {breadcrumbParts.length > 0 && (
+            <Text style={styles.breadcrumb}>
+              {breadcrumbParts.join(' · ').toUpperCase()}
+            </Text>
+          )}
+
+          {/* Name + action buttons */}
           <View style={styles.nameRow}>
-            <Text style={[styles.name, { color: colors.black }]}>{musician.name || 'Unnamed Act'}</Text>
-            {actType ? (
-              <View style={styles.typePill}>
-                <Text style={styles.typeText}>{actType}</Text>
-              </View>
-            ) : null}
+            <Text style={[styles.name, { color: colors.black }]} numberOfLines={2}>
+              {musician.name || 'Unnamed Act'}
+            </Text>
             {isOwn && (
-              <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/edit-profile')}>
-                <Text style={styles.editBtnText}>Edit Profile</Text>
-              </TouchableOpacity>
+              <View style={styles.ownerBtns}>
+                <TouchableOpacity
+                  style={[styles.outlineBtn, { borderColor: colors.border }]}
+                  onPress={() => router.push('/edit-profile')}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.outlineBtnText, { color: colors.black }]}>Edit profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.orangeBtn} activeOpacity={0.75}>
+                  <Text style={styles.orangeBtnText}>Preview as venue</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
-          {musician.username ? <Text style={[styles.username, { color: colors.grey }]}>@{musician.username}</Text> : null}
-          {musician.location ? <Text style={[styles.location, { color: colors.grey }]}>{musician.location}</Text> : null}
-          {(() => {
-            const baseGenres = (musician.genre || []).filter(g => g !== 'Other');
-            const customGenres = musician.otherGenres
-              ? musician.otherGenres.split(',').map(g => g.trim()).filter(Boolean)
-              : [];
-            const allGenres = [...baseGenres, ...customGenres];
-            return allGenres.length > 0 ? (
-              <View style={styles.genres}>
-                {allGenres.map(g => (
-                  <View key={g} style={styles.genrePill}>
-                    <Text style={styles.genreText}>{g}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null;
-          })()}
+
+          {/* Handle */}
+          {musician.username
+            ? <Text style={[styles.username, { color: colors.grey }]}>@{musician.username}</Text>
+            : null}
+
+          {/* Genre pills */}
+          {allGenres.length > 0 && (
+            <View style={styles.genres}>
+              {allGenres.map(g => (
+                <View key={g} style={styles.genrePill}>
+                  <Text style={styles.genreText}>{g}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
+
+        {/* Stats row */}
+        {statsItems.length > 0 && (
+          <View style={[styles.statsRow, { borderBottomColor: colors.border }]}>
+            {statsItems.map((stat, i) => (
+              <View
+                key={stat.label}
+                style={[
+                  styles.statCell,
+                  { borderRightColor: colors.border },
+                  i === statsItems.length - 1 && { borderRightWidth: 0 },
+                ]}
+              >
+                <Text style={[styles.statValue, { color: colors.black }]}>{stat.value}</Text>
+                <Text style={[styles.statLabel, { color: colors.greyLight }]}>{stat.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Tab bar */}
         <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
@@ -490,7 +550,11 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
               style={[styles.tab, activeTab === tab.id && styles.tabActive]}
               onPress={() => setActiveTab(tab.id)}
             >
-              <Text style={[styles.tabText, { color: colors.grey }, activeTab === tab.id && styles.tabTextActive]}>
+              <Text style={[
+                styles.tabText,
+                { color: activeTab === tab.id ? colors.black : colors.grey },
+                activeTab === tab.id && styles.tabTextActive,
+              ]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -511,98 +575,155 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
 // ── Styles ────────────────────────────────────────────────────────
 
+const BANNER_H = isWeb ? 360 : 280;
+
 const styles = StyleSheet.create({
-  safe:              { flex: 1, backgroundColor: Colors.bg },
-  banner:            { width: '100%', height: 280 },
-  bannerPlaceholder: { width: '100%', height: 280, backgroundColor: Colors.bgFaint },
+  safe:              { flex: 1 },
+  bannerPlaceholder: { width: '100%', height: BANNER_H },
 
   backOverlayWrap: { position: 'absolute', top: 0, left: 0, right: 0 },
   backOverlay: {
-    alignSelf: 'flex-start',
-    margin: 16,
+    alignSelf: 'flex-start', margin: 16,
     backgroundColor: 'rgba(255,255,255,0.9)',
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 20,
   },
   backOverlayText: { fontSize: 14, fontWeight: '600', color: Colors.black },
-  backBtn:  { padding: 20 },
-  backText: { fontSize: 15, color: Colors.orange, fontWeight: '600' },
-  notFound: { textAlign: 'center', color: Colors.grey, marginTop: 40, fontSize: 15 },
+  backBtn:         { padding: 20 },
+  backText:        { fontSize: 15, color: Colors.orange, fontWeight: '600' },
+  notFound:        { textAlign: 'center', marginTop: 40, fontSize: 15 },
 
-  profileHead: { padding: 20, paddingBottom: 0 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' },
-  name:    { fontSize: 26, fontWeight: '800', color: Colors.black, letterSpacing: -0.3 },
-  typePill: {
-    backgroundColor: '#f4f4f4',
-    borderRadius: 4, paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: 1, borderColor: '#e0e0e0',
+  // Profile header
+  profileHead: {
+    paddingHorizontal: isWeb ? 40 : 20,
+    paddingTop: 22,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
   },
-  typeText:    { fontSize: 12, color: '#555555', fontWeight: '600' },
-  editBtn:     { marginLeft: 'auto', backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 7 },
-  editBtnText: { fontSize: 13, fontWeight: '700', color: Colors.black },
-  username:    { fontSize: 13, color: Colors.grey, marginBottom: 2 },
-  location:    { fontSize: 14, color: Colors.grey, marginBottom: 12 },
-  genres:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, marginBottom: 4 },
-  genrePill:   { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
-  genreText:   { fontSize: 12, color: Colors.orange, fontWeight: '500' },
+  breadcrumb: {
+    fontSize: 11, fontWeight: '700',
+    color: Colors.orange, letterSpacing: 1.4,
+    marginBottom: 10,
+  },
+  nameRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12, marginBottom: 6,
+  },
+  name: {
+    fontSize: isWeb ? 38 : 28, fontWeight: '800',
+    letterSpacing: -0.5, flex: 1,
+  },
+  ownerBtns:      { flexDirection: 'row', gap: 8, flexShrink: 0, marginTop: 4 },
+  outlineBtn:     { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  outlineBtnText: { fontSize: 13, fontWeight: '600' },
+  orangeBtn:      { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  orangeBtnText:  { fontSize: 13, fontWeight: '700', color: '#111111' },
+  username:       { fontSize: 13, marginBottom: 10 },
+  genres:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+  genrePill:      { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  genreText:      { fontSize: 12, color: Colors.orange, fontWeight: '500' },
 
+  // Stats row
+  statsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 16,
+    borderRightWidth: 1,
+  },
+  statValue: { fontSize: isWeb ? 18 : 15, fontWeight: '800', letterSpacing: -0.2 },
+  statLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 3 },
+
+  // Tab bar
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    marginTop: 16,
+    paddingHorizontal: isWeb ? 40 : 0,
   },
-  tab:          { paddingVertical: 14, paddingHorizontal: 20, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive:    { borderBottomColor: Colors.orange },
-  tabText:      { fontSize: 15, fontWeight: '600', color: Colors.grey },
-  tabTextActive:{ color: Colors.black },
+  tab:           { paddingVertical: 14, paddingHorizontal: isWeb ? 20 : 18, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive:     { borderBottomColor: Colors.orange },
+  tabText:       { fontSize: 14, fontWeight: '600' },
+  tabTextActive: { fontWeight: '700' },
 
-  // Two-column layout (web only)
-  overviewLayout: {
-    flexDirection: isWeb ? 'row' : 'column',
-    alignItems: 'flex-start',
-    padding: isWeb ? 24 : 0,
-    gap: isWeb ? 32 : 0,
+  // Two-column layout (web)
+  overviewLayout:  {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28, gap: 40,
   },
-  overviewMain:    { flex: 1 },
-  overviewSidebar: { width: isWeb ? 280 : undefined },
+  overviewMain:    { flex: 1, paddingBottom: 28 },
+  overviewSidebar: { width: 240, gap: 0 },
+  mobileSidebar:   { gap: 0 },
+  mobileContent:   { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 },
+  tabContent:      { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28 },
 
-  content:      { padding: 20 },
   section:      { marginBottom: 28 },
   sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: Colors.greyLight,
+    fontSize: 11, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12,
   },
-  body:    { fontSize: 15, color: Colors.black, lineHeight: 22 },
-  readMore:{ fontSize: 14, color: Colors.orange, fontWeight: '600', marginTop: 8 },
-  emptyState: { fontSize: 14, color: Colors.greyLight, fontStyle: 'italic' },
-
-  gigRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.borderFaint },
-  gigVenue:      { fontSize: 14, fontWeight: '600', color: Colors.black, marginBottom: 2 },
-  gigMeta:       { fontSize: 13, color: Colors.grey },
-  gigNotes:      { fontSize: 13, color: Colors.greyLight, marginTop: 2 },
-  gigAttendance: { fontSize: 13, color: Colors.orange, fontWeight: '600' },
+  body:      { fontSize: 15, lineHeight: 22 },
+  readMore:  { fontSize: 14, color: Colors.orange, fontWeight: '600', marginTop: 8 },
+  emptyState:{ fontSize: 14, fontStyle: 'italic' },
 
   // Sidebar cards
   sideCard: {
-    borderWidth: 1, borderColor: Colors.border,
-    borderRadius: 12, padding: 16, marginBottom: 16,
+    borderWidth: 1, borderRadius: 12,
+    padding: 16, marginBottom: 12,
   },
-  sideCardTitle: { fontSize: 11, fontWeight: '700', color: Colors.greyLight, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
-  sideLink:      { fontSize: 14, color: Colors.orange, fontWeight: '500', marginBottom: 8 },
-  feeText:       { fontSize: 18, fontWeight: '700', color: Colors.black },
+  sideSectionLabel: {
+    fontSize: 10, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8,
+  },
+  sideFee:  { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  sideLink: { fontSize: 14, color: Colors.orange, fontWeight: '500', marginBottom: 6 },
+  sideBody: { fontSize: 14, lineHeight: 20 },
 
-  // Music tab
-  songRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.borderFaint },
-  songTitle:{ fontSize: 14, fontWeight: '600', color: Colors.black },
-  songLink: { fontSize: 13, color: Colors.orange, fontWeight: '600' },
+  // Gig history table
+  gigTableHeader: {
+    flexDirection: 'row', paddingBottom: 8,
+    borderBottomWidth: 1, marginBottom: 2,
+  },
+  gigTableRow:   { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1 },
+  gigTableHdr:   { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  gigCellText:   { fontSize: 14 },
+  gigColVenue:   { flex: 2, paddingRight: 8 },
+  gigColSuburb:  { flex: 1.5, paddingRight: 8 },
+  gigColDraw:    { width: 48, textAlign: 'right' },
 
-  mediaSub:   { fontSize: 13, fontWeight: '600', color: Colors.grey, marginBottom: 10 },
-  photoRow:   { marginBottom: 4 },
-  photoThumb: { width: 140, height: 100, borderRadius: 8, marginRight: 10, backgroundColor: Colors.bgFaint },
+  // Music tab — tracks
+  trackRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 12, borderBottomWidth: 1, gap: 12,
+  },
+  trackNum: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  trackNumText:  { fontSize: 12, fontWeight: '600' },
+  trackTitle:    { flex: 1, fontSize: 14, fontWeight: '600' },
+  trackMeta:     { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  trackDuration: { fontSize: 13 },
+  playBtn: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: Colors.orange,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  playBtnText: { fontSize: 10, color: '#111111', marginLeft: 2 },
 
-  videoCard:     { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 14, marginBottom: 8 },
-  videoCardText: { fontSize: 14, color: Colors.orange, fontWeight: '600' },
+  // Links grid
+  linksGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  linkCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 14,
+    width: isWeb ? ('calc(50% - 5px)' as any) : '47%',
+  },
+  linkCardLabel: { fontSize: 14, fontWeight: '600' },
+  linkCardArrow: { fontSize: 16 },
 
   // Embeds
   embedWrap: { borderRadius: 12, overflow: 'hidden', borderWidth: 1 },

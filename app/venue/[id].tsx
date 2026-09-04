@@ -320,6 +320,10 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
         <View style={[s.stickyHeader, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
           <View style={s.headerInfo}>
             <View style={{ flex: 1 }}>
+              <Text style={s.breadcrumb}>
+                {'VENUE'}
+                {venue.suburb ? ` · ${venue.suburb.toUpperCase()}${venue.state ? `, ${venue.state}` : ''}` : ''}
+              </Text>
               <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
               {address ? <Text style={[s.address, { color: colors.grey }]}>{address}</Text> : null}
               {genres.length > 0 && (
@@ -330,11 +334,19 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 </View>
               )}
             </View>
-            {isMyVenue && (
+            {isMyVenue ? (
               <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                 <Text style={s.editProfileBtnText}>Edit Profile</Text>
               </TouchableOpacity>
-            )}
+            ) : isArtist ? (
+              <TouchableOpacity style={s.enquireHeaderBtn} onPress={() => setActiveTab('timetable')}>
+                <Text style={s.enquireHeaderBtnText}>Enquire about a slot</Text>
+              </TouchableOpacity>
+            ) : !user ? (
+              <TouchableOpacity style={s.enquireHeaderBtn} onPress={() => router.push('/login')}>
+                <Text style={s.enquireHeaderBtnText}>Log in to enquire</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabBarContent}>
             {([
@@ -412,6 +424,8 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
     </View>
   );
 
+  const typicalFee = fmtFee(venue.feeMin, venue.feeMax);
+
   const sidebar = (
     <View style={isWeb ? s.overviewSidebar : s.overviewSidebarMobile}>
       {(venue.capacity ?? 0) > 0 && <StatCard num={Number(venue.capacity).toLocaleString()} label="Capacity" />}
@@ -437,6 +451,17 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
               ))}
             </View>
           ))}
+        </View>
+      )}
+      {(isArtist || !isLoggedIn) && (
+        <TouchableOpacity style={s.sidebarEnquireBtn} onPress={onGoTimetable} activeOpacity={0.8}>
+          <Text style={s.sidebarEnquireBtnText}>Enquire about a slot</Text>
+        </TouchableOpacity>
+      )}
+      {typicalFee && (
+        <View style={[s.statCard, { borderColor: colors.border }]}>
+          <Text style={[s.statLabel, { color: colors.grey }]}>Typical Fee</Text>
+          <Text style={[s.statNum, { color: colors.black }]}>{typicalFee}</Text>
         </View>
       )}
     </View>
@@ -1129,7 +1154,14 @@ function RoomsTab({ venue }: { venue: Venue }) {
           <Text style={[s.sectionTitle, { color: colors.grey }]}>Rooms</Text>
           {rooms.map((room, i) => (
             <View key={i} style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
+              <View style={rt.roomNameRow}>
+                <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
+                {i === 0 && rooms.length > 1 && (
+                  <View style={rt.primaryBadge}>
+                    <Text style={rt.primaryBadgeText}>PRIMARY ROOM</Text>
+                  </View>
+                )}
+              </View>
               <View style={rt.specsGrid}>
                 {room.capacity ? (
                   <View style={rt.specItem}>
@@ -1220,8 +1252,13 @@ const s = StyleSheet.create({
   genreText:          { fontSize: 12, color: Colors.orange, fontWeight: '500' },
   genrePillSmall:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   genreTextSmall:     { fontSize: 11, color: Colors.orange },
+  breadcrumb:         { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1.4, marginBottom: 6 },
   editProfileBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
   editProfileBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+  enquireHeaderBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
+  enquireHeaderBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
+  sidebarEnquireBtn:     { backgroundColor: Colors.orange, borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12 },
+  sidebarEnquireBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
 
   // Tab bar
   tabBar:             { borderTopWidth: 1, borderTopColor: '#f0f0f0' },
@@ -1388,8 +1425,11 @@ const pt = StyleSheet.create({
 
 // Rooms & tech styles
 const rt = StyleSheet.create({
-  roomCard:   { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 10, padding: 16, marginBottom: 16, backgroundColor: '#fafafa' },
-  roomName:   { fontSize: 17, fontWeight: '700', color: '#111111', marginBottom: 12 },
+  roomCard:       { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 10, padding: 16, marginBottom: 16, backgroundColor: '#fafafa' },
+  roomNameRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  roomName:       { fontSize: 17, fontWeight: '700', color: '#111111' },
+  primaryBadge:   { backgroundColor: Colors.orange, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  primaryBadgeText: { fontSize: 10, fontWeight: '800', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.6 },
   specsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 0 },
   specItem:   { width: isWeb ? '50%' : '100%', paddingVertical: 8, paddingRight: 12, gap: 2 },
   specLabel:  { fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.6 },

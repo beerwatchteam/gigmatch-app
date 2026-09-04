@@ -102,7 +102,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
               }
             }}
           >
-            <Text style={[s.pillText, { color: colors.grey }, active && s.pillTextActive]}>{opt}</Text>
+            <Text style={[s.pillText, { color: colors.black }, active && s.pillTextActive]}>{opt}</Text>
           </TouchableOpacity>
         );
       })}
@@ -382,7 +382,7 @@ export default function EditVenueScreen() {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
         <View style={s.center}>
-          <Text style={[s.emptyText, { color: colors.grey }]}>No venue linked to your account.</Text>
+          <Text style={[s.emptyText, { color: colors.black }]}>No venue linked to your account.</Text>
         </View>
       </SafeAreaView>
     );
@@ -409,11 +409,11 @@ export default function EditVenueScreen() {
           <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
               <Text style={[s.headerTitle, { color: colors.black }]}>Edit Venue Profile</Text>
-              <Text style={[s.headerSub, { color: colors.grey }]}>{data.name || '—'}</Text>
+              <Text style={[s.headerSub, { color: colors.black }]}>{data.name || '—'}</Text>
             </View>
             <View style={s.headerBtns}>
               <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
-                <Text style={[s.backBtnInlineText, { color: colors.grey }]}>Back</Text>
+                <Text style={[s.backBtnInlineText, { color: colors.black }]}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.saveBtn, (saving || justSaved) && { opacity: justSaved ? 1 : 0.6 }, justSaved && { backgroundColor: '#22c55e' }]} onPress={handleSave} disabled={saving}>
                 <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
@@ -433,7 +433,7 @@ export default function EditVenueScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
           {TABS.map(tab => (
             <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-              <Text style={[s.tabText, { color: colors.grey }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+              <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -443,7 +443,7 @@ export default function EditVenueScreen() {
         {/* ── SETTINGS ── */}
         {activeTab === 'Settings' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Notification Preferences</Text>
             <TouchableOpacity
               style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
               onPress={() => set('settings', { ...data.settings, emailOnNewEnquiry: !data.settings.emailOnNewEnquiry })}
@@ -464,18 +464,23 @@ export default function EditVenueScreen() {
             </TouchableOpacity>
 
 
-            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Account</Text>
-            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={toggleDark}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
-              <Text style={{ fontSize: 18 }}>{isDark ? '🌙' : '☀️'}</Text>
-            </TouchableOpacity>
+            <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
+              <Switch
+                value={isDark}
+                onValueChange={toggleDark}
+                trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                thumbColor="#ffffff"
+              />
+            </View>
             <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={() => signOut(auth)}>
               <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
             </TouchableOpacity>
 
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>
-              <Text style={[s.dangerDesc, { color: colors.grey }]}>
+              <Text style={[s.dangerDesc, { color: colors.black }]}>
                 Deactivating your listing will hide it from all bands browsing GigMatch. This action can be reversed at any time.
               </Text>
               <TouchableOpacity
@@ -539,7 +544,7 @@ export default function EditVenueScreen() {
 
             {/* Venue Details */}
             <View style={s.sectionBlock}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Venue Details</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Venue Details</Text>
               <Field label="Venue name *" error={showErrors && !data.name?.trim()}>
                 <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} />
               </Field>
@@ -565,7 +570,7 @@ export default function EditVenueScreen() {
 
             {/* Contact */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Contact</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
               <Field label="Email *" error={showErrors && !data.email?.trim()}>
                 <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
               </Field>
@@ -579,7 +584,7 @@ export default function EditVenueScreen() {
 
             {/* Description */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Description</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Description</Text>
               <Field label="About your venue">
                 <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Tell musicians about your venue…" multiline />
               </Field>
@@ -591,7 +596,7 @@ export default function EditVenueScreen() {
         {/* ── ROOMS ── */}
         {activeTab === 'Rooms' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Rooms</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Rooms</Text>
             {data.rooms.map((room, i) => {
               const isOpen = expandedRoom === i;
               const hasError = showErrors && (!room.name?.trim() || !room.capacity?.toString().trim());
@@ -635,7 +640,7 @@ export default function EditVenueScreen() {
         {/* ── GIG NIGHTS ── */}
         {activeTab === 'Gig Nights' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig Nights</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Gig Nights</Text>
             {sortedNights(data.gigNights).map(night => {
               const i = data.gigNights.indexOf(night);
               const isOpen = expandedNight === i;
@@ -738,7 +743,7 @@ export default function EditVenueScreen() {
         {/* ── TECH SPECS ── */}
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Specs / Rider</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Specs / Rider</Text>
 
             {/* Documents */}
             <Field label="Documents">
@@ -794,7 +799,7 @@ export default function EditVenueScreen() {
         {/* ── PHOTOS & VIDEOS ── */}
         {activeTab === 'Photos & Videos' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Photos</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Photos</Text>
             <View style={s.photoGrid}>
               {data.photos.map((url, i) => (
                 <View key={i} style={s.photoItem}>
@@ -812,7 +817,7 @@ export default function EditVenueScreen() {
               <Text style={s.addBtnText}>+ Add Photo</Text>
             </TouchableOpacity>
 
-            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 28 }]}>Videos</Text>
+            <Text style={[s.sectionTitle, { color: colors.black, marginTop: 28 }]}>Videos</Text>
             {(data.videos || []).map((url, i) => (
               <View key={i} style={[s.videoRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
                 <Text style={[s.videoUrl, { color: colors.black }]} numberOfLines={1}>{url}</Text>
@@ -877,7 +882,7 @@ const s = StyleSheet.create({
   bannerEditBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   section:       { gap: 4 },
   sectionBlock:  { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
-  sectionTitle:  { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 },
+  sectionTitle:  { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, marginBottom: 16 },
   input:         { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },
   textarea:      { minHeight: 100, textAlignVertical: 'top' },
   inputError:    { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' },

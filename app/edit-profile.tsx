@@ -31,7 +31,7 @@ type Gig     = { venue: string; suburb: string; date: string; notes: string; att
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; location: string;
-  email: string; phone: string; feeMin: string; feeMax: string;
+  email: string; phone: string; feeMin: string; feeMax: string; averageDraw: string;
   about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
   customLinks: { label: string; url: string }[];
@@ -43,7 +43,7 @@ type Profile = {
 
 const BLANK: Profile = {
   name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', location: '', email: '', phone: '',
-  feeMin: '', feeMax: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
+  feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
   techRider: {}, photos: [], videos: [],
@@ -97,7 +97,7 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
               onSelect(opt);
             }
           }}>
-            <Text style={[s.pillText, { color: colors.grey }, active && s.pillTextActive]}>{opt}</Text>
+            <Text style={[s.pillText, { color: colors.black }, active && s.pillTextActive]}>{opt}</Text>
           </TouchableOpacity>
         );
       })}
@@ -138,7 +138,14 @@ export default function EditProfileScreen() {
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
     getDoc(doc(db, 'bandProfiles', uid)).then(snap => {
-      const d = snap.exists() ? { ...BLANK, ...snap.data() } as Profile : BLANK;
+      const raw = snap.exists() ? snap.data() : {};
+      const d: Profile = {
+        ...BLANK,
+        ...raw,
+        feeMin:      raw.feeMin      != null ? String(raw.feeMin)      : '',
+        feeMax:      raw.feeMax      != null ? String(raw.feeMax)      : '',
+        averageDraw: raw.averageDraw != null ? String(raw.averageDraw) : '',
+      };
       d.songs       = d.songs       || [];
       d.gigHistory  = d.gigHistory  || [];
       d.upcomingGigs = d.upcomingGigs || [];
@@ -167,7 +174,7 @@ export default function EditProfileScreen() {
   function setGig(i: number, field: keyof Gig, val: string) {
     setProfile(prev => ({ ...prev, gigHistory: prev.gigHistory.map((g, idx) => idx === i ? { ...g, [field]: val } : g) }));
   }
-  function addGig() { setProfile(prev => ({ ...prev, gigHistory: [...prev.gigHistory, { venue: '', suburb: '', date: '', notes: '', attendance: '' }] })); }
+  function addGig() { setProfile(prev => ({ ...prev, gigHistory: [{ venue: '', suburb: '', date: '', notes: '', attendance: '' }, ...prev.gigHistory] })); }
   function removeGig(i: number) { setProfile(prev => ({ ...prev, gigHistory: prev.gigHistory.filter((_, idx) => idx !== i) })); }
 
   // ── Upcoming ──
@@ -250,7 +257,15 @@ export default function EditProfileScreen() {
     setSaving(true);
 
     try {
-      await setDoc(doc(db, 'bandProfiles', uid), { ...profile, username: newUsername }, { merge: true });
+      const toNum = (v: string) => { const n = Number(v); return isNaN(n) || v === '' ? null : n; };
+      const payload = {
+        ...profile,
+        username:    newUsername,
+        feeMin:      toNum(profile.feeMin),
+        feeMax:      toNum(profile.feeMax),
+        averageDraw: toNum(profile.averageDraw),
+      };
+      await setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true });
       // Also update username in users doc
       await updateDoc(doc(db, 'users', uid), { username: newUsername });
       originalUsername.current = newUsername;
@@ -314,11 +329,11 @@ export default function EditProfileScreen() {
           <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             <View style={{ flex: 1 }}>
               <Text style={[s.headerTitle, { color: colors.black }]}>Edit Profile</Text>
-              <Text style={[s.headerSub, { color: colors.grey }]}>{profile.name || '—'}</Text>
+              <Text style={[s.headerSub, { color: colors.black }]}>{profile.name || '—'}</Text>
             </View>
             <View style={s.headerBtns}>
               <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
-                <Text style={[s.backBtnInlineText, { color: colors.grey }]}>Back</Text>
+                <Text style={[s.backBtnInlineText, { color: colors.black }]}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }, justSaved && { backgroundColor: '#22c55e' }]} onPress={handleSave} disabled={saving}>
                 <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
@@ -338,7 +353,7 @@ export default function EditProfileScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
           {TABS.map(tab => (
             <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-              <Text style={[s.tabText, { color: colors.grey }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+              <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -348,7 +363,7 @@ export default function EditProfileScreen() {
         {/* ── SETTINGS ── */}
         {activeTab === 'Settings' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Notification Preferences</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Notification Preferences</Text>
             <TouchableOpacity
               style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
               onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}
@@ -368,18 +383,23 @@ export default function EditProfileScreen() {
               <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
             </TouchableOpacity>
 
-            <Text style={[s.sectionTitle, { color: colors.grey, marginTop: 24 }]}>Account</Text>
-            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={toggleDark}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
-              <Text style={{ fontSize: 18 }}>{isDark ? '🌙' : '☀️'}</Text>
-            </TouchableOpacity>
+            <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
+            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+              <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
+              <Switch
+                value={isDark}
+                onValueChange={toggleDark}
+                trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                thumbColor="#ffffff"
+              />
+            </View>
             <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={() => signOut(auth)}>
               <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
             </TouchableOpacity>
 
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>
-              <Text style={[s.dangerDesc, { color: colors.grey }]}>
+              <Text style={[s.dangerDesc, { color: colors.black }]}>
                 Deactivating your listing will hide it from all venues browsing GigMatch. This action can be reversed at any time.
               </Text>
               <TouchableOpacity
@@ -443,7 +463,7 @@ export default function EditProfileScreen() {
 
             {/* Stage Details */}
             <View style={s.sectionBlock}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Stage Details</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Details</Text>
               <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
                 <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
               </Field>
@@ -474,7 +494,7 @@ export default function EditProfileScreen() {
 
             {/* Contact */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Contact</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
               <Field label="Location *" error={showErrors && !profile.location?.trim()}>
                 <Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="e.g. Frankston City, VIC" error={showErrors && !profile.location?.trim()} />
               </Field>
@@ -488,7 +508,7 @@ export default function EditProfileScreen() {
 
             {/* Fee Range */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Fee Range</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Fee Range</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ flex: 1 }}>
                   <Field label="Min ($)">
@@ -503,9 +523,22 @@ export default function EditProfileScreen() {
               </View>
             </View>
 
+            {/* Average Draw */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Average Draw Per Show</Text>
+              <Field label="Avg. audience size (optional)">
+                <Input
+                  value={profile.averageDraw}
+                  onChangeText={(v: string) => set('averageDraw', v)}
+                  placeholder="e.g. 120"
+                  keyboardType="numeric"
+                />
+              </Field>
+            </View>
+
             {/* Social Links */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Social Links</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Social Links</Text>
               {PLATFORMS.map(p => (
                 <Field key={p.key} label={p.label}>
                   <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} />
@@ -515,7 +548,7 @@ export default function EditProfileScreen() {
 
             {/* Custom Links */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.grey }]}>Custom Links</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Custom Links</Text>
               {profile.customLinks.map((link, i) => (
                 <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <TextInput
@@ -549,7 +582,7 @@ export default function EditProfileScreen() {
         {/* ── ABOUT ── */}
         {activeTab === 'About' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>About *</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>About *</Text>
             <Text style={s.hint}>Tell venues who you are, what you play, and how many people you draw.</Text>
             <Input value={profile.about} onChangeText={(v: string) => set('about', v)} placeholder="We're a 4-piece indie rock band from Melbourne's south-east…" multiline error={showErrors && !profile.about?.trim()} />
           </View>
@@ -558,7 +591,7 @@ export default function EditProfileScreen() {
         {/* ── MUSIC ── */}
         {activeTab === 'Music' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Music</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Music</Text>
             {profile.songs.map((song, i) => {
               const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
               return (
@@ -591,7 +624,7 @@ export default function EditProfileScreen() {
         {/* ── GIG HISTORY ── */}
         {activeTab === 'Gig History' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig History</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Gig History</Text>
             {profile.gigHistory.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
               return (
@@ -624,7 +657,7 @@ export default function EditProfileScreen() {
         {/* ── UPCOMING ── */}
         {activeTab === 'Upcoming' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Upcoming Gigs</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Upcoming Gigs</Text>
             {profile.upcomingGigs.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
               return (
@@ -653,7 +686,7 @@ export default function EditProfileScreen() {
         {/* ── TECH SPECS ── */}
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Rider</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
             {[
               { field: 'monitoring',     label: 'Monitoring',       placeholder: 'e.g. 3 separate monitor mixes' },
               { field: 'backlineNeeded', label: 'Backline needed',  placeholder: 'e.g. Drum kit only' },
@@ -673,7 +706,7 @@ export default function EditProfileScreen() {
         {/* ── PHOTOS ── */}
         {activeTab === 'Photos' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.grey }]}>Photo Gallery</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Photo Gallery</Text>
             <View style={s.photoGrid}>
               {profile.photos.map((url, i) => (
                 <View key={i} style={s.photoItem}>
@@ -725,7 +758,7 @@ const s = StyleSheet.create({
   bannerEditBadgeText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
   section:            { gap: 4 },
   sectionBlock:       { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
-  sectionTitle:       { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 },
+  sectionTitle:       { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, marginBottom: 16 },
   hint:               { fontSize: 13, color: Colors.grey, fontStyle: 'italic', marginBottom: 12 },
   input:              { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },
   textarea:           { minHeight: 120, textAlignVertical: 'top' },

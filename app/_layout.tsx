@@ -7,8 +7,6 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider, useTheme } from '@/lib/theme-context';
-import WebHeader from '@/components/WebHeader';
-
 SplashScreen.preventAutoHideAsync();
 
 const isWeb = Platform.OS === 'web';
@@ -17,7 +15,6 @@ function AppShell() {
   const { isDark } = useTheme();
   return (
     <View style={{ flex: 1 }}>
-      {isWeb && <WebHeader />}
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="venue/[id]" options={{ headerShown: false }} />

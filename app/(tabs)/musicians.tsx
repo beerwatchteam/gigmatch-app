@@ -33,8 +33,8 @@ type Musician = {
   location?: string; genre?: string[]; about?: string;
   photoUrl?: string; photoPosition?: { x: number; y: number };
   feeMin?: number; feeMax?: number;
-  drawMin?: number; drawMax?: number;
-  gigsThisYear?: number;
+  averageDraw?: number;
+  gigHistory?: { date?: string }[];
   settings?: { listed?: boolean };
 };
 
@@ -352,17 +352,16 @@ export default function MusiciansScreen() {
       ? item.artistType.join(' / ')
       : item.artistType;
     const metaParts = [item.location].filter(Boolean);
-    const year = new Date().getFullYear().toString().slice(2);
-    const drawStr = item.drawMin != null && item.drawMax != null
-      ? `${item.drawMin}–${item.drawMax}`
-      : item.drawMin != null ? `${item.drawMin}+` : null;
+    const thisYear = new Date().getFullYear();
+    const yearShort = String(thisYear).slice(2);
+    const gigsThisYear = (item.gigHistory || []).filter(g => g.date && g.date.includes(String(thisYear))).length;
     const feeStr = item.feeMin != null && item.feeMax != null
       ? `$${item.feeMin}–$${item.feeMax}`
       : item.feeMin != null ? `$${item.feeMin}+` : null;
     const stats = [
-      drawStr               ? { value: drawStr,                         label: 'DRAW'        } : null,
-      feeStr                ? { value: feeStr,                          label: 'FEE'         } : null,
-      item.gigsThisYear != null ? { value: String(item.gigsThisYear),  label: `GIGS '${year}` } : null,
+      item.averageDraw != null  ? { value: String(item.averageDraw),  label: 'DRAW'          } : null,
+      feeStr                    ? { value: feeStr,                     label: 'FEE'           } : null,
+      gigsThisYear > 0          ? { value: String(gigsThisYear),       label: `GIGS '${yearShort}` } : null,
     ].filter(Boolean) as { value: string; label: string }[];
 
     return (
