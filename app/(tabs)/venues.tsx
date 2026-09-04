@@ -1378,7 +1378,7 @@ const st = StyleSheet.create({
   mobileWebHeroTitle: { fontSize: 30, fontWeight: '800', color: '#111111', letterSpacing: -0.5, marginTop: 6, lineHeight: 36 },
 
   // ── Web hero ─────────────────────────────────────────────────────
-  webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 40 },
+  webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 40, zIndex: 50, overflow: 'visible' as any },
   webHeroInner:   { flexDirection: 'row', alignItems: 'flex-end', gap: 40 },
   webHeroLabel:   { fontSize: 11, fontWeight: '700', letterSpacing: 2, color: Colors.orange, textTransform: 'uppercase' as any },
   webHeroTitle:   { fontSize: 48, fontWeight: '800', color: '#111111', letterSpacing: -1.5 as any, marginTop: 6, lineHeight: 52 },
