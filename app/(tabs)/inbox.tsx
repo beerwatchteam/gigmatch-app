@@ -344,6 +344,160 @@ const tt = StyleSheet.create({
   fee:        { fontSize: 12, fontWeight: '600', color: '#444444' },
 });
 
+// ── Enquiry bubble (first message in thread) ───────────────────────────────
+
+function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean }) {
+  const { day, date, time, room, slotType, setLength } = enquiry.requestedSlot;
+  const dateStr  = date ? fmtSlotDate(date) : '';
+  const slotStr  = [day, dateStr, time, room, slotType, setLength].filter(Boolean).join(' · ');
+  const genres: string[] = enquiry.genre ?? [];
+  const sentLabel = isVenue ? enquiry.bandName.toUpperCase() : 'YOU';
+  const sentDate  = formatTileDate(enquiry.submittedAt);
+
+  // Venue views: artist sent this (grey theirs bubble)
+  // Artist views: they sent this (dark mine bubble)
+  const isMine = !isVenue;
+
+  const songs: any[]      = Array.isArray(enquiry.songs) ? enquiry.songs : [];
+  const gigHistory: any[] = Array.isArray(enquiry.gigHistory) ? enquiry.gigHistory : [];
+  const upcoming: any[]   = Array.isArray(enquiry.upcomingGigs) ? enquiry.upcomingGigs : [];
+  const techRider         = enquiry.techRider && typeof enquiry.techRider === 'object' ? enquiry.techRider : null;
+
+  const textColor = isMine ? '#ffffff' : '#111111';
+  const dimColor  = isMine ? 'rgba(255,255,255,0.55)' : '#888888';
+  const divColor  = isMine ? 'rgba(255,255,255,0.15)' : '#e8e8e8';
+
+  function Section({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+      <View style={[eq.section, { borderTopColor: divColor }]}>
+        <Text style={[eq.sectionLabel, { color: dimColor }]}>{label}</Text>
+        {children}
+      </View>
+    );
+  }
+
+  return (
+    <View style={isMine ? tp.rowMine : tp.rowTheirs}>
+      <View style={[tp.msgCol, isMine && tp.msgColMine]}>
+        <Text style={[tp.msgLabel, isMine && tp.msgLabelRight]}>
+          {sentLabel} · {sentDate}
+        </Text>
+        <View style={[eq.bubble, isMine ? tp.bubbleMine : tp.bubbleTheirs]}>
+
+          {/* Slot */}
+          {slotStr ? (
+            <View style={eq.slotRow}>
+              <Text style={[eq.slotText, { color: textColor }]}>{slotStr}</Text>
+            </View>
+          ) : null}
+
+          {/* Artist type + genres */}
+          {(enquiry.artistType || genres.length > 0) ? (
+            <View style={[eq.pillsRow]}>
+              {enquiry.artistType ? (
+                <View style={[eq.typePill, { borderColor: isMine ? 'rgba(255,255,255,0.35)' : Colors.orange + '55', backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : Colors.orange + '18' }]}>
+                  <Text style={[eq.typeText, { color: isMine ? '#ffffff' : Colors.orange }]}>{enquiry.artistType}</Text>
+                </View>
+              ) : null}
+              {genres.map(g => (
+                <View key={g} style={[eq.genrePill, { borderColor: divColor }]}>
+                  <Text style={[eq.genreText, { color: isMine ? 'rgba(255,255,255,0.75)' : '#555555' }]}>{g}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {/* Location */}
+          {enquiry.location ? (
+            <Text style={[eq.meta, { color: dimColor }]}>{enquiry.location}</Text>
+          ) : null}
+
+          {/* About */}
+          {enquiry.about ? (
+            <Section label="ABOUT">
+              <Text style={[eq.body, { color: textColor }]}>{enquiry.about}</Text>
+            </Section>
+          ) : null}
+
+          {/* Music */}
+          {songs.length > 0 ? (
+            <Section label="MUSIC">
+              {songs.map((s: any, i: number) => (
+                <Text key={i} style={[eq.body, { color: textColor }]}>
+                  {s.title}{s.url ? ` — ${s.url}` : ''}{s.notes ? ` (${s.notes})` : ''}
+                </Text>
+              ))}
+            </Section>
+          ) : null}
+
+          {/* Gig history */}
+          {gigHistory.length > 0 ? (
+            <Section label="GIG HISTORY">
+              {gigHistory.map((g: any, i: number) => (
+                <Text key={i} style={[eq.body, { color: textColor }]}>
+                  {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.notes ? ` — ${g.notes}` : ''}
+                </Text>
+              ))}
+            </Section>
+          ) : null}
+
+          {/* Upcoming gigs */}
+          {upcoming.length > 0 ? (
+            <Section label="UPCOMING GIGS">
+              {upcoming.map((g: any, i: number) => (
+                <Text key={i} style={[eq.body, { color: textColor }]}>
+                  {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.notes ? ` — ${g.notes}` : ''}
+                </Text>
+              ))}
+            </Section>
+          ) : null}
+
+          {/* Socials */}
+          {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic) ? (
+            <Section label="SOCIALS">
+              {enquiry.instagram  ? <Text style={[eq.body, { color: textColor }]}>Instagram: {enquiry.instagram}</Text>  : null}
+              {enquiry.tiktok     ? <Text style={[eq.body, { color: textColor }]}>TikTok: {enquiry.tiktok}</Text>        : null}
+              {enquiry.spotify    ? <Text style={[eq.body, { color: textColor }]}>Spotify: {enquiry.spotify}</Text>      : null}
+              {enquiry.appleMusic ? <Text style={[eq.body, { color: textColor }]}>Apple Music: {enquiry.appleMusic}</Text> : null}
+            </Section>
+          ) : null}
+
+          {/* Tech rider */}
+          {techRider && Object.keys(techRider).length > 0 ? (
+            <Section label="TECH RIDER">
+              {Object.entries(techRider).map(([k, v]: [string, any]) => (
+                <Text key={k} style={[eq.body, { color: textColor }]}>{k}: {String(v)}</Text>
+              ))}
+            </Section>
+          ) : null}
+
+          {/* Additional info */}
+          {enquiry.additionalInfo ? (
+            <Section label="ADDITIONAL INFO">
+              <Text style={[eq.body, { color: textColor }]}>{enquiry.additionalInfo}</Text>
+            </Section>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const eq = StyleSheet.create({
+  bubble:       { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, maxWidth: isWeb ? 480 : '90%' },
+  slotRow:      { marginBottom: 8 },
+  slotText:     { fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  pillsRow:     { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 6, marginBottom: 8 },
+  typePill:     { borderRadius: 4, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 2 },
+  typeText:     { fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+  genrePill:    { borderRadius: 20, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },
+  genreText:    { fontSize: 11 },
+  meta:         { fontSize: 12, marginBottom: 4 },
+  section:      { borderTopWidth: 1, paddingTop: 8, marginTop: 8, gap: 3 },
+  sectionLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 0.7, marginBottom: 2, textTransform: 'uppercase' as const },
+  body:         { fontSize: 13, lineHeight: 19 },
+});
+
 // ── Thread panel ───────────────────────────────────────────────────────────
 
 function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
@@ -442,15 +596,8 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         contentContainerStyle={tp.msgList}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        {messages.length === 0 && (
-          <View style={tp.noMsgs}>
-            <Text style={tp.noMsgsText}>
-              {enquiry.status === 'pending'
-                ? (isVenue ? 'Respond to this enquiry below.' : 'Awaiting a response from the venue.')
-                : 'No messages yet.'}
-            </Text>
-          </View>
-        )}
+        {/* Enquiry as the opening message */}
+        <EnquiryBubble enquiry={enquiry} isVenue={isVenue} />
 
         {messages.map((m, idx) => {
           const mine    = m.sender === user?.uid;
