@@ -103,24 +103,16 @@ function MusiciansIcon({ color }: { color: string }) {
 
 // ── Web tab bar (text-only, horizontal) ──────────────────────────
 
-function WebTabBar({ state, descriptors, navigation, badgeCount, profileTabTitle }: any) {
+function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
   const { colors } = useTheme();
-  const { user: tabUser, profile: tabProfile } = useAuth();
-  const pathname = usePathname();
+  const { user: tabUser } = useAuth();
   const router = useRouter();
 
-  const onProfileScreen =
-    pathname.includes('edit-venue') ||
-    pathname.includes('edit-profile') ||
-    (tabProfile?.venueId ? pathname.includes(tabProfile.venueId) : false) ||
-    (tabUser?.uid ? pathname.startsWith('/musician/') && pathname.includes(tabUser.uid) : false);
-
-  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox', 'profile'];
+  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox'];
   const LABELS: Record<string, string> = {
     venues:    'Venues',
     musicians: 'Musicians',
     inbox:     'Inbox',
-    profile:   profileTabTitle,
   };
 
   return (
@@ -137,7 +129,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, profileTabTitle
         {state.routes.map((route: any, i: number) => {
           const { options } = descriptors[route.key];
           if (!BOTTOM_ROUTES.includes(route.name) || options.href === null) return null;
-          const focused = (state.index === i) || (route.name === 'profile' && onProfileScreen);
+          const focused = state.index === i;
           const badge   = route.name === 'inbox' ? badgeCount : 0;
           const label   = LABELS[route.name] ?? route.name;
 
@@ -193,7 +185,11 @@ function TopTabBar(_props: any) {
         <Text style={tb.logoText}>GigMatch</Text>
       </TouchableOpacity>
 
-      {!tabUser && (
+      {tabUser ? (
+        <TouchableOpacity style={tb.myProfileBtn} onPress={() => router.push('/(tabs)/profile')} activeOpacity={0.8}>
+          <Text style={tb.myProfileText}>My Profile</Text>
+        </TouchableOpacity>
+      ) : (
         <TouchableOpacity style={tb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
           <Text style={tb.loginText}>Log In</Text>
         </TouchableOpacity>
@@ -204,25 +200,16 @@ function TopTabBar(_props: any) {
 
 // ── Bottom tab bar (all 4 tabs) ───────────────────────────────────
 
-function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTitle }: any) {
+function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const pathname = usePathname();
-  const { user: tabUser, profile: tabProfile } = useAuth();
 
-  const onProfileScreen =
-    pathname.includes('edit-venue') ||
-    pathname.includes('edit-profile') ||
-    (tabProfile?.venueId ? pathname.includes(tabProfile.venueId) : false) ||
-    (tabUser?.uid ? pathname.startsWith('/musician/') && pathname.includes(tabUser.uid) : false);
-
-  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox', 'profile'];
+  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox'];
 
   const LABELS: Record<string, string> = {
     venues:    'Venues',
     musicians: 'Musicians',
     inbox:     'Inbox',
-    profile:   profileTabTitle,
   };
 
   return (
@@ -238,7 +225,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
       {state.routes.map((route: any, i: number) => {
         const { options } = descriptors[route.key];
         if (!BOTTOM_ROUTES.includes(route.name) || options.href === null) return null;
-        const focused = (state.index === i) || (route.name === 'profile' && onProfileScreen);
+        const focused = state.index === i;
         const iconColor = focused ? colors.black : colors.grey;
         const badge   = route.name === 'inbox' ? badgeCount : 0;
         const label   = LABELS[route.name] ?? route.name;
@@ -345,8 +332,10 @@ const tb = StyleSheet.create({
   labelFocused: { fontWeight: '700' },
   logo:         { position: 'absolute', left: 16 },
   logoText:     { fontSize: 16, fontWeight: '800', color: Colors.orange, letterSpacing: -0.5 },
-  loginBtn:     { position: 'absolute', right: 16, backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  loginText:    { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  loginBtn:      { position: 'absolute', right: 16, backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  loginText:     { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  myProfileBtn:  { position: 'absolute', right: 16, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  myProfileText: { fontSize: 13, fontWeight: '600', color: Colors.grey },
 });
 
 const bb = StyleSheet.create({
@@ -398,19 +387,11 @@ export default function TabsLayout() {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Tabs
         tabBar={props => !isMobileWeb && isWeb ? (
-          <WebTabBar
-            {...props}
-            badgeCount={badgeCount}
-            profileTabTitle={profileTabTitle}
-          />
+          <WebTabBar {...props} badgeCount={badgeCount} />
         ) : (
           <>
             <TopTabBar {...props} />
-            <BottomTabBar
-              {...props}
-              badgeCount={badgeCount}
-              profileTabTitle={profileTabTitle}
-            />
+            <BottomTabBar {...props} badgeCount={badgeCount} />
           </>
         )}
         screenOptions={{
@@ -428,7 +409,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
-        <Tabs.Screen name="profile"   options={{ title: profileTabTitle, ...(!user ? { href: null } : {}) }} />
+        <Tabs.Screen name="profile"   options={{ href: null }} />
       </Tabs>
     </View>
   );
