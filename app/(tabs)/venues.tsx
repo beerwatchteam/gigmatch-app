@@ -510,84 +510,6 @@ export default function VenuesScreen() {
   ];
 
   // ── Web ledger row ────────────────────────────────────────────────
-  function WebVenueRow({ item }: { item: Venue }) {
-    const photo = item.photoUrl || (item.photos?.[0]);
-    const venueGenres: string[] = (item as any).genres || item.genre || [];
-    const d0 = toLocalStr(new Date());
-    const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
-    const nextSlots = getNextOpenSlots(item, 2);
-    const hasSlots = nextSlots.length > 0;
-    const totalSlots = countOpenSlotsForRange(item, d0, d42);
-    const extraCount = Math.max(0, totalSlots - 2);
-    const feeStr = item.feeMin != null && item.feeMax != null
-      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
-      : item.feeMin != null ? `from $${item.feeMin.toLocaleString()}`
-      : '—';
-
-    return (
-      <TouchableOpacity
-        style={st.webRow}
-        onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
-        activeOpacity={0.8}
-      >
-        <View style={[st.webRowCell, { flex: 3 }]}>
-          <View style={st.webRowVenue}>
-            {photo
-              ? <Image source={{ uri: photo }} style={st.webRowThumb} resizeMode="cover" />
-              : <View style={[st.webRowThumb, st.webRowThumbEmpty]}><Text style={st.webRowThumbLabel}>photo</Text></View>
-            }
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={st.webRowName} numberOfLines={1}>{item.name}</Text>
-              <Text style={st.webRowMeta} numberOfLines={1}>
-                {[item.suburb, venueGenres.slice(0, 3).join(', ')].filter(Boolean).join(' · ')}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={[st.webRowCell, { width: 80 }]}>
-          <Text style={st.webRowCap}>{item.capacity ?? '—'}</Text>
-        </View>
-
-        <View style={[st.webRowCell, { flex: 4 }]}>
-          {hasSlots ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' as any, gap: 6 }}>
-              {nextSlots.map((label, i) => (
-                <View key={i} style={st.webSlotChip}>
-                  <Text style={st.webSlotChipText}>{label}</Text>
-                </View>
-              ))}
-              {extraCount > 0 && <Text style={st.webSlotExtra}>+{extraCount} more</Text>}
-            </View>
-          ) : (
-            <Text style={st.webSlotNone}>No open slots</Text>
-          )}
-        </View>
-
-        <View style={[st.webRowCell, { width: 120 }]}>
-          <Text style={st.webRowFee}>{feeStr}</Text>
-        </View>
-
-        <View style={[st.webRowCell, { width: 100, alignItems: 'flex-end' }]}>
-          {hasSlots ? (
-            <TouchableOpacity
-              style={st.webEnquireBtn}
-              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
-            >
-              <Text style={st.webEnquireBtnText}>Enquire</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={st.webWatchBtn}
-              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
-            >
-              <Text style={st.webWatchBtnText}>Watch</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  }
 
 
   // ── Native filter bar (top of content) ───────────────────────────
@@ -1147,23 +1069,22 @@ export default function VenuesScreen() {
             </View>
           </View>
 
-          {/* ── Ledger table ──────────────────────────────────────── */}
-          <View style={{ backgroundColor: '#ffffff' }}>
-            <View style={st.webTableHeader}>
-              <Text style={[st.webTableHeaderCell, { flex: 3 }]}>VENUE</Text>
-              <Text style={[st.webTableHeaderCell, { width: 80 }]}>CAPACITY</Text>
-              <Text style={[st.webTableHeaderCell, { flex: 4 }]}>NEXT OPEN SLOTS</Text>
-              <Text style={[st.webTableHeaderCell, { width: 120 }]}>TYPICAL FEE</Text>
-              <Text style={[st.webTableHeaderCell, { width: 100, textAlign: 'right' }]}>ACTION</Text>
-            </View>
-
+          {/* ── Venue cards ───────────────────────────────────────── */}
+          <View style={{ backgroundColor: '#ffffff', paddingHorizontal: 32, paddingTop: 24, paddingBottom: 80 }}>
             {loading
               ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
               : filtered.length === 0
-                ? <Text style={[st.empty, { paddingHorizontal: 60, paddingTop: 40 }]}>No venues match your filters.</Text>
-                : filtered.map(item => <WebVenueRow key={item.id} item={item} />)
+                ? <Text style={[st.empty, { paddingTop: 40 }]}>No venues match your filters.</Text>
+                : (
+                  <View style={st.webCardGrid}>
+                    {filtered.map(item => (
+                      <View key={item.id} style={st.webCardGridItem}>
+                        <VenueCard item={item} />
+                      </View>
+                    ))}
+                  </View>
+                )
             }
-            <View style={{ height: 80 }} />
           </View>
         </ScrollView>
         {FilterPanel}
@@ -1398,26 +1319,7 @@ const st = StyleSheet.create({
   webFilterMoreBtn:     { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fafafa' },
   webFilterMoreBtnText: { fontSize: 13, color: '#555555', fontWeight: '500' },
 
-  // ── Web ledger table ──────────────────────────────────────────────
-  webTableHeader:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
-  webTableHeaderCell: { fontSize: 10, fontWeight: '700', color: '#aaaaaa', letterSpacing: 1.2, textTransform: 'uppercase' as any },
-  webRow:             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  webRowDimmed:       { opacity: 0.45 },
-  webRowCell:         { paddingRight: 16 },
-  webRowVenue:        { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  webRowThumb:        { width: 54, height: 54, borderRadius: 8 },
-  webRowThumbEmpty:   { backgroundColor: '#e8e3dc', alignItems: 'center', justifyContent: 'center' },
-  webRowThumbLabel:   { fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
-  webRowName:         { fontSize: 15, fontWeight: '700', color: '#111111' },
-  webRowMeta:         { fontSize: 12, color: '#888888', marginTop: 2 },
-  webRowCap:          { fontSize: 15, color: '#111111' },
-  webSlotChip:        { backgroundColor: Colors.orange + '20', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
-  webSlotChipText:    { fontSize: 12, color: Colors.orange, fontWeight: '600' },
-  webSlotExtra:       { fontSize: 12, color: '#888888' },
-  webSlotNone:        { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
-  webRowFee:          { fontSize: 14, fontWeight: '600', color: '#111111' },
-  webEnquireBtn:      { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 8 },
-  webEnquireBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
-  webWatchBtn:        { borderWidth: 1, borderColor: '#d0d0d0', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 8 },
-  webWatchBtnText:    { fontSize: 13, fontWeight: '500', color: '#888888' },
+  // ── Web card grid ─────────────────────────────────────────────────
+  webCardGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  webCardGridItem: { width: '48%' },
 });
