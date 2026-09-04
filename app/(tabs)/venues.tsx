@@ -482,7 +482,7 @@ export default function VenuesScreen() {
 
     return (
       <TouchableOpacity
-        style={[st.webRow, !hasSlots && st.webRowDimmed]}
+        style={st.webRow}
         onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
         activeOpacity={0.8}
       >
