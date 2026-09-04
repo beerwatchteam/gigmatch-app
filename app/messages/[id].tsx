@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -47,24 +47,22 @@ export default function MessagesScreen() {
   // After that, must wait for acceptance. Recipient can send once accepted.
   const canSend = isNew || (isAccepted && (isInitiator ? otherAccepted : true));
 
-  const [text, setText]   = useState('');
-  const [sending, setSending] = useState(false);
+  const [text, setText] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
   }, [messages.length]);
 
-  async function handleSend() {
-    if (!text.trim() || !myUid || !otherUid) return;
-    setSending(true);
-    if (isNew) {
-      await startDM(myUid, myName, myPhoto, otherUid, otherName, otherPhoto, text.trim());
-    } else {
-      await sendDMMessage(convId!, myUid, text.trim());
-    }
+  function handleSend() {
+    const msg = text.trim();
+    if (!msg || !myUid || !otherUid) return;
     setText('');
-    setSending(false);
+    if (isNew) {
+      startDM(myUid, myName, myPhoto, otherUid, otherName, otherPhoto, msg).catch(console.error);
+    } else {
+      sendDMMessage(convId!, myUid, msg).catch(console.error);
+    }
   }
 
   async function handleAccept() {
@@ -159,12 +157,9 @@ export default function MessagesScreen() {
               <TouchableOpacity
                 style={[s.sendBtn, !text.trim() && s.sendBtnDisabled]}
                 onPress={handleSend}
-                disabled={!text.trim() || sending}
+                disabled={!text.trim()}
               >
-                {sending
-                  ? <ActivityIndicator color="#111111" size="small" />
-                  : <Text style={[s.sendText, !text.trim() && s.sendTextDisabled]}>Send</Text>
-                }
+                <Text style={[s.sendText, !text.trim() && s.sendTextDisabled]}>Send</Text>
               </TouchableOpacity>
             </View>
           </SafeAreaView>

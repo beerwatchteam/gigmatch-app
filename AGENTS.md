@@ -2,6 +2,8 @@
 
 Things that still need to be done — check here when asked "what's left to do":
 
+- **Slots performance — future refactor**: `bookSlotOnTimetable` and `cancelAcceptance` in `lib/useEnquiries.ts` do a `getDoc` read before every write because slots are stored as an array inside the venue document. To make these optimistic, migrate slots to a subcollection (`venues/{venueId}/slots/{slotId}`) so each slot can be updated directly. Left as-is for now — it's a low-frequency action and the latency is acceptable.
+
 - **Email sending for venue verification codes**: Need to create a Gmail account, enable 2FA, then generate an App Password under Google Account → Security → App Passwords. Store the App Password in `.env` as `GMAIL_APP_PASSWORD` and the Gmail address as `GMAIL_FROM`. Then wire up the email-sending logic in the admin code-generation flow so the code gets emailed automatically when admin clicks "Generate Code". See `.env` for the key names.
 
 ---
