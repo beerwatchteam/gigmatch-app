@@ -82,9 +82,52 @@ type Venue = {
   photoUrl?: string; photos?: string[];
   photoPosition?: { x: number; y: number };
   capacity?: number; feeMin?: number; feeMax?: number;
-  slots?: Record<string, { status: string }[]>;
+  slots?: Record<string, any[]>;
   settings?: { listed?: boolean };
 };
+
+type SlotDetail = {
+  dateLabel: string;
+  time: string;
+  slotType?: string;
+  duration?: number;
+  day: string;
+  dateStr: string | null;
+  room?: string;
+  sortMs: number;
+};
+
+function getNextOpenSlotsDetailed(venue: Venue): SlotDetail[] {
+  const slots = venue.slots;
+  if (!slots) return [];
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcoming: SlotDetail[] = [];
+  for (const [day, daySlots] of Object.entries(slots)) {
+    const open = (daySlots as any[]).filter(s => s.status === 'open');
+    for (const slot of open) {
+      let d: Date;
+      let dateStr: string | null = null;
+      if (slot.date) {
+        const [y, m, dd] = slot.date.split('-').map(Number);
+        d = new Date(y, m - 1, dd);
+        if (d < today) continue;
+        dateStr = slot.date;
+      } else {
+        const dow = DAY_NAMES.indexOf(day);
+        if (dow === -1) continue;
+        d = new Date(today);
+        const diff = (dow - d.getDay() + 7) % 7;
+        d.setDate(d.getDate() + (diff === 0 ? 7 : diff));
+      }
+      const dl = d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
+      upcoming.push({ dateLabel: dl, time: slot.time || '', slotType: slot.slotType, duration: slot.duration, day, dateStr, room: slot.room || undefined, sortMs: d.getTime() });
+    }
+  }
+  upcoming.sort((a, b) => a.sortMs - b.sortMs);
+  return upcoming;
+}
 
 function getNextOpenSlots(venue: Venue, count: number): string[] {
   const slots = venue.slots;
@@ -562,13 +605,20 @@ export default function VenuesScreen() {
           {search ? <TouchableOpacity style={st.nativeClearX} onPress={clearSearch}><Text style={st.clearXText}>✕</Text></TouchableOpacity> : null}
         </View>
         <TouchableOpacity
-          style={[st.filtersBtn, activeFilterCount > 0 && st.filtersBtnOn]}
+          style={[st.filterIconBtn, activeFilterCount > 0 && st.filterIconBtnOn]}
           onPress={openFilterPanel}
           activeOpacity={0.8}
         >
-          <Text style={[st.filtersBtnText, activeFilterCount > 0 && st.filtersBtnTextOn]}>
-            {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
-          </Text>
+          <View style={{ gap: 3.5 }}>
+            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 18 }} />
+            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 13, marginLeft: 2.5 }} />
+            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 8, marginLeft: 5 }} />
+          </View>
+          {activeFilterCount > 0 && (
+            <View style={st.filterIconBadge}>
+              <Text style={st.filterIconBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -702,49 +752,87 @@ export default function VenuesScreen() {
     </Modal>
   );
 
-  // ── Venue card ────────────────────────────────────────────────────
+  // ── Venue card (native) ───────────────────────────────────────────
   function VenueCard({ item }: { item: Venue }) {
-    const c = colors;
-    const photo      = item.photoUrl || (item.photos?.[0]);
-    const venueGenres: string[] = (item as any).genres || item.genre || [];
-    const address    = [item.streetAddress, item.suburb, item.state, (item as any).postcode].filter(Boolean).join(', ');
-    const openSlots  = countOpenSlotsForRange(item, dateStart, dateEnd);
+    const photo = item.photoUrl || (item.photos?.[0]);
+    const d0  = toLocalStr(new Date());
+    const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
+    const allSlots   = getNextOpenSlotsDetailed(item);
+    const shown      = allSlots.slice(0, 2);
+    const totalSlots = countOpenSlotsForRange(item, d0, d42);
+    const extraCount = Math.max(0, totalSlots - 2);
+    const feeStr = item.feeMin != null && item.feeMax != null
+      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
+      : item.feeMin != null ? `$${item.feeMin.toLocaleString()}+` : null;
+    const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity}` : null, feeStr].filter(Boolean);
 
     return (
       <TouchableOpacity
         activeOpacity={0.97}
-        style={[st.card, { backgroundColor: c.bg, borderColor: c.border }]}
+        style={[st.card, { backgroundColor: colors.bg, borderColor: colors.border }]}
         onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
       >
+        {/* Photo */}
         {photo
           ? <CardPhoto uri={photo} position={item.photoPosition} />
-          : <View style={[st.cardPhotoEmpty, { backgroundColor: c.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: c.grey }]}>venue photo</Text></View>
+          : <View style={[st.cardPhotoEmpty, { backgroundColor: colors.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: colors.greyLight }]}>venue photo</Text></View>
         }
+
+        {/* Body */}
         <View style={st.cardBody}>
-          <Text style={[st.venueName, { color: c.black }]}>{item.name}</Text>
-          {address ? <Text style={[st.venueAddr, { color: c.grey }]}>{address}</Text> : null}
-          {venueGenres.length > 0 && (
-            <View style={st.genreRow}>
-              {venueGenres.slice(0, 6).map((g: string) => (
-                <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
+          <Text style={[st.venueName, { color: colors.black }]}>{item.name}</Text>
+          {metaParts.length > 0 && (
+            <Text style={[st.venueAddr, { color: colors.grey }]} numberOfLines={1}>{metaParts.join(' · ')}</Text>
+          )}
+
+          {/* Slot rows */}
+          {shown.length === 0 ? (
+            <Text style={[st.slotsNone, { color: colors.greyLight }]}>No open slots</Text>
+          ) : (
+            <View style={st.slotList}>
+              {shown.map((slot, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[st.slotRow, { backgroundColor: Colors.orange + '18' }]}
+                  onPress={() => router.push({
+                    pathname: '/enquire',
+                    params: {
+                      venueId:   item.id,
+                      venueName: item.name,
+                      day:       slot.day,
+                      ...(slot.dateStr ? { date: slot.dateStr } : {}),
+                      time:      slot.time,
+                      ...(slot.room ? { room: slot.room } : {}),
+                      slotType:  slot.slotType ?? 'Open',
+                    },
+                  })}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.slotDate}>{slot.dateLabel} · {slot.time}</Text>
+                    {(slot.slotType || slot.duration) ? (
+                      <Text style={[st.slotMeta, { color: Colors.orange }]}>
+                        {[slot.slotType, slot.duration ? `${slot.duration}min` : null].filter(Boolean).join(' · ')}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={st.slotEnquireBtn}>
+                    <Text style={st.slotEnquireBtnText}>Enquire</Text>
+                  </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
-          {item.description ? <Text style={[st.desc, { color: c.black }]} numberOfLines={2}>{item.description}</Text> : null}
-          <View style={[st.cardFooter, { borderTopColor: c.borderFaint }]}>
-            {openSlots === 0
-              ? <Text style={[st.slotsNone, { color: c.greyLight }]}>No slots listed yet</Text>
-              : <Text style={[st.slotsText, { color: c.grey }]}><Text style={st.slotsCount}>{openSlots}</Text>{` open slot${openSlots !== 1 ? 's' : ''}`}</Text>
-            }
-            <View style={st.cardActions}>
-              <TouchableOpacity style={st.profileBtn} onPress={() => router.push(`/venue/${item.id}`)}>
-                <Text style={st.profileBtnText}>Profile</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}>
-                <Text style={st.actionBtnText}>Timetable</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+
+          {/* More slots */}
+          {extraCount > 0 && (
+            <TouchableOpacity
+              style={[st.moreBtn, { borderColor: colors.border }]}
+              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+            >
+              <Text style={[st.moreBtnText, { color: colors.grey }]}>+{extraCount} more slots</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -1014,6 +1102,10 @@ export default function VenuesScreen() {
   }
 
   // ── Native layout ─────────────────────────────────────────────────
+  const nD0  = toLocalStr(new Date());
+  const nD42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
+  const totalNativeSlots = filtered.reduce((sum, v) => sum + countOpenSlotsForRange(v, nD0, nD42), 0);
+
   return (
     <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]}>
       <ScrollView
@@ -1026,8 +1118,12 @@ export default function VenuesScreen() {
 
         {/* Cards */}
         <View style={st.nativeContent}>
-          <View style={st.countRow}>
-            <Text style={st.countText}>{filtered.length} venue{filtered.length !== 1 ? 's' : ''}</Text>
+          {/* Header */}
+          <View style={st.nativeHeader}>
+            <Text style={[st.nativeTitle, { color: colors.black }]}>Find your next gig</Text>
+            <Text style={[st.nativeSub, { color: colors.grey }]}>
+              {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalNativeSlots} open slot{totalNativeSlots !== 1 ? 's' : ''}
+            </Text>
           </View>
           {loading
             ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
@@ -1145,6 +1241,27 @@ const st = StyleSheet.create({
 
   nativeContent:  { paddingHorizontal: 16 },
   countRow:       { paddingTop: 14, paddingBottom: 8 },
+
+  // Native header
+  nativeHeader:   { paddingTop: 20, paddingBottom: 12 },
+  nativeTitle:    { fontSize: 26, fontWeight: '800', color: '#111111', letterSpacing: -0.5 },
+  nativeSub:      { fontSize: 13, color: '#666666', marginTop: 3 },
+
+  // Filter icon button
+  filterIconBtn:      { borderRadius: 10, borderWidth: 1.5, borderColor: '#dddddd', padding: 10, backgroundColor: '#fafafa', position: 'relative' as any },
+  filterIconBtnOn:    { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  filterIconBadge:    { position: 'absolute' as any, top: -5, right: -5, backgroundColor: '#111111', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  filterIconBadgeText:{ color: '#ffffff', fontSize: 9, fontWeight: '800', lineHeight: 16 },
+
+  // Slot rows (inside VenueCard)
+  slotList:         { gap: 8, marginTop: 4 },
+  slotRow:          { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, gap: 10 },
+  slotDate:         { fontSize: 13, fontWeight: '700', color: '#111111' },
+  slotMeta:         { fontSize: 11, fontWeight: '600', marginTop: 1 },
+  slotEnquireBtn:   { borderRadius: 8, backgroundColor: '#111111', paddingHorizontal: 14, paddingVertical: 7 },
+  slotEnquireBtnText:{ fontSize: 12, fontWeight: '700', color: '#ffffff' },
+  moreBtn:          { borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', marginTop: 4 },
+  moreBtnText:      { fontSize: 13, fontWeight: '600' },
 
   // Cards
   card: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 16 },

@@ -57,9 +57,7 @@ function InboxIcon({ color }: { color: string }) {
 function ProfileIcon({ color }: { color: string }) {
   return (
     <View style={{ alignItems: 'center', gap: 3 }}>
-      {/* Head */}
       <View style={{ width: 11, height: 11, borderRadius: 6, borderWidth: 1.5, borderColor: color }} />
-      {/* Shoulders arc */}
       <View style={{
         width: 20, height: 10,
         borderTopLeftRadius: 10, borderTopRightRadius: 10,
@@ -70,42 +68,46 @@ function ProfileIcon({ color }: { color: string }) {
   );
 }
 
-// ── Top tab bar (Venues + Musicians + GigMatch logo + Log In) ─────
+function SlotsIcon({ color }: { color: string }) {
+  return (
+    <View style={{ width: 20, height: 17, justifyContent: 'space-between' }}>
+      <View style={{ height: 2.5, backgroundColor: color, borderRadius: 1.5 }} />
+      <View style={{ height: 2.5, backgroundColor: color, borderRadius: 1.5 }} />
+      <View style={{ height: 2.5, backgroundColor: color, borderRadius: 1.5, width: '65%' }} />
+    </View>
+  );
+}
 
-function TopTabBar({ state, descriptors, navigation }: any) {
+function VenuesIcon({ color }: { color: string }) {
+  return (
+    <View style={{ width: 16, height: 22, alignItems: 'center' }}>
+      <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 4.5, height: 4.5, borderRadius: 2.5, backgroundColor: color }} />
+      </View>
+      <View style={{ width: 1.5, height: 5, backgroundColor: color, marginTop: 0 }} />
+    </View>
+  );
+}
+
+function MusiciansIcon({ color }: { color: string }) {
+  return (
+    <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: color }} />
+      <View style={{ position: 'absolute', width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }} />
+    </View>
+  );
+}
+
+// ── Top bar (logo + login only) ───────────────────────────────────
+
+function TopTabBar(_props: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user: tabUser } = useAuth();
 
-  // Only render Venues and Musicians in the top bar
-  const TOP_ROUTES = ['venues', 'musicians'];
-
   return (
     <View style={[tb.bar, { top: insets.top, backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-      {state.routes.map((route: any, i: number) => {
-        const { options } = descriptors[route.key];
-        if (!TOP_ROUTES.includes(route.name) || options.href === null) return null;
-        const focused = state.index === i;
-
-        return (
-          <TouchableOpacity
-            key={route.key}
-            style={[tb.tab, focused && tb.tabFocused]}
-            onPress={() => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
-            }}
-            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-            activeOpacity={0.75}
-          >
-            <Text style={[tb.label, { color: focused ? Colors.orange : colors.black }, focused && tb.labelFocused]}>
-              {options.title ?? route.name}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-
       <TouchableOpacity style={tb.logo} onPress={() => router.push('/')} activeOpacity={0.8}>
         <Text style={tb.logoText}>GigMatch</Text>
       </TouchableOpacity>
@@ -119,7 +121,7 @@ function TopTabBar({ state, descriptors, navigation }: any) {
   );
 }
 
-// ── Bottom tab bar (Inbox + Profile — logged-in users only) ───────
+// ── Bottom tab bar (all 4 tabs) ───────────────────────────────────
 
 function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTitle }: any) {
   const { colors } = useTheme();
@@ -133,7 +135,14 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
     (tabProfile?.venueId ? pathname.includes(tabProfile.venueId) : false) ||
     (tabUser?.uid ? pathname.startsWith('/musician/') && pathname.includes(tabUser.uid) : false);
 
-  const BOTTOM_ROUTES = ['inbox', 'profile'];
+  const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox', 'profile'];
+
+  const LABELS: Record<string, string> = {
+    venues:    'Slots',
+    musicians: 'Musicians',
+    inbox:     'Inbox',
+    profile:   profileTabTitle,
+  };
 
   return (
     <View style={[
@@ -151,7 +160,16 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
         const focused = (state.index === i) || (route.name === 'profile' && onProfileScreen);
         const color   = focused ? Colors.orange : colors.grey;
         const badge   = route.name === 'inbox' ? badgeCount : 0;
-        const label   = route.name === 'profile' ? profileTabTitle : 'Inbox';
+        const label   = LABELS[route.name] ?? route.name;
+
+        function renderIcon() {
+          switch (route.name) {
+            case 'venues':    return <SlotsIcon color={color} />;
+            case 'musicians': return <MusiciansIcon color={color} />;
+            case 'inbox':     return <InboxIcon color={color} />;
+            default:          return <ProfileIcon color={color} />;
+          }
+        }
 
         return (
           <TouchableOpacity
@@ -165,10 +183,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
             activeOpacity={0.75}
           >
             <View style={bb.iconWrap}>
-              {route.name === 'inbox'
-                ? <InboxIcon color={color} />
-                : <ProfileIcon color={color} />
-              }
+              {renderIcon()}
               {badge > 0 && (
                 <View style={bb.badge}>
                   <Text style={bb.badgeText}>{badge > 99 ? '99+' : badge}</Text>
@@ -244,7 +259,7 @@ export default function TabsLayout() {
       ? 'My Venue'
       : 'My Profile';
 
-  const bottomPad = !isWeb && user ? BOTTOM_TAB_H + insets.bottom : 0;
+  const bottomPad = !isWeb ? BOTTOM_TAB_H + insets.bottom : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -252,13 +267,11 @@ export default function TabsLayout() {
         tabBar={isWeb ? () => null : props => (
           <>
             <TopTabBar {...props} />
-            {!!user && (
-              <BottomTabBar
-                {...props}
-                badgeCount={badgeCount}
-                profileTabTitle={profileTabTitle}
-              />
-            )}
+            <BottomTabBar
+              {...props}
+              badgeCount={badgeCount}
+              profileTabTitle={profileTabTitle}
+            />
           </>
         )}
         screenOptions={{
@@ -273,7 +286,7 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index"     options={{ href: null }} />
-        <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
+        <Tabs.Screen name="venues"    options={{ title: 'Slots' }} />
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
         <Tabs.Screen name="profile"   options={{ title: profileTabTitle, ...(!user ? { href: null } : {}) }} />
