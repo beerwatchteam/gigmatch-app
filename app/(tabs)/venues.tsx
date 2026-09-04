@@ -684,6 +684,7 @@ export default function VenuesScreen() {
 
   // ── Venue card (native) ───────────────────────────────────────────
   function VenueCard({ item }: { item: Venue }) {
+    const [hovered, setHovered] = useState(false);
     const photo = item.photoUrl || (item.photos?.[0]);
     const d0  = toLocalStr(new Date());
     const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
@@ -700,8 +701,16 @@ export default function VenuesScreen() {
     return (
       <TouchableOpacity
         activeOpacity={0.97}
-        style={[st.card, { backgroundColor: colors.bg, borderColor: colors.border }]}
+        style={[
+          st.card,
+          { backgroundColor: colors.bg, borderColor: hovered ? Colors.orange : colors.border },
+          hovered && st.cardHovered,
+        ]}
         onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
+        {...(isWeb ? {
+          onMouseEnter: () => setHovered(true),
+          onMouseLeave: () => setHovered(false),
+        } : {})}
       >
         {/* ── Top row: thumbnail + info ── */}
         <View style={st.cardTop}>
@@ -1352,6 +1361,7 @@ const st = StyleSheet.create({
 
   // Cards
   card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 },
+  cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
 
   // Card top: horizontal thumbnail + info
   cardTop:        { flexDirection: 'row', padding: 14, gap: 14, alignItems: 'flex-start' },

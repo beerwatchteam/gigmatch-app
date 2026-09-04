@@ -348,6 +348,7 @@ export default function MusiciansScreen() {
 
   // ── Musician card ─────────────────────────────────────────────────
   function MusicianCard({ item }: { item: Musician }) {
+    const [hovered, setHovered] = useState(false);
     const actType = Array.isArray(item.artistType)
       ? item.artistType.join(' / ')
       : item.artistType;
@@ -367,8 +368,16 @@ export default function MusiciansScreen() {
     return (
       <TouchableOpacity
         activeOpacity={0.97}
-        style={[st.card, { backgroundColor: colors.bg, borderColor: colors.border }]}
+        style={[
+          st.card,
+          { backgroundColor: colors.bg, borderColor: hovered ? Colors.orange : colors.border },
+          hovered && st.cardHovered,
+        ]}
         onPress={() => router.push(`/musician/${item.id}`)}
+        {...(isWeb ? {
+          onMouseEnter: () => setHovered(true),
+          onMouseLeave: () => setHovered(false),
+        } : {})}
       >
         {item.photoUrl
           ? <CardPhoto uri={item.photoUrl} position={item.photoPosition} />
@@ -790,6 +799,7 @@ const st = StyleSheet.create({
 
   // ── Musician card ─────────────────────────────────────────────────
   card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
+  cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
   cardPhotoEmpty: { width: '100%', height: CARD_H, alignItems: 'center', justifyContent: 'center' },
   cardPhotoLabel: { fontSize: 12, fontStyle: 'italic' },
   cardBody:       { padding: 18, paddingHorizontal: 20, gap: 8 },
