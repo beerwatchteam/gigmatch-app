@@ -444,32 +444,30 @@ export default function MusiciansScreen() {
     if (isMobileWeb) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          {/* Hero — outside ScrollView so it's always fully visible */}
+          <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
+            <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
+            <Text style={st.mobileWebHeroTitle}>Find your next act</Text>
+            <Text style={st.webHeroSub}>
+              {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+            </Text>
+          </View>
+
+          {/* Filter bar — outside ScrollView so dropdown renders above cards */}
+          <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>
+            {NativeFilterBar}
+          </View>
+
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
-            stickyHeaderIndices={[1]}
           >
-            {/* Hero */}
-            <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
-              <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
-              <Text style={st.mobileWebHeroTitle}>Find your next act</Text>
-              <Text style={st.webHeroSub}>
-                {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
-              </Text>
-            </View>
-
-            {/* Sticky filter bar */}
-            <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-              {NativeFilterBar}
-            </View>
-
-            {/* Cards */}
-            <View style={st.nativeContent}>
+            <View style={[st.nativeContent, { paddingTop: 14 }]}>
               {loading
                 ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
                 : filtered.length === 0
-                  ? <Text style={[st.empty, { paddingTop: 24 }]}>No musicians match your filters.</Text>
+                  ? <Text style={[st.empty, { paddingTop: 10 }]}>No musicians match your filters.</Text>
                   : filtered.map(item => <MusicianCard key={item.id} item={item} />)
               }
               <View style={{ height: 48 }} />
@@ -682,18 +680,16 @@ export default function MusiciansScreen() {
 
   // ── Native layout ─────────────────────────────────────────────────
   return (
-    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]}>
+    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+      {/* Filter bar — outside ScrollView so dropdown always renders on top */}
+      <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>
+        {NativeFilterBar}
+      </View>
+
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         keyboardShouldPersistTaps="handled"
-        stickyHeaderIndices={[0]}
       >
-        {/* Sticky filter bar */}
-        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-          {NativeFilterBar}
-        </View>
-
-        {/* Cards */}
         <View style={st.nativeContent}>
           {/* Header */}
           <View style={st.nativeHeader}>

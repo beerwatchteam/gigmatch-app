@@ -899,34 +899,32 @@ export default function VenuesScreen() {
     if (windowWidth < 768) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          {/* Hero — outside ScrollView so it's always fully visible */}
+          <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
+            <Text style={st.webHeroLabel}>
+              OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
+            </Text>
+            <Text style={st.mobileWebHeroTitle}>Find your next gig</Text>
+            <Text style={st.webHeroSub}>
+              {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
+            </Text>
+          </View>
+
+          {/* Filter bar — outside ScrollView so dropdown renders above cards */}
+          <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>
+            {NativeFilterBar}
+          </View>
+
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
-            stickyHeaderIndices={[1]}
           >
-            {/* Hero */}
-            <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
-              <Text style={st.webHeroLabel}>
-                OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
-              </Text>
-              <Text style={st.mobileWebHeroTitle}>Find your next gig</Text>
-              <Text style={st.webHeroSub}>
-                {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
-              </Text>
-            </View>
-
-            {/* Sticky filter bar */}
-            <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>
-              {NativeFilterBar}
-            </View>
-
-            {/* Cards */}
-            <View style={st.nativeContent}>
+            <View style={[st.nativeContent, { paddingTop: 14 }]}>
               {loading
                 ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
                 : filtered.length === 0
-                  ? <Text style={[st.empty, { paddingTop: 24 }]}>No venues match your filters.</Text>
+                  ? <Text style={[st.empty, { paddingTop: 10 }]}>No venues match your filters.</Text>
                   : filtered.map(item => <VenueCard key={item.id} item={item} />)
               }
               <View style={{ height: 48 }} />
@@ -1194,16 +1192,14 @@ export default function VenuesScreen() {
   const totalNativeSlots = filtered.reduce((sum, v) => sum + countOpenSlotsForRange(v, nD0, nD42), 0);
 
   return (
-    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]}>
+    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+      {/* Filter bar — outside ScrollView so dropdown always renders on top */}
+      <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>{NativeFilterBar}</View>
+
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         keyboardShouldPersistTaps="handled"
-        stickyHeaderIndices={[0]}
       >
-        {/* Sticky filter bar */}
-        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>{NativeFilterBar}</View>
-
-        {/* Cards */}
         <View style={st.nativeContent}>
           {/* Header */}
           <View style={st.nativeHeader}>
