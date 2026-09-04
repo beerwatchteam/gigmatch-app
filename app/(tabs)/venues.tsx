@@ -680,18 +680,16 @@ export default function VenuesScreen() {
         <Animated.View style={[st.fpPanel, { transform: [{ translateX: slideAnim }] }]}>
           {/* Header */}
           <View style={st.fpHeader}>
+            <TouchableOpacity onPress={closeFilterPanel} style={st.fpCloseBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={st.fpCloseText}>✕</Text>
+            </TouchableOpacity>
             <Text style={st.fpTitle}>Filters</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-              <TouchableOpacity onPress={() => { resetFilters(); }} activeOpacity={0.7}>
-                <Text style={st.fpReset}>Reset All</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={st.fpDoneBtn} onPress={closeFilterPanel} activeOpacity={0.8}>
-                <Text style={st.fpDoneBtnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity onPress={() => resetFilters()} activeOpacity={0.7}>
+              <Text style={st.fpReset}>Reset</Text>
+            </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             {/* FEE RANGE */}
             <View style={st.fpSection}>
               <Text style={st.fpSectionTitle}>FEE RANGE</Text>
@@ -745,6 +743,15 @@ export default function VenuesScreen() {
               </View>
             </View>
           </ScrollView>
+
+          {/* Apply button */}
+          <View style={st.fpFooter}>
+            <TouchableOpacity style={st.fpApplyBtn} onPress={closeFilterPanel} activeOpacity={0.85}>
+              <Text style={st.fpApplyBtnText}>
+                Show {filtered.length} venue{filtered.length !== 1 ? 's' : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
         {/* Backdrop — tap to close */}
@@ -1271,11 +1278,14 @@ const st = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 6, height: 0 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 16,
   },
   fpBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' },
-  fpHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 52, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
-  fpTitle:      { fontSize: 18, fontWeight: '700', color: '#111111' },
-  fpReset:      { fontSize: 13, fontWeight: '600', color: Colors.orange },
-  fpDoneBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  fpDoneBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  fpHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  fpCloseBtn:   { width: 32, alignItems: 'flex-start' },
+  fpCloseText:  { fontSize: 18, color: '#555555', fontWeight: '400' },
+  fpTitle:      { fontSize: 17, fontWeight: '700', color: '#111111' },
+  fpReset:      { fontSize: 13, fontWeight: '600', color: Colors.orange, width: 42, textAlign: 'right' },
+  fpFooter:     { padding: 16, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#eeeeee' },
+  fpApplyBtn:   { backgroundColor: Colors.orange, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
+  fpApplyBtnText:{ fontSize: 16, fontWeight: '700', color: '#111111' },
   fpSection:    { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 4 },
   fpSectionTitle:{ fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
   fpSubLabel:   { fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 12 },
