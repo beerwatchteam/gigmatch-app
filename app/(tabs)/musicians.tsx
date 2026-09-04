@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, RefreshControl, Image,
-  ScrollView, Platform, Animated, Modal, Dimensions,
+  ScrollView, Platform, Animated, Modal, Dimensions, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -29,7 +29,7 @@ const FEE_RANGES = [
 const ACT_TYPES = ['Band', 'Solo', 'Duo', 'DJ', 'Other'];
 
 type Musician = {
-  id: string; name?: string; artistType?: string;
+  id: string; name?: string; artistType?: string | string[];
   location?: string; genre?: string[]; about?: string;
   photoUrl?: string; photoPosition?: { x: number; y: number };
   feeMin?: number; feeMax?: number;
@@ -42,11 +42,11 @@ function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: 
   const [dims, setDims] = useState({ nw: 0, nh: 0 });
   const pos = position ?? { x: 50, y: 50 };
   useEffect(() => { Image.getSize(uri, (nw, nh) => setDims({ nw, nh }), () => {}); }, [uri]);
-  const scale   = (dims.nw && dims.nh && w) ? Math.max(w / dims.nw, CARD_H / dims.nh) : 1;
-  const dispW   = dims.nw ? dims.nw * scale : (w || 300);
-  const dispH   = dims.nh ? dims.nh * scale : CARD_H;
-  const maxTx   = Math.max(0, dispW - w);
-  const maxTy   = Math.max(0, dispH - CARD_H);
+  const scale = (dims.nw && dims.nh && w) ? Math.max(w / dims.nw, CARD_H / dims.nh) : 1;
+  const dispW = dims.nw ? dims.nw * scale : (w || 300);
+  const dispH = dims.nh ? dims.nh * scale : CARD_H;
+  const maxTx = Math.max(0, dispW - w);
+  const maxTy = Math.max(0, dispH - CARD_H);
   return (
     <View style={{ width: '100%', height: CARD_H, overflow: 'hidden' }} onLayout={e => setW(e.nativeEvent.layout.width)}>
       <Image
@@ -59,12 +59,14 @@ function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: 
   );
 }
 
-const isWeb   = Platform.OS === 'web';
-const PANEL_W  = Dimensions.get('window').width * 0.87;
+const isWeb  = Platform.OS === 'web';
+const PANEL_W = Math.min(Dimensions.get('window').width * 0.87, 340);
 
 export default function MusiciansScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+
   const [musicians, setMusicians]   = useState<Musician[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,6 +79,7 @@ export default function MusiciansScreen() {
   const [showDropdown, setShowDropdown]       = useState(false);
   const [areaSuggestions, setAreaSuggestions] = useState<AreaResult[]>([]);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [webDropdown, setWebDropdown]         = useState<'genre' | 'acttype' | 'fee' | null>(null);
   const slideAnim   = useRef(new Animated.Value(-PANEL_W)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -128,19 +131,15 @@ export default function MusiciansScreen() {
   function handleSearchChange(val: string) {
     setSearch(val); setShowDropdown(val.trim().length >= 2);
   }
-
   function selectMusicianMatch(m: Musician) {
     setSearch(m.name || ''); setAreaSuggestions([]); setShowDropdown(false);
   }
-
   function selectAreaSuggestion(s: AreaResult) {
     setSearch(s.label); setAreaSuggestions([]); setShowDropdown(false);
   }
-
   function clearSearch() {
     setSearch(''); setAreaSuggestions([]); setShowDropdown(false);
   }
-
   function toggleActType(t: string) {
     setActTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   }
@@ -150,6 +149,7 @@ export default function MusiciansScreen() {
   function toggleGenre(g: string) {
     setGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
   }
+
   const filtered = musicians.filter(m => {
     if (search) {
       const sq = search.toLowerCase().replace(/^@/, '');
@@ -183,12 +183,9 @@ export default function MusiciansScreen() {
     return true;
   });
 
-  // ── Active filter state ───────────────────────────────────────────
   const feeActive  = feeRanges.length > 0;
   const typeActive = actTypes.length > 0;
-
-  const activeFilterCount =
-    (feeActive ? 1 : 0) + (typeActive ? 1 : 0) + (genres.length > 0 ? 1 : 0);
+  const activeFilterCount = (feeActive ? 1 : 0) + (typeActive ? 1 : 0) + (genres.length > 0 ? 1 : 0);
 
   const activeChips: { key: string; label: string; onRemove: () => void }[] = [
     ...feeRanges.map(k => ({
@@ -204,98 +201,9 @@ export default function MusiciansScreen() {
     ...genres.map(g => ({ key: `genre-${g}`, label: g, onRemove: () => setGenres(prev => prev.filter(x => x !== g)) })),
   ];
 
-  // ── Shared search dropdown ────────────────────────────────────────
-  const SearchDropdown = (top: number, left: number, right: number) => showDropdown && hasDropdown ? (
-    <View style={[st.dropdown, { top, left, right }]}>
-      {musicianMatches.length > 0 && (<>
-        <Text style={st.dropSection}>MUSICIANS</Text>
-        {musicianMatches.map(m => (
-          <TouchableOpacity key={m.id} style={st.dropItem} onPress={() => selectMusicianMatch(m)}>
-            <Text style={st.dropItemText}>🎵 {m.name}</Text>
-            {m.location ? <Text style={st.dropItemMeta}>{m.location}</Text> : null}
-          </TouchableOpacity>
-        ))}
-      </>)}
-      {areaSuggestions.length > 0 && (<>
-        <Text style={st.dropSection}>AREAS</Text>
-        {areaSuggestions.map((s, i) => (
-          <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
-            <Text style={st.dropItemText}>📍 {s.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </>)}
-    </View>
-  ) : null;
-
-  // ── Web sidebar ───────────────────────────────────────────────────
-  const WebSidebar = (
-    <View style={st.sidebar}>
-      <View style={st.sidebarHead}>
-        <Text style={st.sidebarTitle}>Filters</Text>
-        <TouchableOpacity onPress={resetFilters}><Text style={st.resetAll}>Reset all</Text></TouchableOpacity>
-      </View>
-
-      {/* SEARCH */}
-      <View style={[st.filterSection, { zIndex: 200, overflow: 'visible' as any }]}>
-        <Text style={st.filterLabel}>SEARCH</Text>
-        <View style={st.searchWrap}>
-          <View style={st.searchRow}>
-            <TextInput
-              style={[st.filterInput, st.searchInput, search ? st.filterInputOn : null]}
-              placeholder="Name or location…" placeholderTextColor="#999"
-              value={search} onChangeText={handleSearchChange}
-              onFocus={() => hasDropdown && setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-            />
-            {search ? <TouchableOpacity style={st.clearX} onPress={clearSearch}><Text style={st.clearXText}>✕</Text></TouchableOpacity> : null}
-          </View>
-          {SearchDropdown(42, 0, 0)}
-        </View>
-      </View>
-
-      {/* FEE RANGE */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>FEE RANGE</Text>
-        {FEE_RANGES.map(r => (
-          <TouchableOpacity key={r.key} style={st.checkRow} onPress={() => toggleFee(r.key)}>
-            <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
-            <Text style={st.checkLabel}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ACT TYPE */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>ACT TYPE</Text>
-        {ACT_TYPES.map(t => (
-          <TouchableOpacity key={t} style={st.checkRow} onPress={() => toggleActType(t)}>
-            <View style={[st.checkbox, actTypes.includes(t) && st.checkboxOn]} />
-            <Text style={st.checkLabel}>{t}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* GENRE */}
-      <View style={st.filterSection}>
-        <Text style={st.filterLabel}>GENRE</Text>
-        <View style={st.genreGrid}>
-          <TouchableOpacity style={[st.genrePill, genres.length === 0 && st.genrePillOn]} onPress={() => setGenres([])}>
-            <Text style={[st.genrePillText, genres.length === 0 && st.genrePillTextOn]}>All</Text>
-          </TouchableOpacity>
-          {GENRES.map(g => (
-            <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
-              <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </View>
-  );
-
   // ── Native filter bar ─────────────────────────────────────────────
   const NativeFilterBar = (
     <View style={st.nativeFilterWrap}>
-      {/* Search + Filters button */}
       <View style={st.nativeTopRow}>
         <View style={st.nativeSearchBox}>
           <TextInput
@@ -308,13 +216,20 @@ export default function MusiciansScreen() {
           {search ? <TouchableOpacity style={st.nativeClearX} onPress={clearSearch}><Text style={st.clearXText}>✕</Text></TouchableOpacity> : null}
         </View>
         <TouchableOpacity
-          style={[st.filtersBtn, activeFilterCount > 0 && st.filtersBtnOn]}
+          style={[st.filterIconBtn, activeFilterCount > 0 && st.filterIconBtnOn]}
           onPress={openFilterPanel}
           activeOpacity={0.8}
         >
-          <Text style={[st.filtersBtnText, activeFilterCount > 0 && st.filtersBtnTextOn]}>
-            {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
-          </Text>
+          <View style={{ gap: 3.5 }}>
+            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 18 }} />
+            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 13, marginLeft: 2.5 }} />
+            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 8, marginLeft: 5 }} />
+          </View>
+          {activeFilterCount > 0 && (
+            <View style={st.filterIconBadge}>
+              <Text style={st.filterIconBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -364,18 +279,16 @@ export default function MusiciansScreen() {
         <Animated.View style={[st.fpPanel, { transform: [{ translateX: slideAnim }] }]}>
           {/* Header */}
           <View style={st.fpHeader}>
+            <TouchableOpacity onPress={closeFilterPanel} style={st.fpCloseBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={st.fpCloseText}>✕</Text>
+            </TouchableOpacity>
             <Text style={st.fpTitle}>Filters</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-              <TouchableOpacity onPress={resetFilters} activeOpacity={0.7}>
-                <Text style={st.fpReset}>Reset All</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={st.fpDoneBtn} onPress={closeFilterPanel} activeOpacity={0.8}>
-                <Text style={st.fpDoneBtnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity onPress={() => resetFilters()} activeOpacity={0.7}>
+              <Text style={st.fpReset}>Reset</Text>
+            </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             {/* FEE RANGE */}
             <View style={st.fpSection}>
               <Text style={st.fpSectionTitle}>FEE RANGE</Text>
@@ -390,12 +303,13 @@ export default function MusiciansScreen() {
             {/* ACT TYPE */}
             <View style={st.fpSection}>
               <Text style={st.fpSectionTitle}>ACT TYPE</Text>
-              {ACT_TYPES.map(t => (
-                <TouchableOpacity key={t} style={st.fpOptionRow} onPress={() => toggleActType(t)}>
-                  <View style={[st.checkbox, actTypes.includes(t) && st.checkboxOn]} />
-                  <Text style={st.fpOptionText}>{t}</Text>
-                </TouchableOpacity>
-              ))}
+              <View style={st.genreGrid}>
+                {ACT_TYPES.map(t => (
+                  <TouchableOpacity key={t} style={[st.genrePill, actTypes.includes(t) && st.genrePillOn]} onPress={() => toggleActType(t)}>
+                    <Text style={[st.genrePillText, actTypes.includes(t) && st.genrePillTextOn]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
             {/* GENRE */}
@@ -413,6 +327,15 @@ export default function MusiciansScreen() {
               </View>
             </View>
           </ScrollView>
+
+          {/* Apply button */}
+          <View style={st.fpFooter}>
+            <TouchableOpacity style={st.fpApplyBtn} onPress={closeFilterPanel} activeOpacity={0.85}>
+              <Text style={st.fpApplyBtnText}>
+                Show {filtered.length} musician{filtered.length !== 1 ? 's' : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
         {/* Backdrop — tap to close */}
@@ -423,7 +346,14 @@ export default function MusiciansScreen() {
 
   // ── Musician card ─────────────────────────────────────────────────
   function MusicianCard({ item }: { item: Musician }) {
-    const actType = Array.isArray(item.artistType) ? item.artistType.join(' / ') : item.artistType;
+    const actType = Array.isArray(item.artistType)
+      ? item.artistType.join(' / ')
+      : item.artistType;
+    const feeStr = item.feeMin != null && item.feeMax != null
+      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
+      : item.feeMin != null ? `$${item.feeMin.toLocaleString()}+` : null;
+    const metaParts = [item.location, feeStr].filter(Boolean);
+
     return (
       <TouchableOpacity
         activeOpacity={0.97}
@@ -436,30 +366,45 @@ export default function MusiciansScreen() {
         }
         <View style={st.cardBody}>
           <View style={st.nameRow}>
-            <Text style={[st.name, { color: colors.black }]}>{item.name || 'Unnamed Act'}</Text>
+            <Text style={[st.name, { color: colors.black, flex: 1 }]} numberOfLines={1}>{item.name || 'Unnamed Act'}</Text>
             {actType ? <View style={st.typeBadge}><Text style={st.typeText}>{actType}</Text></View> : null}
           </View>
+          {metaParts.length > 0 && (
+            <Text style={[st.meta, { color: colors.grey }]} numberOfLines={1}>{metaParts.join(' · ')}</Text>
+          )}
           {(item.genre || []).length > 0 && (
             <View style={st.genreRow}>
-              {(item.genre || []).map((g: string) => (
+              {(item.genre || []).slice(0, 3).map((g: string) => (
                 <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
               ))}
             </View>
           )}
-          {item.location ? <Text style={[st.location, { color: colors.grey }]}>{item.location}</Text> : null}
-          {item.about ? <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text> : null}
+          {item.about ? (
+            <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text>
+          ) : null}
+
+          {/* Action buttons */}
           <View style={[st.cardFooter, { borderTopColor: colors.borderFaint }]}>
-            <TouchableOpacity style={st.profileBtn} onPress={() => router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name || 'Musician' } })}>
-              <Text style={st.profileBtnText}>Message</Text>
+            <TouchableOpacity
+              style={st.listenBtn}
+              onPress={e => {
+                e.stopPropagation?.();
+                router.push({ pathname: '/musician/[id]', params: { id: item.id, tab: 'music' } });
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={st.listenBtnText}>Listen</Text>
             </TouchableOpacity>
-            <View style={st.cardFooterRight}>
-              <TouchableOpacity style={st.actionBtn} onPress={() => router.push(`/musician/${item.id}`)}>
-                <Text style={st.actionBtnText}>Profile</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={st.actionBtn} onPress={() => router.push({ pathname: '/musician/[id]', params: { id: item.id, tab: 'music' } })}>
-                <Text style={st.actionBtnText}>Music & Social</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={st.messageBtn}
+              onPress={e => {
+                e.stopPropagation?.();
+                router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name || 'Musician' } });
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={st.messageBtnText}>Message</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
@@ -468,25 +413,244 @@ export default function MusiciansScreen() {
 
   // ── Web layout ────────────────────────────────────────────────────
   if (isWeb) {
+    const isMobileWeb = windowWidth < 768;
+    const genreLabel = genres.length === 0 ? 'Genre' : genres.length === 1 ? genres[0] : `Genre: ${genres.length}`;
+    const typeLabel  = actTypes.length === 0 ? 'Act Type' : actTypes.length === 1 ? actTypes[0] : `Type: ${actTypes.length}`;
+    const feeLabel   = feeRanges.length === 0 ? 'Fee' : feeRanges.length === 1 ? (FEE_RANGES.find(r => r.key === feeRanges[0])?.label ?? 'Fee') : `Fee: ${feeRanges.length}`;
+
+    // ── Mobile web ────────────────────────────────────────────────
+    if (isMobileWeb) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
+            stickyHeaderIndices={[1]}
+          >
+            {/* Hero */}
+            <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
+              <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
+              <Text style={st.mobileWebHeroTitle}>Find your next act</Text>
+              <Text style={st.webHeroSub}>
+                {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+              </Text>
+            </View>
+
+            {/* Sticky filter bar */}
+            <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+              {NativeFilterBar}
+            </View>
+
+            {/* Cards */}
+            <View style={st.nativeContent}>
+              {loading
+                ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
+                : filtered.length === 0
+                  ? <Text style={[st.empty, { paddingTop: 24 }]}>No musicians match your filters.</Text>
+                  : filtered.map(item => <MusicianCard key={item.id} item={item} />)
+              }
+              <View style={{ height: 48 }} />
+            </View>
+          </ScrollView>
+          {FilterPanel}
+        </View>
+      );
+    }
+
+    // ── Desktop web ───────────────────────────────────────────────
     return (
-      <View style={[st.page, { backgroundColor: colors.bg }]}>
-        <ScrollView style={[st.sidebarScroll, { borderRightColor: colors.border }]} showsVerticalScrollIndicator={false}>{WebSidebar}</ScrollView>
+      <View style={{ flex: 1, backgroundColor: '#f2ede6' }}>
+        {/* Dropdown backdrop */}
+        {webDropdown !== null && (
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 } as any}
+            activeOpacity={1}
+            onPress={() => setWebDropdown(null)}
+          />
+        )}
+
         <ScrollView
-          style={st.contentScroll}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         >
-          <View style={st.content}>
-            <Text style={[st.pageTitle, { color: colors.black }]}>Find your next act</Text>
-            <Text style={[st.countText, { color: colors.grey }]}>{filtered.length} musician{filtered.length !== 1 ? 's' : ''} match your filters</Text>
-            {loading
-              ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
-              : filtered.length === 0
-                ? <Text style={[st.empty, { color: colors.grey }]}>No musicians match your filters.</Text>
-                : <View style={st.grid}>{filtered.map(item => <View key={item.id} style={{ width: '49%' }}><MusicianCard item={item} /></View>)}</View>
-            }
+          {/* ── Hero ──────────────────────────────────────────────── */}
+          <View style={st.webHero}>
+            <View style={st.webHeroInner}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
+                <Text style={st.webHeroTitle}>Find your next act</Text>
+                <Text style={st.webHeroSub}>
+                  {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+                </Text>
+              </View>
+              {/* Search */}
+              <View style={{ width: 340, zIndex: 200 } as any}>
+                <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                  <View style={st.webSearchRow}>
+                    <TextInput
+                      style={st.webSearchInput}
+                      placeholder="Name or location"
+                      placeholderTextColor="#999"
+                      value={search}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => hasDropdown && setShowDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    />
+                    <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
+                      <Text style={st.webSearchBtnText}>Search</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {showDropdown && hasDropdown && (
+                    <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
+                      {musicianMatches.length > 0 && (<>
+                        <Text style={st.dropSection}>MUSICIANS</Text>
+                        {musicianMatches.map(m => (
+                          <TouchableOpacity key={m.id} style={st.dropItem} onPress={() => selectMusicianMatch(m)}>
+                            <Text style={st.dropItemText}>🎵 {m.name}</Text>
+                            {m.location ? <Text style={st.dropItemMeta}>{m.location}</Text> : null}
+                          </TouchableOpacity>
+                        ))}
+                      </>)}
+                      {areaSuggestions.length > 0 && (<>
+                        <Text style={st.dropSection}>AREAS</Text>
+                        {areaSuggestions.map((s, i) => (
+                          <TouchableOpacity key={i} style={st.dropItem} onPress={() => selectAreaSuggestion(s)}>
+                            <Text style={st.dropItemText}>📍 {s.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>)}
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
           </View>
-          <View style={{ height: 60 }} />
+
+          {/* ── Filter chip bar ───────────────────────────────────── */}
+          <View style={[st.webFilterBar, { zIndex: 100 }]}>
+            <View style={st.webFilterInner}>
+
+              {/* Genre dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, genres.length > 0 && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'genre' ? null : 'genre')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, genres.length > 0 && st.webFilterPillTextActive]}>
+                    {genreLabel} ▾
+                  </Text>
+                </TouchableOpacity>
+                {webDropdown === 'genre' && (
+                  <View style={[st.webFilterDropdown, { width: 260 }]}>
+                    <View style={st.genreGrid}>
+                      {GENRES.map(g => (
+                        <TouchableOpacity key={g} style={[st.genrePill, genres.includes(g) && st.genrePillOn]} onPress={() => toggleGenre(g)}>
+                          <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {genres.length > 0 && (
+                      <TouchableOpacity style={{ marginTop: 12 }} onPress={() => setGenres([])}>
+                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear genres</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Act Type dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, actTypes.length > 0 && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'acttype' ? null : 'acttype')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, actTypes.length > 0 && st.webFilterPillTextActive]}>
+                    {typeLabel} ▾
+                  </Text>
+                </TouchableOpacity>
+                {webDropdown === 'acttype' && (
+                  <View style={st.webFilterDropdown}>
+                    {ACT_TYPES.map(t => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[st.webDropdownOption, actTypes.includes(t) && st.webDropdownOptionActive]}
+                        onPress={() => toggleActType(t)}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={[st.checkbox, actTypes.includes(t) && st.checkboxOn]} />
+                          <Text style={[st.webDropdownOptionText, actTypes.includes(t) && st.webDropdownOptionTextActive]}>{t}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                    {actTypes.length > 0 && (
+                      <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setActTypes([])}>
+                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Fee dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, feeActive && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'fee' ? null : 'fee')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, feeActive && st.webFilterPillTextActive]}>
+                    {feeLabel} ▾
+                  </Text>
+                </TouchableOpacity>
+                {webDropdown === 'fee' && (
+                  <View style={st.webFilterDropdown}>
+                    {FEE_RANGES.map(r => (
+                      <TouchableOpacity key={r.key} style={[st.webDropdownOption, feeRanges.includes(r.key) && st.webDropdownOptionActive]} onPress={() => toggleFee(r.key)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
+                          <Text style={[st.webDropdownOptionText, feeRanges.includes(r.key) && st.webDropdownOptionTextActive]}>{r.label}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                    {feeRanges.length > 0 && (
+                      <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setFeeRanges([])}>
+                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Clear all */}
+              {activeFilterCount > 0 && (
+                <TouchableOpacity onPress={resetFilters}>
+                  <Text style={st.webClearText}>Clear all</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* ── Card grid ─────────────────────────────────────────── */}
+          <View style={{ backgroundColor: '#ffffff', padding: 32, paddingTop: 28 }}>
+            {loading
+              ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
+              : filtered.length === 0
+                ? <Text style={st.empty}>No musicians match your filters.</Text>
+                : (
+                  <View style={st.webGrid}>
+                    {filtered.map(item => (
+                      <View key={item.id} style={st.webGridItem}>
+                        <MusicianCard item={item} />
+                      </View>
+                    ))}
+                  </View>
+                )
+            }
+            <View style={{ height: 60 }} />
+          </View>
         </ScrollView>
       </View>
     );
@@ -500,11 +664,19 @@ export default function MusiciansScreen() {
         keyboardShouldPersistTaps="handled"
         stickyHeaderIndices={[0]}
       >
-        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>{NativeFilterBar}</View>
+        {/* Sticky filter bar */}
+        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          {NativeFilterBar}
+        </View>
 
+        {/* Cards */}
         <View style={st.nativeContent}>
-          <View style={st.countRow}>
-            <Text style={[st.countText, { color: colors.grey }]}>{filtered.length} musician{filtered.length !== 1 ? 's' : ''}</Text>
+          {/* Header */}
+          <View style={st.nativeHeader}>
+            <Text style={[st.nativeTitle, { color: colors.black }]}>Find your next act</Text>
+            <Text style={[st.nativeSub, { color: colors.grey }]}>
+              {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+            </Text>
           </View>
           {loading
             ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
@@ -521,26 +693,7 @@ export default function MusiciansScreen() {
 }
 
 const st = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#ffffff' },
-
-  page:          { flex: 1, flexDirection: 'row', backgroundColor: '#ffffff' },
-  sidebarScroll: { width: 280, flexGrow: 0, flexShrink: 0, borderRightWidth: 1, borderRightColor: '#eeeeee' },
-  contentScroll: { flex: 1 },
-
-  sidebar:     { padding: 24, paddingTop: 28, paddingBottom: 48 },
-  sidebarHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  sidebarTitle:{ fontSize: 18, fontWeight: '700', color: '#111111' },
-  resetAll:    { fontSize: 13, color: Colors.orange, fontWeight: '600' },
-  filterSection:{ marginBottom: 24 },
-  filterLabel: { fontSize: 10, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
-  filterInput: { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 9, paddingHorizontal: 12, fontSize: 13, color: '#111111', backgroundColor: '#fafafa' },
-  filterInputOn:{ borderColor: Colors.orange, backgroundColor: '#ffffff' },
-
-  searchWrap:  { position: 'relative' as any, zIndex: 200, overflow: 'visible' as any },
-  searchRow:   { flexDirection: 'row', alignItems: 'center' },
-  searchInput: { flex: 1 },
-  clearX:      { position: 'absolute' as any, right: 10, padding: 2 },
-  clearXText:  { fontSize: 13, color: '#111111' },
+  safe: { flex: 1 },
 
   dropdown: {
     position: 'absolute' as any, top: 42, left: 0, right: 0,
@@ -553,10 +706,8 @@ const st = StyleSheet.create({
   dropItemText: { fontSize: 13, color: '#222222' },
   dropItemMeta: { fontSize: 11, color: '#888888' },
 
-  checkRow:   { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 },
   checkbox:   { width: 15, height: 15, borderRadius: 3, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: '#fafafa' },
   checkboxOn: { backgroundColor: Colors.orange, borderColor: Colors.orange },
-  checkLabel: { fontSize: 13, color: '#111111' },
 
   genreGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   genrePill:      { borderRadius: 20, borderWidth: 1, borderColor: '#dddddd', paddingHorizontal: 12, paddingVertical: 4 },
@@ -564,14 +715,10 @@ const st = StyleSheet.create({
   genrePillText:  { fontSize: 12, color: '#111111' },
   genrePillTextOn:{ color: '#ffffff', fontWeight: '600' },
 
-  content:   { padding: 36, paddingTop: 32, paddingBottom: 48 },
-  grid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 20 },
-  pageTitle: { fontSize: 32, fontWeight: '800', color: '#111111', letterSpacing: -0.5, marginBottom: 4 },
-  countText: { fontSize: 13, color: '#666666', marginBottom: 16 },
-  empty:     { color: '#111111', fontSize: 14, marginTop: 40 },
+  empty: { color: '#888888', fontSize: 14, marginTop: 40, textAlign: 'center' },
 
-  // Native filter bar
-  nativeFilterBg:    { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  // ── Native filter bar ─────────────────────────────────────────────
+  nativeFilterBg:    { borderBottomWidth: 1 },
   nativeFilterWrap:  { paddingTop: 12, paddingBottom: 8 },
   nativeTopRow:      { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, gap: 10 },
   nativeSearchBox:   { flex: 1, flexDirection: 'row', alignItems: 'center' },
@@ -579,58 +726,107 @@ const st = StyleSheet.create({
     flex: 1, borderWidth: 1.5, borderColor: '#e0e0e0', borderRadius: 10,
     padding: 10, paddingHorizontal: 14, fontSize: 14, color: '#111111', backgroundColor: '#fafafa',
   },
-  nativeClearX:   { paddingLeft: 8 },
+  nativeClearX:    { paddingLeft: 8 },
+  clearXText:      { fontSize: 13, color: '#111111' },
   nativePillScroll:{ flexGrow: 0 },
-  nativePillRow:  { paddingHorizontal: 16, gap: 8, flexDirection: 'row', paddingBottom: 6 },
+  nativePillRow:   { paddingHorizontal: 16, gap: 8, flexDirection: 'row', paddingBottom: 6 },
 
-  filtersBtn:      { borderRadius: 10, borderWidth: 1.5, borderColor: '#dddddd', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#fafafa' },
-  filtersBtnOn:    { backgroundColor: Colors.orange, borderColor: Colors.orange },
-  filtersBtnText:  { fontSize: 14, fontWeight: '600', color: '#555555' },
-  filtersBtnTextOn:{ color: '#ffffff' },
+  filterIconBtn:      { borderRadius: 10, borderWidth: 1.5, borderColor: '#dddddd', padding: 10, backgroundColor: '#fafafa', position: 'relative' as any },
+  filterIconBtnOn:    { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  filterIconBadge:    { position: 'absolute' as any, top: -5, right: -5, backgroundColor: '#111111', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  filterIconBadgeText:{ color: '#ffffff', fontSize: 9, fontWeight: '800', lineHeight: 16 },
 
   activeChip:     { borderRadius: 20, borderWidth: 1, borderColor: Colors.orange, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: Colors.orange + '18' },
   activeChipText: { fontSize: 12, fontWeight: '600', color: Colors.orange },
   resetPill:      { borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0', paddingHorizontal: 14, paddingVertical: 7 },
   resetPillText:  { fontSize: 13, fontWeight: '600', color: Colors.orange },
 
-  // Filter panel (slide-in from left)
+  // ── Filter panel ──────────────────────────────────────────────────
   fpOverlay:    { flex: 1, flexDirection: 'row' },
   fpPanel: {
     width: PANEL_W, backgroundColor: '#ffffff',
     shadowColor: '#000', shadowOffset: { width: 6, height: 0 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 16,
   },
   fpBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' },
-  fpHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 52, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
-  fpTitle:       { fontSize: 18, fontWeight: '700', color: '#111111' },
-  fpReset:       { fontSize: 13, fontWeight: '600', color: Colors.orange },
-  fpDoneBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  fpDoneBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  fpHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  fpCloseBtn:    { width: 32, alignItems: 'flex-start' },
+  fpCloseText:   { fontSize: 18, color: '#555555', fontWeight: '400' },
+  fpTitle:       { fontSize: 17, fontWeight: '700', color: '#111111' },
+  fpReset:       { fontSize: 13, fontWeight: '600', color: Colors.orange, width: 42, textAlign: 'right' },
   fpSection:     { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 4 },
   fpSectionTitle:{ fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
   fpOptionRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
   fpOptionText:  { fontSize: 14, color: '#111111' },
+  fpFooter:      { padding: 16, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#eeeeee' },
+  fpApplyBtn:    { backgroundColor: Colors.orange, borderRadius: 12, paddingVertical: 15, alignItems: 'center' },
+  fpApplyBtnText:{ fontSize: 16, fontWeight: '700', color: '#111111' },
 
+  // ── Native layout ─────────────────────────────────────────────────
   nativeContent: { paddingHorizontal: 16 },
-  countRow:      { paddingTop: 14, paddingBottom: 8 },
+  nativeHeader:  { paddingTop: 20, paddingBottom: 12 },
+  nativeTitle:   { fontSize: 26, fontWeight: '800', color: '#111111', letterSpacing: -0.5 },
+  nativeSub:     { fontSize: 13, color: '#666666', marginTop: 3 },
 
-  card:           { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
-  cardPhoto:      { width: '100%', height: 160 },
-  cardPhotoEmpty: { width: '100%', height: 160, backgroundColor: '#e3e0d8', alignItems: 'center', justifyContent: 'center' },
-  cardPhotoLabel: { fontSize: 12, color: '#111111', fontStyle: 'italic' },
+  // ── Musician card ─────────────────────────────────────────────────
+  card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
+  cardPhotoEmpty: { width: '100%', height: CARD_H, alignItems: 'center', justifyContent: 'center' },
+  cardPhotoLabel: { fontSize: 12, fontStyle: 'italic' },
   cardBody:       { padding: 18, paddingHorizontal: 20, gap: 8 },
-  nameRow:        { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  nameRow:        { flexDirection: 'row', alignItems: 'center', gap: 10 },
   name:           { fontSize: 18, fontWeight: '700', color: '#111111' },
   typeBadge:      { borderRadius: 4, backgroundColor: '#f4f4f4', paddingHorizontal: 8, paddingVertical: 2 },
-  typeText:       { fontSize: 11, fontWeight: '600', color: '#111111' },
+  typeText:       { fontSize: 11, fontWeight: '600', color: '#555555' },
+  meta:           { fontSize: 12, color: '#666666' },
   genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 2 },
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
-  location:       { fontSize: 12, color: '#666666' },
-  about:          { fontSize: 13, color: '#111111', lineHeight: 19 },
-  cardFooter:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  cardFooterRight: { flexDirection: 'row', gap: 8 },
-  profileBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
-  profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
-  actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
-  actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  about:          { fontSize: 13, lineHeight: 19 },
+
+  cardFooter:    { flexDirection: 'row', gap: 10, paddingTop: 14, marginTop: 4, borderTopWidth: 1 },
+  listenBtn:     { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.orange, paddingVertical: 9, alignItems: 'center' },
+  listenBtnText: { fontSize: 14, fontWeight: '700', color: Colors.orange },
+  messageBtn:    { flex: 1, borderRadius: 10, backgroundColor: '#111111', paddingVertical: 9, alignItems: 'center' },
+  messageBtnText:{ fontSize: 14, fontWeight: '700', color: '#ffffff' },
+
+  // ── Mobile web hero ───────────────────────────────────────────────
+  mobileWebHero:      { paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },
+  mobileWebHeroTitle: { fontSize: 30, fontWeight: '800', color: '#111111', letterSpacing: -0.5, marginTop: 6, lineHeight: 36 },
+
+  // ── Web hero ──────────────────────────────────────────────────────
+  webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 40 },
+  webHeroInner:   { flexDirection: 'row', alignItems: 'flex-end', gap: 40 },
+  webHeroLabel:   { fontSize: 11, fontWeight: '700', letterSpacing: 2, color: Colors.orange, textTransform: 'uppercase' as any },
+  webHeroTitle:   { fontSize: 48, fontWeight: '800', color: '#111111', letterSpacing: -1.5 as any, marginTop: 6, lineHeight: 52 },
+  webHeroSub:     { fontSize: 14, color: '#666666', marginTop: 8 },
+  webSearchRow:   { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
+  webSearchInput: {
+    flex: 1, borderWidth: 1.5, borderColor: '#d8d3cd', borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: '#111111',
+    backgroundColor: '#ffffff',
+  },
+  webSearchBtn:     { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 22, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' },
+  webSearchBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+
+  // ── Web filter bar ────────────────────────────────────────────────
+  webFilterBar:            { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8' },
+  webFilterInner:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any },
+  webFilterPill:           { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#ffffff' },
+  webFilterPillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '12' },
+  webFilterPillText:       { fontSize: 13, color: '#333333', fontWeight: '500' },
+  webFilterPillTextActive: { color: Colors.orange, fontWeight: '600' },
+  webFilterDropdown: {
+    position: 'absolute' as any, top: '110%' as any, left: 0, marginTop: 4,
+    backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e0e0e0',
+    borderRadius: 10, padding: 14, zIndex: 300, minWidth: 180,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 12,
+  },
+  webDropdownOption:           { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 6 },
+  webDropdownOptionActive:     { backgroundColor: Colors.orange + '18' },
+  webDropdownOptionText:       { fontSize: 13, color: '#333333' },
+  webDropdownOptionTextActive: { color: Colors.orange, fontWeight: '600' },
+  webClearText:                { fontSize: 13, color: '#888888', textDecorationLine: 'underline' as any, paddingHorizontal: 4 },
+
+  // ── Web card grid ─────────────────────────────────────────────────
+  webGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 20 },
+  webGridItem: { width: '48%' },
 });
