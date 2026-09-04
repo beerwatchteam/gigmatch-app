@@ -788,6 +788,88 @@ export default function VenuesScreen() {
     );
   }
 
+  // ── Web venue row (desktop) ───────────────────────────────────────
+  function WebVenueRow({ item }: { item: Venue }) {
+    const photo = item.photoUrl || item.photos?.[0];
+    const venueGenres = (item.genre || item.genres || []).slice(0, 5);
+    const d0  = toLocalStr(new Date());
+    const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
+    const allSlots   = getNextOpenSlotsDetailed(item);
+    const shownSlots = allSlots.slice(0, 2);
+    const totalSlots = countOpenSlotsForRange(item, d0, d42);
+    const extraCount = Math.max(0, totalSlots - 2);
+    const feeStr = item.feeMin != null && item.feeMax != null
+      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
+      : item.feeMin != null ? `from $${item.feeMin.toLocaleString()}` : null;
+    const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity}` : null, feeStr].filter(Boolean);
+
+    return (
+      <TouchableOpacity
+        style={st.webRow}
+        onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
+        activeOpacity={0.85}
+      >
+        {/* Thumbnail */}
+        {photo
+          ? <Image source={{ uri: photo }} style={st.webRowThumb} resizeMode="cover" />
+          : <View style={[st.webRowThumb, st.webRowThumbEmpty]}><Text style={st.webRowThumbLabel}>photo</Text></View>
+        }
+
+        {/* Info */}
+        <View style={st.webRowInfo}>
+          <Text style={st.webRowName} numberOfLines={1}>{item.name}</Text>
+          {metaParts.length > 0 && (
+            <Text style={st.webRowMeta} numberOfLines={1}>{metaParts.join(' · ')}</Text>
+          )}
+          {venueGenres.length > 0 && (
+            <View style={st.webRowGenres}>
+              {venueGenres.map((g: string) => (
+                <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Slots + Enquire */}
+        <View style={st.webRowRight}>
+          {shownSlots.length === 0 ? (
+            <Text style={st.webSlotNone}>No open slots</Text>
+          ) : (
+            <View style={{ gap: 6, alignItems: 'flex-end' }}>
+              {shownSlots.map((slot, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={st.webSlotChip}
+                  onPress={() => router.push({
+                    pathname: '/enquire',
+                    params: {
+                      venueId: item.id, venueName: item.name, day: slot.day,
+                      ...(slot.dateStr ? { date: slot.dateStr } : {}),
+                      time: slot.time, slotType: slot.slotType ?? 'Open',
+                    },
+                  })}
+                >
+                  <Text style={st.webSlotChipText}>{slot.dateLabel} · {slot.time}</Text>
+                </TouchableOpacity>
+              ))}
+              {extraCount > 0 && (
+                <TouchableOpacity onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}>
+                  <Text style={st.webSlotExtra}>+{extraCount} more</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[st.webEnquireBtn, { marginTop: 8 }]}
+                onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+              >
+                <Text style={st.webEnquireBtnText}>Enquire</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   // ── Web layout ────────────────────────────────────────────────────
   if (isWeb) {
     const d0 = toLocalStr(new Date());
@@ -1065,28 +1147,19 @@ export default function VenuesScreen() {
             </View>
           </View>
 
-        {/* ── Venue cards (scrollable) ──────────────────────────── */}
+        {/* ── Venue rows (scrollable) ───────────────────────────── */}
         <ScrollView
           style={{ flex: 1, backgroundColor: '#ffffff' }}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         >
-          <View style={{ paddingHorizontal: 32, paddingTop: 24, paddingBottom: 80 }}>
-            {loading
-              ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
-              : filtered.length === 0
-                ? <Text style={[st.empty, { paddingTop: 40 }]}>No venues match your filters.</Text>
-                : (
-                  <View style={st.webCardGrid}>
-                    {filtered.map(item => (
-                      <View key={item.id} style={st.webCardGridItem}>
-                        <VenueCard item={item} />
-                      </View>
-                    ))}
-                  </View>
-                )
-            }
-          </View>
+          {loading
+            ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
+            : filtered.length === 0
+              ? <Text style={[st.empty, { paddingHorizontal: 32, paddingTop: 40 }]}>No venues match your filters.</Text>
+              : filtered.map(item => <WebVenueRow key={item.id} item={item} />)
+          }
+          <View style={{ height: 80 }} />
         </ScrollView>
       </View>
     );
@@ -1319,7 +1392,20 @@ const st = StyleSheet.create({
   webFilterMoreBtn:     { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fafafa' },
   webFilterMoreBtnText: { fontSize: 13, color: '#555555', fontWeight: '500' },
 
-  // ── Web card grid ─────────────────────────────────────────────────
-  webCardGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  webCardGridItem: { width: '48%' },
+  // ── Web venue rows ────────────────────────────────────────────────
+  webRow:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 20 },
+  webRowThumb:     { width: 88, height: 88, borderRadius: 10 },
+  webRowThumbEmpty:{ backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
+  webRowThumbLabel:{ fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
+  webRowInfo:      { flex: 1, gap: 5 },
+  webRowName:      { fontSize: 16, fontWeight: '700', color: '#111111' },
+  webRowMeta:      { fontSize: 12, color: '#888888' },
+  webRowGenres:    { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
+  webRowRight:     { width: 220, alignItems: 'flex-end' },
+  webSlotChip:     { backgroundColor: Colors.orange + '18', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  webSlotChipText: { fontSize: 12, color: Colors.orange, fontWeight: '600' },
+  webSlotExtra:    { fontSize: 12, color: '#888888', marginTop: 2 },
+  webSlotNone:     { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
+  webEnquireBtn:   { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 8 },
+  webEnquireBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
 });
