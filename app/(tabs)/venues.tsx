@@ -301,7 +301,7 @@ export default function VenuesScreen() {
   const [locationCoords, setLocationCoords]   = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius]                   = useState<number | null>(null);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [webDropdown, setWebDropdown]         = useState<'date' | 'capacity' | null>(null);
+  const [webDropdown, setWebDropdown]         = useState<'date' | 'capacity' | 'genre' | 'fee' | null>(null);
   const slideAnim   = useRef(new Animated.Value(-PANEL_W)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -911,26 +911,81 @@ export default function VenuesScreen() {
                 )}
               </View>
 
-              {/* Active filter chips (genre + fee) */}
-              {activeChips.map(chip => (
-                <TouchableOpacity key={chip.key} style={st.webActiveChip} onPress={chip.onRemove}>
-                  <Text style={st.webActiveChipText}>{chip.label}  ×</Text>
+              {/* Genre dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, genres.length > 0 && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'genre' ? null : 'genre')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, genres.length > 0 && st.webFilterPillTextActive]}>
+                    {genres.length === 0 ? 'Genre' : genres.length === 1 ? genres[0] : `Genre: ${genres.length}`} ▾
+                  </Text>
                 </TouchableOpacity>
-              ))}
+                {webDropdown === 'genre' && (
+                  <View style={[st.webFilterDropdown, { width: 260 }]}>
+                    <View style={st.genreGrid}>
+                      {GENRES.map(g => (
+                        <TouchableOpacity
+                          key={g}
+                          style={[st.genrePill, genres.includes(g) && st.genrePillOn]}
+                          onPress={() => toggleGenre(g)}
+                        >
+                          <Text style={[st.genrePillText, genres.includes(g) && st.genrePillTextOn]}>{g}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {genres.length > 0 && (
+                      <TouchableOpacity style={{ marginTop: 12 }} onPress={() => setGenres([])}>
+                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear genres</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Fee dropdown */}
+              <View style={{ position: 'relative' as any, zIndex: 200 }}>
+                <TouchableOpacity
+                  style={[st.webFilterPill, feeActive && st.webFilterPillActive]}
+                  onPress={() => setWebDropdown(d => d === 'fee' ? null : 'fee')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[st.webFilterPillText, feeActive && st.webFilterPillTextActive]}>
+                    {feeRanges.length === 0 ? 'Fee' : feeRanges.length === 1 ? (FEE_RANGES.find(r => r.key === feeRanges[0])?.label ?? 'Fee') : `Fee: ${feeRanges.length}`} ▾
+                  </Text>
+                </TouchableOpacity>
+                {webDropdown === 'fee' && (
+                  <View style={st.webFilterDropdown}>
+                    {FEE_RANGES.map(r => (
+                      <TouchableOpacity
+                        key={r.key}
+                        style={[st.webDropdownOption, feeRanges.includes(r.key) && st.webDropdownOptionActive]}
+                        onPress={() => toggleFee(r.key)}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
+                          <Text style={[st.webDropdownOptionText, feeRanges.includes(r.key) && st.webDropdownOptionTextActive]}>
+                            {r.label}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                    {feeRanges.length > 0 && (
+                      <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setFeeRanges([])}>
+                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
 
               {/* Clear all */}
               {activeFilterCount > 0 && (
                 <TouchableOpacity onPress={resetFilters}>
-                  <Text style={st.webClearText}>Clear</Text>
+                  <Text style={st.webClearText}>Clear all</Text>
                 </TouchableOpacity>
               )}
-
-              <View style={{ flex: 1 }} />
-
-              {/* Open full filter panel */}
-              <TouchableOpacity style={st.webFilterMoreBtn} onPress={() => { setWebDropdown(null); openFilterPanel(); }}>
-                <Text style={st.webFilterMoreBtnText}>+ Filter</Text>
-              </TouchableOpacity>
             </View>
           </View>
 
