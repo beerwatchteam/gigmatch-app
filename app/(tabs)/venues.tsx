@@ -791,7 +791,7 @@ export default function VenuesScreen() {
   // ── Web venue row (desktop) ───────────────────────────────────────
   function WebVenueRow({ item }: { item: Venue }) {
     const photo = item.photoUrl || item.photos?.[0];
-    const venueGenres = (item.genre || item.genres || []).slice(0, 5);
+    const venueGenres = (item.genre || item.genres || []).slice(0, 4);
     const d0  = toLocalStr(new Date());
     const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
     const allSlots   = getNextOpenSlotsDetailed(item);
@@ -801,45 +801,47 @@ export default function VenuesScreen() {
     const feeStr = item.feeMin != null && item.feeMax != null
       ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
       : item.feeMin != null ? `from $${item.feeMin.toLocaleString()}` : null;
-    const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity}` : null, feeStr].filter(Boolean);
 
     return (
-      <TouchableOpacity
-        style={st.webRow}
-        onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
-        activeOpacity={0.85}
-      >
-        {/* Thumbnail */}
-        {photo
-          ? <Image source={{ uri: photo }} style={st.webRowThumb} resizeMode="cover" />
-          : <View style={[st.webRowThumb, st.webRowThumbEmpty]}><Text style={st.webRowThumbLabel}>photo</Text></View>
-        }
+      <View style={st.webRow}>
+        {/* Col 1: VENUE — thumbnail + name + suburb + genres */}
+        <TouchableOpacity
+          style={st.webColVenue}
+          onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
+          activeOpacity={0.85}
+        >
+          {photo
+            ? <Image source={{ uri: photo }} style={st.webRowThumb} resizeMode="cover" />
+            : <View style={[st.webRowThumb, st.webRowThumbEmpty]}><Text style={st.webRowThumbLabel}>photo</Text></View>
+          }
+          <View style={st.webColVenueInfo}>
+            <Text style={st.webRowName} numberOfLines={1}>{item.name}</Text>
+            {item.suburb && <Text style={st.webRowMeta} numberOfLines={1}>{item.suburb}</Text>}
+            {venueGenres.length > 0 && (
+              <View style={st.webRowGenres}>
+                {venueGenres.map((g: string) => (
+                  <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
+                ))}
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
 
-        {/* Info */}
-        <View style={st.webRowInfo}>
-          <Text style={st.webRowName} numberOfLines={1}>{item.name}</Text>
-          {metaParts.length > 0 && (
-            <Text style={st.webRowMeta} numberOfLines={1}>{metaParts.join(' · ')}</Text>
-          )}
-          {venueGenres.length > 0 && (
-            <View style={st.webRowGenres}>
-              {venueGenres.map((g: string) => (
-                <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
-              ))}
-            </View>
-          )}
+        {/* Col 2: CAPACITY */}
+        <View style={st.webColCapacity}>
+          <Text style={st.webColValue}>{item.capacity?.toLocaleString() ?? '—'}</Text>
         </View>
 
-        {/* Slots + Enquire */}
-        <View style={st.webRowRight}>
+        {/* Col 3: NEXT OPEN SLOTS */}
+        <View style={[st.webColSlots, { flex: 2.5 }]}>
           {shownSlots.length === 0 ? (
             <Text style={st.webSlotNone}>No open slots</Text>
           ) : (
-            <View style={{ gap: 6, alignItems: 'flex-end' }}>
+            <>
               {shownSlots.map((slot, i) => (
                 <TouchableOpacity
                   key={i}
-                  style={st.webSlotChip}
+                  style={[st.webSlotChip, i > 0 && { marginTop: 5 }]}
                   onPress={() => router.push({
                     pathname: '/enquire',
                     params: {
@@ -853,20 +855,32 @@ export default function VenuesScreen() {
                 </TouchableOpacity>
               ))}
               {extraCount > 0 && (
-                <TouchableOpacity onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}>
+                <TouchableOpacity
+                  style={{ marginTop: 5 }}
+                  onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+                >
                   <Text style={st.webSlotExtra}>+{extraCount} more</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
-                style={[st.webEnquireBtn, { marginTop: 8 }]}
-                onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
-              >
-                <Text style={st.webEnquireBtnText}>Enquire</Text>
-              </TouchableOpacity>
-            </View>
+            </>
           )}
         </View>
-      </TouchableOpacity>
+
+        {/* Col 4: TYPICAL FEE */}
+        <View style={st.webColFee}>
+          <Text style={st.webColValue}>{feeStr ?? '—'}</Text>
+        </View>
+
+        {/* Col 5: ACTION */}
+        <View style={st.webColAction}>
+          <TouchableOpacity
+            style={st.webEnquireBtn}
+            onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+          >
+            <Text style={st.webEnquireBtnText}>Enquire</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   }
 
@@ -1147,6 +1161,15 @@ export default function VenuesScreen() {
             </View>
           </View>
 
+        {/* ── Column headers ─────────────────────────────────────── */}
+        <View style={st.webTableHeader}>
+          <Text style={[st.webTh, { flex: 3 }]}>VENUE</Text>
+          <Text style={[st.webTh, { flex: 1 }]}>CAPACITY</Text>
+          <Text style={[st.webTh, { flex: 2.5 }]}>NEXT OPEN SLOTS</Text>
+          <Text style={[st.webTh, { flex: 1.5 }]}>TYPICAL FEE</Text>
+          <Text style={[st.webTh, { flex: 1.5, textAlign: 'right' as any }]}>ACTION</Text>
+        </View>
+
         {/* ── Venue rows (scrollable) ───────────────────────────── */}
         <ScrollView
           style={{ flex: 1, backgroundColor: '#ffffff' }}
@@ -1392,20 +1415,35 @@ const st = StyleSheet.create({
   webFilterMoreBtn:     { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fafafa' },
   webFilterMoreBtnText: { fontSize: 13, color: '#555555', fontWeight: '500' },
 
+  // ── Web table header ─────────────────────────────────────────────
+  webTableHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 32, paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1, borderBottomColor: '#e8e8e8',
+    gap: 20,
+  },
+  webTh: { fontSize: 10, fontWeight: '700', color: '#aaaaaa', textTransform: 'uppercase' as any, letterSpacing: 0.9 },
+
   // ── Web venue rows ────────────────────────────────────────────────
-  webRow:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 20 },
-  webRowThumb:     { width: 88, height: 88, borderRadius: 10 },
-  webRowThumbEmpty:{ backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
-  webRowThumbLabel:{ fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
-  webRowInfo:      { flex: 1, gap: 5 },
-  webRowName:      { fontSize: 16, fontWeight: '700', color: '#111111' },
-  webRowMeta:      { fontSize: 12, color: '#888888' },
-  webRowGenres:    { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
-  webRowRight:     { width: 220, alignItems: 'flex-end' },
-  webSlotChip:     { backgroundColor: Colors.orange + '18', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
-  webSlotChipText: { fontSize: 12, color: Colors.orange, fontWeight: '600' },
-  webSlotExtra:    { fontSize: 12, color: '#888888', marginTop: 2 },
-  webSlotNone:     { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
-  webEnquireBtn:   { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 18, paddingVertical: 8 },
+  webRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 20 },
+  webColVenue:      { flex: 3, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  webColVenueInfo:  { flex: 1, gap: 4 },
+  webColCapacity:   { flex: 1 },
+  webColSlots:      { flex: 2.5 },
+  webColFee:        { flex: 1.5 },
+  webColAction:     { flex: 1.5, alignItems: 'flex-end' as any },
+  webColValue:      { fontSize: 14, color: '#333333', fontWeight: '500' },
+  webRowThumb:      { width: 72, height: 72, borderRadius: 8 },
+  webRowThumbEmpty: { backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
+  webRowThumbLabel: { fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
+  webRowName:       { fontSize: 15, fontWeight: '700', color: '#111111' },
+  webRowMeta:       { fontSize: 12, color: '#888888' },
+  webRowGenres:     { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
+  webSlotChip:      { backgroundColor: Colors.orange + '18', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' as any },
+  webSlotChipText:  { fontSize: 12, color: Colors.orange, fontWeight: '600' },
+  webSlotExtra:     { fontSize: 12, color: '#888888' },
+  webSlotNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
+  webEnquireBtn:    { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
   webEnquireBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
 });
