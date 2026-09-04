@@ -138,7 +138,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, profileTabTi
   const BOTTOM_ROUTES = ['venues', 'musicians', 'inbox', 'profile'];
 
   const LABELS: Record<string, string> = {
-    venues:    'Slots',
+    venues:    'Venues',
     musicians: 'Musicians',
     inbox:     'Inbox',
     profile:   profileTabTitle,
@@ -286,7 +286,7 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index"     options={{ href: null }} />
-        <Tabs.Screen name="venues"    options={{ title: 'Slots' }} />
+        <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
         <Tabs.Screen name="profile"   options={{ title: profileTabTitle, ...(!user ? { href: null } : {}) }} />
