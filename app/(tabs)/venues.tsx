@@ -917,7 +917,7 @@ export default function VenuesScreen() {
             </View>
 
             {/* Sticky filter bar */}
-            <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+            <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>
               {NativeFilterBar}
             </View>
 
@@ -1201,7 +1201,7 @@ export default function VenuesScreen() {
         stickyHeaderIndices={[0]}
       >
         {/* Sticky filter bar */}
-        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>{NativeFilterBar}</View>
+        <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>{NativeFilterBar}</View>
 
         {/* Cards */}
         <View style={st.nativeContent}>
@@ -1286,8 +1286,8 @@ const st = StyleSheet.create({
   empty:     { color: '#111111', fontSize: 14, marginTop: 40 },
 
   // Native filter bar
-  nativeFilterBg:   { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
-  nativeFilterWrap: { paddingTop: 12, paddingBottom: 8 },
+  nativeFilterBg:   { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#eeeeee', zIndex: 100, overflow: 'visible' as any },
+  nativeFilterWrap: { paddingTop: 12, paddingBottom: 8, zIndex: 100, overflow: 'visible' as any },
   nativeTopRow:     { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, gap: 10 },
   nativeSearchBox:  { flex: 1, position: 'relative' as any },
   nativeSearchInput: {
