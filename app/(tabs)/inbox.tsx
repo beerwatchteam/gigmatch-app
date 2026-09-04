@@ -162,136 +162,91 @@ function Avatar({ photoUrl, name, size }: { photoUrl?: string | null; name: stri
   );
 }
 
-// ── Deal sheet row ─────────────────────────────────────────────────────────
+// ── Deal sheet grid (2×2) ──────────────────────────────────────────────────
 
-function DealSheetRow({ enquiry }: { enquiry: Enquiry }) {
-  const { date, day, time, slotType, setLength } = enquiry.requestedSlot;
-  const dateStr  = date ? fmtSlotDateFull(date) : day || '—';
-  const setStr   = [time, setLength].filter(Boolean).join(' · ') || '—';
-  const billing  = slotType || '—';
-  const fee      = enquiry.fee ? `$${enquiry.fee}` : '—';
-  const backline = (enquiry.techRider?.backlineNeeded || enquiry.backline) ?? '—';
-
-  const cols: { label: string; value: string }[] = [
-    { label: 'DATE',      value: dateStr },
-    { label: 'SET',       value: setStr  },
-    { label: 'BILLING',   value: billing },
-    { label: 'FEE ASKED', value: fee     },
-    { label: 'BACKLINE',  value: typeof backline === 'string' ? backline : '—' },
-  ];
+function DealSheetGrid({ enquiry }: { enquiry: Enquiry }) {
+  const { setLength } = enquiry.requestedSlot;
+  const setStr     = setLength || '—';
+  const fee        = (enquiry as any).fee ? `$${(enquiry as any).fee}` : '—';
+  const soundcheck = (enquiry as any).soundcheck || (enquiry as any).soundcheckTime || '—';
+  const rawBackline = enquiry.techRider?.backlineNeeded || (enquiry as any).backline;
+  const backline   = typeof rawBackline === 'string' ? rawBackline : '—';
 
   return (
-    <View style={deal.row}>
-      {cols.map((col, i) => (
-        <View key={col.label} style={[deal.col, i < cols.length - 1 && deal.colBorder]}>
-          <Text style={deal.label}>{col.label}</Text>
-          <Text style={deal.value} numberOfLines={2}>{col.value}</Text>
+    <View style={dg.grid}>
+      <View style={dg.row}>
+        <View style={[dg.cell, dg.cellRight, dg.cellBottom]}>
+          <Text style={dg.label}>SET</Text>
+          <Text style={dg.value}>{setStr}</Text>
         </View>
-      ))}
+        <View style={[dg.cell, dg.cellBottom]}>
+          <Text style={dg.label}>FEE ASKED</Text>
+          <Text style={dg.value}>{fee}</Text>
+        </View>
+      </View>
+      <View style={dg.row}>
+        <View style={[dg.cell, dg.cellRight]}>
+          <Text style={dg.label}>SOUNDCHECK</Text>
+          <Text style={dg.value}>{soundcheck}</Text>
+        </View>
+        <View style={dg.cell}>
+          <Text style={dg.label}>BACKLINE</Text>
+          <Text style={dg.value}>{backline}</Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-const deal = StyleSheet.create({
-  row:       { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#efefef', marginTop: 12 },
-  col:       { flex: 1, paddingTop: 10, paddingRight: 6 },
-  colBorder: { borderRightWidth: 1, borderRightColor: '#efefef', marginRight: 6 },
-  label:     { fontSize: 9, fontWeight: '700', color: '#bbbbbb', letterSpacing: 0.7, marginBottom: 4, textTransform: 'uppercase' as const },
-  value:     { fontSize: 12, fontWeight: '600', color: '#111111', lineHeight: 17 },
+const dg = StyleSheet.create({
+  grid:       { borderTopWidth: 1, borderTopColor: '#eeeeee', marginTop: 12 },
+  row:        { flexDirection: 'row' },
+  cell:       { flex: 1, paddingVertical: 10, paddingHorizontal: 12 },
+  cellRight:  { borderRightWidth: 1, borderRightColor: '#eeeeee', paddingLeft: 0 },
+  cellBottom: { borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  label:      { fontSize: 9, fontWeight: '700', color: '#aaaaaa', letterSpacing: 0.7, marginBottom: 4, textTransform: 'uppercase' as const },
+  value:      { fontSize: 14, fontWeight: '700', color: '#111111' },
 });
 
-// ── Enquiry header card ────────────────────────────────────────────────────
+// ── Enquiry header (compact) ───────────────────────────────────────────────
 
-function EnquiryHeader({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean }) {
-  const router = useRouter();
-  const genres: string[] = enquiry.genre ?? [];
+function EnquiryHeader({ enquiry, isVenue, onBack }: {
+  enquiry: Enquiry; isVenue: boolean; onBack?: () => void;
+}) {
+  const { colors } = useTheme();
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
-
-  const listenUrl  = enquiry.spotify || enquiry.appleMusic || (enquiry as any).soundcloud;
-  const hasTechRider = !!(
-    enquiry.techRider &&
-    typeof enquiry.techRider === 'object' &&
-    Object.keys(enquiry.techRider).length > 0
-  );
+  const { day, date, time, slotType } = enquiry.requestedSlot;
+  const dateStr = date ? fmtSlotDate(date) : '';
+  const slotStr = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
 
   return (
-    <View style={eh.card}>
-      {/* Identity row */}
-      <View style={eh.top}>
-        <Avatar photoUrl={enquiry.photoUrl} name={who} size={52} />
-        <View style={eh.identity}>
-          <Text style={eh.name} numberOfLines={1}>{who}</Text>
-          <View style={eh.pillRow}>
-            {enquiry.artistType ? (
-              <View style={eh.typePill}>
-                <Text style={eh.typeText}>
-                  {enquiry.artistType.toUpperCase()}
-                  {(enquiry as any).memberCount ? ` · ${(enquiry as any).memberCount}PC` : ''}
-                </Text>
-              </View>
-            ) : null}
-            {enquiry.location ? <Text style={eh.location}>{enquiry.location}</Text> : null}
-          </View>
-          {genres.length > 0 && (
-            <View style={eh.genres}>
-              {genres.slice(0, 4).map(g => (
-                <View key={g} style={eh.genrePill}>
-                  <Text style={eh.genreText}>{g}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+    <View style={[eh.card, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
+      <View style={eh.titleRow}>
+        {!isWeb && onBack && (
+          <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={eh.back}>←</Text>
+          </TouchableOpacity>
+        )}
+        <View style={eh.titleInfo}>
+          <Text style={[eh.name, { color: colors.black }]} numberOfLines={1}>{who}</Text>
+          {slotStr ? (
+            <Text style={[eh.slot, { color: colors.grey }]} numberOfLines={1}>{slotStr}</Text>
+          ) : null}
         </View>
         <StatusBadge status={enquiry.status} isVenue={isVenue} />
       </View>
-
-      {/* Links row */}
-      {isVenue ? (
-        (enquiry.profileUrl || listenUrl || hasTechRider) ? (
-          <View style={eh.links}>
-            {enquiry.profileUrl ? (
-              <TouchableOpacity onPress={() => Linking.openURL(enquiry.profileUrl!)}>
-                <Text style={eh.link}>Full profile →</Text>
-              </TouchableOpacity>
-            ) : null}
-            {listenUrl ? (
-              <TouchableOpacity onPress={() => Linking.openURL(listenUrl)}>
-                <Text style={eh.link}>Listen →</Text>
-              </TouchableOpacity>
-            ) : null}
-            {hasTechRider ? (
-              <Text style={eh.link}>Tech rider →</Text>
-            ) : null}
-          </View>
-        ) : null
-      ) : (
-        <View style={eh.links}>
-          <TouchableOpacity onPress={() => router.push(`/venue/${enquiry.venueId}`)}>
-            <Text style={eh.link}>View venue →</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Deal sheet */}
-      <DealSheetRow enquiry={enquiry} />
+      <DealSheetGrid enquiry={enquiry} />
     </View>
   );
 }
 
 const eh = StyleSheet.create({
-  card:      { padding: isWeb ? 20 : 16, paddingHorizontal: isWeb ? 24 : 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee', backgroundColor: '#fafafa', flexShrink: 0 },
-  top:       { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  identity:  { flex: 1, gap: 4 },
-  name:      { fontSize: 16, fontWeight: '800', color: '#111111', letterSpacing: -0.3 },
-  pillRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },
-  typePill:  { backgroundColor: Colors.orange + '1a', borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  typeText:  { fontSize: 10, fontWeight: '800', color: Colors.orange, letterSpacing: 0.3 },
-  location:  { fontSize: 12, color: '#999999' },
-  genres:    { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 5, marginTop: 2 },
-  genrePill: { borderWidth: 1, borderColor: '#e4e4e4', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
-  genreText: { fontSize: 11, color: '#555555' },
-  links:     { flexDirection: 'row', gap: 16, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#efefef' },
-  link:      { fontSize: 13, color: Colors.orange, fontWeight: '600' },
+  card:      { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 0, borderBottomWidth: 1, flexShrink: 0 },
+  titleRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  back:      { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
+  titleInfo: { flex: 1, minWidth: 0 },
+  name:      { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  slot:      { fontSize: 13, marginTop: 1 },
 });
 
 // ── Thread tile ────────────────────────────────────────────────────────────
@@ -344,7 +299,7 @@ const tt = StyleSheet.create({
   fee:        { fontSize: 12, fontWeight: '600', color: '#444444' },
 });
 
-// ── Enquiry bubble (first message in thread) ───────────────────────────────
+// ── Enquiry details bubble (expandable from header, venue view) ────────────
 
 function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean }) {
   const { day, date, time, room, slotType, setLength } = enquiry.requestedSlot;
@@ -577,17 +532,8 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Back bar (mobile only) */}
-      {!isWeb && (
-        <View style={[tp.backBar, { borderBottomColor: colors.border, backgroundColor: colors.bgFaint }]}>
-          <TouchableOpacity onPress={onBack}>
-            <Text style={tp.back}>← Back</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Always-visible enquiry header + deal sheet */}
-      <EnquiryHeader enquiry={enquiry} isVenue={isVenue} />
+      {/* Compact header with back button + deal sheet */}
+      <EnquiryHeader enquiry={enquiry} isVenue={isVenue} onBack={!isWeb ? onBack : undefined} />
 
       {/* Messages */}
       <ScrollView
@@ -596,9 +542,6 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         contentContainerStyle={tp.msgList}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        {/* Enquiry as the opening message */}
-        <EnquiryBubble enquiry={enquiry} isVenue={isVenue} />
-
         {messages.map((m, idx) => {
           const mine    = m.sender === user?.uid;
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
@@ -747,7 +690,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               >
                 {submitting
                   ? <ActivityIndicator color="#111111" size="small" />
-                  : <Text style={[vp.sendBtnText, !replyText.trim() && vp.sendBtnTextOff]}>Send</Text>
+                  : <Text style={[vp.sendBtnText, !replyText.trim() && vp.sendBtnTextOff]}>↑</Text>
                 }
               </TouchableOpacity>
             </View>
@@ -829,8 +772,8 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
             <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <TextInput
-                style={[ci.input, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
-                placeholder="Type a message…"
+                style={[ci.input, { color: colors.black }]}
+                placeholder="Message…"
                 placeholderTextColor={colors.greyLight}
                 value={chatText}
                 onChangeText={setChatText}
@@ -843,7 +786,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               >
                 {submitting
                   ? <ActivityIndicator color="#111111" size="small" />
-                  : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>Send</Text>
+                  : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>↑</Text>
                 }
               </TouchableOpacity>
             </View>
@@ -855,8 +798,8 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
           <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
             <TextInput
-              style={[ci.input, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
-              placeholder="Type a message…"
+              style={[ci.input, { color: colors.black }]}
+              placeholder="Message…"
               placeholderTextColor={colors.greyLight}
               value={chatText}
               onChangeText={setChatText}
@@ -869,7 +812,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
             >
               {submitting
                 ? <ActivityIndicator color="#111111" size="small" />
-                : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>Send</Text>
+                : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>↑</Text>
               }
             </TouchableOpacity>
           </View>
@@ -910,11 +853,11 @@ const vp = StyleSheet.create({
   radioDot:           { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.orange },
   radioLabel:         { fontSize: 13, color: '#333333', lineHeight: 18, flex: 1 },
   replyRow:           { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  replyInput:         { flex: 1, borderWidth: 1.5, borderColor: '#e0e0e0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#111111', backgroundColor: '#ffffff', maxHeight: 100 },
-  sendBtn:            { backgroundColor: Colors.orange, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minWidth: 60 },
+  replyInput:         { flex: 1, paddingHorizontal: 4, paddingVertical: 10, fontSize: 15, color: '#111111', maxHeight: 100 },
+  sendBtn:            { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   sendBtnOff:         { backgroundColor: '#e8e8e8' },
-  sendBtnText:        { fontSize: 14, fontWeight: '700', color: '#111111' },
-  sendBtnTextOff:     { color: '#aaaaaa' },
+  sendBtnText:        { fontSize: 18, fontWeight: '700', color: '#ffffff', lineHeight: 20, marginTop: -1 },
+  sendBtnTextOff:     { color: '#bbbbbb' },
   actionRow:          { flexDirection: 'row', gap: 8 },
   outlineBtn:         { flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1.5, borderColor: '#e0e0e0', alignItems: 'center' },
   outlineBtnActive:   { borderColor: Colors.orange, backgroundColor: Colors.orange + '10' },
@@ -926,18 +869,16 @@ const vp = StyleSheet.create({
 
 // Chat input styles
 const ci = StyleSheet.create({
-  wrap:        { flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 14, paddingHorizontal: isWeb ? 24 : 16, borderTopWidth: 1 },
-  input:       { flex: 1, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, maxHeight: 120 },
-  send:        { backgroundColor: Colors.orange, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minWidth: 60 },
+  wrap:        { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: isWeb ? 20 : 16, paddingVertical: 10, borderTopWidth: 1 },
+  input:       { flex: 1, paddingHorizontal: 4, paddingVertical: 10, fontSize: 15, maxHeight: 120 },
+  send:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   sendOff:     { backgroundColor: '#e0e0e0' },
-  sendText:    { fontSize: 14, fontWeight: '700', color: '#111111' },
-  sendTextOff: { color: '#aaaaaa' },
+  sendText:    { fontSize: 18, fontWeight: '700', color: '#ffffff', lineHeight: 20, marginTop: -1 },
+  sendTextOff: { color: '#bbbbbb' },
 });
 
 // Thread panel shared styles
 const tp = StyleSheet.create({
-  backBar:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
-  back:         { fontSize: 15, color: Colors.orange, fontWeight: '600' },
   msgList:      { padding: isWeb ? 24 : 16, gap: 16, flexGrow: 1 },
   noMsgs:       { alignItems: 'center', paddingTop: 12 },
   noMsgsText:   { fontSize: 14, color: '#aaaaaa', textAlign: 'center', lineHeight: 20 },
@@ -1100,7 +1041,7 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
         <View style={[ci.wrap, { backgroundColor: colors.bgFaint, borderTopColor: colors.border }]}>
           <TextInput
             style={[ci.input, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
-            placeholder="Type a message…"
+            placeholder="Message…"
             placeholderTextColor="#aaaaaa"
             value={text}
             onChangeText={setText}
@@ -1113,7 +1054,7 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
           >
             {sending
               ? <ActivityIndicator color="#111111" size="small" />
-              : <Text style={[ci.sendText, !text.trim() && ci.sendTextOff]}>Send</Text>
+              : <Text style={[ci.sendText, !text.trim() && ci.sendTextOff]}>↑</Text>
             }
           </TouchableOpacity>
         </View>
