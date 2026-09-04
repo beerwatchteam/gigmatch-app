@@ -492,16 +492,16 @@ export default function VenuesScreen() {
               ? <Image source={{ uri: photo }} style={st.webRowThumb} resizeMode="cover" />
               : <View style={[st.webRowThumb, st.webRowThumbEmpty]}><Text style={st.webRowThumbLabel}>photo</Text></View>
             }
-            <View style={{ flex: 1 }}>
-              <Text style={st.webRowName}>{item.name}</Text>
-              <Text style={st.webRowMeta}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={st.webRowName} numberOfLines={1}>{item.name}</Text>
+              <Text style={st.webRowMeta} numberOfLines={1}>
                 {[item.suburb, venueGenres.slice(0, 3).join(', ')].filter(Boolean).join(' · ')}
               </Text>
             </View>
           </View>
         </View>
 
-        <View style={[st.webRowCell, { width: 100 }]}>
+        <View style={[st.webRowCell, { width: 80 }]}>
           <Text style={st.webRowCap}>{item.capacity ?? '—'}</Text>
         </View>
 
@@ -520,11 +520,11 @@ export default function VenuesScreen() {
           )}
         </View>
 
-        <View style={[st.webRowCell, { width: 140 }]}>
+        <View style={[st.webRowCell, { width: 120 }]}>
           <Text style={st.webRowFee}>{feeStr}</Text>
         </View>
 
-        <View style={[st.webRowCell, { width: 110, alignItems: 'flex-end' }]}>
+        <View style={[st.webRowCell, { width: 100, alignItems: 'flex-end' }]}>
           {hasSlots ? (
             <TouchableOpacity
               style={st.webEnquireBtn}
@@ -938,10 +938,10 @@ export default function VenuesScreen() {
           <View style={{ backgroundColor: '#ffffff' }}>
             <View style={st.webTableHeader}>
               <Text style={[st.webTableHeaderCell, { flex: 3 }]}>VENUE</Text>
-              <Text style={[st.webTableHeaderCell, { width: 100 }]}>CAPACITY</Text>
+              <Text style={[st.webTableHeaderCell, { width: 80 }]}>CAPACITY</Text>
               <Text style={[st.webTableHeaderCell, { flex: 4 }]}>NEXT OPEN SLOTS</Text>
-              <Text style={[st.webTableHeaderCell, { width: 140 }]}>TYPICAL FEE</Text>
-              <Text style={[st.webTableHeaderCell, { width: 110, textAlign: 'right' }]}>ACTION</Text>
+              <Text style={[st.webTableHeaderCell, { width: 120 }]}>TYPICAL FEE</Text>
+              <Text style={[st.webTableHeaderCell, { width: 100, textAlign: 'right' }]}>ACTION</Text>
             </View>
 
             {loading
@@ -1114,7 +1114,7 @@ const st = StyleSheet.create({
   actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 
   // ── Web hero ─────────────────────────────────────────────────────
-  webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 60, paddingTop: 48, paddingBottom: 40 },
+  webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 40 },
   webHeroInner:   { flexDirection: 'row', alignItems: 'flex-end', gap: 40 },
   webHeroLabel:   { fontSize: 11, fontWeight: '700', letterSpacing: 2, color: Colors.orange, textTransform: 'uppercase' as any },
   webHeroTitle:   { fontSize: 48, fontWeight: '800', color: '#111111', letterSpacing: -1.5 as any, marginTop: 6, lineHeight: 52 },
@@ -1130,7 +1130,7 @@ const st = StyleSheet.create({
 
   // ── Web filter bar ────────────────────────────────────────────────
   webFilterBar:   { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8' },
-  webFilterInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 60, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any },
+  webFilterInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any },
   webFilterPill:  { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#ffffff' },
   webFilterPillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '12' },
   webFilterPillText:       { fontSize: 13, color: '#333333', fontWeight: '500' },
@@ -1153,9 +1153,9 @@ const st = StyleSheet.create({
   webFilterMoreBtnText: { fontSize: 13, color: '#555555', fontWeight: '500' },
 
   // ── Web ledger table ──────────────────────────────────────────────
-  webTableHeader:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 60, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  webTableHeader:     { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
   webTableHeaderCell: { fontSize: 10, fontWeight: '700', color: '#aaaaaa', letterSpacing: 1.2, textTransform: 'uppercase' as any },
-  webRow:             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 60, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  webRow:             { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   webRowDimmed:       { opacity: 0.45 },
   webRowCell:         { paddingRight: 16 },
   webRowVenue:        { flexDirection: 'row', alignItems: 'center', gap: 14 },
