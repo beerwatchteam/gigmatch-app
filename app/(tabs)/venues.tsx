@@ -773,6 +773,7 @@ export default function VenuesScreen() {
       ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
       : item.feeMin != null ? `$${item.feeMin.toLocaleString()}+` : null;
     const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity}` : null, feeStr].filter(Boolean);
+    const venueGenres = (item.genre || item.genres || []).slice(0, 4);
 
     return (
       <TouchableOpacity
@@ -780,20 +781,41 @@ export default function VenuesScreen() {
         style={[st.card, { backgroundColor: colors.bg, borderColor: colors.border }]}
         onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
       >
-        {/* Photo */}
-        {photo
-          ? <CardPhoto uri={photo} position={item.photoPosition} />
-          : <View style={[st.cardPhotoEmpty, { backgroundColor: colors.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: colors.greyLight }]}>venue photo</Text></View>
-        }
-
-        {/* Body */}
-        <View style={st.cardBody}>
-          <Text style={[st.venueName, { color: colors.black }]}>{item.name}</Text>
-          {metaParts.length > 0 && (
-            <Text style={[st.venueAddr, { color: colors.grey }]} numberOfLines={1}>{metaParts.join(' · ')}</Text>
+        {/* ── Top row: thumbnail + info ── */}
+        <View style={st.cardTop}>
+          {/* Thumbnail */}
+          {photo ? (
+            <Image
+              source={{ uri: photo }}
+              style={[st.cardThumb, { borderColor: colors.border }]}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[st.cardThumb, st.cardThumbEmpty, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+              <Text style={[st.cardThumbLabel, { color: colors.greyLight }]}>photo</Text>
+            </View>
           )}
 
-          {/* Slot rows */}
+          {/* Info */}
+          <View style={st.cardInfo}>
+            <Text style={[st.venueName, { color: colors.black }]} numberOfLines={2}>{item.name}</Text>
+            {metaParts.length > 0 && (
+              <Text style={[st.venueAddr, { color: colors.grey }]} numberOfLines={1}>
+                {metaParts.join(' · ')}
+              </Text>
+            )}
+            {venueGenres.length > 0 && (
+              <View style={st.genreRow}>
+                {venueGenres.map((g: string) => (
+                  <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* ── Slot rows ── */}
+        <View style={[st.cardSlots, { borderTopColor: colors.border }]}>
           {shown.length === 0 ? (
             <Text style={[st.slotsNone, { color: colors.greyLight }]}>No open slots</Text>
           ) : (
@@ -831,8 +853,6 @@ export default function VenuesScreen() {
               ))}
             </View>
           )}
-
-          {/* More slots */}
           {extraCount > 0 && (
             <TouchableOpacity
               style={[st.moreBtn, { borderColor: colors.border }]}
@@ -1317,26 +1337,23 @@ const st = StyleSheet.create({
   moreBtnText:      { fontSize: 13, fontWeight: '600' },
 
   // Cards
-  card: { backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
-  cardPhoto:      { width: '100%', height: 160 },
-  cardPhotoEmpty: { width: '100%', height: 160, backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
-  cardPhotoLabel: { fontSize: 12, color: '#111111', fontStyle: 'italic' },
-  cardBody:       { padding: 18, paddingHorizontal: 20, gap: 8 },
-  venueName:      { fontSize: 18, fontWeight: '700', color: '#111111' },
+  card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 },
+
+  // Card top: horizontal thumbnail + info
+  cardTop:        { flexDirection: 'row', padding: 14, gap: 14, alignItems: 'flex-start' },
+  cardThumb:      { width: 80, height: 80, borderRadius: 8, borderWidth: 1 },
+  cardThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
+  cardThumbLabel: { fontSize: 10, fontStyle: 'italic' },
+  cardInfo:       { flex: 1, gap: 5, justifyContent: 'center' },
+  venueName:      { fontSize: 17, fontWeight: '700', color: '#111111', lineHeight: 22 },
   venueAddr:      { fontSize: 12, color: '#666666' },
-  genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 2 },
+  genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
+  pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
-  desc:           { fontSize: 13, color: '#111111', lineHeight: 19 },
-  cardFooter:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  slotsText:      { fontSize: 13, color: '#444444' },
-  slotsCount:     { fontSize: 13, color: Colors.orange, fontWeight: '700' },
+
+  // Card slots section
+  cardSlots:      { paddingHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, paddingTop: 12, gap: 0 },
   slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
-  cardActions:    { flexDirection: 'row', gap: 8 },
-  profileBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
-  profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
-  actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
-  actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 
   // ── Mobile web hero ───────────────────────────────────────────────
   mobileWebHero:      { paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },
