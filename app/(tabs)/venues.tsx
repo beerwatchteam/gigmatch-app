@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, StyleSheet, TouchableOpacity,
   TextInput, ActivityIndicator, RefreshControl, Image,
-  ScrollView, Platform, Animated, Modal, Dimensions,
+  ScrollView, Platform, Animated, Modal, Dimensions, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -328,6 +328,7 @@ const cal = StyleSheet.create({
 export default function VenuesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const [venues, setVenues]         = useState<Venue[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -849,6 +850,48 @@ export default function VenuesScreen() {
       ? (dateEnd ? `${formatDateDisplay(dateStart)}–${formatDateDisplay(dateEnd)}` : formatDateDisplay(dateStart))
       : 'any date';
 
+    // ── Mobile web (< 768 px) ──────────────────────────────────────
+    if (windowWidth < 768) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
+            stickyHeaderIndices={[1]}
+          >
+            {/* Hero */}
+            <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
+              <Text style={st.webHeroLabel}>
+                OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
+              </Text>
+              <Text style={st.mobileWebHeroTitle}>Find your next gig</Text>
+              <Text style={st.webHeroSub}>
+                {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
+              </Text>
+            </View>
+
+            {/* Sticky filter bar */}
+            <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+              {NativeFilterBar}
+            </View>
+
+            {/* Cards */}
+            <View style={st.nativeContent}>
+              {loading
+                ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
+                : filtered.length === 0
+                  ? <Text style={[st.empty, { paddingTop: 24 }]}>No venues match your filters.</Text>
+                  : filtered.map(item => <VenueCard key={item.id} item={item} />)
+              }
+              <View style={{ height: 48 }} />
+            </View>
+          </ScrollView>
+          {FilterPanel}
+        </View>
+      );
+    }
+
     return (
       <View style={{ flex: 1, backgroundColor: '#f2ede6' }}>
         {/* Dropdown backdrop */}
@@ -1284,6 +1327,10 @@ const st = StyleSheet.create({
   profileBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   actionBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 7 },
   actionBtnText:  { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+
+  // ── Mobile web hero ───────────────────────────────────────────────
+  mobileWebHero:      { paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },
+  mobileWebHeroTitle: { fontSize: 30, fontWeight: '800', color: '#111111', letterSpacing: -0.5, marginTop: 6, lineHeight: 36 },
 
   // ── Web hero ─────────────────────────────────────────────────────
   webHero:        { backgroundColor: '#f2ede6', paddingHorizontal: 32, paddingTop: 48, paddingBottom: 40 },
