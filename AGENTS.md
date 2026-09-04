@@ -10,6 +10,10 @@ Things that still need to be done — check here when asked "what's left to do":
 
 Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
 
+# Security
+
+Before presenting any generated code, review it for OWASP Top 10 vulnerabilities including SQL injection, XSS, command injection, insecure authentication, sensitive data exposure, and broken access control. If an issue is found, fix it before showing the code.
+
 # Craft
 
 Build with intention, style, and beauty. Put time and effort into the work. There is no need to cut corners — we will only have to fix it later. Every screen, every interaction, every detail matters. Do it right the first time.
