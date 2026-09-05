@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image, Platform, Linking,
+  ActivityIndicator, Image, Platform, Linking, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import WebView from 'react-native-webview';
@@ -258,6 +258,8 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   const { profile, user } = useAuth();
   const { colors } = useTheme();
   const isArtist = profile?.type === 'artist';
+  const { width } = useWindowDimensions();
+  const isMobileLayout = !isWeb || width < 768;
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/venues');
   const { enquiries: userEnquiries } = useArtistEnquiries(isArtist ? (user?.uid ?? null) : null);
 
@@ -319,24 +321,13 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
         {/* ── Sticky header: name + tabs ── */}
         <View style={[s.stickyHeader, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-          <View style={s.headerInfo}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.breadcrumb}>
-                {'VENUE'}
-                {venue.suburb ? ` · ${venue.suburb.toUpperCase()}${venue.state ? `, ${venue.state}` : ''}` : ''}
-              </Text>
+          <View style={[s.headerInfo, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
+            <View style={isMobileLayout ? undefined : { flex: 1 }}>
               <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
               {address ? <Text style={[s.address, { color: colors.grey }]}>{address}</Text> : null}
-              {genres.length > 0 && (
-                <View style={s.genreRow}>
-                  {genres.map(g => (
-                    <View key={g} style={s.genrePill}><Text style={s.genreText}>{g}</Text></View>
-                  ))}
-                </View>
-              )}
             </View>
             {isMyVenue ? (
-              <View style={{ flexDirection: 'row', gap: 8, marginLeft: 12, marginTop: 4 }}>
+              <View style={{ flexDirection: 'row', gap: 8, marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4 }}>
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                   <Text style={s.editProfileBtnText}>Edit Profile</Text>
                 </TouchableOpacity>
@@ -345,11 +336,11 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 </TouchableOpacity>
               </View>
             ) : isArtist ? (
-              <TouchableOpacity style={s.enquireHeaderBtn} onPress={() => setActiveTab('timetable')}>
-                <Text style={s.enquireHeaderBtnText}>Enquire about a slot</Text>
+              <TouchableOpacity style={[s.enquireHeaderBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => setActiveTab('timetable')}>
+                <Text style={s.enquireHeaderBtnText}>Enquire about a timeslot</Text>
               </TouchableOpacity>
             ) : !user ? (
-              <TouchableOpacity style={s.enquireHeaderBtn} onPress={() => router.push('/login')}>
+              <TouchableOpacity style={[s.enquireHeaderBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => router.push('/login')}>
                 <Text style={s.enquireHeaderBtnText}>Log in to enquire</Text>
               </TouchableOpacity>
             ) : null}
@@ -376,7 +367,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
         {/* ── Tab content ── */}
         {activeTab === 'overview' && (
-          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} />
+          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={isMobileLayout} />
         )}
         {activeTab === 'timetable' && (
           <TimetableTab
@@ -411,8 +402,8 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
 // ── Overview tab ─────────────────────────────────────────────────────
 
-function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
-  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void;
+function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayout }: {
+  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void; isMobileLayout: boolean;
 }) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -433,7 +424,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
   const typicalFee = fmtFee(venue.feeMin, venue.feeMax);
 
   const sidebar = (
-    <View style={isWeb ? s.overviewSidebar : s.overviewSidebarMobile}>
+    <View style={!isMobileLayout ? s.overviewSidebar : s.overviewSidebarMobile}>
       {(venue.capacity ?? 0) > 0 && <StatCard num={Number(venue.capacity).toLocaleString()} label="Capacity" />}
       {openSlots > 0 && <StatCard num={openSlots} label="Open slots this month" />}
       {thisWeek.length > 0 && (
@@ -459,11 +450,6 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
           ))}
         </View>
       )}
-      {(isArtist || !isLoggedIn) && (
-        <TouchableOpacity style={s.sidebarEnquireBtn} onPress={onGoTimetable} activeOpacity={0.8}>
-          <Text style={s.sidebarEnquireBtnText}>Enquire about a slot</Text>
-        </TouchableOpacity>
-      )}
       {typicalFee && (
         <View style={[s.statCard, { borderColor: colors.border }]}>
           <Text style={[s.statLabel, { color: colors.grey }]}>Typical Fee</Text>
@@ -474,7 +460,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
   );
 
   const main = (
-    <View style={isWeb ? s.overviewMain : null}>
+    <View style={!isMobileLayout ? s.overviewMain : null}>
 
       {/* Venue Info */}
       {(venue.phone || venue.email || venue.website) ? (
@@ -587,7 +573,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
         </View>
       ) : null}
 
-      {!isWeb && (
+      {isMobileLayout && (
         <TouchableOpacity style={s.timetableBtn} onPress={onGoTimetable}>
           <Text style={s.timetableBtnText}>View Timetable & Available Slots →</Text>
         </TouchableOpacity>
@@ -596,8 +582,8 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable }: {
   );
 
   return (
-    <View style={[s.tabBody, isWeb && s.overviewLayout]}>
-      {isWeb ? (
+    <View style={[s.tabBody, !isMobileLayout && s.overviewLayout]}>
+      {!isMobileLayout ? (
         <>
           {main}
           {sidebar}

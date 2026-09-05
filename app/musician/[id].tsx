@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Image, Linking, Platform,
+  ActivityIndicator, Image, Linking, Platform, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { SpotifyEmbed } from '@/components/SpotifyEmbed';
@@ -122,7 +122,7 @@ type Musician = {
 
 // ── Overview Tab ──────────────────────────────────────────────────
 
-function OverviewTab({ m }: { m: Musician }) {
+function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boolean }) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const about          = m.about || '';
@@ -154,7 +154,7 @@ function OverviewTab({ m }: { m: Musician }) {
     : null;
 
   const sidebar = (
-    <View style={isWeb ? styles.overviewSidebar : styles.mobileSidebar}>
+    <View style={!isMobileLayout ? styles.overviewSidebar : styles.mobileSidebar}>
       {feeStr && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
           <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>FEE</Text>
@@ -201,7 +201,7 @@ function OverviewTab({ m }: { m: Musician }) {
   );
 
   const main = (
-    <View style={isWeb ? styles.overviewMain : undefined}>
+    <View style={!isMobileLayout ? styles.overviewMain : undefined}>
       {about ? (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>ABOUT</Text>
@@ -246,7 +246,7 @@ function OverviewTab({ m }: { m: Musician }) {
     </View>
   );
 
-  if (isWeb) {
+  if (!isMobileLayout) {
     return (
       <View style={styles.overviewLayout}>
         {main}
@@ -398,6 +398,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   );
 
   const isOwn = user?.uid === id;
+  const { width } = useWindowDimensions();
+  const isMobileLayout = !isWeb || width < 768;
 
   useEffect(() => {
     getDoc(doc(db, 'bandProfiles', id)).then(snap => {
@@ -484,12 +486,12 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           )}
 
           {/* Name + action buttons */}
-          <View style={styles.nameRow}>
-            <Text style={[styles.name, { color: colors.black }]} numberOfLines={2}>
+          <View style={[styles.nameRow, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
+            <Text style={[styles.name, { color: colors.black, flex: isMobileLayout ? undefined : 1 }]} numberOfLines={2}>
               {musician.name || 'Unnamed Act'}
             </Text>
             {isOwn && (
-              <View style={styles.ownerBtns}>
+              <View style={[styles.ownerBtns, isMobileLayout && { marginTop: 10 }]}>
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
                   onPress={() => router.push('/edit-profile')}
@@ -569,7 +571,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
         {/* Tab content */}
         {activeTab === 'overview'
-          ? <OverviewTab m={musician} />
+          ? <OverviewTab m={musician} isMobileLayout={isMobileLayout} />
           : <MusicTab m={musician} />
         }
 
