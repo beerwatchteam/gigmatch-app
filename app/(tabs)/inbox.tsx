@@ -529,7 +529,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={{ flex: 1, minHeight: 0, backgroundColor: colors.bg, overflow: 'hidden' as any }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Compact header with back button + deal sheet */}
@@ -538,10 +538,12 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
       {/* Messages */}
       <ScrollView
         ref={scrollRef}
-        style={{ flex: 1 }}
+        style={{ flex: 1, minHeight: 0 }}
         contentContainerStyle={tp.msgList}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
+        {/* Enquiry details always shown as first item */}
+        <EnquiryBubble enquiry={enquiry} isVenue={isVenue} />
         {messages.map((m, idx) => {
           const mine    = m.sender === user?.uid;
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
@@ -1463,7 +1465,7 @@ const wb = StyleSheet.create({
   filterCountText:  { fontSize: 11, fontWeight: '700', color: '#777777' },
   filterCountTextActive: { color: '#111111' },
   emptyText:        { textAlign: 'center', color: '#999999', fontSize: 14, padding: 40 },
-  panel:            { flex: 1, flexDirection: 'column' },
+  panel:            { flex: 1, flexDirection: 'column', overflow: 'hidden' as any },
   panelEmpty:       { flex: 1, alignItems: 'center', justifyContent: 'center' },
   panelEmptyText:   { fontSize: 15, color: '#bbbbbb' },
 });

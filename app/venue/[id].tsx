@@ -176,6 +176,26 @@ function nextDateForDay(dayName: string): string {
   return isoDate(addDays(today, daysAhead));
 }
 
+/**
+ * Returns the ISO date string for a given enquiry's intended slot date.
+ * If the enquiry has an explicit date stored, use it. Otherwise infer from
+ * submittedAt — find the next occurrence of requestedSlot.day on or after
+ * the submission date. This handles legacy data where date was not stored.
+ */
+function inferSlotDate(enq: Enquiry): string {
+  if (enq.requestedSlot?.date) return enq.requestedSlot.date;
+  if (!enq.submittedAt || !enq.requestedSlot?.day) return '';
+  const base = new Date(enq.submittedAt);
+  if (isNaN(base.getTime())) return '';
+  base.setHours(0, 0, 0, 0);
+  const targetDow = DAY_WEEK_OFFSET[enq.requestedSlot.day] ?? -1;
+  if (targetDow < 0) return '';
+  const baseDow = (base.getDay() + 6) % 7; // Mon=0..Sun=6
+  let daysAhead = targetDow - baseDow;
+  if (daysAhead < 0) daysAhead += 7;
+  return isoDate(addDays(base, daysAhead));
+}
+
 // ── Slot merging ─────────────────────────────────────────────────────
 
 function mergeSlots(recurringOpen: Slot[], overrides: Slot[]): Slot[] {
@@ -801,7 +821,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
                 enq.status !== 'declined' && enq.status !== 'cancelled' &&
                 enq.requestedSlot?.day === activeDay &&
                 enq.requestedSlot?.time === slot.time &&
-                (enq.requestedSlot?.date ? enq.requestedSlot.date === nativeDateISO : true)
+                inferSlotDate(enq) === nativeDateISO
               );
               return (
                 <NativeSlotCard
@@ -831,10 +851,8 @@ function WvSlotRow({ slot, day, dateISO, isPast, isArtist, isLoggedIn, userEnqui
   const { colors } = useTheme();
 
   const matchesSlot = (enq: Enquiry) => {
-    const match = enq.requestedSlot?.day === day && enq.requestedSlot?.time === slot.time;
-    if (!match) return false;
-    if (enq.requestedSlot?.date && dateISO) return enq.requestedSlot.date === dateISO;
-    return true;
+    if (enq.requestedSlot?.day !== day || enq.requestedSlot?.time !== slot.time) return false;
+    return inferSlotDate(enq) === dateISO;
   };
   const hasEnquired  = slot.status === 'open' && userEnquiries.some(enq =>
     enq.status !== 'declined' && enq.status !== 'cancelled' && matchesSlot(enq)
@@ -946,7 +964,7 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
   const hasEnquired = slot.status === 'open' && userEnquiries.some(enq =>
     enq.status !== 'declined' && enq.status !== 'cancelled' &&
     enq.requestedSlot?.day === day && enq.requestedSlot?.time === slot.time &&
-    (enq.requestedSlot?.date ? enq.requestedSlot.date === dateISO : true)
+    inferSlotDate(enq) === dateISO
   );
 
   if (slot.status === 'booked') {
@@ -1035,12 +1053,12 @@ function MonthGrid({ venue, month, year, isArtist, isLoggedIn, userEnquiries, on
               const hasEnq = slot.status === 'open' && userEnquiries.some(enq =>
                 enq.status !== 'declined' && enq.status !== 'cancelled' &&
                 enq.requestedSlot?.day === slotKey && enq.requestedSlot?.time === slot.time &&
-                (enq.requestedSlot?.date ? enq.requestedSlot.date === dateISO : true)
+                inferSlotDate(enq) === dateISO
               );
               const isBookedByMe = slot.status === 'booked' && userEnquiries.some(enq =>
                 enq.status === 'accepted' &&
                 enq.requestedSlot?.day === slotKey && enq.requestedSlot?.time === slot.time &&
-                (enq.requestedSlot?.date ? enq.requestedSlot.date === dateISO : true)
+                inferSlotDate(enq) === dateISO
               );
               let pillStyle, textStyle;
               if (slot.status === 'open') {
