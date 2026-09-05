@@ -121,7 +121,7 @@ export default function EnquireScreen() {
         additionalInfo,
         requestedSlot: {
           day:      params.day,
-          date:     params.date ?? null,
+          date:     params.date || null,
           time:     params.time,
           room:     params.room ?? null,
           slotType: slotPref,

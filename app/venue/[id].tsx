@@ -617,6 +617,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
     const fd = CANONICAL_DAYS.find(d => (venue.slots?.[d] || []).some(s => s.status === 'open'));
     return fd || CANONICAL_DAYS[4]; // Friday fallback
   });
+  const [showPastDays, setShowPastDays]       = useState(false);
 
   const weekEnd = addDays(weekStart, 6);
   const rangeLabel = viewMode === 'week'
@@ -633,6 +634,38 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
     else if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y+1); }
     else setCurrentMonth(m => m+1);
   }
+
+  // Week view row data (web only)
+  const todayNorm = new Date(); todayNorm.setHours(0,0,0,0);
+  const wvDays = CANONICAL_DAYS.map(day => {
+    const date = addDays(weekStart, DAY_WEEK_OFFSET[day]);
+    const dateISO = isoDate(date);
+    const slots = getSlotsForDate(venue, day, dateISO);
+    const dn = new Date(date); dn.setHours(0,0,0,0);
+    return { day, date, dateISO, slots, isPast: dn < todayNorm, isToday: dn.getTime() === todayNorm.getTime() };
+  });
+  const wvPastDays     = wvDays.filter(d => d.isPast);
+  const wvUpcomingDays = wvDays.filter(d => !d.isPast && (d.isToday || d.slots.length > 0));
+  const wvPastHasSlots = wvPastDays.some(d => d.slots.length > 0);
+  const wvPastLabel    = wvPastDays.length === 0 ? ''
+    : wvPastDays.length === 1
+      ? `${wvPastDays[0].day.slice(0,3)} ${fmtShort(wvPastDays[0].date)}`
+      : `${wvPastDays[0].day.slice(0,3)} ${fmtShort(wvPastDays[0].date)} — ${wvPastDays[wvPastDays.length-1].day.slice(0,3)} ${fmtShort(wvPastDays[wvPastDays.length-1].date)}`;
+  const wvPastSuffix   = `${wvPastDays.length} day${wvPastDays.length !== 1 ? 's' : ''} passed`;
+
+  // Month open slot count
+  const monthSlotCount = (() => {
+    const start = new Date(currentYear, currentMonth, 1);
+    const end   = new Date(currentYear, currentMonth + 1, 0);
+    const counts: Record<string, number> = {};
+    const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const cur = new Date(start);
+    while (cur <= end) { const d = DOW[cur.getDay()]; counts[d] = (counts[d]||0)+1; cur.setDate(cur.getDate()+1); }
+    return Object.entries(counts).reduce((acc, [day, occ]) => {
+      const open = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open').length;
+      return acc + open * occ;
+    }, 0);
+  })();
 
   if (isWeb) {
     // ── Web: week/month grid ──
@@ -653,41 +686,78 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={[s.ttRangeLabel, { color: colors.black }]}>{rangeLabel}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[s.ttRangeLabel, { color: colors.black }]}>{rangeLabel}</Text>
+            {viewMode === 'month' && monthSlotCount > 0 && (
+              <Text style={s.ttSlotCount}>{monthSlotCount} open slot{monthSlotCount !== 1 ? 's' : ''}</Text>
+            )}
+          </View>
           <View style={s.ttNavBtns}>
             <TouchableOpacity style={[s.ttNavBtn, { borderColor: colors.border }]} onPress={handlePrev}>
-              <Text style={[s.ttNavBtnText, { color: colors.black }]}>← Prev</Text>
+              <Text style={[s.ttNavBtnText, { color: colors.black }]}>←</Text>
             </TouchableOpacity>
+            {viewMode === 'month' && (
+              <TouchableOpacity
+                style={[s.ttNavBtn, { borderColor: colors.border }]}
+                onPress={() => { setCurrentMonth(today.getMonth()); setCurrentYear(today.getFullYear()); }}
+              >
+                <Text style={[s.ttNavBtnText, { color: colors.black }]}>Today</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={[s.ttNavBtn, { borderColor: colors.border }]} onPress={handleNext}>
-              <Text style={[s.ttNavBtnText, { color: colors.black }]}>Next →</Text>
+              <Text style={[s.ttNavBtnText, { color: colors.black }]}>→</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {viewMode === 'week' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={s.weekGrid}>
-              {CANONICAL_DAYS.map(day => {
-                const date   = addDays(weekStart, DAY_WEEK_OFFSET[day]);
-                const past   = isDatePast(date);
-                const dateISO = isoDate(date);
-                const slots  = getSlotsForDate(venue, day, dateISO);
-                return (
-                  <View key={day} style={[s.dayCol, { borderColor: colors.border }, past && s.dayColPast]}>
-                    <Text style={[s.dayColHeader, { color: colors.black }]}>{day.slice(0,3).toUpperCase()}</Text>
-                    <Text style={[s.dayColDate, { color: colors.grey }]}>{fmtShort(date)}</Text>
-                    {past && <Text style={[s.dayColPassed, { color: colors.grey }]}>Passed</Text>}
-                    {slots.length === 0
-                      ? <Text style={[s.dayColEmpty, { color: colors.greyLight }]}>No gigs scheduled</Text>
-                      : slots.map((slot, i) => (
-                          <WebSlotCard key={slot.id||i} slot={slot} day={day} dateISO={dateISO} past={past} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
-                        ))
-                    }
-                  </View>
-                );
-              })}
+        {/* Legend */}
+        <View style={s.ttLegend}>
+          <View style={s.ttLegendItem}>
+            <View style={[s.ttLegendDot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.orange }]} />
+            <Text style={[s.ttLegendText, { color: colors.grey }]}>Open — enquire</Text>
+          </View>
+          <View style={s.ttLegendItem}>
+            <View style={[s.ttLegendDot, { backgroundColor: 'rgba(250,131,12,0.18)' }]} />
+            <Text style={[s.ttLegendText, { color: colors.grey }]}>Enquired</Text>
+          </View>
+          <View style={s.ttLegendItem}>
+            <View style={[s.ttLegendDot, { backgroundColor: '#e0e0e0' }]} />
+            <Text style={[s.ttLegendText, { color: colors.grey }]}>Booked</Text>
+          </View>
+          {userEnquiries.some(e => e.status === 'accepted') && (
+            <View style={s.ttLegendItem}>
+              <View style={[s.ttLegendDot, { backgroundColor: '#d4f0d4' }]} />
+              <Text style={[s.ttLegendText, { color: colors.grey }]}>Booked By Me</Text>
             </View>
-          </ScrollView>
+          )}
+        </View>
+
+        {viewMode === 'week' && (
+          <View style={s.wvContainer}>
+            {wvPastDays.length > 0 && (
+              <>
+                <View style={s.wvPastBar}>
+                  <Text style={[s.wvPastBarText, { color: colors.grey }]} numberOfLines={2}>
+                    {wvPastLabel} · {wvPastSuffix}{!wvPastHasSlots ? ', no gigs scheduled' : ''}
+                  </Text>
+                  {wvPastHasSlots && (
+                    <TouchableOpacity style={s.wvPastBarToggle} onPress={() => setShowPastDays(p => !p)}>
+                      <Text style={s.wvPastBarToggleText}>{showPastDays ? 'Hide days' : 'Show days'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {showPastDays && wvPastDays.map(({ day, date, dateISO, slots, isToday }) => (
+                  <WvDaySection key={day} day={day} date={date} dateISO={dateISO} slots={slots} isToday={isToday} isPast={true} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
+                ))}
+              </>
+            )}
+            {wvUpcomingDays.map(({ day, date, dateISO, slots, isToday }) => (
+              <WvDaySection key={day} day={day} date={date} dateISO={dateISO} slots={slots} isToday={isToday} isPast={false} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
+            ))}
+            {wvUpcomingDays.length === 0 && (
+              <Text style={[s.wvEmpty, { color: colors.grey }]}>No upcoming slots this week.</Text>
+            )}
+          </View>
         )}
 
         {viewMode === 'month' && (
@@ -730,7 +800,8 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
               const hasEnquired = userEnquiries.some(enq =>
                 enq.status !== 'declined' && enq.status !== 'cancelled' &&
                 enq.requestedSlot?.day === activeDay &&
-                enq.requestedSlot?.time === slot.time
+                enq.requestedSlot?.time === slot.time &&
+                (enq.requestedSlot?.date ? enq.requestedSlot.date === nativeDateISO : true)
               );
               return (
                 <NativeSlotCard
@@ -746,6 +817,120 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
             })
         }
       </View>
+    </View>
+  );
+}
+
+// ── Week view row components (web) ────────────────────────────────────
+
+function WvSlotRow({ slot, day, dateISO, isPast, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
+  slot: Slot; day: string; dateISO: string; isPast: boolean;
+  isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
+  onEnquire: (s: Slot, d: string, date?: string) => void;
+}) {
+  const { colors } = useTheme();
+
+  const matchesSlot = (enq: Enquiry) => {
+    const match = enq.requestedSlot?.day === day && enq.requestedSlot?.time === slot.time;
+    if (!match) return false;
+    if (enq.requestedSlot?.date && dateISO) return enq.requestedSlot.date === dateISO;
+    return true;
+  };
+  const hasEnquired  = slot.status === 'open' && userEnquiries.some(enq =>
+    enq.status !== 'declined' && enq.status !== 'cancelled' && matchesSlot(enq)
+  );
+  const isBookedByMe = slot.status === 'booked' && userEnquiries.some(enq =>
+    enq.status === 'accepted' && matchesSlot(enq)
+  );
+  const canEnquire   = !isPast && !hasEnquired && slot.status === 'open' && (isArtist || isLoggedIn);
+
+  let rowStyle: object[];
+  let timeColor: string;
+  let statusLabel: string;
+  let statusColor: string;
+
+  if (slot.status === 'booked') {
+    if (isBookedByMe) {
+      rowStyle = [wvs.row, wvs.rowBookedMine];
+      statusLabel = 'Booked By Me';
+      timeColor = '#16a34a'; statusColor = '#16a34a';
+    } else {
+      rowStyle = [wvs.row, wvs.rowBooked];
+      statusLabel = slot.bandName || 'Booked';
+      timeColor = '#999999'; statusColor = '#888888';
+    }
+  } else if (slot.status === 'pending') {
+    rowStyle = [wvs.row, wvs.rowPending];
+    statusLabel = slot.bandName ? `Pending — ${slot.bandName}` : 'Pending';
+    timeColor = '#f5a623'; statusColor = '#c48400';
+  } else if (hasEnquired) {
+    rowStyle = [wvs.row, wvs.rowEnquired];
+    statusLabel = 'Enquired — Awaiting venue';
+    timeColor = '#fa830c'; statusColor = '#c96200';
+  } else {
+    rowStyle = [wvs.row, wvs.rowOpen];
+    statusLabel = 'Open';
+    timeColor = '#fa830c'; statusColor = '#fa830c';
+  }
+
+  const meta = [slot.room, slot.capacity ? `Cap. ${slot.capacity}` : null].filter(Boolean).join(' · ');
+
+  return (
+    <View style={rowStyle}>
+      <View style={wvs.timeCell}>
+        <Text style={[wvs.time, { color: timeColor }]}>{slot.time}</Text>
+      </View>
+      <View style={[wvs.info, { borderLeftColor: colors.border }]}>
+        <Text style={[wvs.status, { color: statusColor }]}>{statusLabel}</Text>
+        {meta ? <Text style={wvs.meta}>{meta}</Text> : null}
+      </View>
+      {canEnquire && (
+        <View style={wvs.action}>
+          <TouchableOpacity style={wvs.enquireBtn} onPress={() => onEnquire(slot, day, dateISO)}>
+            <Text style={wvs.enquireBtnText}>Enquire</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function WvDaySection({ day, date, dateISO, slots, isToday, isPast, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
+  day: string; date: Date; dateISO: string; slots: Slot[];
+  isToday: boolean; isPast: boolean;
+  isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
+  onEnquire: (s: Slot, d: string, date?: string) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View pointerEvents={isPast ? 'none' : 'auto'} style={[wvs.daySection, { borderTopColor: colors.border }, isPast && wvs.daySectionPast]}>
+      <View style={wvs.dayHeader}>
+        <Text style={[wvs.dayName, { color: colors.black }]}>{day.slice(0,3).toUpperCase()}</Text>
+        <Text style={[wvs.dayDate, { color: colors.grey }]}>{fmtShort(date)}</Text>
+        {isToday && <View style={wvs.todayBadge}><Text style={wvs.todayBadgeText}>TODAY</Text></View>}
+        {slots.length > 0 && (
+          <>
+            <View style={{ flex: 1 }} />
+            <Text style={[wvs.slotCount, { color: colors.grey }]}>{slots.length} slot{slots.length !== 1 ? 's' : ''}</Text>
+          </>
+        )}
+      </View>
+      {slots.length === 0
+        ? <Text style={[wvs.dayEmpty, { color: colors.greyLight }]}>No gigs scheduled</Text>
+        : slots.map((slot, i) => (
+            <WvSlotRow
+              key={slot.id || i}
+              slot={slot}
+              day={day}
+              dateISO={dateISO}
+              isPast={isPast}
+              isArtist={isArtist}
+              isLoggedIn={isLoggedIn}
+              userEnquiries={userEnquiries}
+              onEnquire={onEnquire}
+            />
+          ))
+      }
     </View>
   );
 }
@@ -841,23 +1026,41 @@ function MonthGrid({ venue, month, year, isArtist, isLoggedIn, userEnquiries, on
         const dateISO = isoDate(date);
         const slots   = getSlotsForDate(venue, slotKey, dateISO);
         return (
-          <View key={`${date.getMonth()}-${date.getDate()}`} style={[mg.cell, { borderColor: colors.border }, isToday && mg.cellToday]}>
-            <Text style={[mg.dayNum, { color: colors.black }, isToday && mg.dayNumToday]}>{date.getDate()}</Text>
+          <View key={`${date.getMonth()}-${date.getDate()}`} style={[mg.cell, { borderColor: colors.border }]}>
+            {isToday
+              ? <View style={mg.todayCircle}><Text style={mg.todayCircleText}>{date.getDate()}</Text></View>
+              : <Text style={[mg.dayNum, { color: colors.black }]}>{date.getDate()}</Text>
+            }
             {slots.slice(0,3).map((slot,j) => {
               const hasEnq = slot.status === 'open' && userEnquiries.some(enq =>
                 enq.status !== 'declined' && enq.status !== 'cancelled' &&
                 enq.requestedSlot?.day === slotKey && enq.requestedSlot?.time === slot.time &&
                 (enq.requestedSlot?.date ? enq.requestedSlot.date === dateISO : true)
               );
+              const isBookedByMe = slot.status === 'booked' && userEnquiries.some(enq =>
+                enq.status === 'accepted' &&
+                enq.requestedSlot?.day === slotKey && enq.requestedSlot?.time === slot.time &&
+                (enq.requestedSlot?.date ? enq.requestedSlot.date === dateISO : true)
+              );
+              let pillStyle, textStyle;
+              if (slot.status === 'open') {
+                pillStyle = hasEnq ? mg.pillEnquired : mg.pillOpen;
+                textStyle = hasEnq ? mg.pillTextEnquired : mg.pillTextOpen;
+              } else if (isBookedByMe) {
+                pillStyle = mg.pillBookedMine; textStyle = mg.pillTextBookedMine;
+              } else {
+                pillStyle = mg.pillBooked; textStyle = mg.pillTextBooked;
+              }
               return (
                 <TouchableOpacity
                   key={slot.id||j}
-                  style={[mg.pill, slot.status === 'open' ? (hasEnq ? mg.pillEnquired : mg.pillOpen) : mg.pillBooked]}
+                  style={[mg.pill, pillStyle]}
                   onPress={slot.status === 'open' && !hasEnq && (isArtist||isLoggedIn) ? () => onEnquire(slot, slotKey, dateISO) : undefined}
                 >
-                  <Text style={mg.pillText} numberOfLines={1}>
+                  <Text style={textStyle} numberOfLines={1}>
                     {slot.status === 'open'
                       ? (hasEnq ? `Enquired — ${slot.time}` : `Open — ${slot.time}`)
+                      : isBookedByMe ? 'Booked By Me'
                       : (slot.bandName || (slot.status === 'pending' ? 'Pending' : 'Booked'))}
                   </Text>
                 </TouchableOpacity>
@@ -1330,14 +1533,20 @@ const s = StyleSheet.create({
   ttNavBtn:           { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   ttNavBtnText:       { fontSize: 13, color: '#333333' },
 
-  // Week grid (web)
-  weekGrid:           { flexDirection: 'row', gap: 1 },
-  dayCol:             { flex: 1, minWidth: 140, borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 8, padding: 10, gap: 8 },
-  dayColPast:         { opacity: 0.5 },
-  dayColHeader:       { fontSize: 11, fontWeight: '700', color: '#333333', letterSpacing: 0.5 },
-  dayColDate:         { fontSize: 12, color: '#888888' },
-  dayColPassed:       { fontSize: 11, color: '#888888', fontStyle: 'italic' },
-  dayColEmpty:        { fontSize: 12, color: '#aaaaaa', paddingVertical: 8 },
+  // Timetable controls extras
+  ttSlotCount:        { fontSize: 13, fontWeight: '500', color: '#888888' },
+  ttLegend:           { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 16, paddingVertical: 10, marginBottom: 4 },
+  ttLegendItem:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ttLegendDot:        { width: 12, height: 12, borderRadius: 3 },
+  ttLegendText:       { fontSize: 12, fontWeight: '500' },
+
+  // Week view row layout (web)
+  wvContainer:        { paddingTop: 4 },
+  wvPastBar:          { flexDirection: 'row', alignItems: 'center', padding: 11, backgroundColor: '#f8f8f8', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, marginBottom: 4, gap: 12 },
+  wvPastBarText:      { fontSize: 13, color: '#999999', fontStyle: 'italic', flex: 1 },
+  wvPastBarToggle:    { borderWidth: 1, borderColor: '#cccccc', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  wvPastBarToggleText:{ fontSize: 12, fontWeight: '600', color: '#666666' },
+  wvEmpty:            { paddingVertical: 48, textAlign: 'center', fontSize: 15 },
 });
 
 // Web slot card styles
@@ -1362,20 +1571,52 @@ const ws = StyleSheet.create({
   featuredText:     { fontSize: 10, fontWeight: '700', color: '#111111' },
 });
 
+// Week view row styles (web)
+const wvs = StyleSheet.create({
+  row:              { flexDirection: 'row', alignItems: 'stretch', borderRadius: 8, borderWidth: 1, borderColor: '#e8e8e8', backgroundColor: '#ffffff', minHeight: 52, marginBottom: 8, overflow: 'hidden' },
+  rowOpen:          { borderColor: Colors.orange, borderLeftWidth: 3 },
+  rowEnquired:      { backgroundColor: 'rgba(250,131,12,0.06)', borderColor: 'rgba(250,131,12,0.35)' },
+  rowBooked:        { backgroundColor: '#f6f6f6', borderColor: '#e0e0e0' },
+  rowBookedMine:    { backgroundColor: '#e8f8e8', borderColor: '#4ade80' },
+  rowPending:       { backgroundColor: 'rgba(245,166,35,0.07)', borderColor: 'rgba(245,166,35,0.4)' },
+  timeCell:         { width: 80, justifyContent: 'center', paddingHorizontal: 12 },
+  time:             { fontSize: 13, fontWeight: '600' },
+  info:             { flex: 1, justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 12, borderLeftWidth: 1, borderLeftColor: '#eeeeee', gap: 3 },
+  status:           { fontSize: 14, fontWeight: '600' },
+  meta:             { fontSize: 12, color: '#999999' },
+  action:           { justifyContent: 'center', paddingHorizontal: 12 },
+  enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
+  enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },
+  daySection:       { borderTopWidth: 1, borderTopColor: '#eeeeee', paddingTop: 16, paddingBottom: 4, marginBottom: 4 },
+  daySectionPast:   { opacity: 0.55 },
+  dayHeader:        { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  dayName:          { fontSize: 12, fontWeight: '800', letterSpacing: 1.2, minWidth: 28 },
+  dayDate:          { fontSize: 13, fontWeight: '500' },
+  todayBadge:       { backgroundColor: Colors.orange, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
+  todayBadgeText:   { fontSize: 10, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.6 },
+  slotCount:        { fontSize: 12 },
+  dayEmpty:         { fontSize: 13, paddingVertical: 6 },
+});
+
 // Month grid styles — 7 equal columns via flexBasis
 const CELL_W = '14.28%';
 const mg = StyleSheet.create({
-  wrap:         { flexDirection: 'row', flexWrap: 'wrap' },
-  dow:          { width: CELL_W, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#888888', paddingVertical: 6 },
-  cell:         { width: CELL_W, borderWidth: 0.5, borderColor: '#eeeeee', minHeight: 80, padding: 4 },
-  cellToday:    { backgroundColor: '#fff8f0' },
-  dayNum:       { fontSize: 12, fontWeight: '600', color: '#333333', marginBottom: 2 },
-  dayNumToday:  { color: Colors.orange },
-  pill:         { borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2, marginBottom: 2 },
-  pillOpen:     { backgroundColor: '#fff3e0' },
-  pillBooked:   { backgroundColor: '#f0f0f0' },
-  pillEnquired: { backgroundColor: '#fffbf0', borderWidth: 1, borderColor: '#f5a623' },
-  pillText:     { fontSize: 10, color: '#333333' },
+  wrap:             { flexDirection: 'row', flexWrap: 'wrap' },
+  dow:              { width: CELL_W, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#888888', paddingVertical: 8 },
+  cell:             { width: CELL_W, borderWidth: 0.5, borderColor: '#eeeeee', minHeight: 90, padding: 5 },
+  dayNum:           { fontSize: 12, fontWeight: '600', color: '#333333', marginBottom: 4 },
+  todayCircle:      { width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  todayCircleText:  { fontSize: 12, fontWeight: '700', color: '#111111' },
+  pill:             { borderRadius: 5, paddingHorizontal: 5, paddingVertical: 3, marginBottom: 3 },
+  pillOpen:         { backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: Colors.orange },
+  pillBooked:       { backgroundColor: '#eeeeee' },
+  pillBookedMine:   { backgroundColor: '#d4f0d4' },
+  pillEnquired:     { backgroundColor: 'rgba(250,131,12,0.15)' },
+  pillText:         { fontSize: 10, color: '#333333' },
+  pillTextOpen:     { fontSize: 10, color: Colors.orange, fontWeight: '600' },
+  pillTextBooked:   { fontSize: 10, color: '#888888' },
+  pillTextBookedMine: { fontSize: 10, color: '#16a34a', fontWeight: '600' },
+  pillTextEnquired: { fontSize: 10, color: Colors.orange, fontWeight: '500' },
 });
 
 // Native slot card styles
