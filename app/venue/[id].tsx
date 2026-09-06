@@ -860,7 +860,7 @@ function WvSlotRow({ slot, day, dateISO, isPast, isArtist, isLoggedIn, userEnqui
   const isBookedByMe = slot.status === 'booked' && userEnquiries.some(enq =>
     enq.status === 'accepted' && matchesSlot(enq)
   );
-  const canEnquire   = !isPast && !hasEnquired && slot.status === 'open' && (isArtist || isLoggedIn);
+  const canEnquire   = !isPast && !hasEnquired && slot.status === 'open' && isArtist;
 
   let rowStyle: object[];
   let timeColor: string;
@@ -1004,7 +1004,7 @@ function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnqui
     );
   }
   // open
-  const canEnquire = !past && (isArtist || isLoggedIn);
+  const canEnquire = !past && isArtist;
   return (
     <TouchableOpacity
       style={[ws.card, ws.cardOpen, { borderColor: colors.border, backgroundColor: colors.bgFaint }, canEnquire && ws.cardOpenClickable]}
@@ -1073,7 +1073,7 @@ function MonthGrid({ venue, month, year, isArtist, isLoggedIn, userEnquiries, on
                 <TouchableOpacity
                   key={slot.id||j}
                   style={[mg.pill, pillStyle]}
-                  onPress={slot.status === 'open' && !hasEnq && (isArtist||isLoggedIn) ? () => onEnquire(slot, slotKey, dateISO) : undefined}
+                  onPress={slot.status === 'open' && !hasEnq && isArtist ? () => onEnquire(slot, slotKey, dateISO) : undefined}
                 >
                   <Text style={textStyle} numberOfLines={1}>
                     {slot.status === 'open'
