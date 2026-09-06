@@ -56,6 +56,13 @@ export default function EnquireScreen() {
   const [submitted, setSubmitted]   = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
+  // Redirect non-artist accounts — venues should never be able to enquire
+  useEffect(() => {
+    if (profile && profile.type !== 'artist') {
+      router.replace(`/venue/${params.venueId}` as any);
+    }
+  }, [profile?.type]);
+
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {

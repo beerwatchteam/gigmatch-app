@@ -363,7 +363,11 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               <TouchableOpacity style={[s.enquireHeaderBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => router.push('/login')}>
                 <Text style={s.enquireHeaderBtnText}>Log in to enquire</Text>
               </TouchableOpacity>
-            ) : null}
+            ) : (
+              <TouchableOpacity style={[s.viewTimetableBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => setActiveTab('timetable')}>
+                <Text style={s.viewTimetableBtnText}>View Timetable</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabBarContent}>
             {([
@@ -1472,6 +1476,8 @@ const s = StyleSheet.create({
   logoutBtnText:      { fontSize: 13, fontWeight: '600', color: Colors.grey },
   enquireHeaderBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
   enquireHeaderBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
+  viewTimetableBtn:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
+  viewTimetableBtnText: { fontSize: 13, fontWeight: '600', color: Colors.orange },
   sidebarEnquireBtn:     { backgroundColor: Colors.orange, borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12 },
   sidebarEnquireBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
 
