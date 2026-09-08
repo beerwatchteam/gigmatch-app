@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Platform,
+  TextInput, ActivityIndicator, Platform, Image,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,18 +15,24 @@ import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
 
-const SET_LENGTHS  = ['30 min', '45 min', '60 min', '90 min'];
-const SLOT_PREFS   = ['Headline', 'Support Act', 'Either'];
+const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
+const SLOT_PREFS: { value: string; label: string }[] = [
+  { value: 'Headline',   label: 'Headline' },
+  { value: 'Support Act', label: 'Support'  },
+  { value: 'Either',     label: 'Either'   },
+];
 
-type SectionKey = 'about' | 'music' | 'gigHistory' | 'upcomingGigs' | 'socials' | 'techRider' | 'photos';
+type SectionKey = 'about' | 'music' | 'gigHistory' | 'upcomingGigs' | 'socials' | 'techRider' | 'photos' | 'contact';
+
 const SECTIONS: { key: SectionKey; label: string }[] = [
-  { key: 'about',        label: 'About'           },
-  { key: 'music',        label: 'Music'            },
-  { key: 'gigHistory',   label: 'Gig History'      },
-  { key: 'upcomingGigs', label: 'Upcoming Gigs'    },
-  { key: 'socials',      label: 'Socials'          },
-  { key: 'techRider',    label: 'Tech Rider'       },
-  { key: 'photos',       label: 'Photos & Videos'  },
+  { key: 'about',        label: 'About'          },
+  { key: 'music',        label: 'Music'           },
+  { key: 'gigHistory',   label: 'Gig history'     },
+  { key: 'upcomingGigs', label: 'Upcoming gigs'   },
+  { key: 'socials',      label: 'Socials'         },
+  { key: 'techRider',    label: 'Tech rider'      },
+  { key: 'photos',       label: 'Photos & videos' },
+  { key: 'contact',      label: 'Contact'         },
 ];
 
 function truncate(str: string | undefined, n: number): string {
@@ -41,22 +47,26 @@ export default function EnquireScreen() {
   const params = useLocalSearchParams<{
     venueId: string; venueName: string;
     day: string; date?: string; time: string;
-    room?: string; slotType: string;
+    room?: string; slotType?: string; duration?: string; capacity?: string;
   }>();
 
-  const [band, setBand]               = useState<Record<string, any>>({});
-  const [setLength, setSetLength]     = useState('45 min');
-  const [slotPref, setSlotPref]       = useState('Either');
-  const [additionalInfo, setAdditionalInfo] = useState('');
-  const [sections, setSections] = useState<Record<SectionKey, boolean>>({
+  // Locked by venue
+  const lockedDuration = params.duration || null;
+  const lockedSlotType = (params.slotType && params.slotType !== 'Either') ? params.slotType : null;
+
+  const [band, setBand]           = useState<Record<string, any>>({});
+  const [setLength, setSetLength] = useState(lockedDuration || '45 min');
+  const [slotPref,  setSlotPref]  = useState(lockedSlotType  || 'Either');
+  const [note, setNote]           = useState('');
+  const [sections, setSections]   = useState<Record<SectionKey, boolean>>({
     about: true, music: true, gigHistory: true, upcomingGigs: true,
-    socials: true, techRider: true, photos: true,
+    socials: true, techRider: true, photos: true, contact: true,
   });
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted]   = useState(false);
+  const [submitted,  setSubmitted]  = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
-  // Redirect non-artist accounts — venues should never be able to enquire
+  // Redirect non-artist accounts
   useEffect(() => {
     if (profile && profile.type !== 'artist') {
       router.replace(`/venue/${params.venueId}` as any);
@@ -74,37 +84,43 @@ export default function EnquireScreen() {
     setSections(prev => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function selectAll() {
+    setSections({ about: true, music: true, gigHistory: true, upcomingGigs: true,
+                  socials: true, techRider: true, photos: true, contact: true });
+  }
+
   function sectionPreview(key: SectionKey): string {
     switch (key) {
-      case 'about':       return truncate(band.about, 80);
-      case 'music':       return (band.songs || []).map((s: any) => s.title).filter(Boolean).join(' · ') || '—';
-      case 'gigHistory':  return (band.gigHistory || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || '—';
-      case 'upcomingGigs':return (band.upcomingGigs || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || '—';
+      case 'about':       return truncate(band.about, 60);
+      case 'music':       return (band.songs || []).map((s: any) => s.title).filter(Boolean).join(' · ') || 'None listed';
+      case 'gigHistory':  return (band.gigHistory || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || 'None listed';
+      case 'upcomingGigs':return (band.upcomingGigs || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || 'None listed';
       case 'socials': {
         const parts: string[] = [];
-        if (band.email)      parts.push('Email');
-        if (band.phone)      parts.push('Phone');
         if (band.instagram)  parts.push('Instagram');
         if (band.tiktok)     parts.push('TikTok');
         if (band.spotify)    parts.push('Spotify');
         if (band.appleMusic) parts.push('Apple Music');
         (band.customLinks || []).filter((l: any) => l.label && l.url).forEach((l: any) => parts.push(l.label));
-        return parts.join(', ') || '—';
+        return parts.join(', ') || 'None listed';
       }
       case 'techRider': {
-        const parts: string[] = [];
-        if (band.stagePlot)                 parts.push(`Stage plot: ${band.stagePlot}`);
-        if (band.inputList)                 parts.push(`Input list: ${band.inputList}`);
-        if (band.techRider?.monitoring)     parts.push(band.techRider.monitoring);
-        if (band.techRider?.backlineNeeded) parts.push(band.techRider.backlineNeeded);
-        return truncate(parts.join(' · '), 80) || '—';
+        const tr = band.techRider || {};
+        const pages = [band.stagePlot, band.inputList, tr.monitoring, tr.backlineNeeded].filter(Boolean);
+        if (pages.length === 0) return 'None listed';
+        return `${pages.length} item${pages.length > 1 ? 's' : ''} included`;
       }
-      case 'photos': return band.photoUrl ? 'Profile photo included' : 'No photos uploaded yet';
+      case 'photos':  return band.photoUrl ? 'Profile photo included' : 'No photos uploaded yet';
+      case 'contact': {
+        const parts: string[] = [];
+        if (band.email) parts.push('Email');
+        if (band.phone) parts.push('Mobile');
+        return parts.join(' · ') || 'None listed';
+      }
       default: return '';
     }
   }
 
-  // Firestore rejects undefined values — strip them before saving
   function clean(obj: Record<string, any>): Record<string, any> {
     return Object.fromEntries(
       Object.entries(obj)
@@ -125,13 +141,13 @@ export default function EnquireScreen() {
         createdBy:   user.uid,
         status:      'pending',
         submittedAt: new Date().toISOString(),
-        additionalInfo,
+        additionalInfo: note,
         requestedSlot: {
-          day:      params.day,
-          date:     params.date || null,
-          time:     params.time,
-          room:     params.room ?? null,
-          slotType: slotPref,
+          day:       params.day,
+          date:      params.date || null,
+          time:      params.time,
+          room:      params.room ?? null,
+          slotType:  slotPref,
           setLength,
         },
         sharedSections: sections,
@@ -139,14 +155,13 @@ export default function EnquireScreen() {
         location:   band.location,
         artistType: band.artistType,
         photoUrl:   sections.photos ? band.photoUrl : undefined,
-        ...(sections.about       && { about:       band.about }),
-        ...(sections.music       && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
-        ...(sections.gigHistory  && { gigHistory:   band.gigHistory }),
-        ...(sections.upcomingGigs&& { upcomingGigs: band.upcomingGigs }),
-        ...(sections.socials     && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
-        ...(sections.techRider   && { techRider: band.techRider, stagePlot: band.stagePlot, inputList: band.inputList }),
-        email: band.email,
-        phone: band.phone,
+        ...(sections.about        && { about:       band.about }),
+        ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
+        ...(sections.gigHistory   && { gigHistory:   band.gigHistory }),
+        ...(sections.upcomingGigs && { upcomingGigs: band.upcomingGigs }),
+        ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
+        ...(sections.techRider    && { techRider: band.techRider, stagePlot: band.stagePlot, inputList: band.inputList }),
+        ...(sections.contact      && { email: band.email, phone: band.phone }),
       }) as any);
       setSubmitted(true);
     } catch (e: any) {
@@ -157,6 +172,16 @@ export default function EnquireScreen() {
   }
 
   const genres: string[] = band.genre ?? [];
+  const selectedCount = Object.values(sections).filter(Boolean).length;
+
+  // Slot detail line
+  const slotParts = [
+    params.day,
+    params.date,
+    params.time,
+    params.room,
+    params.capacity ? `${params.capacity} cap` : null,
+  ].filter(Boolean);
 
   // ── Success ────────────────────────────────────────────────────────────────
   if (submitted) {
@@ -186,171 +211,187 @@ export default function EnquireScreen() {
     );
   }
 
-  // ── Form ───────────────────────────────────────────────────────────────────
+  // ── Form content ───────────────────────────────────────────────────────────
   const formContent = (
-    <ScrollView
-      contentContainerStyle={[s.scroll, isWeb && s.scrollWeb]}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Header */}
-      <View style={s.formHeader}>
-        <Text style={[s.title, { color: colors.black }]}>Review your enquiry</Text>
-        {isWeb ? (
-          <TouchableOpacity onPress={() => router.back()} style={s.closeBtn}>
-            <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
-      {/* Slot summary */}
-      <View style={[s.slotCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-        <Text style={[s.slotVenue, { color: colors.black }]}>{params.venueName}</Text>
-        <Text style={s.slotDetail}>
-          {params.day}{params.date ? ` · ${params.date}` : ''} · {params.time}
-          {params.room ? ` · ${params.room}` : ''}
-        </Text>
-        {params.slotType ? <Text style={s.slotDetail}>{params.slotType}</Text> : null}
-      </View>
-
-      {/* Set length + Slot preference — side by side */}
-      <View style={s.fieldRow}>
-        <View style={s.fieldCol}>
-          <Text style={[s.fieldLabel, { color: colors.black }]}>Set length</Text>
-          <View style={s.pillGroup}>
-            {SET_LENGTHS.map(l => (
-              <TouchableOpacity
-                key={l}
-                style={[s.pill, { borderColor: colors.border }, setLength === l && s.pillActive]}
-                onPress={() => setSetLength(l)}
-              >
-                <Text style={[s.pillText, { color: colors.grey }, setLength === l && s.pillTextActive]}>{l}</Text>
-              </TouchableOpacity>
-            ))}
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={[s.scroll, isWeb && s.scrollWeb]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── Header ────────────────────────────────────────────── */}
+        <View style={s.formHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.enquiryLabel}>ENQUIRY</Text>
+            <Text style={[s.venueName, { color: colors.black }]}>{params.venueName}</Text>
+            <Text style={s.slotDetail}>{slotParts.join(' · ')}</Text>
           </View>
-        </View>
-        <View style={s.fieldCol}>
-          <Text style={[s.fieldLabel, { color: colors.black }]}>Slot preference</Text>
-          <View style={s.pillGroup}>
-            {SLOT_PREFS.map(p => (
-              <TouchableOpacity
-                key={p}
-                style={[s.pill, { borderColor: colors.border }, slotPref === p && s.pillActive]}
-                onPress={() => setSlotPref(p)}
-              >
-                <Text style={[s.pillText, { color: colors.grey }, slotPref === p && s.pillTextActive]}>{p}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* Additional info */}
-      <View style={s.fieldBlock}>
-        <Text style={[s.fieldLabel, { color: colors.black }]}>Additional information</Text>
-        <TextInput
-          style={[s.textarea, { backgroundColor: colors.bg, color: colors.black, borderColor: colors.border }]}
-          placeholder="Optional — anything you'd like the venue to know (e.g. draw size, PA requirements, past experience at similar venues)"
-          placeholderTextColor={colors.greyLight}
-          multiline
-          numberOfLines={3}
-          value={additionalInfo}
-          onChangeText={setAdditionalInfo}
-          textAlignVertical="top"
-        />
-      </View>
-
-      {/* What the venue will see */}
-      <View style={[s.previewCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-        <Text style={[s.previewTitle, { color: colors.black }]}>WHAT THE VENUE WILL SEE</Text>
-
-        {/* Always-shown identity */}
-        <View style={s.identityBlock}>
-          <View style={s.identityRow}>
-            <Text style={[s.bandName, { color: colors.black }]}>
-              {band.name || profile?.displayName || 'Your Band'}
-            </Text>
-            {band.artistType ? (
-              <View style={s.typePill}>
-                <Text style={s.typePillText}>{band.artistType}</Text>
-              </View>
-            ) : null}
-          </View>
-          {genres.length > 0 && (
-            <View style={s.genreRow}>
-              {genres.map(g => (
-                <View key={g} style={s.genrePill}>
-                  <Text style={s.genreText}>{g}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          {band.location ? (
-            <Text style={[s.locationText, { color: colors.grey }]}>📍 {band.location}</Text>
+          {isWeb ? (
+            <TouchableOpacity onPress={() => router.back()} style={s.closeBtn}>
+              <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
+            </TouchableOpacity>
           ) : null}
         </View>
 
-        {/* Section toggles */}
-        <View style={[s.sectionList, { borderTopColor: colors.border }]}>
-          {SECTIONS.map((sec, idx) => {
-            const included = sections[sec.key];
-            const preview  = sectionPreview(sec.key);
-            const isLast   = idx === SECTIONS.length - 1;
-            return (
-              <View
-                key={sec.key}
-                style={[s.sectionRow, { borderBottomColor: colors.border }, isLast && s.sectionRowLast]}
-              >
-                <View style={s.sectionLeft}>
-                  <Text style={[
-                    s.sectionLabel,
-                    { color: included ? colors.black : colors.greyLight },
-                    !included && s.sectionLabelHidden,
-                  ]}>
-                    {sec.label}
-                  </Text>
-                  {included && preview ? (
-                    <Text style={[s.sectionPreview, { color: colors.grey }]} numberOfLines={1}>
-                      {preview}
-                    </Text>
-                  ) : null}
+        {/* ── Band row ──────────────────────────────────────────── */}
+        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          {band.photoUrl ? (
+            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
+          ) : (
+            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
+              <Text style={s.bandPhotoLabel}>photo</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
+                {band.name || profile?.displayName || 'Your Band'}
+              </Text>
+              {band.artistType ? (
+                <View style={s.typeBadge}>
+                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
                 </View>
-                <TouchableOpacity onPress={() => toggleSection(sec.key)} style={[s.toggle, included && s.toggleOn]} activeOpacity={0.8}>
-                  <View style={[s.toggleThumb, included && s.toggleThumbOn]} />
+              ) : null}
+            </View>
+            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
+              {[
+                genres.slice(0, 3).join(' · '),
+                band.location,
+                band.drawSize ? `${band.drawSize} draw` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Set length ────────────────────────────────────────── */}
+        <View style={s.fieldBlock}>
+          <Text style={[s.fieldLabel, { color: colors.black }]}>Set length</Text>
+          {lockedDuration ? (
+            <View style={s.lockedRow}>
+              <Text style={[s.lockedValue, { color: colors.black }]}>{lockedDuration}</Text>
+              <Text style={s.lockedHint}>Set by venue</Text>
+            </View>
+          ) : (
+            <View style={s.pillGroup}>
+              {SET_LENGTHS.map(l => (
+                <TouchableOpacity
+                  key={l}
+                  style={[s.pill, { borderColor: colors.border }, setLength === l && s.pillActive]}
+                  onPress={() => setSetLength(l)}
+                >
+                  <Text style={[s.pillText, { color: colors.grey }, setLength === l && s.pillTextActive]}>{l}</Text>
                 </TouchableOpacity>
-              </View>
-            );
-          })}
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ── Slot preference ───────────────────────────────────── */}
+        <View style={s.fieldBlock}>
+          <Text style={[s.fieldLabel, { color: colors.black }]}>Slot preference</Text>
+          {lockedSlotType ? (
+            <View style={s.lockedRow}>
+              <Text style={[s.lockedValue, { color: colors.black }]}>{lockedSlotType}</Text>
+              <Text style={s.lockedHint}>Set by venue</Text>
+            </View>
+          ) : (
+            <View style={s.pillGroup}>
+              {SLOT_PREFS.map(p => (
+                <TouchableOpacity
+                  key={p.value}
+                  style={[s.pill, { borderColor: colors.border }, slotPref === p.value && s.pillActive]}
+                  onPress={() => setSlotPref(p.value)}
+                >
+                  <Text style={[s.pillText, { color: colors.grey }, slotPref === p.value && s.pillTextActive]}>{p.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ── Note to the venue ─────────────────────────────────── */}
+        <View style={s.fieldBlock}>
+          <View style={s.noteLabelRow}>
+            <Text style={[s.fieldLabel, { color: colors.black }]}>Note to the venue</Text>
+            <Text style={s.optionalLabel}>Optional</Text>
+          </View>
+          <TextInput
+            style={[s.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border }]}
+            placeholder="Draw size, PA requirements, similar rooms you've played…"
+            placeholderTextColor={colors.greyLight}
+            multiline
+            numberOfLines={3}
+            value={note}
+            onChangeText={setNote}
+            textAlignVertical="top"
+          />
+        </View>
+
+        {/* ── Profile sections shared ───────────────────────────── */}
+        <View style={s.sectionsBlock}>
+          <View style={s.sectionsHeader}>
+            <Text style={[s.sectionsTitle, { color: colors.grey }]}>PROFILE SECTIONS SHARED</Text>
+            <TouchableOpacity onPress={selectAll}>
+              <Text style={s.selectAll}>Select all</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={s.checkGrid}>
+            {SECTIONS.map(sec => {
+              const checked = sections[sec.key];
+              const preview = sectionPreview(sec.key);
+              return (
+                <TouchableOpacity
+                  key={sec.key}
+                  style={[s.checkCell, { borderColor: colors.border, backgroundColor: checked ? Colors.orange + '0d' : colors.bg }]}
+                  onPress={() => toggleSection(sec.key)}
+                  activeOpacity={0.75}
+                >
+                  <View style={[s.checkbox, checked && s.checkboxOn]}>
+                    {checked ? <Text style={s.checkMark}>✓</Text> : null}
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[s.checkLabel, { color: colors.black }]}>{sec.label}</Text>
+                    {preview ? (
+                      <Text style={[s.checkPreview, { color: colors.grey }]} numberOfLines={1}>{preview}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* ── Error ─────────────────────────────────────────────── */}
+        {error ? <Text style={s.errorText}>{error}</Text> : null}
+
+        <View style={{ height: 16 }} />
+      </ScrollView>
+
+      {/* ── Footer bar ────────────────────────────────────────────── */}
+      <View style={[s.footer, { borderTopColor: colors.border, backgroundColor: colors.bg }]}>
+        <Text style={[s.footerSummary, { color: colors.grey }]} numberOfLines={1}>
+          {setLength} · {SLOT_PREFS.find(p => p.value === slotPref)?.label ?? slotPref} · {selectedCount} of {SECTIONS.length} sections shared
+        </Text>
+        <View style={s.footerActions}>
+          <TouchableOpacity
+            style={[s.cancelBtn, { borderColor: colors.border }]}
+            onPress={() => router.back()}
+          >
+            <Text style={[s.cancelBtnText, { color: colors.black }]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.sendBtn, submitting && { opacity: 0.6 }]}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            {submitting
+              ? <ActivityIndicator color="#111111" size="small" />
+              : <Text style={s.sendBtnText}>Send enquiry</Text>
+            }
+          </TouchableOpacity>
         </View>
       </View>
-
-      {/* Error */}
-      {error ? (
-        <Text style={s.errorText}>{error}</Text>
-      ) : null}
-
-      {/* Actions */}
-      <View style={s.actions}>
-        <TouchableOpacity
-          style={[s.cancelBtn, { borderColor: colors.border }, isWeb && s.cancelBtnWeb]}
-          onPress={() => router.back()}
-        >
-          <Text style={[s.cancelBtnText, { color: colors.black }]}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[s.sendBtn, s.sendBtnFlex, submitting && { opacity: 0.6 }]}
-          onPress={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting
-            ? <ActivityIndicator color="#111111" size="small" />
-            : <Text style={s.sendBtnText}>Send Enquiry</Text>
-          }
-        </TouchableOpacity>
-      </View>
-
-      <View style={{ height: 32 }} />
-    </ScrollView>
+    </View>
   );
 
   if (isWeb) {
@@ -366,7 +407,6 @@ export default function EnquireScreen() {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
-      {/* Native header */}
       <View style={[s.nativeHeader, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
           <Text style={s.backText}>← Back</Text>
@@ -382,7 +422,7 @@ export default function EnquireScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1 },
 
-  // ── Web overlay ───────────────────────────────────────────────────────────
+  // ── Web overlay ──────────────────────────────────────────────────────────
   webOverlayFull: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -399,10 +439,11 @@ const s = StyleSheet.create({
   card: {
     width: '100%',
     borderRadius: 16,
+    overflow: 'hidden' as any,
   },
   cardWeb: {
-    maxWidth: 620,
-    maxHeight: '90%' as any,
+    maxWidth: 520,
+    maxHeight: '92%' as any,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.1)',
     shadowColor: '#000',
@@ -411,19 +452,9 @@ const s = StyleSheet.create({
     shadowRadius: 40,
   },
 
-  // ── Scroll content ────────────────────────────────────────────────────────
+  // ── Scroll ───────────────────────────────────────────────────────────────
   scroll:    { padding: 20, gap: 20 },
-  scrollWeb: { padding: 36 },
-
-  // ── Form header ───────────────────────────────────────────────────────────
-  formHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: { fontSize: 20, fontWeight: '700' },
-  closeBtn: { padding: 4, paddingHorizontal: 8 },
-  closeBtnText: { fontSize: 18 },
+  scrollWeb: { padding: 28, paddingBottom: 12 },
 
   // ── Native header ─────────────────────────────────────────────────────────
   nativeHeader: {
@@ -438,144 +469,163 @@ const s = StyleSheet.create({
   backText:    { fontSize: 15, color: Colors.orange, fontWeight: '600' },
   nativeTitle: { fontSize: 18, fontWeight: '700' },
 
-  // ── Slot card ─────────────────────────────────────────────────────────────
-  slotCard: {
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    gap: 4,
+  // ── Form header ───────────────────────────────────────────────────────────
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  slotVenue:  { fontSize: 15, fontWeight: '600' },
-  slotDetail: { fontSize: 13, color: Colors.orange },
+  enquiryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.orange,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  venueName:  { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  slotDetail: { fontSize: 13, color: Colors.grey, marginTop: 3 },
+  closeBtn:   { padding: 6, marginTop: -2 },
+  closeBtnText: { fontSize: 18, fontWeight: '400' },
 
-  // ── Field row (set length + slot pref side by side) ───────────────────────
-  fieldRow: {
-    flexDirection: isWeb ? 'row' : 'column',
-    gap: 16,
-  },
-  fieldCol:   { flex: 1, gap: 10 },
+  // ── Field blocks ─────────────────────────────────────────────────────────
   fieldBlock: { gap: 10 },
-  fieldLabel: { fontSize: 13, fontWeight: '500' },
-  pillGroup:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  fieldLabel: { fontSize: 14, fontWeight: '600' },
+  noteLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  optionalLabel: { fontSize: 13, color: Colors.grey },
+
+  // ── Pills ─────────────────────────────────────────────────────────────────
+  pillGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   pill: {
+    flex: 1,
+    minWidth: 70,
     borderRadius: 8,
-    borderWidth: 1,
+    borderWidth: 1.5,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 10,
+    alignItems: 'center',
   },
-  pillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '18' },
+  pillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '14' },
   pillText:       { fontSize: 13, fontWeight: '500' },
   pillTextActive: { color: Colors.orange, fontWeight: '700' },
+
+  // ── Locked field ──────────────────────────────────────────────────────────
+  lockedRow:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  lockedValue: { fontSize: 14, fontWeight: '600' },
+  lockedHint: { fontSize: 12, color: Colors.grey },
 
   // ── Textarea ──────────────────────────────────────────────────────────────
   textarea: {
     borderWidth: 1,
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     fontSize: 14,
     minHeight: 80,
     lineHeight: 20,
   },
 
-  // ── What the venue will see ───────────────────────────────────────────────
-  previewCard: {
-    borderRadius: 12,
-    padding: 20,
+  // ── Band row ──────────────────────────────────────────────────────────────
+  bandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     borderWidth: 1,
-    gap: 16,
+    borderRadius: 8,
+    padding: 8,
   },
-  previewTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.5,
+  bandPhoto: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
-
-  // Identity block
-  identityBlock: { gap: 6 },
-  identityRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  bandName:      { fontSize: 15, fontWeight: '700' },
-  typePill: {
-    backgroundColor: Colors.orange,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
+  bandPhotoPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  typePillText: { fontSize: 11, fontWeight: '600', color: '#111111' },
-  genreRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  genrePill: {
+  bandPhotoLabel: { fontSize: 8, color: '#999999' },
+  bandName: { fontSize: 13, fontWeight: '700' },
+  typeBadge: {
     borderWidth: 1,
-    borderColor: Colors.orange,
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    borderColor: '#cccccc',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
   },
-  genreText:    { fontSize: 12, color: Colors.orange, fontWeight: '500' },
-  locationText: { fontSize: 12 },
+  typeBadgeText: { fontSize: 9, fontWeight: '700', color: '#666666', letterSpacing: 0.5 },
+  bandMeta: { fontSize: 11 },
 
-  // Section list
-  sectionList:    { borderTopWidth: 1 },
-  sectionRow: {
+  // ── Profile sections ──────────────────────────────────────────────────────
+  sectionsBlock: { gap: 12 },
+  sectionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionsTitle:  { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  selectAll:      { fontSize: 13, fontWeight: '600', color: Colors.orange },
+
+  checkGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  checkCell: {
+    width: '48%' as any,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
   },
-  sectionRowLast: { borderBottomWidth: 0 },
-  sectionLeft:    { flex: 1, gap: 3, paddingRight: 12 },
-  sectionLabel:   { fontSize: 14, fontWeight: '500' },
-  sectionLabelHidden: { textDecorationLine: 'line-through' },
-  sectionPreview: { fontSize: 12, opacity: 0.55 },
-  toggle: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#dddddd',
-    padding: 2,
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: '#cccccc',
+    alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
     flexShrink: 0,
+    marginTop: 1,
   },
-  toggleOn:      { backgroundColor: Colors.orange },
-  toggleThumb: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#ffffff',
-    alignSelf: 'flex-start',
-  },
-  toggleThumbOn: { alignSelf: 'flex-end' },
+  checkboxOn: { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  checkMark:  { fontSize: 11, color: '#ffffff', fontWeight: '800', lineHeight: 14 },
+  checkLabel: { fontSize: 13, fontWeight: '600' },
+  checkPreview: { fontSize: 11, opacity: 0.7 },
 
   // ── Error ─────────────────────────────────────────────────────────────────
   errorText: { fontSize: 13, color: '#e94560', textAlign: 'center' },
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-  actions: {
+  // ── Footer ────────────────────────────────────────────────────────────────
+  footer: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: 1,
     gap: 12,
-    justifyContent: isWeb ? 'flex-end' : 'stretch',
+    flexShrink: 0,
   },
+  footerSummary: { fontSize: 12, flex: 1 },
+  footerActions: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
   cancelBtn: {
     borderWidth: 1,
     borderRadius: 8,
-    paddingVertical: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelBtnText: { fontSize: 13, fontWeight: '600' },
+  sendBtn: {
+    backgroundColor: '#111111',
+    borderRadius: 8,
+    paddingVertical: 9,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelBtnWeb: { alignSelf: 'flex-end' },
-  cancelBtnText: { fontSize: 14, fontWeight: '600' },
-  sendBtn: {
-    backgroundColor: Colors.orange,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 140,
-  },
-  sendBtnFlex: { flex: isWeb ? 0 : 1 },
-  sendBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+  sendBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 
   // ── Success ───────────────────────────────────────────────────────────────
   successWrap: {

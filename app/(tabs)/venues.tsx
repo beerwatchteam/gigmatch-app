@@ -846,7 +846,9 @@ export default function VenuesScreen() {
                       ...(slot.dateStr ? { date: slot.dateStr } : {}),
                       time:      slot.time,
                       ...(slot.room ? { room: slot.room } : {}),
-                      slotType:  slot.slotType ?? 'Open',
+                      slotType:  slot.slotType ?? 'Either',
+                      duration:  slot.duration || '',
+                      capacity:  item.capacity ? String(item.capacity) : '',
                     },
                   })}
                   activeOpacity={0.85}
@@ -1031,8 +1033,10 @@ export default function VenuesScreen() {
                           day: dayName,
                           date: selectedDate!,
                           time: slot.time ?? '',
-                          slotType: slot.slotType ?? 'Open',
+                          slotType: slot.slotType ?? 'Either',
                           ...(slot.room ? { room: slot.room } : {}),
+                          duration: slot.duration || '',
+                          capacity: item.capacity ? String(item.capacity) : '',
                         },
                       })}
                     >
@@ -1122,8 +1126,10 @@ export default function VenuesScreen() {
                 day: slot.day,
                 date: slot.dateISO,
                 time: slot.time,
-                slotType: slot.slotType ?? 'Open',
+                slotType: slot.slotType ?? 'Either',
                 ...(slot.room ? { room: slot.room } : {}),
+                duration: slot.duration || '',
+                capacity: slot.venue.capacity ? String(slot.venue.capacity) : '',
               },
             })}
             activeOpacity={0.85}
@@ -1213,15 +1219,25 @@ export default function VenuesScreen() {
             <View style={{ width: 340, zIndex: 200 } as any}>
               <View style={{ position: 'relative' as any, zIndex: 200 }}>
                 <View style={st.webSearchRow}>
-                  <TextInput
-                    style={st.webSearchInput}
-                    placeholder="Venue, suburb or postcode"
-                    placeholderTextColor="#999"
-                    value={search}
-                    onChangeText={handleSearchChange}
-                    onFocus={() => hasDropdown && setShowDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                  />
+                  <View style={{ flex: 1, position: 'relative' as any }}>
+                    <TextInput
+                      style={[st.webSearchInput, search ? { paddingRight: 36 } : null]}
+                      placeholder="Venue, suburb or postcode"
+                      placeholderTextColor="#999"
+                      value={search}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => hasDropdown && setShowDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    />
+                    {search ? (
+                      <TouchableOpacity
+                        style={{ position: 'absolute' as any, right: 10, top: 0, bottom: 0, justifyContent: 'center' }}
+                        onPress={clearSearch}
+                      >
+                        <Text style={{ fontSize: 14, color: '#999', fontWeight: '600' }}>✕</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
                     <Text style={st.webSearchBtnText}>Search</Text>
                   </TouchableOpacity>
@@ -1758,7 +1774,7 @@ const st = StyleSheet.create({
   webViewToggleBtnTextActive: { color: '#111111', fontWeight: '700' },
   // ── Calendar strip ────────────────────────────────────────────────
   calStripRow:         { flexDirection: 'row', gap: 2 },
-  calStripCell:        { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 100, backgroundColor: '#f0f0f0' },
+  calStripCell:        { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: '#f0f0f0' },
   calStripDayLetter:   { fontSize: 8, fontWeight: '600', color: '#111111' },
   calStripHeaderCell:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
   calStripDotOpen:     { backgroundColor: Colors.orange },

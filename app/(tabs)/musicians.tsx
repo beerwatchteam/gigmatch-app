@@ -505,15 +505,25 @@ export default function MusiciansScreen() {
             <View style={{ width: 340, zIndex: 200 } as any}>
               <View style={{ position: 'relative' as any, zIndex: 200 }}>
                 <View style={st.webSearchRow}>
-                  <TextInput
-                    style={st.webSearchInput}
-                    placeholder="Name or location"
-                    placeholderTextColor="#999"
-                    value={search}
-                    onChangeText={handleSearchChange}
-                    onFocus={() => hasDropdown && setShowDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                  />
+                  <View style={{ flex: 1, position: 'relative' as any }}>
+                    <TextInput
+                      style={[st.webSearchInput, search ? { paddingRight: 36 } : null]}
+                      placeholder="Name or location"
+                      placeholderTextColor="#999"
+                      value={search}
+                      onChangeText={handleSearchChange}
+                      onFocus={() => hasDropdown && setShowDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    />
+                    {search ? (
+                      <TouchableOpacity
+                        style={{ position: 'absolute' as any, right: 10, top: 0, bottom: 0, justifyContent: 'center' }}
+                        onPress={clearSearch}
+                      >
+                        <Text style={{ fontSize: 14, color: '#999', fontWeight: '600' }}>✕</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <TouchableOpacity style={st.webSearchBtn} onPress={() => setShowDropdown(false)}>
                     <Text style={st.webSearchBtnText}>Search</Text>
                   </TouchableOpacity>

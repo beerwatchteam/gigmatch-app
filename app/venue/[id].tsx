@@ -410,7 +410,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                   date:      dateISO || '',
                   time:      slot.time,
                   room:      slot.room || '',
-                  slotType:  slot.slotType || 'Any',
+                  slotType:  slot.slotType || 'Either',
+                  duration:  slot.duration || '',
+                  capacity:  venue.capacity ? String(venue.capacity) : '',
                 },
               });
             }}
