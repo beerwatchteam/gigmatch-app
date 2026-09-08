@@ -129,6 +129,83 @@ function getNextOpenSlotsDetailed(venue: Venue): SlotDetail[] {
   return upcoming;
 }
 
+function getOpenDatesNextThreeWeeks(venue: Venue): Set<string> {
+  const openDates = new Set<string>();
+  const slots = venue.slots;
+  if (!slots) return openDates;
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  for (let i = 0; i < 21; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const iso = toLocalStr(d);
+    const dayName = DAY_NAMES[d.getDay()];
+    const daySlots: any[] = slots[dayName] || [];
+    const hasOpen = daySlots.some(slot => {
+      if (slot.status !== 'open') return false;
+      if (slot.date) return slot.date === iso;
+      return true;
+    });
+    if (hasOpen) openDates.add(iso);
+  }
+  return openDates;
+}
+
+type CalSlot = {
+  dateISO: string;
+  time: string;
+  venue: Venue;
+  slotType?: string;
+  duration?: number;
+  day: string;
+  room?: string;
+  sortKey: number;
+};
+
+function parseTimeToMins(time: string): number {
+  const m = time.match(/(\d+):(\d+)\s*(am|pm)/i);
+  if (!m) return 0;
+  let h = parseInt(m[1]);
+  const min = parseInt(m[2]);
+  if (m[3].toLowerCase() === 'pm' && h !== 12) h += 12;
+  if (m[3].toLowerCase() === 'am' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function getCalendarSlots(venues: Venue[], maxDays: number): CalSlot[] {
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const result: CalSlot[] = [];
+  for (const venue of venues) {
+    if (!venue.slots) continue;
+    for (let i = 0; i < maxDays; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const iso = toLocalStr(d);
+      const dayName = DAY_NAMES[d.getDay()];
+      const daySlots: any[] = venue.slots[dayName] || [];
+      for (const slot of daySlots) {
+        if (slot.status !== 'open') continue;
+        if (slot.date && slot.date !== iso) continue;
+        result.push({
+          dateISO: iso,
+          time: slot.time || '',
+          venue,
+          slotType: slot.slotType,
+          duration: slot.duration,
+          day: dayName,
+          room: slot.room,
+          sortKey: d.getTime() + parseTimeToMins(slot.time || '') * 60000,
+        });
+      }
+    }
+  }
+  result.sort((a, b) => a.sortKey - b.sortKey);
+  return result;
+}
+
 function getNextOpenSlots(venue: Venue, count: number): string[] {
   const slots = venue.slots;
   if (!slots) return [];
@@ -345,7 +422,10 @@ export default function VenuesScreen() {
   const [locationCoords, setLocationCoords]   = useState<{ lat: number; lng: number } | null>(null);
   const [radius, setRadius]                   = useState<number | null>(null);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [webDropdown, setWebDropdown]         = useState<'date' | 'capacity' | 'genre' | 'fee' | null>(null);
+  const [webDropdown, setWebDropdown]         = useState<'date' | 'capacity' | 'genre' | null>(null);
+  const [webView, setWebView]                 = useState<'venue' | 'calendar'>('venue');
+  const [calFilter, setCalFilter]             = useState<'all' | 'weekends'>('all');
+  const [calendarDays, setCalendarDays]       = useState(21);
   const slideAnim   = useRef(new Animated.Value(-PANEL_W)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -798,18 +878,45 @@ export default function VenuesScreen() {
   }
 
   // ── Web venue row (desktop) ───────────────────────────────────────
+  const DOW_LABELS = ['M','T','W','T','F','S','S'];
+  const DAY_NAMES_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  function getSlotsForDate(venue: Venue, iso: string): any[] {
+    const slots = venue.slots;
+    if (!slots) return [];
+    const d = parseLocal(iso);
+    const dayName = DAY_NAMES_FULL[d.getDay()];
+    const daySlots: any[] = slots[dayName] || [];
+    return daySlots.filter(slot => {
+      if (slot.status !== 'open') return false;
+      if (slot.date) return slot.date === iso;
+      return true;
+    });
+  }
+
   function WebVenueRow({ item }: { item: Venue }) {
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const photo = item.photoUrl || item.photos?.[0];
     const venueGenres = (item.genre || item.genres || []).slice(0, 6);
-    const d0  = toLocalStr(new Date());
-    const d42 = (() => { const d = new Date(); d.setDate(d.getDate() + 42); return toLocalStr(d); })();
-    const allSlots   = getNextOpenSlotsDetailed(item);
-    const shownSlots = allSlots.slice(0, 2);
-    const totalSlots = countOpenSlotsForRange(item, d0, d42);
-    const extraCount = Math.max(0, totalSlots - 2);
-    const feeStr = item.feeMin != null && item.feeMax != null
-      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
-      : item.feeMin != null ? `from $${item.feeMin.toLocaleString()}` : null;
+
+    // Build week-aligned 21-day calendar (Mon → Sun × 3 weeks)
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const todayStr = toLocalStr(today);
+    const openDates = getOpenDatesNextThreeWeeks(item);
+    const daysFromMon = (today.getDay() + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(monday.getDate() - daysFromMon);
+    const allDays: Date[] = [];
+    for (let i = 0; i < 21; i++) {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + i);
+      allDays.push(d);
+    }
+
+    const openCount = openDates.size;
+    const nextSlot = getNextOpenSlotsDetailed(item)[0];
+    const selectedSlots = selectedDate ? getSlotsForDate(item, selectedDate) : [];
 
     return (
       <View style={st.webRow}>
@@ -836,57 +943,194 @@ export default function VenuesScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Col 2: CAPACITY */}
+        {/* Col 2: CAPACITY (MAX) */}
         <View style={st.webColCapacity}>
           <Text style={st.webColValue}>{item.capacity?.toLocaleString() ?? '—'}</Text>
         </View>
 
-        {/* Col 3: NEXT OPEN SLOTS */}
-        <View style={[st.webColSlots, { flex: 2.5 }]}>
-          {shownSlots.length === 0 ? (
-            <Text style={st.webSlotNone}>No open slots</Text>
-          ) : (
-            <>
-              {shownSlots.map((slot, i) => (
+        {/* Col 3: NEXT 3 WEEKS — calendar strip */}
+        <View style={st.webColCalendar}>
+          {/* Day-of-week header */}
+          <View style={st.calStripRow}>
+            {allDays.map((day, i) => {
+              const dowIdx = (day.getDay() + 6) % 7;
+              return (
+                <View key={i} style={st.calStripHeaderCell}>
+                  <Text style={st.calStripDayLetter}>{DOW_LABELS[dowIdx]}</Text>
+                </View>
+              );
+            })}
+          </View>
+          {/* Date circles */}
+          <View style={[st.calStripRow, { marginTop: 3 }]}>
+            {allDays.map((day, i) => {
+              const iso = toLocalStr(day);
+              const hasSlot = openDates.has(iso);
+              const isSelected = iso === selectedDate;
+              const isToday = iso === todayStr;
+              const isPast = day < today;
+              const cell = hasSlot ? (
                 <TouchableOpacity
                   key={i}
-                  style={[st.webSlotChip, i > 0 && { marginTop: 5 }]}
-                  onPress={() => router.push({
-                    pathname: '/enquire',
-                    params: {
-                      venueId: item.id, venueName: item.name, day: slot.day,
-                      ...(slot.dateStr ? { date: slot.dateStr } : {}),
-                      time: slot.time, slotType: slot.slotType ?? 'Open',
-                    },
-                  })}
+                  style={[
+                    st.calStripCell,
+                    st.calStripDotOpen,
+                    isSelected && st.calStripDotSelected,
+                    isSelected && ({ outline: '2px solid #111111', outlineOffset: 2 } as any),
+                  ]}
+                  onPress={() => setSelectedDate(isSelected ? null : iso)}
+                  activeOpacity={0.75}
                 >
-                  <Text style={st.webSlotChipText}>{slot.dateLabel} · {slot.time}</Text>
+                  <Text style={[st.calStripDate, st.calStripDateOpen]}>{day.getDate()}</Text>
                 </TouchableOpacity>
-              ))}
-              {extraCount > 0 && (
-                <TouchableOpacity
-                  style={{ marginTop: 5 }}
-                  onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
-                >
-                  <Text style={st.webSlotExtra}>+{extraCount} more</Text>
-                </TouchableOpacity>
-              )}
-            </>
+              ) : (
+                <View key={i} style={[
+                  st.calStripCell,
+                  isToday && st.calStripDotToday,
+                  isPast && st.calStripDotPast,
+                ]}>
+                  <Text style={[
+                    st.calStripDate,
+                    isPast && st.calStripDatePast,
+                  ]}>{day.getDate()}</Text>
+                </View>
+              );
+              return cell;
+            })}
+          </View>
+
+          {/* Detail / summary row */}
+          {selectedDate && selectedSlots.length > 0 ? (
+            <View style={st.calSlotDetail}>
+              {(() => {
+                const d = parseLocal(selectedDate);
+                const dayLabel = d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' }).replace(',','');
+                return selectedSlots.map((slot: any, idx: number) => {
+                  const parts: string[] = [];
+                  if (slot.time) parts.push(slot.time);
+                  if (slot.slotType) parts.push(slot.slotType);
+                  if (slot.duration) parts.push(`${slot.duration}min`);
+                  const slotFeeStr = slot.feeMin != null && slot.feeMax != null
+                    ? `$${slot.feeMin}–$${slot.feeMax}`
+                    : slot.feeMin != null ? `from $${slot.feeMin}` : null;
+                  const venueFeeStr = !slotFeeStr && item.feeMin != null && item.feeMax != null
+                    ? `$${item.feeMin}–$${item.feeMax}`
+                    : !slotFeeStr && item.feeMin != null ? `from $${item.feeMin}` : null;
+                  const feeStr = slotFeeStr || venueFeeStr;
+                  if (feeStr) parts.push(feeStr);
+                  const dayName = DAY_NAMES_FULL[parseLocal(selectedDate!).getDay()];
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      activeOpacity={0.7}
+                      onPress={() => router.push({
+                        pathname: '/enquire',
+                        params: {
+                          venueId: item.id,
+                          venueName: item.name,
+                          day: dayName,
+                          date: selectedDate!,
+                          time: slot.time ?? '',
+                          slotType: slot.slotType ?? 'Open',
+                          ...(slot.room ? { room: slot.room } : {}),
+                        },
+                      })}
+                    >
+                      <Text style={st.calSlotDetailText} numberOfLines={1}>
+                        {idx === 0 ? `${dayLabel} · ` : '+ '}{parts.join(' · ')}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                });
+              })()}
+            </View>
+          ) : (
+            <Text style={st.calStripSummary} numberOfLines={1}>
+              {openCount === 0
+                ? 'No open slots'
+                : `${openCount} open slot${openCount !== 1 ? 's' : ''}${nextSlot ? ` · Next: ${nextSlot.dateLabel}` : ''}`
+              }
+            </Text>
           )}
         </View>
 
-        {/* Col 4: TYPICAL FEE */}
-        <View style={st.webColFee}>
-          <Text style={st.webColValue}>{feeStr ?? '—'}</Text>
-        </View>
-
-        {/* Col 5: ACTION */}
+        {/* Col 4: ACTION */}
         <View style={st.webColAction}>
           <TouchableOpacity
             style={st.webEnquireBtn}
             onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
           >
             <Text style={st.webEnquireBtnText}>Enquire</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ marginTop: 8, alignItems: 'flex-end' as any }}
+            onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+          >
+            <Text style={st.webViewTimetableLink}>View timetable</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Calendar slot row ─────────────────────────────────────────────
+  function CalendarSlotRow({ slot }: { slot: CalSlot }) {
+    const photo = slot.venue.photoUrl || slot.venue.photos?.[0];
+    const venueGenres = (slot.venue.genre || slot.venue.genres || []).slice(0, 3).join(', ');
+    const meta = [slot.venue.suburb, venueGenres || null].filter(Boolean).join(' · ');
+    const slotInfo = [slot.slotType, slot.duration ? `${slot.duration} min` : null].filter(Boolean).join(' · ');
+    const feeStr = slot.venue.feeMin != null && slot.venue.feeMax != null
+      ? `$${slot.venue.feeMin}–$${slot.venue.feeMax}`
+      : slot.venue.feeMin != null ? `from $${slot.venue.feeMin}` : null;
+    return (
+      <View style={st.calViewSlotRow}>
+        <Text style={st.calViewSlotTime}>{slot.time}</Text>
+        {photo
+          ? <Image source={{ uri: photo }} style={st.calViewSlotThumb} resizeMode="cover" />
+          : <View style={[st.calViewSlotThumb, st.calViewSlotThumbEmpty]}><Text style={st.calViewSlotThumbLabel}>photo</Text></View>
+        }
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'overview' } })}
+          activeOpacity={0.8}
+        >
+          <Text style={st.calViewVenueName}>{slot.venue.name}</Text>
+          {meta ? <Text style={st.calViewVenueMeta}>{meta}</Text> : null}
+        </TouchableOpacity>
+        <Text style={st.calViewRoom}>{slot.room || '—'}</Text>
+        {slot.venue.capacity != null && (
+          <View style={st.calViewCapacity}>
+            <Text style={st.calViewCapacityNum}>{slot.venue.capacity.toLocaleString()}</Text>
+            <Text style={st.calViewCapacityLabel}>cap</Text>
+          </View>
+        )}
+        {slotInfo ? <Text style={st.calViewSlotInfo}>{slotInfo}</Text> : null}
+        {feeStr ? <Text style={st.calViewSlotFee}>{feeStr}</Text> : null}
+        <View style={st.calViewActions}>
+          <TouchableOpacity
+            style={st.calViewEnquireBtn}
+            onPress={() => router.push({
+              pathname: '/enquire',
+              params: {
+                venueId: slot.venue.id,
+                venueName: slot.venue.name,
+                day: slot.day,
+                date: slot.dateISO,
+                time: slot.time,
+                slotType: slot.slotType ?? 'Open',
+                ...(slot.room ? { room: slot.room } : {}),
+              },
+            })}
+            activeOpacity={0.85}
+          >
+            <Text style={st.calViewEnquireBtnText}>Enquire</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ marginTop: 6, alignItems: 'center' as any }}
+            onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'timetable' } })}
+            activeOpacity={0.8}
+          >
+            <Text style={st.calViewTimetableLink}>View timetable</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1123,74 +1367,126 @@ export default function VenuesScreen() {
                 )}
               </View>
 
-              {/* Fee dropdown */}
-              <View style={{ position: 'relative' as any, zIndex: 200 }}>
-                <TouchableOpacity
-                  style={[st.webFilterPill, feeActive && st.webFilterPillActive]}
-                  onPress={() => setWebDropdown(d => d === 'fee' ? null : 'fee')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[st.webFilterPillText, feeActive && st.webFilterPillTextActive]}>
-                    {feeRanges.length === 0 ? 'Fee' : feeRanges.length === 1 ? (FEE_RANGES.find(r => r.key === feeRanges[0])?.label ?? 'Fee') : `Fee: ${feeRanges.length}`} ▾
-                  </Text>
-                </TouchableOpacity>
-                {webDropdown === 'fee' && (
-                  <View style={st.webFilterDropdown}>
-                    {FEE_RANGES.map(r => (
-                      <TouchableOpacity
-                        key={r.key}
-                        style={[st.webDropdownOption, feeRanges.includes(r.key) && st.webDropdownOptionActive]}
-                        onPress={() => toggleFee(r.key)}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                          <View style={[st.checkbox, feeRanges.includes(r.key) && st.checkboxOn]} />
-                          <Text style={[st.webDropdownOptionText, feeRanges.includes(r.key) && st.webDropdownOptionTextActive]}>
-                            {r.label}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                    {feeRanges.length > 0 && (
-                      <TouchableOpacity style={{ marginTop: 8, paddingHorizontal: 10 }} onPress={() => setFeeRanges([])}>
-                        <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Clear</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-
               {/* Clear all */}
               {activeFilterCount > 0 && (
                 <TouchableOpacity onPress={resetFilters}>
                   <Text style={st.webClearText}>Clear all</Text>
                 </TouchableOpacity>
               )}
+
+              {/* View toggle: Venue / Calendar — pinned right */}
+              <View style={{ flex: 1, alignItems: 'flex-end' as any }}>
+                <View style={st.webViewToggle}>
+                  <TouchableOpacity
+                    style={[st.webViewToggleBtn, webView === 'venue' && st.webViewToggleBtnActive]}
+                    onPress={() => setWebView('venue')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[st.webViewToggleBtnText, webView === 'venue' && st.webViewToggleBtnTextActive]}>Venue</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[st.webViewToggleBtn, webView === 'calendar' && st.webViewToggleBtnActive]}
+                    onPress={() => setWebView('calendar')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[st.webViewToggleBtnText, webView === 'calendar' && st.webViewToggleBtnTextActive]}>Calendar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           </View>
 
-        {/* ── Column headers ─────────────────────────────────────── */}
-        <View style={st.webTableHeader}>
-          <Text style={[st.webTh, { flex: 4.5 }]}>VENUE</Text>
-          <Text style={[st.webTh, { flex: 1 }]}>CAPACITY</Text>
-          <Text style={[st.webTh, { flex: 2.5 }]}>NEXT OPEN SLOTS</Text>
-          <Text style={[st.webTh, { flex: 0.8 }]}>TYPICAL FEE</Text>
-          <Text style={[st.webTh, { flex: 1.2, textAlign: 'right' as any }]}>ACTION</Text>
-        </View>
+        {webView === 'venue' ? (<>
+          {/* ── Column headers ─────────────────────────────────────── */}
+          <View style={st.webTableHeader}>
+            <Text style={[st.webTh, { flex: 3.5 }]}>VENUE</Text>
+            <Text style={[st.webTh, { flex: 0.8 }]}>CAPACITY (MAX)</Text>
+            <Text style={[st.webTh, { flex: 3.5 }]}>NEXT 3 WEEKS</Text>
+            <Text style={[st.webTh, { flex: 1.2, textAlign: 'right' as any }]}>ACTION</Text>
+          </View>
 
-        {/* ── Venue rows (scrollable) ───────────────────────────── */}
-        <ScrollView
-          style={{ flex: 1, backgroundColor: '#ffffff' }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
-        >
-          {loading
-            ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
-            : filtered.length === 0
-              ? <Text style={[st.empty, { paddingHorizontal: 32, paddingTop: 40 }]}>No venues match your filters.</Text>
-              : filtered.map(item => <WebVenueRow key={item.id} item={item} />)
-          }
-          <View style={{ height: 80 }} />
-        </ScrollView>
+          {/* ── Venue rows (scrollable) ─────────────────────────────── */}
+          <ScrollView
+            style={{ flex: 1, backgroundColor: '#ffffff' }}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
+          >
+            {loading
+              ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
+              : filtered.length === 0
+                ? <Text style={[st.empty, { paddingHorizontal: 32, paddingTop: 40 }]}>No venues match your filters.</Text>
+                : filtered.map(item => <WebVenueRow key={item.id} item={item} />)
+            }
+            <View style={{ height: 80 }} />
+          </ScrollView>
+        </>) : (<>
+          {/* ── Calendar view ───────────────────────────────────────── */}
+          {(() => {
+            const WEEKEND_DAYS = new Set(['Friday','Saturday','Sunday']);
+            const calSlots = getCalendarSlots(filtered, calendarDays)
+              .filter(s => calFilter === 'all' || WEEKEND_DAYS.has(s.day));
+
+            // Group by date
+            const calGrouped: { dateISO: string; dateLabel: string; slots: CalSlot[] }[] = [];
+            for (const slot of calSlots) {
+              const last = calGrouped[calGrouped.length - 1];
+              if (!last || last.dateISO !== slot.dateISO) {
+                const d = parseLocal(slot.dateISO);
+                const dateLabel = d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',','');
+                calGrouped.push({ dateISO: slot.dateISO, dateLabel, slots: [] });
+              }
+              calGrouped[calGrouped.length - 1].slots.push(slot);
+            }
+
+            return (
+              <ScrollView
+                style={{ flex: 1, backgroundColor: '#ffffff' }}
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
+              >
+                {/* Quick filter pills */}
+                <View style={st.calViewPillBar}>
+                  {([{key:'all',label:'All slots'},{key:'weekends',label:'Weekends'}] as const).map(f => (
+                    <TouchableOpacity
+                      key={f.key}
+                      style={[st.calViewPill, calFilter === f.key && st.calViewPillActive]}
+                      onPress={() => setCalFilter(f.key)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[st.calViewPillText, calFilter === f.key && st.calViewPillTextActive]}>{f.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Date groups */}
+                {loading
+                  ? <ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} />
+                  : calGrouped.length === 0
+                    ? <Text style={[st.empty, { paddingHorizontal: 32, paddingTop: 40 }]}>No open slots match your filters.</Text>
+                    : calGrouped.map(group => (
+                        <View key={group.dateISO}>
+                          <View style={st.calViewDateHeader}>
+                            <Text style={st.calViewDateLabel}>{group.dateLabel}</Text>
+                            <Text style={st.calViewDateCount}>{group.slots.length} slot{group.slots.length !== 1 ? 's' : ''}</Text>
+                          </View>
+                          {group.slots.map((slot, i) => (
+                            <CalendarSlotRow key={`${slot.venue.id}-${slot.time}-${i}`} slot={slot} />
+                          ))}
+                        </View>
+                      ))
+                }
+
+                {/* Load more */}
+                {!loading && calGrouped.length > 0 && (
+                  <TouchableOpacity style={st.calViewLoadMore} onPress={() => setCalendarDays(d => d + 14)}>
+                    <Text style={st.calViewLoadMoreText}>Load more dates</Text>
+                  </TouchableOpacity>
+                )}
+                <View style={{ height: 80 }} />
+              </ScrollView>
+            );
+          })()}
+        </>)}
       </View>
     );
   }
@@ -1433,24 +1729,72 @@ const st = StyleSheet.create({
   webTh: { fontSize: 10, fontWeight: '700', color: '#aaaaaa', textTransform: 'uppercase' as any, letterSpacing: 0.9 },
 
   // ── Web venue rows ────────────────────────────────────────────────
-  webRow:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 16 },
-  webColVenue:      { flex: 4.5, flexDirection: 'row', alignItems: 'center', gap: 16 },
-  webColVenueInfo:  { flex: 1, gap: 5 },
-  webColCapacity:   { flex: 1 },
-  webColSlots:      { flex: 2.5 },
-  webColFee:        { flex: 0.8 },
-  webColAction:     { flex: 1.2, alignItems: 'flex-end' as any },
-  webColValue:      { fontSize: 14, color: '#333333', fontWeight: '500' },
-  webRowThumb:      { width: 88, height: 88, borderRadius: 10 },
-  webRowThumbEmpty: { backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
-  webRowThumbLabel: { fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
-  webRowName:       { fontSize: 15, fontWeight: '700', color: '#111111' },
-  webRowMeta:       { fontSize: 12, color: '#888888' },
-  webRowGenres:     { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
-  webSlotChip:      { backgroundColor: Colors.orange + '18', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start' as any },
-  webSlotChipText:  { fontSize: 12, color: Colors.orange, fontWeight: '600' },
-  webSlotExtra:     { fontSize: 12, color: '#888888' },
-  webSlotNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
-  webEnquireBtn:    { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  webEnquireBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  webRow:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 16 },
+  webColVenue:         { flex: 3.5, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  webColVenueInfo:     { flex: 1, gap: 5 },
+  webColCapacity:      { flex: 0.8 },
+  webColCalendar:      { flex: 3.5 },
+  webColAction:        { flex: 1.2, alignItems: 'flex-end' as any },
+  webColValue:         { fontSize: 14, color: '#333333', fontWeight: '500' },
+  webRowThumb:         { width: 88, height: 88, borderRadius: 10 },
+  webRowThumbEmpty:    { backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
+  webRowThumbLabel:    { fontSize: 10, color: '#aaaaaa', fontStyle: 'italic' },
+  webRowName:          { fontSize: 15, fontWeight: '700', color: '#111111' },
+  webRowMeta:          { fontSize: 12, color: '#888888' },
+  webRowGenres:        { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
+  webEnquireBtn:       { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  webEnquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  webViewTimetableLink:{ fontSize: 12, color: Colors.orange, fontWeight: '600' },
+  webViewToggle:           { flexDirection: 'row', backgroundColor: '#f0ede8', borderRadius: 8, padding: 3, gap: 2 },
+  webViewToggleBtn:        { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7 },
+  webViewToggleBtnActive:  { backgroundColor: '#ffffff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2 },
+  webViewToggleBtnText:    { fontSize: 13, fontWeight: '500', color: '#888888' },
+  webViewToggleBtnTextActive: { color: '#111111', fontWeight: '700' },
+  // ── Calendar strip ────────────────────────────────────────────────
+  calStripRow:         { flexDirection: 'row', gap: 2 },
+  calStripCell:        { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 100, backgroundColor: '#f0f0f0' },
+  calStripDayLetter:   { fontSize: 8, fontWeight: '600', color: '#111111' },
+  calStripHeaderCell:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  calStripDotOpen:     { backgroundColor: Colors.orange },
+  calStripDotSelected: { backgroundColor: '#c96500' },
+  calStripDotToday:    { backgroundColor: '#dedede' },
+  calStripDotPast:     { backgroundColor: 'transparent' },
+  calStripDate:        { fontSize: 9, color: '#111111' },
+  calStripDatePast:    { color: '#bbbbbb' },
+  calStripDateOpen:    { color: '#111111' },
+  calStripSummary:     { fontSize: 11, color: '#888888', marginTop: 6 },
+  calSlotDetail:       { marginTop: 6, gap: 2 },
+  calSlotDetailText:   { fontSize: 11, color: '#111111', fontWeight: '600', textDecorationLine: 'underline' as any },
+
+  // ── Calendar view (date-grouped slot list) ────────────────────────
+  calViewPillBar:        { flexDirection: 'row', gap: 8, paddingHorizontal: 32, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  calViewPill:           { borderRadius: 20, borderWidth: 1, borderColor: '#d0ccc7', paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#ffffff' },
+  calViewPillActive:     { backgroundColor: '#111111', borderColor: '#111111' },
+  calViewPillText:       { fontSize: 13, fontWeight: '500', color: '#333333' },
+  calViewPillTextActive: { color: '#ffffff', fontWeight: '700' },
+
+  calViewDateHeader:  { flexDirection: 'row', alignItems: 'baseline', gap: 10, paddingHorizontal: 32, paddingVertical: 12, backgroundColor: '#f5f5f5', borderTopWidth: 1, borderTopColor: '#eeeeee' },
+  calViewDateLabel:   { fontSize: 15, fontWeight: '700', color: '#111111' },
+  calViewDateCount:   { fontSize: 13, color: '#aaaaaa' },
+
+  calViewSlotRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#f5f5f5', gap: 16 },
+  calViewSlotTime:      { width: 72, fontSize: 17, fontWeight: '700', color: '#111111', flexShrink: 0 },
+  calViewSlotThumb:     { width: 56, height: 56, borderRadius: 8, flexShrink: 0 },
+  calViewSlotThumbEmpty:{ backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
+  calViewSlotThumbLabel:{ fontSize: 9, color: '#aaaaaa', fontStyle: 'italic' },
+  calViewVenueName:     { fontSize: 15, fontWeight: '700', color: '#111111' },
+  calViewVenueMeta:     { fontSize: 12, color: '#888888', marginTop: 2 },
+  calViewSlotInfo:      { fontSize: 13, color: '#555555', width: 160, flexShrink: 0, textAlign: 'center' as any },
+  calViewSlotFee:       { fontSize: 13, color: '#555555', width: 120, flexShrink: 0, textAlign: 'center' as any },
+  calViewRoom:          { fontSize: 13, color: '#555555', width: 130, flexShrink: 0, textAlign: 'center' as any },
+  calViewCapacity:      { alignItems: 'center' as any, width: 72, flexShrink: 0 },
+  calViewCapacityNum:   { fontSize: 15, fontWeight: '700', color: '#111111', textAlign: 'center' as any },
+  calViewCapacityLabel: { fontSize: 11, color: '#aaaaaa', marginTop: 1, textAlign: 'center' as any },
+  calViewActions:       { alignItems: 'center' as any, flexShrink: 0 },
+  calViewEnquireBtn:    { backgroundColor: '#111111', borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10 },
+  calViewEnquireBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  calViewTimetableLink: { fontSize: 12, color: Colors.orange, fontWeight: '600' },
+
+  calViewLoadMore:      { alignItems: 'center', paddingVertical: 28 },
+  calViewLoadMoreText:  { fontSize: 14, fontWeight: '600', color: Colors.orange, textDecorationLine: 'underline' as any },
 });
