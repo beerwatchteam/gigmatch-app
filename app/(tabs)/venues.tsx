@@ -903,17 +903,14 @@ export default function VenuesScreen() {
     const photo = item.photoUrl || item.photos?.[0];
     const venueGenres = (item.genre || item.genres || []).slice(0, 6);
 
-    // Build week-aligned 21-day calendar (Mon → Sun × 3 weeks)
+    // Build 21-day calendar starting from today
     const today = new Date();
     today.setHours(0,0,0,0);
     const todayStr = toLocalStr(today);
     const openDates = getOpenDatesNextThreeWeeks(item);
-    const daysFromMon = (today.getDay() + 6) % 7;
-    const monday = new Date(today);
-    monday.setDate(monday.getDate() - daysFromMon);
     const allDays: Date[] = [];
     for (let i = 0; i < 21; i++) {
-      const d = new Date(monday);
+      const d = new Date(today);
       d.setDate(d.getDate() + i);
       allDays.push(d);
     }

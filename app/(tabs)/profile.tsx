@@ -10,7 +10,9 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Redirect } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import {
   addDoc,
   collection,
@@ -249,6 +251,7 @@ function VenuePendingScreen() {
 
 function AdminScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelMounted, setPanelMounted] = useState(false);
 
@@ -263,6 +266,14 @@ function AdminScreen() {
           activeOpacity={0.85}
         >
           <Text style={styles.adminBtnText}>Open Venue Claims</Text>
+        </TouchableOpacity>
+        <View style={styles.adminDivider} />
+        <TouchableOpacity
+          style={[styles.adminLogoutBtn, { borderColor: colors.border }]}
+          onPress={async () => { await signOut(auth); router.replace('/'); }}
+          activeOpacity={0.75}
+        >
+          <Text style={[styles.adminLogoutBtnText, { color: colors.grey }]}>Log out</Text>
         </TouchableOpacity>
       </View>
       {panelMounted && (
@@ -348,4 +359,10 @@ const styles = StyleSheet.create({
     paddingVertical: 15, paddingHorizontal: 36,
   },
   adminBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  adminDivider: { height: 1, backgroundColor: Colors.border, width: '100%', marginVertical: 28 },
+  adminLogoutBtn: {
+    borderWidth: 1, borderRadius: 12,
+    paddingVertical: 13, paddingHorizontal: 36,
+  },
+  adminLogoutBtnText: { fontSize: 15, fontWeight: '600' },
 });
