@@ -114,10 +114,14 @@ export function useMessages(enquiryId: string | null) {
 
 // ── Write helpers ──
 export async function addEnquiry(inquiry: Omit<Enquiry, 'id'>): Promise<string> {
+  const now = new Date().toISOString();
   const ref = await addDoc(collection(db, 'inquiries'), {
     ...inquiry,
     status: 'pending',
-    submittedAt: new Date().toISOString(),
+    submittedAt: now,
+    lastMessageAt: now,
+    // Artist who submitted it has already "seen" it — only venue will see the unread dot
+    lastReadAt: { [inquiry.createdBy]: now },
   });
   return ref.id;
 }
