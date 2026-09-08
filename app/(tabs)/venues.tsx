@@ -402,6 +402,9 @@ const cal = StyleSheet.create({
   footerBtn:   { fontSize:14, fontWeight:'600', color: Colors.orange },
 });
 
+// Persists the chosen view for the session (survives tab navigation re-mounts)
+let _sessionWebView: 'venue' | 'calendar' = 'venue';
+
 export default function VenuesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -423,7 +426,8 @@ export default function VenuesScreen() {
   const [radius, setRadius]                   = useState<number | null>(null);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [webDropdown, setWebDropdown]         = useState<'date' | 'capacity' | 'genre' | null>(null);
-  const [webView, setWebView]                 = useState<'venue' | 'calendar'>('venue');
+  const [webView, setWebView]                 = useState<'venue' | 'calendar'>(_sessionWebView);
+  function changeWebView(v: 'venue' | 'calendar') { _sessionWebView = v; setWebView(v); }
   const [calFilter, setCalFilter]             = useState<'all' | 'weekends'>('all');
   const [calendarDays, setCalendarDays]       = useState(21);
   const slideAnim   = useRef(new Animated.Value(-PANEL_W)).current;
@@ -1076,8 +1080,8 @@ export default function VenuesScreen() {
   // ── Calendar slot row ─────────────────────────────────────────────
   function CalendarSlotRow({ slot }: { slot: CalSlot }) {
     const photo = slot.venue.photoUrl || slot.venue.photos?.[0];
-    const venueGenres = (slot.venue.genre || slot.venue.genres || []).slice(0, 3).join(', ');
-    const meta = [slot.venue.suburb, venueGenres || null].filter(Boolean).join(' · ');
+    const venueGenres = (slot.venue.genre || slot.venue.genres || []) as string[];
+    const meta = slot.venue.suburb || null;
     const slotInfo = [slot.slotType, slot.duration ? `${slot.duration} min` : null].filter(Boolean).join(' · ');
     const feeStr = slot.venue.feeMin != null && slot.venue.feeMax != null
       ? `$${slot.venue.feeMin}–$${slot.venue.feeMax}`
@@ -1090,12 +1094,19 @@ export default function VenuesScreen() {
           : <View style={[st.calViewSlotThumb, st.calViewSlotThumbEmpty]}><Text style={st.calViewSlotThumbLabel}>photo</Text></View>
         }
         <TouchableOpacity
-          style={{ flex: 1 }}
+          style={{ flex: 2.5 }}
           onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'overview' } })}
           activeOpacity={0.8}
         >
           <Text style={st.calViewVenueName}>{slot.venue.name}</Text>
           {meta ? <Text style={st.calViewVenueMeta}>{meta}</Text> : null}
+          {venueGenres.length > 0 && (
+            <View style={st.calViewGenreRow}>
+              {venueGenres.slice(0, 5).map((g: string) => (
+                <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
+              ))}
+            </View>
+          )}
         </TouchableOpacity>
         <Text style={st.calViewRoom}>{slot.room || '—'}</Text>
         {slot.venue.capacity != null && (
@@ -1379,14 +1390,14 @@ export default function VenuesScreen() {
                 <View style={st.webViewToggle}>
                   <TouchableOpacity
                     style={[st.webViewToggleBtn, webView === 'venue' && st.webViewToggleBtnActive]}
-                    onPress={() => setWebView('venue')}
+                    onPress={() => changeWebView('venue')}
                     activeOpacity={0.8}
                   >
                     <Text style={[st.webViewToggleBtnText, webView === 'venue' && st.webViewToggleBtnTextActive]}>Venue</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[st.webViewToggleBtn, webView === 'calendar' && st.webViewToggleBtnActive]}
-                    onPress={() => setWebView('calendar')}
+                    onPress={() => changeWebView('calendar')}
                     activeOpacity={0.8}
                   >
                     <Text style={[st.webViewToggleBtnText, webView === 'calendar' && st.webViewToggleBtnTextActive]}>Calendar</Text>
@@ -1777,17 +1788,18 @@ const st = StyleSheet.create({
   calViewDateLabel:   { fontSize: 15, fontWeight: '700', color: '#111111' },
   calViewDateCount:   { fontSize: 13, color: '#aaaaaa' },
 
-  calViewSlotRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#f5f5f5', gap: 16 },
-  calViewSlotTime:      { width: 72, fontSize: 17, fontWeight: '700', color: '#111111', flexShrink: 0 },
-  calViewSlotThumb:     { width: 56, height: 56, borderRadius: 8, flexShrink: 0 },
+  calViewSlotRow:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#f5f5f5', gap: 12 },
+  calViewSlotTime:      { width: 80, fontSize: 17, fontWeight: '700', color: '#111111', flexShrink: 0 },
+  calViewSlotThumb:     { width: 52, height: 52, borderRadius: 8, flexShrink: 0 },
   calViewSlotThumbEmpty:{ backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
   calViewSlotThumbLabel:{ fontSize: 9, color: '#aaaaaa', fontStyle: 'italic' },
   calViewVenueName:     { fontSize: 15, fontWeight: '700', color: '#111111' },
   calViewVenueMeta:     { fontSize: 12, color: '#888888', marginTop: 2 },
-  calViewSlotInfo:      { fontSize: 13, color: '#555555', width: 160, flexShrink: 0, textAlign: 'center' as any },
-  calViewSlotFee:       { fontSize: 13, color: '#555555', width: 120, flexShrink: 0, textAlign: 'center' as any },
-  calViewRoom:          { fontSize: 13, color: '#555555', width: 130, flexShrink: 0, textAlign: 'center' as any },
-  calViewCapacity:      { alignItems: 'center' as any, width: 72, flexShrink: 0 },
+  calViewGenreRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 },
+  calViewSlotInfo:      { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
+  calViewSlotFee:       { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
+  calViewRoom:          { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
+  calViewCapacity:      { flex: 1, alignItems: 'center' as any },
   calViewCapacityNum:   { fontSize: 15, fontWeight: '700', color: '#111111', textAlign: 'center' as any },
   calViewCapacityLabel: { fontSize: 11, color: '#aaaaaa', marginTop: 1, textAlign: 'center' as any },
   calViewActions:       { alignItems: 'center' as any, flexShrink: 0 },
