@@ -38,7 +38,7 @@ type Musician = {
   settings?: { listed?: boolean };
 };
 
-const CARD_H = 160;
+const CARD_H = 120;
 function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: number } }) {
   const [w, setW] = useState(0);
   const [dims, setDims] = useState({ nw: 0, nh: 0 });
@@ -802,7 +802,7 @@ const st = StyleSheet.create({
   cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
   cardPhotoEmpty: { width: '100%', height: CARD_H, alignItems: 'center', justifyContent: 'center' },
   cardPhotoLabel: { fontSize: 12, fontStyle: 'italic' },
-  cardBody:       { padding: 18, paddingHorizontal: 20, gap: 8 },
+  cardBody:       { padding: 14, paddingHorizontal: 16, gap: 7 },
   nameRow:        { flexDirection: 'row', alignItems: 'center', gap: 10 },
   name:           { fontSize: 18, fontWeight: '700', color: '#111111' },
   typeBadge:      { borderRadius: 4, backgroundColor: '#f4f4f4', paddingHorizontal: 8, paddingVertical: 2 },
@@ -862,6 +862,6 @@ const st = StyleSheet.create({
   webClearText:                { fontSize: 13, color: '#888888', textDecorationLine: 'underline' as any, paddingHorizontal: 4 },
 
   // ── Web card grid ─────────────────────────────────────────────────
-  webGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 20 },
-  webGridItem: { width: '48%' },
+  webGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  webGridItem: { width: '31%' },
 });
