@@ -574,11 +574,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
               {night.startTime ? <Text style={[s.nightMeta, { color: colors.grey }]}>{night.startTime}</Text> : null}
               {night.duration  ? <Text style={[s.nightMeta, { color: colors.grey }]}>{night.duration} min</Text> : null}
               {(night.genres || []).length > 0 && (
-                <View style={s.genreRow}>
-                  {(night.genres || []).map(g => (
-                    <View key={g} style={s.genrePillSmall}><Text style={s.genreTextSmall}>{g}</Text></View>
-                  ))}
-                </View>
+                <Text style={s.genreOrangeText}>{(night.genres || []).join(' · ')}</Text>
               )}
               {night.notes ? <Text style={s.nightNotes}>{night.notes}</Text> : null}
             </View>
@@ -589,11 +585,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
       {genres.length > 0 ? (
         <View style={s.section}>
           <Text style={[s.sectionTitle, { color: colors.grey }]}>Genre Preferences</Text>
-          <View style={s.genreRow}>
-            {genres.map(g => (
-              <View key={g} style={s.genrePill}><Text style={s.genreText}>{g}</Text></View>
-            ))}
-          </View>
+          <Text style={s.genreOrangeText}>{genres.join(' · ')}</Text>
         </View>
       ) : null}
 
@@ -1137,11 +1129,7 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
           </View>
         )}
         {(slot.genres||[]).length > 0 ? (
-          <View style={ns.genreRow}>
-            {(slot.genres||[]).map(g => (
-              <View key={g} style={ns.genrePill}><Text style={ns.genreText}>{g}</Text></View>
-            ))}
-          </View>
+          <Text style={ns.genreOrangeText}>{(slot.genres||[]).join(' · ')}</Text>
         ) : null}
         {slot.notes ? <Text style={ns.notes}>{slot.notes}</Text> : null}
       </View>
@@ -1469,6 +1457,7 @@ const s = StyleSheet.create({
   genreText:          { fontSize: 12, color: Colors.orange, fontWeight: '500' },
   genrePillSmall:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   genreTextSmall:     { fontSize: 11, color: Colors.orange },
+  genreOrangeText:    { fontSize: 12, color: Colors.orange, fontWeight: '500', marginTop: 2 },
   breadcrumb:         { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1.4, marginBottom: 6 },
   editProfileBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start' },
   editProfileBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
@@ -1663,6 +1652,7 @@ const ns = StyleSheet.create({
   genreRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   genrePill:        { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   genreText:        { fontSize: 11, color: '#888888' },
+  genreOrangeText:  { fontSize: 11, color: Colors.orange, fontWeight: '500', marginTop: 2 },
   notes:            { fontSize: 13, color: '#888888', fontStyle: 'italic' },
   enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },

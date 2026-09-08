@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Image, Linking,
+  ScrollView, Image, Linking, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TOP_TAB_H, BOTTOM_TAB_H, WEB_TAB_H } from './_layout';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -222,7 +223,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack }: {
   return (
     <View style={[eh.card, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
       <View style={eh.titleRow}>
-        {!isWeb && onBack && (
+        {onBack && (
           <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={eh.back}>←</Text>
           </TouchableOpacity>
@@ -456,7 +457,7 @@ const eq = StyleSheet.create({
 // ── Thread panel ───────────────────────────────────────────────────────────
 
 function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
-  enquiry: Enquiry; isVenue: boolean; venueId: string | null; onBack: () => void;
+  enquiry: Enquiry; isVenue: boolean; venueId: string | null; onBack?: () => void;
 }) {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -532,8 +533,8 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
       style={{ flex: 1, minHeight: 0, backgroundColor: colors.bg, overflow: 'hidden' as any }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Compact header with back button + deal sheet */}
-      <EnquiryHeader enquiry={enquiry} isVenue={isVenue} onBack={!isWeb ? onBack : undefined} />
+      {/* Header: always pinned — name, gig info, deal sheet */}
+      <EnquiryHeader enquiry={enquiry} isVenue={isVenue} onBack={onBack} />
 
       {/* Messages */}
       <ScrollView
@@ -576,6 +577,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
       </ScrollView>
 
       {/* ── Bottom action area ─────────────────────────────────────── */}
+      <View>
 
       {isClosed ? (
         <View style={[tp.closedBanner, { borderTopColor: colors.border }]}>
@@ -729,7 +731,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         >
           <View style={tp.awaitingRow}>
             <Text style={tp.awaitingText}>Awaiting response from {enquiry.venueName}</Text>
-            <TouchableOpacity onPress={async () => { await cancelEnquiry(enquiry.id); onBack(); }}>
+            <TouchableOpacity onPress={async () => { await cancelEnquiry(enquiry.id); onBack?.(); }}>
               <Text style={tp.cancelText}>Cancel enquiry</Text>
             </TouchableOpacity>
           </View>
@@ -826,10 +828,12 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         <TouchableOpacity onPress={async () => {
           if (!user) return;
           await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
-          onBack();
+          onBack?.();
         }}>
           <Text style={tp.deleteText}>Delete conversation</Text>
         </TouchableOpacity>
+      </View>
+
       </View>
     </KeyboardAvoidingView>
   );
@@ -954,7 +958,7 @@ function DMTile({ conv, myUid, isSelected, onPress }: {
 // ── DM thread panel ────────────────────────────────────────────────────────
 
 function DMThreadPanel({ conv, myUid, onBack, colors }: {
-  conv: DMConv; myUid: string; onBack: () => void; colors: any;
+  conv: DMConv; myUid: string; onBack?: () => void; colors: any;
 }) {
   const messages   = useDMMessages(conv.id);
   const otherUid   = conv.participants.find(p => p !== myUid) ?? '';
@@ -983,16 +987,18 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
 
   async function handleDelete() {
     await deleteDMConv(conv.id, myUid);
-    onBack();
+    onBack?.();
   }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Header */}
       <View style={[dmp.header, { borderBottomColor: colors.border, backgroundColor: colors.bgFaint }]}>
-        <TouchableOpacity onPress={onBack}>
-          <Text style={dmp.back}>← Back</Text>
-        </TouchableOpacity>
+        {onBack && (
+          <TouchableOpacity onPress={onBack}>
+            <Text style={dmp.back}>← Back</Text>
+          </TouchableOpacity>
+        )}
         <Avatar photoUrl={otherPhoto} name={otherName} size={32} />
         <Text style={[dmp.name, { color: colors.black }]} numberOfLines={1}>{otherName}</Text>
       </View>
@@ -1110,6 +1116,13 @@ export default function InboxScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { colors } = useTheme();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isWideWeb = isWeb && screenWidth >= 768;
+  // Explicit pixel height for mobile web thread panel (avoids outer page scroll)
+  const mobileWebHeight = isWeb && !isWideWeb
+    ? screenHeight - (insets.top + TOP_TAB_H) - (BOTTOM_TAB_H + insets.bottom)
+    : undefined;
   const isVenue = profile?.type === 'venue';
   const venueId = profile?.venueId ?? null;
 
@@ -1137,6 +1150,17 @@ export default function InboxScreen() {
   const sorted   = [...enquiries].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   const filtered = sorted.filter(e => matchesFilter(e, filter));
 
+  // Lock browser page scroll on web — inner ScrollViews handle their own scroll
+  useEffect(() => {
+    if (!isWeb) return;
+    (document as any).documentElement.style.overflow = 'hidden';
+    (document as any).body.style.overflow = 'hidden';
+    return () => {
+      (document as any).documentElement.style.overflow = '';
+      (document as any).body.style.overflow = '';
+    };
+  }, []);
+
   // ── Not signed in ────────────────────────────────────────────────────────
   if (!user) {
     return (
@@ -1152,10 +1176,20 @@ export default function InboxScreen() {
     );
   }
 
-  // ── WEB: two-column layout ───────────────────────────────────────────────
-  if (isWeb) {
+  // ── WEB: two-column layout (wide screens only) ───────────────────────────
+  if (isWideWeb) {
     return (
-      <View style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' as any }}>
+      <View style={{
+        position: 'fixed' as any,
+        top: WEB_TAB_H,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: 'row',
+        overflow: 'hidden' as any,
+        zIndex: 1,
+        backgroundColor: colors.bg,
+      } as any}>
 
         {/* Sidebar */}
         <View style={[wb.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
@@ -1281,7 +1315,7 @@ export default function InboxScreen() {
                 enquiry={selected}
                 isVenue={isVenue}
                 venueId={venueId}
-                onBack={() => setSelected(null)}
+                onBack={undefined}
               />
             )
           ) : (
@@ -1294,7 +1328,7 @@ export default function InboxScreen() {
                 conv={selectedDM}
                 myUid={myUid}
                 colors={colors}
-                onBack={() => setSelectedDMId(null)}
+                onBack={undefined}
               />
             )
           )}
@@ -1303,10 +1337,24 @@ export default function InboxScreen() {
     );
   }
 
-  // ── NATIVE: thread open — full screen ─────────────────────────────────────
+  // ── NATIVE/MOBILE: thread open — full screen ──────────────────────────────
   if (selected) {
+    const topOffset    = insets.top + TOP_TAB_H;
+    const bottomOffset = BOTTOM_TAB_H + insets.bottom;
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={isWeb ? {
+        position: 'fixed' as any,
+        top: topOffset,
+        left: 0,
+        right: 0,
+        bottom: bottomOffset,
+        backgroundColor: colors.bg,
+        overflow: 'hidden' as any,
+        zIndex: 500,
+      } : {
+        flex: 1,
+        backgroundColor: colors.bg,
+      }}>
         <ThreadPanel enquiry={selected} isVenue={isVenue} venueId={venueId} onBack={() => setSelected(null)} />
       </View>
     );

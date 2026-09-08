@@ -820,11 +820,9 @@ export default function VenuesScreen() {
               </Text>
             )}
             {venueGenres.length > 0 && (
-              <View style={st.genreRow}>
-                {venueGenres.map((g: string) => (
-                  <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
-                ))}
-              </View>
+              <Text style={st.venueGenreText} numberOfLines={1}>
+                {venueGenres.join(' · ')}
+              </Text>
             )}
           </View>
         </View>
@@ -938,11 +936,9 @@ export default function VenuesScreen() {
             <Text style={st.webRowName} numberOfLines={1}>{item.name}</Text>
             {item.suburb && <Text style={st.webRowMeta} numberOfLines={1}>{item.suburb}</Text>}
             {venueGenres.length > 0 && (
-              <View style={st.webRowGenres}>
-                {venueGenres.map((g: string) => (
-                  <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
-                ))}
-              </View>
+              <Text style={st.venueGenreText} numberOfLines={1}>
+                {venueGenres.join(' · ')}
+              </Text>
             )}
           </View>
         </TouchableOpacity>
@@ -1101,11 +1097,9 @@ export default function VenuesScreen() {
           <Text style={st.calViewVenueName}>{slot.venue.name}</Text>
           {meta ? <Text style={st.calViewVenueMeta}>{meta}</Text> : null}
           {venueGenres.length > 0 && (
-            <View style={st.calViewGenreRow}>
-              {venueGenres.slice(0, 5).map((g: string) => (
-                <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
-              ))}
-            </View>
+            <Text style={st.calViewGenreText} numberOfLines={1}>
+              {venueGenres.slice(0, 5).join(' · ')}
+            </Text>
           )}
         </TouchableOpacity>
         <Text style={st.calViewRoom}>{slot.room || '—'}</Text>
@@ -1678,6 +1672,7 @@ const st = StyleSheet.create({
   cardInfo:       { flex: 1, gap: 5, justifyContent: 'center' },
   venueName:      { fontSize: 17, fontWeight: '700', color: '#111111', lineHeight: 22 },
   venueAddr:      { fontSize: 12, color: '#666666' },
+  venueGenreText: { fontSize: 12, color: Colors.orange, fontWeight: '500', marginTop: 3 },
   genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
   pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
@@ -1779,7 +1774,7 @@ const st = StyleSheet.create({
 
   // ── Calendar view (date-grouped slot list) ────────────────────────
   calViewPillBar:        { flexDirection: 'row', gap: 8, paddingHorizontal: 32, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  calViewPill:           { borderRadius: 20, borderWidth: 1, borderColor: '#d0ccc7', paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#ffffff' },
+  calViewPill:           { borderRadius: 8, borderWidth: 1, borderColor: '#d0ccc7', paddingHorizontal: 16, paddingVertical: 7, backgroundColor: '#ffffff' },
   calViewPillActive:     { backgroundColor: '#111111', borderColor: '#111111' },
   calViewPillText:       { fontSize: 13, fontWeight: '500', color: '#333333' },
   calViewPillTextActive: { color: '#ffffff', fontWeight: '700' },
@@ -1795,7 +1790,7 @@ const st = StyleSheet.create({
   calViewSlotThumbLabel:{ fontSize: 9, color: '#aaaaaa', fontStyle: 'italic' },
   calViewVenueName:     { fontSize: 15, fontWeight: '700', color: '#111111' },
   calViewVenueMeta:     { fontSize: 12, color: '#888888', marginTop: 2 },
-  calViewGenreRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 },
+  calViewGenreText:     { fontSize: 12, color: Colors.orange, marginTop: 4, fontWeight: '500' },
   calViewSlotInfo:      { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
   calViewSlotFee:       { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
   calViewRoom:          { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
