@@ -1382,7 +1382,7 @@ function getFilterConfig(_isVenue: boolean) {
 }
 
 function matchesFilter(enquiry: Enquiry, filter: FilterKey): boolean {
-  if (filter === 'all') return enquiry.status !== 'declined' && enquiry.status !== 'cancelled';
+  if (filter === 'all') return true;
   const cfg = getFilterConfig(true).find(f => f.key === filter);
   return cfg ? cfg.statuses.includes(enquiry.status) : true;
 }
