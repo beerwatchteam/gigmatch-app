@@ -1513,7 +1513,7 @@ export default function InboxScreen() {
 
             {/* Enquiry filter pills */}
             {inboxTab === 'enquiries' && (
-              <View style={wb.filterRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={wb.filterRow}>
                 {FILTERS.map(f => {
                   const count  = sorted.filter(e => matchesFilter(e, f.key)).length;
                   const active = filter === f.key;
@@ -1532,12 +1532,12 @@ export default function InboxScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             )}
 
             {/* DM sub-filter */}
             {inboxTab === 'messages' && (
-              <View style={wb.filterRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={wb.filterRow}>
                 {(['accepted', 'requests'] as const).map(f => {
                   const count  = f === 'accepted' ? acceptedDMs.length : requestDMs.length;
                   const active = dmFilter === f;
@@ -1558,7 +1558,7 @@ export default function InboxScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             )}
           </View>
 
@@ -1838,7 +1838,7 @@ const wb = StyleSheet.create({
   segBadgeActive:    { backgroundColor: '#b0aca7' },
   segBadgeText:      { color: '#ffffff', fontSize: 11, fontWeight: '700', textAlign: 'center', lineHeight: 18 },
   segBadgeTextActive:{ color: '#111111' },
-  filterRow:        { flexDirection: 'row', gap: 6, flexWrap: 'wrap' as const },
+  filterRow:        { flexDirection: 'row', gap: 6 },
   filterBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1, borderColor: '#d0ccc7', backgroundColor: '#ffffff' },
   filterBtnActive:  { backgroundColor: Colors.orange, borderColor: Colors.orange },
   filterText:       { fontSize: 12, fontWeight: '600', color: '#777777' },
