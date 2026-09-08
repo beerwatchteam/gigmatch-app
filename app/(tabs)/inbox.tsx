@@ -14,7 +14,7 @@ import { useTheme } from '@/lib/theme-context';
 import {
   useArtistEnquiries, useVenueEnquiries, useMessages,
   updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
-  bookSlotOnTimetable, cancelAcceptance,
+  bookSlotOnTimetable, cancelAcceptance, markEnquiryRead,
   type Enquiry,
 } from '@/lib/useEnquiries';
 import {
@@ -312,12 +312,16 @@ const STATUS_MOVE_OPTIONS: { status: Enquiry['status']; label: string }[] = [
   { status: 'declined',   label: 'Declined'   },
 ];
 
-function ThreadTile({ item, isVenue, isSelected, onPress }: {
-  item: Enquiry; isVenue: boolean; isSelected: boolean; onPress: () => void;
+function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
+  item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void;
 }) {
   const who = isVenue ? item.bandName : item.venueName;
   const venuePhoto = useVenuePhoto(!isVenue ? item.venueId : null);
   const avatarPhoto = isVenue ? (item.photoUrl ?? null) : venuePhoto;
+  const isUnread = !!(
+    item.lastMessageAt &&
+    (!item.lastReadAt?.[myUid] || item.lastMessageAt > item.lastReadAt[myUid])
+  );
   const { day, date, time, slotType } = item.requestedSlot;
   const dateStr = date ? fmtSlotDate(date) : '';
   const slotStr = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
@@ -353,8 +357,11 @@ function ThreadTile({ item, isVenue, isSelected, onPress }: {
         <Avatar photoUrl={avatarPhoto} name={who} size={44} />
         <View style={tt.body}>
           <View style={tt.topRow}>
-            <Text style={[tt.name, isSelected && { color: Colors.orange }]} numberOfLines={1}>{who}</Text>
-            <Text style={tt.time}>{formatTileDate(item.submittedAt)}</Text>
+            <Text style={[tt.name, isSelected && { color: Colors.orange }, isUnread && { fontWeight: '800' }]} numberOfLines={1}>{who}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              {isUnread && <View style={tt.unreadDot} />}
+              <Text style={tt.time}>{formatTileDate(item.submittedAt)}</Text>
+            </View>
           </View>
           <Text style={tt.slot} numberOfLines={1}>{slotStr || 'No slot specified'}</Text>
           <View style={tt.bottomRow}>
@@ -417,6 +424,7 @@ const tt = StyleSheet.create({
   badge:          { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, backgroundColor: '#ffffff' },
   badgeText:      { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
   fee:            { fontSize: 12, fontWeight: '600', color: '#444444' },
+  unreadDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.orange },
   menuCard:       { position: 'absolute', backgroundColor: '#ffffff', borderRadius: 10, borderWidth: 1, borderColor: '#e8e8e8', minWidth: 150, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
   menuItem:       { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 11 },
   menuItemBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
@@ -606,6 +614,11 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
   }, [messages.length]);
+
+  // Mark thread as read whenever it's open and new messages arrive
+  useEffect(() => {
+    if (user?.uid) markEnquiryRead(enquiry.id, user.uid).catch(() => {});
+  }, [enquiry.id, user?.uid, messages.length]);
 
   function toggleForm(form: 'decline' | 'confirm') {
     setExpandedForm(prev => prev === form ? null : form);
@@ -1577,6 +1590,7 @@ export default function InboxScreen() {
                     key={item.id}
                     item={item}
                     isVenue={isVenue}
+                    myUid={myUid}
                     isSelected={selected?.id === item.id}
                     onPress={() => setSelected(item)}
                   />
@@ -1781,7 +1795,7 @@ export default function InboxScreen() {
             keyExtractor={item => item.id}
             contentContainerStyle={{ paddingVertical: 8, paddingBottom: 40 }}
             renderItem={({ item }) => (
-              <ThreadTile item={item} isVenue={isVenue} isSelected={false} onPress={() => setSelected(item)} />
+              <ThreadTile item={item} isVenue={isVenue} myUid={myUid} isSelected={false} onPress={() => setSelected(item)} />
             )}
           />
         )

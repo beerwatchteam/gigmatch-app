@@ -31,6 +31,9 @@ export type Enquiry = {
   // timetable booking
   listAsBooked?: boolean;
   declineReason?: string;
+  // read tracking
+  lastMessageAt?: string;
+  lastReadAt?: Record<string, string>;
   [key: string]: any;
 };
 
@@ -131,9 +134,16 @@ export async function updateEnquiryStatus(
 }
 
 export async function sendMessage(inquiryId: string, sender: string, text: string) {
-  await addDoc(collection(db, 'messages'), {
-    inquiryId, sender, text,
-    timestamp: new Date().toISOString(),
+  const now = new Date().toISOString();
+  await Promise.all([
+    addDoc(collection(db, 'messages'), { inquiryId, sender, text, timestamp: now }),
+    updateDoc(doc(db, 'inquiries', inquiryId), { lastMessageAt: now }),
+  ]);
+}
+
+export async function markEnquiryRead(id: string, uid: string) {
+  await updateDoc(doc(db, 'inquiries', id), {
+    [`lastReadAt.${uid}`]: new Date().toISOString(),
   });
 }
 
