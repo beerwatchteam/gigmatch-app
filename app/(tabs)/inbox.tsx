@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Image, Linking, useWindowDimensions, Modal,
+  ScrollView, Image, Linking, useWindowDimensions, Modal, Animated,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -22,7 +22,7 @@ import {
   sendDMMessage, acceptDMRequest, deleteDMConv,
   type DMConv,
 } from '@/lib/useDirectMessages';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 /** Fetches and caches a venue's photoUrl for display in artist-side tiles/threads. */
@@ -91,20 +91,14 @@ function fmtSlotDateFull(date?: string | null): string {
 function getDateLabel(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  const diffMs = today.getTime() - d.getTime();
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const diffMs = now.getTime() - d.getTime();
   if (diffMs < 7 * 24 * 60 * 60 * 1000)
     return d.toLocaleDateString('en-AU', { weekday: 'long' });
   return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function isSameDay(a: string, b: string): boolean {
-  return new Date(a).toDateString() === new Date(b).toDateString();
-}
 
 function formatTileDate(iso: string): string {
   if (!iso) return '';
@@ -172,15 +166,12 @@ const sb = StyleSheet.create({
 function DateSep({ label }: { label: string }) {
   return (
     <View style={ds.wrap}>
-      <View style={ds.line} />
       <Text style={ds.text}>{label}</Text>
-      <View style={ds.line} />
     </View>
   );
 }
 const ds = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 8 },
-  line: { flex: 1, height: 1, backgroundColor: '#eeeeee' },
+  wrap: { alignItems: 'center', marginVertical: 8 },
   text: { fontSize: 11, color: '#aaaaaa', fontWeight: '600' },
 });
 
@@ -209,56 +200,85 @@ function Avatar({ photoUrl, name, size }: { photoUrl?: string | null; name: stri
 
 // ── Deal sheet bar (horizontal) ────────────────────────────────────────────
 
-function DealSheetGrid({ enquiry }: { enquiry: Enquiry }) {
-  const { setLength, time, slotType, date, day } = enquiry.requestedSlot;
-
-  const dateStr  = date ? fmtSlotDateFull(date) : (day || '—');
-  const setStr   = [time, setLength].filter(Boolean).join(' · ') || '—';
-  const billing  = slotType || '—';
-  const fee      = (enquiry as any).fee ? `$${(enquiry as any).fee}` : '—';
-  const rawBackline = enquiry.techRider?.backlineNeeded || (enquiry as any).backline;
-  const backline = typeof rawBackline === 'string' && rawBackline ? rawBackline : '—';
-
-  const cols = [
-    { label: 'DATE', value: dateStr },
-    { label: 'SET',  value: setStr },
-    { label: 'SLOT', value: billing },
-    { label: 'FEE',  value: fee },
-  ];
+function DealSheetGrid({ enquiry, onDetails }: { enquiry: Enquiry; onDetails: () => void }) {
+  const { setLength, time, date, day } = enquiry.requestedSlot;
+  const dateStr = date ? fmtSlotDateFull(date) : (day || '—');
+  const setStr  = [time, setLength].filter(Boolean).join(' · ') || '—';
 
   return (
     <View style={dg.bar}>
-      {cols.map((col, i) => (
-        <View key={col.label} style={[dg.col, i < cols.length - 1 && dg.colDivider]}>
-          <Text style={dg.label}>{col.label}</Text>
-          <Text style={dg.value} numberOfLines={1}>{col.value}</Text>
-        </View>
-      ))}
+      <View style={[dg.col, dg.colDivider]}>
+        <Text style={dg.label}>DATE</Text>
+        <Text style={dg.value} numberOfLines={1}>{dateStr}</Text>
+      </View>
+      <View style={[dg.col, dg.colDivider]}>
+        <Text style={dg.label}>SET</Text>
+        <Text style={dg.value} numberOfLines={1}>{setStr}</Text>
+      </View>
+      <TouchableOpacity style={dg.detailsBtn} onPress={onDetails} activeOpacity={0.7}>
+        <Text style={dg.detailsText}>Details →</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const dg = StyleSheet.create({
-  bar:        { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#eeeeee', marginTop: 12 },
-  col:        { flex: 1, paddingVertical: 10, paddingHorizontal: 8 },
-  colDivider: { borderRightWidth: 1, borderRightColor: '#eeeeee' },
-  label:      { fontSize: 9, fontWeight: '700', color: '#aaaaaa', letterSpacing: 0.7, marginBottom: 4, textTransform: 'uppercase' as const },
-  value:      { fontSize: 13, fontWeight: '700', color: '#111111' },
+  bar:         { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eeeeee', marginTop: 12 },
+  col:         { flex: 1, paddingVertical: 10, paddingHorizontal: 8 },
+  colDivider:  { borderRightWidth: 1, borderRightColor: '#eeeeee' },
+  label:       { fontSize: 9, fontWeight: '700', color: '#aaaaaa', letterSpacing: 0.7, marginBottom: 4, textTransform: 'uppercase' as const },
+  value:       { fontSize: 13, fontWeight: '700', color: '#111111' },
+  detailsBtn:  { paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' },
+  detailsText: { fontSize: 13, fontWeight: '700', color: Colors.orange },
 });
 
 // ── Enquiry header (compact) ───────────────────────────────────────────────
 
-function EnquiryHeader({ enquiry, isVenue, onBack, onDelete }: {
+function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, onScrollToMusic, onScrollToTech }: {
   enquiry: Enquiry; isVenue: boolean; onBack?: () => void; onDelete?: () => void;
+  onScrollToProfile?: () => void; onScrollToMusic?: () => void; onScrollToTech?: () => void;
 }) {
   const { colors } = useTheme();
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
-  const { day, date, time, slotType } = enquiry.requestedSlot;
-  const dateStr = date ? fmtSlotDate(date) : '';
-  const slotStr = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
+  const { day, date, time, slotType, setLength } = enquiry.requestedSlot;
+  const dateStr    = date ? fmtSlotDate(date) : '';
+  const dateStrFull = date ? fmtSlotDateFull(date) : (day || '—');
+  const slotStr    = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
+  const setStr     = [time, setLength].filter(Boolean).join(' · ') || '—';
+  const billing    = slotType || '—';
+  const fee        = (enquiry as any).fee ? `$${(enquiry as any).fee}` : '—';
 
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [notes,       setNotes]       = useState<string>((enquiry as any).importantNotes ?? '');
+  const [notesEdited, setNotesEdited] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  function openDetails() {
+    setDetailsOpen(true);
+    Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, tension: 65, friction: 11 }).start();
+  }
+
+  function closeDetails() {
+    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start(() => setDetailsOpen(false));
+  }
+
+  async function saveNotes() {
+    setNotesSaving(true);
+    await updateDoc(doc(db, 'inquiries', enquiry.id), { importantNotes: notes.trim() });
+    setNotesEdited(false);
+    setNotesSaving(false);
+  }
+
+  const quickLinks = [
+    { label: 'Profile',    onPress: onScrollToProfile },
+    { label: 'Music',      onPress: onScrollToMusic   },
+    { label: 'Tech Specs', onPress: onScrollToTech    },
+  ].filter(l => l.onPress);
+
+  const DRAWER_WIDTH = isWeb ? 340 : 300;
 
   return (
     <>
@@ -274,6 +294,18 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete }: {
             {slotStr ? (
               <Text style={[eh.slot, { color: colors.grey }]} numberOfLines={1}>{slotStr}</Text>
             ) : null}
+            {quickLinks.length > 0 && (
+              <View style={eh.quickLinks}>
+                {quickLinks.map((l, i) => (
+                  <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {i > 0 && <Text style={eh.quickLinkSep}>·</Text>}
+                    <TouchableOpacity onPress={l.onPress} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                      <Text style={eh.quickLinkText}>{l.label}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
           <StatusBadge status={enquiry.status} isVenue={isVenue} />
           {onDelete && (
@@ -282,8 +314,95 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete }: {
             </TouchableOpacity>
           )}
         </View>
-        <DealSheetGrid enquiry={enquiry} />
+        <DealSheetGrid enquiry={enquiry} onDetails={openDetails} />
       </View>
+
+      {/* Details drawer */}
+      <Modal visible={detailsOpen} transparent animationType="none" onRequestClose={closeDetails}>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <TouchableOpacity style={eh.drawerBackdrop} activeOpacity={1} onPress={closeDetails} />
+          <Animated.View style={[
+            eh.drawerPanel,
+            { width: DRAWER_WIDTH, backgroundColor: colors.bg, borderLeftColor: colors.border },
+            { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [DRAWER_WIDTH, 0] }) }] },
+          ]}>
+            {/* Drawer header */}
+            <View style={[eh.drawerHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[eh.drawerTitle, { color: colors.black }]}>Details</Text>
+              <TouchableOpacity onPress={closeDetails} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={eh.drawerClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={eh.drawerContent} showsVerticalScrollIndicator={false}>
+
+              {/* Gig info */}
+              <Text style={eh.drawerSectionLabel}>GIG INFO</Text>
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                {[
+                  { key: 'Date',     val: dateStrFull },
+                  { key: 'Time/Set', val: setStr      },
+                  { key: 'Slot',     val: billing     },
+                  { key: 'Fee',      val: fee         },
+                ].map((row, i, arr) => (
+                  <View key={row.key} style={[eh.drawerInfoRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{row.key}</Text>
+                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{row.val}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Quick links */}
+              {quickLinks.length > 0 && (
+                <>
+                  <Text style={eh.drawerSectionLabel}>QUICK VIEW</Text>
+                  <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                    {quickLinks.map((l, i, arr) => (
+                      <TouchableOpacity
+                        key={l.label}
+                        style={[eh.drawerInfoRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                        onPress={() => { closeDetails(); setTimeout(() => l.onPress?.(), 350); }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.orange }}>{l.label}</Text>
+                        <Text style={{ fontSize: 14, color: Colors.orange }}>→</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Important Notes */}
+              <Text style={eh.drawerSectionLabel}>IMPORTANT NOTES</Text>
+              <TextInput
+                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border }]}
+                value={notes}
+                onChangeText={t => { setNotes(t); setNotesEdited(true); }}
+                placeholder="Add key details, agreements, requirements — anything worth keeping..."
+                placeholderTextColor="#aaaaaa"
+                multiline
+                textAlignVertical="top"
+              />
+              {notesEdited && (
+                <View style={eh.drawerNotesBtns}>
+                  <TouchableOpacity
+                    style={eh.drawerCancelBtn}
+                    onPress={() => { setNotes((enquiry as any).importantNotes ?? ''); setNotesEdited(false); }}
+                  >
+                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={eh.drawerSaveBtn} onPress={saveNotes} disabled={notesSaving}>
+                    {notesSaving
+                      ? <ActivityIndicator color="#111111" size="small" />
+                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
+
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
@@ -321,22 +440,43 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete }: {
 }
 
 const eh = StyleSheet.create({
-  card:      { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 0, borderBottomWidth: 1, flexShrink: 0 },
-  titleRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
-  back:      { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
-  titleInfo: { flex: 1, minWidth: 0 },
-  name:      { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  slot:      { fontSize: 13, marginTop: 1 },
-  dots:      { fontSize: 22, color: '#aaaaaa', letterSpacing: 1, marginLeft: 4 },
+  card:              { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 0, borderBottomWidth: 1, flexShrink: 0 },
+  titleRow:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  back:              { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
+  titleInfo:         { flex: 1, minWidth: 0 },
+  name:              { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  slot:              { fontSize: 15, marginTop: 2 },
+  quickLinks:        { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
+  quickLinkText:     { fontSize: 12, fontWeight: '600', color: Colors.orange },
+  quickLinkSep:      { fontSize: 12, color: '#cccccc', marginRight: 6 },
+  dots:              { fontSize: 22, color: '#aaaaaa', letterSpacing: 1, marginLeft: 4 },
+  // Details drawer
+  drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: -4, height: 0 }, elevation: 12 },
+  drawerHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  drawerClose:       { fontSize: 18, color: '#aaaaaa', fontWeight: '600' },
+  drawerContent:     { padding: 20, gap: 6, paddingBottom: 40 },
+  drawerSectionLabel:{ fontSize: 10, fontWeight: '700', color: '#aaaaaa', letterSpacing: 0.7, textTransform: 'uppercase' as const, marginTop: 16, marginBottom: 6 },
+  drawerInfoCard:    { borderRadius: 12, borderWidth: 1, overflow: 'hidden' as const },
+  drawerInfoRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
+  drawerInfoKey:     { fontSize: 13, fontWeight: '600' },
+  drawerInfoVal:     { fontSize: 13, fontWeight: '700' },
+  drawerNotesInput:  { borderRadius: 12, borderWidth: 1, padding: 14, fontSize: 14, minHeight: 120, lineHeight: 21, marginTop: 0 },
+  drawerNotesBtns:   { flexDirection: 'row', gap: 10, marginTop: 10 },
+  drawerCancelBtn:   { flex: 1, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },
+  drawerCancelBtnText: { fontSize: 14, fontWeight: '600', color: '#888888' },
+  drawerSaveBtn:     { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: Colors.orange, alignItems: 'center' },
+  drawerSaveBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
 });
 
 // ── Thread tile ────────────────────────────────────────────────────────────
 
 const STATUS_MOVE_OPTIONS: { status: Enquiry['status']; label: string }[] = [
   { status: 'pending',    label: 'Enquired'   },
-  { status: 'discussing', label: 'Discussing' },
-  { status: 'accepted',   label: 'Confirmed'  },
-  { status: 'declined',   label: 'Declined'   },
+  { status: 'discussing', label: 'Discuss'    },
+  { status: 'accepted',   label: 'Confirm'    },
+  { status: 'declined',   label: 'Decline'    },
 ];
 
 function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
@@ -372,7 +512,12 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
     await updateEnquiryStatus(item.id, status);
   }
 
-  const options = STATUS_MOVE_OPTIONS.filter(o => o.status !== item.status);
+  const options = STATUS_MOVE_OPTIONS.filter(o => {
+    if (o.status === item.status) return false;
+    if (item.status === 'discussing') return o.status === 'accepted' || o.status === 'declined';
+    if (item.status === 'accepted')  return o.status === 'discussing' || o.status === 'declined';
+    return true;
+  });
 
   return (
     <>
@@ -461,12 +606,15 @@ const tt = StyleSheet.create({
 
 // ── Enquiry details bubble (expandable from header, venue view) ────────────
 
-function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolean }) {
+function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
+  enquiry: Enquiry; isVenue: boolean;
+  profileRef?: React.RefObject<View>; musicRef?: React.RefObject<View>; techRef?: React.RefObject<View>;
+}) {
   const { day, date, time, room, slotType, setLength } = enquiry.requestedSlot;
   const dateStr  = date ? fmtSlotDate(date) : '';
   const slotStr  = [day, dateStr, time, room, slotType, setLength].filter(Boolean).join(' · ');
   const genres: string[] = enquiry.genre ?? [];
-  const sentLabel = isVenue ? enquiry.bandName.toUpperCase() : 'YOU';
+  const sentLabel = isVenue ? enquiry.bandName : 'You';
   const sentDate  = formatTileDate(enquiry.submittedAt);
 
   // Venue views: artist sent this (grey theirs bubble)
@@ -482,9 +630,9 @@ function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolea
   const dimColor  = isMine ? 'rgba(255,255,255,0.55)' : '#888888';
   const divColor  = isMine ? 'rgba(255,255,255,0.15)' : '#e8e8e8';
 
-  function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  function Section({ label, children, sectionRef }: { label: string; children: React.ReactNode; sectionRef?: React.RefObject<View> }) {
     return (
-      <View style={[eq.section, { borderTopColor: divColor }]}>
+      <View ref={sectionRef as any} style={[eq.section, { borderTopColor: divColor }]}>
         <Text style={[eq.sectionLabel, { color: dimColor }]}>{label}</Text>
         {children}
       </View>
@@ -492,19 +640,11 @@ function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolea
   }
 
   return (
-    <View style={isMine ? tp.rowMine : tp.rowTheirs}>
+    <View>
+      <Text style={tp.enquirySentLabel}>{sentLabel} · {sentDate}</Text>
+      <View style={isMine ? tp.rowMine : tp.rowTheirs}>
       <View style={[tp.msgCol, isMine && tp.msgColMine]}>
-        <Text style={[tp.msgLabel, isMine && tp.msgLabelRight]}>
-          {sentLabel} · {sentDate}
-        </Text>
         <View style={[eq.bubble, isMine ? tp.bubbleMine : tp.bubbleTheirs]}>
-
-          {/* Slot */}
-          {slotStr ? (
-            <View style={eq.slotRow}>
-              <Text style={[eq.slotText, { color: textColor }]}>{slotStr}</Text>
-            </View>
-          ) : null}
 
           {/* Artist type + genres */}
           {(enquiry.artistType || genres.length > 0) ? (
@@ -529,14 +669,14 @@ function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolea
 
           {/* About */}
           {enquiry.about ? (
-            <Section label="ABOUT">
+            <Section label="ABOUT" sectionRef={profileRef}>
               <Text style={[eq.body, { color: textColor }]}>{enquiry.about}</Text>
             </Section>
           ) : null}
 
           {/* Music */}
           {songs.length > 0 ? (
-            <Section label="MUSIC">
+            <Section label="MUSIC" sectionRef={musicRef}>
               {songs.map((s: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>
                   {s.title}{s.url ? ` — ${s.url}` : ''}{s.notes ? ` (${s.notes})` : ''}
@@ -579,7 +719,7 @@ function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolea
 
           {/* Tech rider */}
           {techRider && Object.keys(techRider).length > 0 ? (
-            <Section label="TECH RIDER">
+            <Section label="TECH RIDER" sectionRef={techRef}>
               {Object.entries(techRider).map(([k, v]: [string, any]) => (
                 <Text key={k} style={[eq.body, { color: textColor }]}>{k}: {String(v)}</Text>
               ))}
@@ -593,6 +733,7 @@ function EnquiryBubble({ enquiry, isVenue }: { enquiry: Enquiry; isVenue: boolea
             </Section>
           ) : null}
         </View>
+      </View>
       </View>
     </View>
   );
@@ -621,14 +762,23 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   const { user } = useAuth();
   const { colors } = useTheme();
   const messages = useMessages(enquiry.id);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef   = useRef<ScrollView>(null);
+  const profileRef  = useRef<View>(null);
+  const musicRef    = useRef<View>(null);
+  const techRef     = useRef<View>(null);
+
+  function scrollToRef(ref: React.RefObject<View>) {
+    ref.current?.measureLayout(
+      scrollRef.current as any,
+      (_x: number, y: number) => scrollRef.current?.scrollTo({ y, animated: true }),
+      () => {},
+    );
+  }
 
   const [chatText,      setChatText]      = useState('');
-  const [replyText,     setReplyText]     = useState('');
   const [confirmText,   setConfirmText]   = useState('');
   const [declineReason, setDeclineReason] = useState('');
   const [expandedForm,  setExpandedForm]  = useState<null | 'decline' | 'confirm'>(null);
-  const [counterMode,   setCounterMode]   = useState(false);
   const [listingChoice, setListingChoice] = useState<'pending' | 'booked'>('pending');
   const [submitting,    setSubmitting]    = useState(false);
 
@@ -649,17 +799,6 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
 
   function toggleForm(form: 'decline' | 'confirm') {
     setExpandedForm(prev => prev === form ? null : form);
-  }
-
-  async function handleSendReply() {
-    const msg = replyText.trim();
-    if (!msg || !user) return;
-    setSubmitting(true);
-    await sendMessage(enquiry.id, user.uid, msg);
-    if (enquiry.status === 'pending') await updateEnquiryStatus(enquiry.id, 'discussing');
-    setReplyText('');
-    setCounterMode(false);
-    setSubmitting(false);
   }
 
   async function handleSendChat() {
@@ -708,6 +847,9 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
           onBack?.();
         }}
+        onScrollToProfile={() => scrollToRef(profileRef)}
+        onScrollToMusic={() => scrollToRef(musicRef)}
+        onScrollToTech={() => scrollToRef(techRef)}
       />
 
       {/* Messages */}
@@ -718,7 +860,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
         {/* Enquiry details always shown as first item */}
-        <EnquiryBubble enquiry={enquiry} isVenue={isVenue} />
+        <EnquiryBubble enquiry={enquiry} isVenue={isVenue} profileRef={profileRef} musicRef={musicRef} techRef={techRef} />
         {(() => {
           // Build sender groups for avatar + timestamp logic
           type MsgGroup = { sender: string; msgs: typeof messages; startMs: number; endMs: number };
@@ -742,13 +884,16 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               const isLast = i === group.msgs.length - 1;
               const showTimestamp = spansHour || isLast;
               const prevM = i > 0 ? group.msgs[i - 1] : null;
-              const showSep = !prevM && (() => {
+              const prevMsgTimestamp = (() => {
+                if (prevM) return prevM.timestamp;
                 const gIdx = groups.indexOf(group);
-                if (gIdx === 0) return false;
+                if (gIdx === 0) return null;
                 const prevGroup = groups[gIdx - 1];
-                const prevLast  = prevGroup.msgs[prevGroup.msgs.length - 1];
-                return !isSameDay(prevLast.timestamp, m.timestamp);
+                return prevGroup.msgs[prevGroup.msgs.length - 1].timestamp;
               })();
+              const showSep = prevMsgTimestamp
+                ? new Date(m.timestamp).getTime() - new Date(prevMsgTimestamp).getTime() > 60 * 60 * 1000
+                : false;
               return (
                 <View key={m.id}>
                   {showSep && <DateSep label={getDateLabel(m.timestamp)} />}
@@ -1055,12 +1200,12 @@ const vp = StyleSheet.create({
   pendingBtnDecline:       { borderColor: '#e0e0e0', backgroundColor: '#ffffff' },
   pendingBtnDeclineActive: { borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.06)' },
   pendingBtnDiscuss:       { borderColor: '#d0ccc7', backgroundColor: '#ffffff' },
-  pendingBtnConfirm:       { borderColor: Colors.orange, backgroundColor: Colors.orange },
-  pendingBtnConfirmActive: { backgroundColor: Colors.orange },
+  pendingBtnConfirm:       { borderColor: '#d0ccc7', backgroundColor: '#ffffff' },
+  pendingBtnConfirmActive: { borderColor: Colors.orange, backgroundColor: 'rgba(245,166,35,0.08)' },
   pendingBtnText:          { fontSize: 14, fontWeight: '700' },
   pendingBtnTextDecline:   { color: '#dc2626' },
   pendingBtnTextDiscuss:   { color: '#444444' },
-  pendingBtnTextConfirm:   { color: '#111111' },
+  pendingBtnTextConfirm:   { color: '#444444' },
 });
 
 // Chat input styles
@@ -1075,7 +1220,8 @@ const ci = StyleSheet.create({
 
 // Thread panel shared styles
 const tp = StyleSheet.create({
-  msgList:      { paddingHorizontal: isWeb ? 20 : 14, paddingVertical: 16, gap: 4, flexGrow: 1 },
+  msgList:           { paddingHorizontal: isWeb ? 20 : 14, paddingVertical: 16, gap: 4, flexGrow: 1 },
+  enquirySentLabel:  { textAlign: 'center', fontSize: 11, fontWeight: '500', color: '#aaaaaa', letterSpacing: 0.3, marginBottom: 8 },
   noMsgs:       { alignItems: 'center', paddingTop: 12 },
   noMsgsText:   { fontSize: 14, color: '#aaaaaa', textAlign: 'center', lineHeight: 20 },
   msgRow:        { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
