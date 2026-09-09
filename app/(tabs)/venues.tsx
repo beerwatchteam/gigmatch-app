@@ -857,7 +857,7 @@ export default function VenuesScreen() {
                     <Text style={st.slotDate}>{slot.dateLabel} · {slot.time}</Text>
                     {(slot.slotType || slot.duration) ? (
                       <Text style={[st.slotMeta, { color: Colors.orange }]}>
-                        {[slot.slotType, slot.duration ? `${slot.duration}min` : null].filter(Boolean).join(' · ')}
+                        {[slot.slotType, slot.duration ? `${slot.duration} min` : null].filter(Boolean).join(' · ')}
                       </Text>
                     ) : null}
                   </View>
@@ -1008,7 +1008,7 @@ export default function VenuesScreen() {
                   const parts: string[] = [];
                   if (slot.time) parts.push(slot.time);
                   if (slot.slotType) parts.push(slot.slotType);
-                  if (slot.duration) parts.push(`${slot.duration}min`);
+                  if (slot.duration) parts.push(`${slot.duration} min`);
                   const slotFeeStr = slot.feeMin != null && slot.feeMax != null
                     ? `$${slot.feeMin}–$${slot.feeMax}`
                     : slot.feeMin != null ? `from $${slot.feeMin}` : null;

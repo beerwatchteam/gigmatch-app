@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { db, storage, auth } from '@/lib/firebase';
 import { signOut, deleteUser } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -37,6 +38,7 @@ type Profile = {
   customLinks: { label: string; url: string }[];
   songs: Song[]; gigHistory: Gig[]; upcomingGigs: Gig[];
   techRider: Record<string, string>;
+  techRiderDocs: { url: string; name: string }[];
   photos: string[]; videos: string[];
   settings: { emailOnEnquiryResponse: boolean; emailOnNewConnection: boolean; listed: boolean };
 };
@@ -46,7 +48,7 @@ const BLANK: Profile = {
   feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
-  techRider: {}, photos: [], videos: [],
+  techRider: {}, techRiderDocs: [], photos: [], videos: [],
   settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
 };
 
@@ -134,6 +136,7 @@ export default function EditProfileScreen() {
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [docUploading, setDocUploading] = useState(false);
 
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
@@ -151,6 +154,7 @@ export default function EditProfileScreen() {
       d.upcomingGigs = d.upcomingGigs || [];
       d.photos      = d.photos      || [];
       d.videos      = d.videos      || [];
+      d.techRiderDocs = d.techRiderDocs || [];
       d.customLinks = d.customLinks || [];
       d.settings    = d.settings    || BLANK.settings;
       originalUsername.current = d.username || '';
@@ -220,6 +224,27 @@ export default function EditProfileScreen() {
     }
   }
 
+  // ── Document (spec sheet) upload ──
+  async function pickDocument() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `riders/bands/${uid}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      set('techRiderDocs', [...(profile.techRiderDocs || []), { url, name: asset.name }]);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setDocUploading(false);
+    }
+  }
+
   // ── Save ──
   async function handleSave() {
     setShowErrors(true);
@@ -279,13 +304,18 @@ export default function EditProfileScreen() {
     }
   }
 
+  function goBack() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(`/musician/${uid}` as any);
+    }
+  }
+
   function handleBack() {
     const isDirty = JSON.stringify(profile) !== JSON.stringify(saved);
     if (isDirty) {
-      Alert.alert('Unsaved changes', 'Any unsaved changes will be lost. Are you sure?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-      ]);
+      crossConfirm('Unsaved changes', 'Any unsaved changes will be lost. Are you sure?', goBack, true);
       return;
     }
     const hasErrors =
@@ -295,13 +325,10 @@ export default function EditProfileScreen() {
       !profile.about?.trim();
     if (hasErrors) {
       setShowErrors(true);
-      Alert.alert('Profile incomplete', 'Some required fields are missing. Your profile won\'t be visible until complete.', [
-        { text: 'Stay & Complete', style: 'cancel' },
-        { text: 'Leave Anyway', style: 'destructive', onPress: () => router.back() },
-      ]);
+      crossConfirm('Profile incomplete', "Some required fields are missing. Your profile won't be visible until complete. Leave anyway?", goBack, true);
       return;
     }
-    router.back();
+    goBack();
   }
 
   const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
@@ -687,6 +714,24 @@ export default function EditProfileScreen() {
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
+
+            <Field label="Spec Sheet / Documents">
+              {(profile.techRiderDocs || []).map((doc, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
+                  <TouchableOpacity
+                    style={s.removeInlineBtn}
+                    onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}
+                  >
+                    <Text style={s.removeInlineBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}>
+                <Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Spec Sheet (PDF)'}</Text>
+              </TouchableOpacity>
+            </Field>
+
             {[
               { field: 'monitoring',     label: 'Monitoring',       placeholder: 'e.g. 3 separate monitor mixes' },
               { field: 'backlineNeeded', label: 'Backline needed',  placeholder: 'e.g. Drum kit only' },
@@ -748,7 +793,7 @@ const s = StyleSheet.create({
   tabActive:          { borderBottomColor: Colors.orange },
   tabText:            { fontSize: 13, color: Colors.grey, fontWeight: '500' },
   tabTextActive:      { color: Colors.orange, fontWeight: '700' },
-  body:               { padding: 20, paddingTop: 24, paddingBottom: 60 },
+  body:               { padding: 20, paddingHorizontal: Platform.OS === 'web' ? 40 : 20, paddingTop: 24, paddingBottom: 60 },
   banner:             { width: '100%', height: 220, overflow: 'hidden', backgroundColor: Colors.bgFaint },
   bannerError:        { borderWidth: 2, borderColor: Colors.danger },
   bannerImg:          { width: '100%', height: '100%' },

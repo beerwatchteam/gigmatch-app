@@ -49,7 +49,7 @@ const BLANK: VenueData = {
   photoPosition: { x: 50, y: 50 },
 };
 
-const TABS = ['Settings','Basic Info','Rooms','Gig Nights','Tech Specs','Photos & Videos'];
+const TABS = ['Settings','Basic Info','Rooms','Timetable','Tech Specs','Photos & Videos'];
 
 // ── Shared sub-components ────────────────────────────────────────
 
@@ -142,6 +142,7 @@ export default function EditVenueScreen() {
   const [expandedNight, setExpandedNight] = useState<number | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
+  const [stageDocUploading, setStageDocUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
   const [newVideoUrl, setNewVideoUrl] = useState('');
 
@@ -235,6 +236,26 @@ export default function EditVenueScreen() {
     }
   }
 
+  async function pickStagePlotDocument() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/jpeg', 'image/png'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setStageDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `stageplots/${venueId}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      set('techSpecs', { ...data.techSpecs, stageDocs: [...(data.techSpecs?.stageDocs || []), { url, name: asset.name }] });
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setStageDocUploading(false);
+    }
+  }
+
   async function pickVideoFile() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 1 });
     if (result.canceled || !result.assets?.[0]) return;
@@ -307,7 +328,7 @@ export default function EditVenueScreen() {
     if (data.rooms.some(r => !r.name?.trim() || !r.capacity?.toString().trim()))
       errors.push('Rooms');
     if (data.gigNights.some(n => !n.day || !n.startTime || !n.startDate || (!n.continuous && !n.endDate)))
-      errors.push('Gig Nights');
+      errors.push('Timetable');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
@@ -352,13 +373,18 @@ export default function EditVenueScreen() {
     }
   }
 
+  function goBack() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace(`/venue/${venueId}` as any);
+    }
+  }
+
   function handleBack() {
     const isDirty = JSON.stringify(data) !== JSON.stringify(saved);
     if (isDirty) {
-      Alert.alert('Unsaved changes', 'Any unsaved changes will be lost. Are you sure?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
-      ]);
+      crossConfirm('Unsaved changes', 'Any unsaved changes will be lost. Are you sure?', goBack, true);
       return;
     }
     const hasErrors =
@@ -367,13 +393,10 @@ export default function EditVenueScreen() {
       !data.email?.trim() || !data.website?.trim();
     if (hasErrors) {
       setShowErrors(true);
-      Alert.alert('Venue profile incomplete', 'Some required fields are missing. Your venue won\'t be visible until complete.', [
-        { text: 'Stay & Complete', style: 'cancel' },
-        { text: 'Leave Anyway', style: 'destructive', onPress: () => router.back() },
-      ]);
+      crossConfirm('Venue profile incomplete', "Some required fields are missing. Your venue won't be visible until complete. Leave anyway?", goBack, true);
       return;
     }
-    router.back();
+    goBack();
   }
 
   if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
@@ -638,9 +661,9 @@ export default function EditVenueScreen() {
         )}
 
         {/* ── GIG NIGHTS ── */}
-        {activeTab === 'Gig Nights' && (
+        {activeTab === 'Timetable' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Gig Nights</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
             {sortedNights(data.gigNights).map(night => {
               const i = data.gigNights.indexOf(night);
               const isOpen = expandedNight === i;
@@ -671,7 +694,7 @@ export default function EditVenueScreen() {
                         <Input value={night.startTime} onChangeText={(v: string) => setNight(i, 'startTime', v)} placeholder="20:00" error={showErrors && !night.startTime} />
                       </Field>
                       <Field label="Set duration (min)">
-                        <Input value={String(night.duration || 60)} onChangeText={(v: string) => setNight(i, 'duration', Number(v))} keyboardType="numeric" placeholder="60" />
+                        <Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" />
                       </Field>
                       <Field label="Slot type">
                         <Pills options={SLOT_TYPES} value={night.slotType || 'Any'} onSelect={(v: string) => setNight(i, 'slotType', v)} />
@@ -734,7 +757,7 @@ export default function EditVenueScreen() {
             })}
             {data.gigNights.length < 7 && (
               <TouchableOpacity style={s.addBtn} onPress={addNight}>
-                <Text style={s.addBtnText}>+ Add Night</Text>
+                <Text style={s.addBtnText}>+ Add Gig</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -743,9 +766,9 @@ export default function EditVenueScreen() {
         {/* ── TECH SPECS ── */}
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Specs / Rider</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Specs</Text>
 
-            {/* Documents */}
+            {/* Documents — stays at top */}
             <Field label="Documents">
               {(data.techSpecs?.documents || []).map((doc: { url: string; name: string }, idx: number) => (
                 <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -760,36 +783,85 @@ export default function EditVenueScreen() {
               </TouchableOpacity>
             </Field>
 
-            {([
-              { f: 'pa',         label: 'PA System' },
-              { f: 'monitoring', label: 'Monitoring' },
-              { f: 'backline',   label: 'Backline' },
-              { f: 'lighting',   label: 'Lighting' },
-              { f: 'parking',    label: 'Parking' },
-            ] as const).map(({ f, label }) => (
-              <Field key={f} label={label}>
-                <Input
-                  value={data.techSpecs?.[f] || ''}
-                  onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, [f]: v })}
-                  placeholder={f === 'pa' ? 'e.g. d&b J-Series' : ''}
-                />
-              </Field>
-            ))}
+            <Field label="PA System">
+              <Input value={data.techSpecs?.pa || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, pa: v })} placeholder="e.g. d&b J-Series" />
+            </Field>
+            <Field label="Monitoring">
+              <Input value={data.techSpecs?.monitoring || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, monitoring: v })} placeholder="e.g. 4x wedges, 2 mixes" />
+            </Field>
+            <Field label="Backline">
+              <Input value={data.techSpecs?.backline || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, backline: v })} placeholder="e.g. house drum kit, 2x guitar amps" />
+            </Field>
 
             <TouchableOpacity
-              style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('techSpecs', { ...data.techSpecs, greenRoom: !data.techSpecs?.greenRoom })}
+              style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]}
+              onPress={() => set('techSpecs', { ...data.techSpecs, soundEngineer: !data.techSpecs?.soundEngineer })}
             >
-              <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.greenRoom && s.checkboxChecked]}>
-                {data.techSpecs?.greenRoom && <Text style={s.checkmark}>✓</Text>}
+              <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.soundEngineer && s.checkboxChecked]}>
+                {data.techSpecs?.soundEngineer && <Text style={s.checkmark}>✓</Text>}
               </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Green room available</Text>
+              <Text style={[s.checkLabel, { color: colors.black }]}>In-house sound engineer</Text>
             </TouchableOpacity>
-            {data.techSpecs?.greenRoom && (
-              <Field label="Green room details">
-                <Input value={data.techSpecs?.greenRoomDetails || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, greenRoomDetails: v })} placeholder="Describe the green room" />
-              </Field>
+            {data.techSpecs?.soundEngineer && (
+              <View style={{ marginBottom: 14 }}>
+                <Input
+                  value={data.techSpecs?.soundEngineerDetails || ''}
+                  onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, soundEngineerDetails: v })}
+                  placeholder="e.g. cost"
+                />
+              </View>
             )}
+
+            <Field label="Stage Dimensions">
+              <Input value={data.techSpecs?.stageDimensions || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, stageDimensions: v })} placeholder="e.g. 6m x 4m" />
+            </Field>
+
+            <Field label="Stage Plot / Documents">
+              {(data.techSpecs?.stageDocs || []).map((doc: { url: string; name: string }, idx: number) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name || doc.url}</Text>
+                  <TouchableOpacity style={s.removeBtn} onPress={() => set('techSpecs', { ...data.techSpecs, stageDocs: (data.techSpecs?.stageDocs || []).filter((_: any, i: number) => i !== idx) })}>
+                    <Text style={s.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={s.addBtn} onPress={pickStagePlotDocument} disabled={stageDocUploading}>
+                <Text style={s.addBtnText}>{stageDocUploading ? 'Uploading…' : '+ Add Stage Plot'}</Text>
+              </TouchableOpacity>
+            </Field>
+
+            <Field label="Power">
+              <Input value={data.techSpecs?.power || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, power: v })} placeholder="e.g. 4x 15A outlets on stage" />
+            </Field>
+            <Field label="Lighting">
+              <Input value={data.techSpecs?.lighting || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, lighting: v })} placeholder="e.g. basic wash + 2 spots" />
+            </Field>
+            <Field label="Load-in & Parking">
+              <Input value={data.techSpecs?.loadInParking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, loadInParking: v })} placeholder="e.g. rear loading dock, street parking only" />
+            </Field>
+            <Field label="Curfew / Noise Restrictions">
+              <Input value={data.techSpecs?.curfew || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, curfew: v })} placeholder="e.g. 11pm hard curfew, council noise limit" />
+            </Field>
+
+            <Field label="Green Room">
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 }}
+                activeOpacity={0.7}
+                onPress={() => set('techSpecs', { ...data.techSpecs, greenRoom: !data.techSpecs?.greenRoom })}
+              >
+                <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.greenRoom && s.checkboxChecked]}>
+                  {data.techSpecs?.greenRoom && <Text style={s.checkmark}>✓</Text>}
+                </View>
+                <Text style={{ fontSize: 14, color: colors.black }}>Available</Text>
+              </TouchableOpacity>
+              {data.techSpecs?.greenRoom && (
+                <Input
+                  value={data.techSpecs?.greenRoomDetails || ''}
+                  onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, greenRoomDetails: v })}
+                  placeholder="Any additional info"
+                />
+              )}
+            </Field>
             <Field label="Notes for acts">
               <Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Any additional info" multiline />
             </Field>
@@ -872,7 +944,7 @@ const s = StyleSheet.create({
   tabActive:     { borderBottomColor: Colors.orange },
   tabText:       { fontSize: 13, color: Colors.grey, fontWeight: '500' },
   tabTextActive: { color: Colors.orange, fontWeight: '700' },
-  body:          { padding: 20, paddingTop: 24, paddingBottom: 60 },
+  body:          { padding: 20, paddingHorizontal: Platform.OS === 'web' ? 40 : 20, paddingTop: 24, paddingBottom: 60 },
   banner:        { width: '100%', height: 220, overflow: 'hidden', backgroundColor: Colors.bgFaint },
   bannerError:   { borderWidth: 2, borderColor: Colors.danger },
   bannerImg:     { width: '100%', height: '100%' },

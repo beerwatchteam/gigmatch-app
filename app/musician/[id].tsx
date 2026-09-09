@@ -118,6 +118,14 @@ type Musician = {
   averageDraw?: number;
   backline?: string;
   availability?: string;
+  techRider?: {
+    monitoring?: string;
+    backlineNeeded?: string;
+    stageSize?: string;
+    soundcheck?: string;
+    notes?: string;
+  };
+  techRiderDocs?: { url: string; name: string }[];
 };
 
 // ── Overview Tab ──────────────────────────────────────────────────
@@ -143,7 +151,9 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
   const hasContact     = !!(m.email || m.phone);
   const hasSocials     = socialLinks.length > 0 || customLinks.length > 0;
   const hasFee         = m.feeMin != null || m.feeMax != null;
-  const hasSidebar     = hasFee || hasContact || hasSocials || !!m.availability;
+  const hasTechRider   = !!(m.techRider && Object.values(m.techRider).some(v => v));
+  const hasTechDocs    = !!(m.techRiderDocs && m.techRiderDocs.length > 0);
+  const hasSidebar     = hasFee || hasContact || hasSocials || !!m.availability || hasTechRider || hasTechDocs;
 
   const feeStr = hasFee
     ? (m.feeMin != null && m.feeMax != null
@@ -195,6 +205,44 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
           <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>AVAILABILITY</Text>
           <Text style={[styles.sideBody, { color: colors.black }]}>{m.availability}</Text>
+        </View>
+      )}
+      {hasTechRider && (
+        <View style={[styles.sideCard, { borderColor: colors.border }]}>
+          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>TECH RIDER</Text>
+          {m.techRider?.monitoring && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Monitoring: </Text>{m.techRider.monitoring}
+            </Text>
+          )}
+          {m.techRider?.backlineNeeded && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Backline: </Text>{m.techRider.backlineNeeded}
+            </Text>
+          )}
+          {m.techRider?.stageSize && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Stage: </Text>{m.techRider.stageSize}
+            </Text>
+          )}
+          {m.techRider?.soundcheck && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Soundcheck: </Text>{m.techRider.soundcheck}
+            </Text>
+          )}
+          {m.techRider?.notes && (
+            <Text style={[styles.sideBody, { color: colors.greyLight, marginTop: 4 }]}>{m.techRider.notes}</Text>
+          )}
+        </View>
+      )}
+      {hasTechDocs && (
+        <View style={[styles.sideCard, { borderColor: colors.border }]}>
+          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>SPEC SHEETS</Text>
+          {(m.techRiderDocs || []).map((doc, i) => (
+            <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
+              <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {doc.name}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
     </View>

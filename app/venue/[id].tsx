@@ -46,14 +46,23 @@ type TechSpecs = {
   pa?: string;
   monitoring?: string;
   backline?: string;
+  soundEngineer?: boolean;
+  soundEngineerDetails?: string;
+  stageDimensions?: string;
+  stageDocs?: { url: string; name: string }[];
+  power?: string;
   lighting?: string;
-  loadIn?: string;
-  soundcheck?: string;
-  parking?: string;
+  loadInParking?: string;
+  curfew?: string;
   greenRoom?: boolean;
   greenRoomDetails?: string;
   notes?: string;
   riderUrl?: string;
+  documents?: { url: string; name: string }[];
+  // Legacy fields
+  loadIn?: string;
+  soundcheck?: string;
+  parking?: string;
 };
 
 type GigNight = {
@@ -569,7 +578,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {nights.length > 0 ? (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Gig Nights</Text>
+          <Text style={[s.sectionTitle, { color: colors.grey }]}>Timetable</Text>
           {nights.map((night, i) => (
             <View key={i} style={s.nightRow}>
               <Text style={[s.nightDay, { color: colors.black }]}>{night.day}</Text>
@@ -1337,13 +1346,15 @@ function RoomsTab({ venue }: { venue: Venue }) {
   const techSpecs = venue.techSpecs;
 
   const techRows = [
-    { label: 'PA System',  value: techSpecs?.pa },
-    { label: 'Monitoring', value: techSpecs?.monitoring },
-    { label: 'Backline',   value: techSpecs?.backline },
-    { label: 'Lighting',   value: techSpecs?.lighting },
-    { label: 'Load-in',    value: techSpecs?.loadIn },
-    { label: 'Soundcheck', value: techSpecs?.soundcheck },
-    { label: 'Parking',    value: techSpecs?.parking },
+    { label: 'PA System',         value: techSpecs?.pa },
+    { label: 'Monitoring',        value: techSpecs?.monitoring },
+    { label: 'Backline',          value: techSpecs?.backline },
+    { label: 'Stage Dimensions',  value: techSpecs?.stageDimensions },
+    { label: 'Power',             value: techSpecs?.power },
+    { label: 'Lighting',          value: techSpecs?.lighting },
+    { label: 'Load-in & Parking', value: techSpecs?.loadInParking || (techSpecs?.loadIn || techSpecs?.parking ? [techSpecs?.loadIn, techSpecs?.parking].filter(Boolean).join(' · ') : undefined) },
+    { label: 'Curfew / Noise',    value: techSpecs?.curfew },
+    { label: 'Soundcheck',        value: techSpecs?.soundcheck },
   ].filter(r => r.value);
 
   if (rooms.length === 0 && !techSpecs) {
@@ -1410,7 +1421,27 @@ function RoomsTab({ venue }: { venue: Venue }) {
                 <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
               </View>
             ))}
+            {typeof techSpecs.soundEngineer !== 'undefined' && (
+              <View style={rt.specItem}>
+                <Text style={[rt.specLabel, { color: colors.grey }]}>In-house Engineer</Text>
+                <Text style={[rt.specValue, { color: techSpecs.soundEngineer ? Colors.orange : '#e94560' }]}>
+                  {techSpecs.soundEngineer
+                    ? `✓ Yes${techSpecs.soundEngineerDetails ? ` — ${techSpecs.soundEngineerDetails}` : ''}`
+                    : '✕ No'}
+                </Text>
+              </View>
+            )}
           </View>
+          {(techSpecs.stageDocs && techSpecs.stageDocs.length > 0) && (
+            <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
+              <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>STAGE PLOT</Text>
+              {techSpecs.stageDocs.map((doc, i) => (
+                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
+                  <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <View style={rt.specItem}>
             <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
             {techSpecs.greenRoom ? (
@@ -1426,7 +1457,16 @@ function RoomsTab({ venue }: { venue: Venue }) {
               <Text style={[rt.notesText, { color: colors.grey }]}>{techSpecs.notes}</Text>
             </View>
           ) : null}
-          {techSpecs.riderUrl ? (
+          {(techSpecs.documents && techSpecs.documents.length > 0) ? (
+            <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
+              <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>DOCUMENTS</Text>
+              {techSpecs.documents.map((doc, i) => (
+                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
+                  <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : techSpecs.riderUrl ? (
             <TouchableOpacity onPress={() => Linking.openURL(techSpecs!.riderUrl!)}>
               <Text style={s.link}>{techSpecs.riderUrl}</Text>
             </TouchableOpacity>

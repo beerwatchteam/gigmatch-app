@@ -51,7 +51,7 @@ export default function EnquireScreen() {
   }>();
 
   // Locked by venue
-  const lockedDuration = params.duration || null;
+  const lockedDuration = params.duration ? `${params.duration} min` : null;
   const lockedSlotType = (params.slotType && params.slotType !== 'Either') ? params.slotType : null;
 
   const [band, setBand]           = useState<Record<string, any>>({});
