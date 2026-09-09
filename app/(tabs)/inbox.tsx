@@ -37,6 +37,33 @@ function useVenuePhoto(venueId: string | null | undefined): string | null {
   return photo;
 }
 
+/** Resolves a user's real display name and photo from their profile collections. */
+function useUserDisplayInfo(uid: string | null): { name: string | null; photoUrl: string | null } {
+  const [info, setInfo] = useState<{ name: string | null; photoUrl: string | null }>({ name: null, photoUrl: null });
+  useEffect(() => {
+    if (!uid) return;
+    let cancelled = false;
+    getDoc(doc(db, 'users', uid)).then(async userSnap => {
+      if (cancelled || !userSnap.exists()) return;
+      const userData = userSnap.data();
+      const name = userData.displayName || null;
+      const type = userData.type as string;
+      const venueId = userData.venueId as string | undefined;
+      let photoUrl: string | null = null;
+      if (type === 'artist') {
+        const bpSnap = await getDoc(doc(db, 'bandProfiles', uid));
+        if (!cancelled && bpSnap.exists()) photoUrl = bpSnap.data().photoUrl ?? null;
+      } else if (type === 'venue' && venueId) {
+        const vSnap = await getDoc(doc(db, 'venues', venueId));
+        if (!cancelled && vSnap.exists()) photoUrl = vSnap.data().photoUrl ?? null;
+      }
+      if (!cancelled) setInfo({ name, photoUrl });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [uid]);
+  return info;
+}
+
 const isWeb = Platform.OS === 'web';
 
 // Persists tab choice within the session; defaults to 'enquiries' on fresh load
@@ -108,8 +135,8 @@ function getStatusCfg(status: string, isVenue: boolean): StatusCfg {
   switch (status) {
     case 'pending':
       return isVenue
-        ? { label: 'NEEDS REPLY',    color: '#f5a623', bg: 'rgba(245,166,35,0.12)' }
-        : { label: 'AWAITING REPLY', color: '#888888', bg: 'rgba(0,0,0,0.06)'      };
+        ? { label: 'AWAITING RESPONSE', color: '#f5a623', bg: 'rgba(245,166,35,0.12)' }
+        : { label: 'AWAITING REPLY',    color: '#888888', bg: 'rgba(0,0,0,0.06)'      };
     case 'discussing':
       return { label: 'DISCUSSING', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' };
     case 'accepted':
@@ -656,10 +683,9 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   }
 
   async function handleConfirm() {
-    const msg = confirmText.trim();
-    if (!msg || !user) return;
+    if (!user) return;
     setSubmitting(true);
-    await sendMessage(enquiry.id, user.uid, msg);
+    if (confirmText.trim()) await sendMessage(enquiry.id, user.uid, confirmText.trim());
     await updateEnquiryStatus(enquiry.id, 'accepted');
     await bookSlotOnTimetable(enquiry, listingChoice === 'booked');
     setExpandedForm(null);
@@ -807,18 +833,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
             {expandedForm === 'confirm' && (
               <View style={vp.form}>
                 <Text style={vp.formLabel}>CONFIRM BOOKING</Text>
-                <TextInput
-                  style={vp.formTextarea}
-                  placeholder="e.g. Great, we'd love to have you. A few details to confirm…"
-                  placeholderTextColor="#aaaaaa"
-                  value={confirmText}
-                  onChangeText={setConfirmText}
-                  multiline
-                  numberOfLines={2}
-                  textAlignVertical="top"
-                  autoFocus
-                />
-                <View style={{ gap: 6, marginBottom: 10 }}>
+                <View style={{ gap: 6, marginBottom: 4 }}>
                   {([
                     { value: 'pending', label: 'Reserve (pending)', sub: 'slot reserved, not publicly listed yet' },
                     { value: 'booked',  label: 'List as booked now', sub: 'band appears on public timetable' },
@@ -834,6 +849,16 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
                     </TouchableOpacity>
                   ))}
                 </View>
+                <TextInput
+                  style={vp.formTextarea}
+                  placeholder="Optional message to the artist…"
+                  placeholderTextColor="#aaaaaa"
+                  value={confirmText}
+                  onChangeText={setConfirmText}
+                  multiline
+                  numberOfLines={2}
+                  textAlignVertical="top"
+                />
                 <View style={vp.formRow}>
                   <TouchableOpacity
                     style={vp.cancelBtn}
@@ -842,60 +867,49 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
                     <Text style={vp.cancelBtnText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[vp.confirmSubmit, !confirmText.trim() && vp.confirmSubmitOff]}
+                    style={[vp.confirmSubmit, submitting && vp.confirmSubmitOff]}
                     onPress={handleConfirm}
-                    disabled={!confirmText.trim() || submitting}
+                    disabled={submitting}
                   >
                     {submitting
                       ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={[vp.confirmSubmitText, !confirmText.trim() && { color: '#aaaaaa' }]}>
-                          Confirm Booking
-                        </Text>
+                      : <Text style={vp.confirmSubmitText}>Confirm Booking</Text>
                     }
                   </TouchableOpacity>
                 </View>
               </View>
             )}
 
-            {/* Combined reply + action row */}
-            <View style={vp.combinedRow}>
-              <TextInput
-                style={vp.replyInput}
-                placeholder={counterMode ? `Counter-offer to ${who}…` : `Reply to ${who}…`}
-                placeholderTextColor="#aaaaaa"
-                value={replyText}
-                onChangeText={setReplyText}
-                multiline
-              />
-              {replyText.trim() ? (
-                <TouchableOpacity
-                  style={[vp.sendBtn, submitting && vp.sendBtnOff]}
-                  onPress={handleSendReply}
-                  disabled={submitting}
-                >
-                  {submitting
-                    ? <ActivityIndicator color="#111111" size="small" />
-                    : <Text style={vp.sendBtnText}>↑</Text>
-                  }
-                </TouchableOpacity>
-              ) : null}
+            {/* Pending action buttons */}
+            <View style={vp.pendingActionsRow}>
               <TouchableOpacity
-                style={[vp.outlineBtn, counterMode && vp.outlineBtnActive]}
-                onPress={() => { setCounterMode(v => !v); setExpandedForm(null); }}
+                style={[vp.pendingBtn, vp.pendingBtnDecline, expandedForm === 'decline' && vp.pendingBtnDeclineActive]}
+                onPress={() => toggleForm('decline')}
               >
-                <Text style={[vp.outlineBtnText, counterMode && { color: Colors.orange }]}>Counter-offer</Text>
+                {submitting && expandedForm === 'decline'
+                  ? <ActivityIndicator color="#dc2626" size="small" />
+                  : <Text style={[vp.pendingBtnText, vp.pendingBtnTextDecline]}>Decline</Text>
+                }
               </TouchableOpacity>
               <TouchableOpacity
-                style={[vp.outlineBtn, expandedForm === 'decline' && vp.declineBtnActive]}
-                onPress={() => { toggleForm('decline'); setCounterMode(false); }}
+                style={[vp.pendingBtn, vp.pendingBtnDiscuss]}
+                onPress={async () => {
+                  setSubmitting(true);
+                  await updateEnquiryStatus(enquiry.id, 'discussing');
+                  setSubmitting(false);
+                }}
+                disabled={submitting}
               >
-                <Text style={[vp.outlineBtnText, expandedForm === 'decline' && { color: '#dc2626' }]}>Decline</Text>
+                {submitting && expandedForm === null
+                  ? <ActivityIndicator color="#111111" size="small" />
+                  : <Text style={[vp.pendingBtnText, vp.pendingBtnTextDiscuss]}>Discuss</Text>
+                }
               </TouchableOpacity>
               <TouchableOpacity
-                style={vp.confirmBtn}
-                onPress={() => { toggleForm('confirm'); setCounterMode(false); }}
+                style={[vp.pendingBtn, vp.pendingBtnConfirm, expandedForm === 'confirm' && vp.pendingBtnConfirmActive]}
+                onPress={() => toggleForm('confirm')}
               >
-                <Text style={vp.confirmBtnText}>Confirm booking</Text>
+                <Text style={[vp.pendingBtnText, vp.pendingBtnTextConfirm]}>Confirm</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1035,6 +1049,18 @@ const vp = StyleSheet.create({
   declineBtnActive:   { borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.06)' },
   confirmBtn:         { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: Colors.orange, alignItems: 'center' },
   confirmBtnText:     { fontSize: 13, fontWeight: '700', color: '#111111' },
+  // Pending state: three action buttons
+  pendingActionsRow:       { flexDirection: 'row', gap: 10 },
+  pendingBtn:              { flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  pendingBtnDecline:       { borderColor: '#e0e0e0', backgroundColor: '#ffffff' },
+  pendingBtnDeclineActive: { borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.06)' },
+  pendingBtnDiscuss:       { borderColor: '#d0ccc7', backgroundColor: '#ffffff' },
+  pendingBtnConfirm:       { borderColor: Colors.orange, backgroundColor: Colors.orange },
+  pendingBtnConfirmActive: { backgroundColor: Colors.orange },
+  pendingBtnText:          { fontSize: 14, fontWeight: '700' },
+  pendingBtnTextDecline:   { color: '#dc2626' },
+  pendingBtnTextDiscuss:   { color: '#444444' },
+  pendingBtnTextConfirm:   { color: '#111111' },
 });
 
 // Chat input styles
@@ -1088,8 +1114,9 @@ function DMTile({ conv, myUid, isSelected, onPress }: {
   conv: DMConv; myUid: string; isSelected: boolean; onPress: () => void;
 }) {
   const otherUid   = conv.participants.find(p => p !== myUid) ?? '';
-  const otherName  = conv.participantNames[otherUid] ?? 'Unknown';
-  const otherPhoto = conv.participantPhotos?.[otherUid] ?? null;
+  const resolved   = useUserDisplayInfo(otherUid || null);
+  const otherName  = resolved.name ?? conv.participantNames[otherUid] ?? 'Unknown';
+  const otherPhoto = resolved.photoUrl ?? conv.participantPhotos?.[otherUid] ?? null;
   const isRequest  = conv.initiatedBy !== myUid && !conv.acceptedBy.includes(myUid);
 
   return (
@@ -1153,8 +1180,9 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
 }) {
   const messages    = useDMMessages(conv.id);
   const otherUid    = conv.participants.find(p => p !== myUid) ?? '';
-  const otherName   = conv.participantNames[otherUid] ?? 'User';
-  const otherPhoto  = conv.participantPhotos?.[otherUid] ?? null;
+  const resolved    = useUserDisplayInfo(otherUid || null);
+  const otherName   = resolved.name ?? conv.participantNames[otherUid] ?? 'User';
+  const otherPhoto  = resolved.photoUrl ?? conv.participantPhotos?.[otherUid] ?? null;
   const isAccepted  = conv.acceptedBy.includes(myUid);
   const isInitiator = conv.initiatedBy === myUid;
   const otherAccepted = conv.acceptedBy.includes(otherUid);
@@ -1383,19 +1411,17 @@ const dm = StyleSheet.create({
 
 // ── Filter config ──────────────────────────────────────────────────────────
 
-type FilterKey = 'all' | 'enquired' | 'discussing' | 'confirmed';
+type FilterKey = 'enquired' | 'discussing' | 'confirmed';
 
-function getFilterConfig(_isVenue: boolean) {
+function getFilterConfig(isVenue: boolean) {
   return [
-    { key: 'all'        as FilterKey, label: 'All',        statuses: [] },
-    { key: 'enquired'   as FilterKey, label: 'Enquired',   statuses: ['pending'] },
+    { key: 'enquired'   as FilterKey, label: isVenue ? 'Awaiting Response' : 'Enquired', statuses: ['pending'] },
     { key: 'discussing' as FilterKey, label: 'Discussing', statuses: ['discussing'] },
     { key: 'confirmed'  as FilterKey, label: 'Confirmed',  statuses: ['accepted'] },
   ];
 }
 
 function matchesFilter(enquiry: Enquiry, filter: FilterKey): boolean {
-  if (filter === 'all') return true;
   const cfg = getFilterConfig(true).find(f => f.key === filter);
   return cfg ? cfg.statuses.includes(enquiry.status) : true;
 }
@@ -1421,15 +1447,28 @@ export default function InboxScreen() {
   const { enquiries, loading } = isVenue ? venueData : artistData;
 
   const [selected,  setSelected]  = useState<Enquiry | null>(null);
-  const [filter,    setFilter]    = useState<FilterKey>('all');
+  const [filter,    setFilter]    = useState<FilterKey>('enquired');
   const [inboxTab,  setInboxTabRaw]  = useState<'enquiries' | 'messages'>(_sessionInboxTab);
   function setInboxTab(tab: 'enquiries' | 'messages') { _sessionInboxTab = tab; setInboxTabRaw(tab); }
   const [dmFilter,  setDmFilter]  = useState<'accepted' | 'requests'>('accepted');
   const [selectedDMId, setSelectedDMId] = useState<string | null>(null);
 
   const myUid   = user?.uid ?? '';
-  const myName  = (profile as any)?.name || user?.email || '';
-  const myPhoto = (profile as any)?.photoUrl ?? null;
+  const myName  = profile?.displayName || user?.email || '';
+  const [myPhoto, setMyPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid || !profile) return;
+    if (profile.type === 'artist') {
+      getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
+        if (snap.exists()) setMyPhoto(snap.data().photoUrl ?? null);
+      }).catch(() => {});
+    } else if (profile.type === 'venue' && profile.venueId) {
+      getDoc(doc(db, 'venues', profile.venueId)).then(snap => {
+        if (snap.exists()) setMyPhoto(snap.data().photoUrl ?? null);
+      }).catch(() => {});
+    }
+  }, [user?.uid, profile?.type, profile?.venueId]);
 
   const dmConvs     = useDMConversations(user?.uid ?? null);
   const acceptedDMs = dmConvs.filter(c => c.acceptedBy.includes(myUid));
@@ -1438,7 +1477,7 @@ export default function InboxScreen() {
   const selectedDM  = dmConvs.find(c => c.id === selectedDMId) ?? null;
 
   const FILTERS = getFilterConfig(isVenue);
-  const sorted   = [...enquiries].sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  const sorted   = [...enquiries].filter(e => !(isVenue && e.status === 'declined')).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   const filtered = sorted.filter(e => matchesFilter(e, filter));
   const enquiryNotifCount = !isVenue
     ? enquiries.filter(e => e.status !== 'declined' && e.status !== 'cancelled').length
@@ -1490,16 +1529,15 @@ export default function InboxScreen() {
           {/* Header */}
           <View style={[wb.sidebarHead, { borderBottomColor: colors.border }]}>
             <View style={wb.sidebarTitleRow}>
-              {isVenue ? (
-                <Text style={[wb.sidebarTitle, { color: colors.black }]}>Inbox</Text>
-              ) : (
-                <View style={wb.segControl}>
+              <View style={wb.segControl}>
                   <TouchableOpacity
                     style={[wb.segBtn, inboxTab === 'enquiries' && wb.segBtnActive]}
                     onPress={() => setInboxTab('enquiries')}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Text style={[wb.segText, inboxTab === 'enquiries' && wb.segTextActive]}>My Enquiries</Text>
+                      <Text style={[wb.segText, inboxTab === 'enquiries' && wb.segTextActive]}>
+                        {isVenue ? 'Enquiries' : 'My Enquiries'}
+                      </Text>
                       {enquiryNotifCount > 0 && (
                         <View style={[wb.segBadge, inboxTab === 'enquiries' && wb.segBadgeActive]}>
                           <Text style={[wb.segBadgeText, inboxTab === 'enquiries' && wb.segBadgeTextActive]}>{enquiryNotifCount}</Text>
@@ -1521,7 +1559,6 @@ export default function InboxScreen() {
                     </View>
                   </TouchableOpacity>
                 </View>
-              )}
             </View>
 
             {/* Enquiry filter pills */}
@@ -1681,38 +1718,36 @@ export default function InboxScreen() {
       {/* Page header */}
       <View style={[s.listHeader, { borderBottomColor: colors.border }, (isWeb && !isWideWeb) && { paddingTop: TOP_TAB_H + 20 }]}>
         <View style={s.listHeaderTop}>
-          {isVenue ? (
-            <Text style={[s.title, { color: colors.black }]}>Inbox</Text>
-          ) : (
-            <View style={s.segControl}>
-              <TouchableOpacity
-                style={[s.segBtn, inboxTab === 'enquiries' && s.segBtnActive]}
-                onPress={() => setInboxTab('enquiries')}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={[s.segText, inboxTab === 'enquiries' && s.segTextActive]}>My Enquiries</Text>
-                  {enquiryNotifCount > 0 && (
-                    <View style={[s.segBadge, inboxTab === 'enquiries' && s.segBadgeActive]}>
-                      <Text style={[s.segBadgeText, inboxTab === 'enquiries' && s.segBadgeTextActive]}>{enquiryNotifCount}</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.segBtn, inboxTab === 'messages' && s.segBtnActive]}
-                onPress={() => setInboxTab('messages')}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={[s.segText, inboxTab === 'messages' && s.segTextActive]}>Messages</Text>
-                  {dmConvs.length > 0 && (
-                    <View style={[s.segBadge, inboxTab === 'messages' && s.segBadgeActive]}>
-                      <Text style={[s.segBadgeText, inboxTab === 'messages' && s.segBadgeTextActive]}>{dmConvs.length}</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
+          <View style={s.segControl}>
+            <TouchableOpacity
+              style={[s.segBtn, inboxTab === 'enquiries' && s.segBtnActive]}
+              onPress={() => setInboxTab('enquiries')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Text style={[s.segText, inboxTab === 'enquiries' && s.segTextActive]}>
+                  {isVenue ? 'Enquiries' : 'My Enquiries'}
+                </Text>
+                {enquiryNotifCount > 0 && (
+                  <View style={[s.segBadge, inboxTab === 'enquiries' && s.segBadgeActive]}>
+                    <Text style={[s.segBadgeText, inboxTab === 'enquiries' && s.segBadgeTextActive]}>{enquiryNotifCount}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.segBtn, inboxTab === 'messages' && s.segBtnActive]}
+              onPress={() => setInboxTab('messages')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Text style={[s.segText, inboxTab === 'messages' && s.segTextActive]}>Messages</Text>
+                {dmConvs.length > 0 && (
+                  <View style={[s.segBadge, inboxTab === 'messages' && s.segBadgeActive]}>
+                    <Text style={[s.segBadgeText, inboxTab === 'messages' && s.segBadgeTextActive]}>{dmConvs.length}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Filter pills — horizontal scroll */}

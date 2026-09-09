@@ -18,6 +18,8 @@ import {
   mkDMId, useDMConv, useDMMessages,
   startDM, sendDMMessage, acceptDMRequest, deleteDMConv,
 } from '@/lib/useDirectMessages';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 const isWeb = Platform.OS === 'web';
 
@@ -28,8 +30,21 @@ export default function MessagesScreen() {
   const { id: otherUid, name: nameParam } = useLocalSearchParams<{ id: string; name?: string }>();
 
   const myUid  = user?.uid ?? '';
-  const myName = (profile as any)?.name || user?.email || 'Me';
-  const myPhoto = (profile as any)?.photoUrl ?? null;
+  const myName = profile?.displayName || user?.email || 'Me';
+  const [myPhoto, setMyPhoto] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid || !profile) return;
+    if (profile.type === 'artist') {
+      getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
+        if (snap.exists()) setMyPhoto(snap.data().photoUrl ?? null);
+      }).catch(() => {});
+    } else if (profile.type === 'venue' && profile.venueId) {
+      getDoc(doc(db, 'venues', profile.venueId)).then(snap => {
+        if (snap.exists()) setMyPhoto(snap.data().photoUrl ?? null);
+      }).catch(() => {});
+    }
+  }, [user?.uid, profile?.type, profile?.venueId]);
 
   const convId = myUid && otherUid ? mkDMId(myUid, otherUid) : null;
   const conv    = useDMConv(convId);
