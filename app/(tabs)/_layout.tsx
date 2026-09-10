@@ -1,5 +1,6 @@
 import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Tabs, usePathname, useRouter } from 'expo-router';
+import { Ticket, Microphone, Compass, Envelope } from 'phosphor-react-native';
 import { Text } from '@/components/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
@@ -14,137 +15,6 @@ export const TOP_TAB_H   = 52;
 export const BOTTOM_TAB_H = 60;
 export const WEB_TAB_H   = 48;
 
-// ── Inline SVG-style icons ────────────────────────────────────────
-
-function InboxIcon({ color }: { color: string }) {
-  // Envelope shape: rectangle body + V-fold line
-  return (
-    <View style={{ width: 24, height: 18, borderWidth: 1.5, borderColor: color, borderRadius: 3 }}>
-      <View style={{
-        position: 'absolute', top: 0, left: 0, right: 0,
-        height: 9,
-        borderBottomWidth: 1.5,
-        borderBottomColor: color,
-        borderBottomLeftRadius: 0,
-        borderBottomRightRadius: 0,
-        // Clip to create V shape by overlapping two diagonal borders
-        overflow: 'hidden',
-      }}>
-        <View style={{
-          position: 'absolute', top: -1, left: -2, right: -2, bottom: 0,
-          borderBottomWidth: 11,
-          borderBottomColor: 'transparent',
-          borderLeftWidth: 14,
-          borderLeftColor: color,
-          borderRightWidth: 14,
-          borderRightColor: color,
-          opacity: 0,
-        }} />
-      </View>
-      {/* Left diagonal */}
-      <View style={{
-        position: 'absolute', top: 0, left: 0,
-        width: 13, height: 1.5, backgroundColor: color,
-        transform: [{ rotate: '37deg' }, { translateX: -1 }, { translateY: 4 }],
-      }} />
-      {/* Right diagonal */}
-      <View style={{
-        position: 'absolute', top: 0, right: 0,
-        width: 13, height: 1.5, backgroundColor: color,
-        transform: [{ rotate: '-37deg' }, { translateX: 1 }, { translateY: 4 }],
-      }} />
-    </View>
-  );
-}
-
-function ProfileIcon({ color }: { color: string }) {
-  return (
-    <View style={{ alignItems: 'center', gap: 3 }}>
-      <View style={{ width: 11, height: 11, borderRadius: 6, borderWidth: 1.5, borderColor: color }} />
-      <View style={{
-        width: 20, height: 10,
-        borderTopLeftRadius: 10, borderTopRightRadius: 10,
-        borderWidth: 1.5, borderBottomWidth: 0,
-        borderColor: color,
-      }} />
-    </View>
-  );
-}
-
-function SlotsIcon({ color }: { color: string }) {
-  return (
-    <View style={{ width: 20, height: 17, justifyContent: 'space-between' }}>
-      <View style={{ height: 2.5, backgroundColor: color, borderRadius: 1.5 }} />
-      <View style={{ height: 2.5, backgroundColor: color, borderRadius: 1.5 }} />
-      <View style={{ height: 2.5, backgroundColor: color, borderRadius: 1.5, width: '65%' }} />
-    </View>
-  );
-}
-
-function VenuesIcon({ color }: { color: string }) {
-  const { colors } = useTheme();
-  // Ticket shape: rectangle with semicircular notches on left and right sides
-  return (
-    <View style={{ width: 22, height: 13 }}>
-      {/* Top border */}
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: color }} />
-      {/* Bottom border */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5, backgroundColor: color }} />
-      {/* Left border — top segment */}
-      <View style={{ position: 'absolute', top: 0, left: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
-      {/* Left border — bottom segment */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
-      {/* Right border — top segment */}
-      <View style={{ position: 'absolute', top: 0, right: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
-      {/* Right border — bottom segment */}
-      <View style={{ position: 'absolute', bottom: 0, right: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
-      {/* Left notch circle */}
-      <View style={{ position: 'absolute', left: -4, top: 2.5, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: color, backgroundColor: colors.bg }} />
-      {/* Right notch circle */}
-      <View style={{ position: 'absolute', right: -4, top: 2.5, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: color, backgroundColor: colors.bg }} />
-    </View>
-  );
-}
-
-function DiscoverIcon({ color }: { color: string }) {
-  const { colors } = useTheme();
-  // Compass-style icon: circle with crosshair lines and centre dot
-  return (
-    <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-        {/* Vertical line */}
-        <View style={{ width: 1.5, height: 11, backgroundColor: color, position: 'absolute' }} />
-        {/* Horizontal line */}
-        <View style={{ width: 11, height: 1.5, backgroundColor: color, position: 'absolute' }} />
-        {/* Centre dot — drawn on top with bg fill to punch through the lines */}
-        <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.bg, position: 'absolute' }} />
-        <View style={{ width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: color, position: 'absolute' }} />
-      </View>
-    </View>
-  );
-}
-
-function MusiciansIcon({ color }: { color: string }) {
-  // Microphone: capsule body + curved stand arm + stem + base
-  return (
-    <View style={{ width: 20, height: 24, alignItems: 'center' }}>
-      {/* Capsule body */}
-      <View style={{ width: 10, height: 13, borderRadius: 5, borderWidth: 1.5, borderColor: color }} />
-      {/* Stand arc */}
-      <View style={{
-        position: 'absolute', top: 10,
-        width: 18, height: 9,
-        borderBottomLeftRadius: 9, borderBottomRightRadius: 9,
-        borderLeftWidth: 1.5, borderRightWidth: 1.5, borderBottomWidth: 1.5, borderTopWidth: 0,
-        borderColor: color,
-      }} />
-      {/* Stem */}
-      <View style={{ position: 'absolute', bottom: 0, width: 1.5, height: 5, backgroundColor: color }} />
-      {/* Base */}
-      <View style={{ position: 'absolute', bottom: 0, width: 10, height: 1.5, backgroundColor: color }} />
-    </View>
-  );
-}
 
 // ── Web tab bar (text-only, horizontal) ──────────────────────────
 
@@ -277,13 +147,14 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
         const badge   = route.name === 'inbox' ? badgeCount : 0;
         const label   = LABELS[route.name] ?? route.name;
 
+        const w = focused ? 'fill' : 'regular';
         function renderIcon() {
           switch (route.name) {
-            case 'venues':    return <VenuesIcon color={iconColor} />;
-            case 'musicians': return <MusiciansIcon color={iconColor} />;
-            case 'discover':  return <DiscoverIcon color={iconColor} />;
-            case 'inbox':     return <InboxIcon color={iconColor} />;
-            default:          return <ProfileIcon color={iconColor} />;
+            case 'venues':    return <Ticket    size={24} weight={w} color={iconColor} />;
+            case 'musicians': return <Microphone size={24} weight={w} color={iconColor} />;
+            case 'discover':  return <Compass   size={24} weight={w} color={iconColor} />;
+            case 'inbox':     return <Envelope  size={24} weight={w} color={iconColor} />;
+            default:          return null;
           }
         }
 
