@@ -28,6 +28,18 @@ type Night = {
   feeMin: string; feeMax: string; loadIn: string; soundcheck: string;
   room: string; genres: string[]; notes: string;
 };
+type Payment = {
+  models: string[];
+  setFeeMin: string; setFeeMax: string; feeBasis: string;
+  doorSplit: string; coverCharge: string;
+  barSplit: string;
+  ticketSalesSplit: string; ticketingHandledBy: string;
+  timing: string;
+  invoiceRequired: boolean;
+  gstRegistered: boolean;
+  cancellationTerms: string;
+  additionalNotes: string;
+};
 type VenueData = {
   id?: string; name: string; streetAddress: string; suburb: string;
   state: string; postcode: string; phone: string; email: string;
@@ -36,8 +48,17 @@ type VenueData = {
   techSpecs: Record<string, any>;
   settings: { emailOnNewEnquiry: boolean; emailEnquiryReminders: boolean; listed: boolean };
   photos: string[]; videos: string[];
+  payment: Payment;
   slots?: Record<string, any>;
   photoPosition?: { x: number; y: number };
+};
+
+const BLANK_PAYMENT: Payment = {
+  models: [], setFeeMin: '', setFeeMax: '', feeBasis: 'Per band',
+  doorSplit: '', coverCharge: '', barSplit: '',
+  ticketSalesSplit: '', ticketingHandledBy: '',
+  timing: '', invoiceRequired: true, gstRegistered: false,
+  cancellationTerms: '', additionalNotes: '',
 };
 
 const BLANK: VenueData = {
@@ -46,6 +67,7 @@ const BLANK: VenueData = {
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
   photos: [], videos: [],
+  payment: { ...BLANK_PAYMENT },
   photoPosition: { x: 50, y: 50 },
 };
 
@@ -79,7 +101,50 @@ function Input({ value, onChangeText, placeholder, multiline, keyboardType, erro
       numberOfLines={multiline ? 4 : 1}
       keyboardType={keyboardType}
       autoCapitalize="none"
+      textAlignVertical={multiline ? 'top' : 'auto'}
     />
+  );
+}
+
+function Select({ options, value, onSelect }: { options: string[]; value: string; onSelect: (v: string) => void }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  function handlePress() {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Select', undefined, [
+        ...options.map(opt => ({ text: opt, onPress: () => onSelect(opt) })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
+    } else {
+      setOpen(o => !o);
+    }
+  }
+  return (
+    <View style={{ zIndex: 10 }}>
+      <TouchableOpacity
+        onPress={handlePress}
+        style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}
+      >
+        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{value || 'Select…'}</Text>
+        <Text style={{ fontSize: 10, color: Colors.grey, marginLeft: 4 }}>▼</Text>
+      </TouchableOpacity>
+      {open && (
+        <>
+          <TouchableOpacity style={{ position: 'absolute', top: -1000, bottom: -1000, left: -1000, right: -1000, zIndex: 98 }} onPress={() => setOpen(false)} />
+          <View style={{ position: 'absolute', top: 48, left: 0, right: 0, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, zIndex: 99, overflow: 'hidden' }}>
+            {options.map((opt, i) => (
+              <TouchableOpacity
+                key={opt}
+                onPress={() => { onSelect(opt); setOpen(false); }}
+                style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < options.length - 1 ? 1 : 0, borderBottomColor: colors.borderFaint, backgroundColor: opt === value ? 'rgba(250,131,12,0.06)' : 'transparent' }}
+              >
+                <Text style={{ fontSize: 14, color: opt === value ? Colors.orange : colors.black, fontWeight: opt === value ? '700' : '400' }}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -156,6 +221,7 @@ export default function EditVenueScreen() {
         d.photos    = d.photos    || [];
         d.videos    = d.videos    || [];
         d.settings  = d.settings  || BLANK.settings;
+        d.payment   = d.payment   ? { ...BLANK_PAYMENT, ...d.payment } : { ...BLANK_PAYMENT };
         setData(d); setSaved(d);
       }
     }).finally(() => setLoading(false));
@@ -164,6 +230,11 @@ export default function EditVenueScreen() {
   function set<K extends keyof VenueData>(field: K, value: VenueData[K]) {
     setJustSaved(false);
     setData(prev => ({ ...prev, [field]: value }));
+  }
+
+  function setPayment<K extends keyof Payment>(field: K, value: Payment[K]) {
+    setJustSaved(false);
+    setData(prev => ({ ...prev, payment: { ...prev.payment, [field]: value } }));
   }
 
   // ── Rooms ──
@@ -613,6 +684,100 @@ export default function EditVenueScreen() {
               </Field>
             </View>
 
+            {/* Payment */}
+            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment</Text>
+
+              <Field label="Payment Model(s)">
+                <Pills
+                  options={['Set Fee', 'Door Split', 'Bar Split', 'Ticket Sales Split', 'No Payment (exposure / covers only)']}
+                  value={data.payment.models}
+                  onSelect={(v: string[]) => setPayment('models', v)}
+                  multi
+                />
+              </Field>
+
+              {data.payment.models.includes('Set Fee') && (
+                <Field label="Set Fee">
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <View style={{ width: 72 }}>
+                      <Input value={data.payment.setFeeMin} onChangeText={(v: string) => setPayment('setFeeMin', v)} placeholder="$Min" keyboardType="numeric" />
+                    </View>
+                    <View style={{ width: 72 }}>
+                      <Input value={data.payment.setFeeMax} onChangeText={(v: string) => setPayment('setFeeMax', v)} placeholder="$Max" keyboardType="numeric" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Select options={['Per band', 'Per set', 'Per hour']} value={data.payment.feeBasis} onSelect={(v: string) => setPayment('feeBasis', v)} />
+                    </View>
+                  </View>
+                </Field>
+              )}
+
+              {data.payment.models.includes('Door Split') && (
+                <>
+                  <Field label="Door Split">
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ flex: 3 }}>
+                        <Input value={data.payment.doorSplit} onChangeText={(v: string) => setPayment('doorSplit', v)} placeholder="e.g. 70/30 artist/venue" />
+                      </View>
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10 }}>
+                        <Text style={{ fontSize: 14, color: Colors.grey, marginRight: 2 }}>$</Text>
+                        <TextInput
+                          style={{ flex: 1, fontSize: 14, color: colors.black, paddingVertical: 12 }}
+                          value={data.payment.coverCharge}
+                          onChangeText={(v: string) => setPayment('coverCharge', v)}
+                          placeholder="Cover"
+                          placeholderTextColor={Colors.greyLight}
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  </Field>
+                </>
+              )}
+
+              {data.payment.models.includes('Bar Split') && (
+                <Field label="Bar Split Terms">
+                  <Input value={data.payment.barSplit} onChangeText={(v: string) => setPayment('barSplit', v)} placeholder="e.g. 10% of bar sales during set" />
+                </Field>
+              )}
+
+              {data.payment.models.includes('Ticket Sales Split') && (
+                <>
+                  <Field label="Ticket Sales Split Terms">
+                    <Input value={data.payment.ticketSalesSplit} onChangeText={(v: string) => setPayment('ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" />
+                  </Field>
+                  <Field label="Ticketing Handled By">
+                    <Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={data.payment.ticketingHandledBy} onSelect={(v: string) => setPayment('ticketingHandledBy', v)} />
+                  </Field>
+                </>
+              )}
+
+              <Field label="Payment Timing">
+                <Pills options={['Same night', 'Within 7 days', 'Within 30 days', 'Other']} value={data.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
+              </Field>
+
+              <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={[s.toggleLabel, { color: colors.black }]}>Invoice Required</Text>
+                </View>
+                <Switch
+                  value={data.payment.invoiceRequired}
+                  onValueChange={(v: boolean) => setPayment('invoiceRequired', v)}
+                  trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                  thumbColor="#ffffff"
+                />
+              </View>
+
+<Field label="Deposit / Cancellation Terms">
+                <Input value={data.payment.cancellationTerms} onChangeText={(v: string) => setPayment('cancellationTerms', v)} placeholder="e.g. No deposit required. 48hr cancellation notice needed to avoid forfeiting fee." multiline />
+              </Field>
+
+              <Field label="Additional Payment Notes">
+                <Input value={data.payment.additionalNotes} onChangeText={(v: string) => setPayment('additionalNotes', v)} placeholder="Any other payment info artists should know" multiline />
+              </Field>
+            </View>
+
           </View>
         )}
 
@@ -748,7 +913,7 @@ export default function EditVenueScreen() {
                         <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="Any notes for acts" />
                       </Field>
                       <TouchableOpacity style={s.removeBtn} onPress={() => removeNight(i)}>
-                        <Text style={s.removeBtnText}>Remove Night</Text>
+                        <Text style={s.removeBtnText}>Remove Gig</Text>
                       </TouchableOpacity>
                     </View>
                   )}
