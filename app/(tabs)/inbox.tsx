@@ -261,6 +261,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [paymentInfoSaving,setPaymentInfoSaving]= useState(false);
   const [notesDoc,         setNotesDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
   const [notesDocUploading,setNotesDocUploading]= useState(false);
+  const [loadInTime,       setLoadInTime]       = useState<string>(enquiry.loadInTime ?? '');
+  const [soundCheckTime,   setSoundCheckTime]   = useState<string>(enquiry.soundCheckTime ?? '');
+  const [scheduleEdited,   setScheduleEdited]   = useState(false);
+  const [scheduleSaving,   setScheduleSaving]   = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const [slotPaymentModel,    setSlotPaymentModel]    = useState<string | null>(null);
@@ -293,6 +297,16 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
   function closeDetails() {
     Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start(() => setDetailsOpen(false));
+  }
+
+  async function saveSchedule() {
+    setScheduleSaving(true);
+    await updateDoc(doc(db, 'inquiries', enquiry.id), {
+      loadInTime: loadInTime.trim(),
+      soundCheckTime: soundCheckTime.trim(),
+    });
+    setScheduleEdited(false);
+    setScheduleSaving(false);
   }
 
   async function saveNotes() {
@@ -398,13 +412,53 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   { key: 'Time/Set', val: setStr      },
                   { key: 'Slot',     val: billing     },
                   { key: 'Fee',      val: fee         },
-                ].map((row, i, arr) => (
-                  <View key={row.key} style={[eh.drawerInfoRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                ].map((row, i) => (
+                  <View key={row.key} style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                     <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{row.key}</Text>
                     <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{row.val}</Text>
                   </View>
                 ))}
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Load In</Text>
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={loadInTime}
+                    onChangeText={t => { setLoadInTime(t); setScheduleEdited(true); }}
+                    placeholder="e.g. 4:00 PM"
+                    placeholderTextColor="#aaaaaa"
+                  />
+                </View>
+                <View style={eh.drawerInfoRow}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Sound Check</Text>
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={soundCheckTime}
+                    onChangeText={t => { setSoundCheckTime(t); setScheduleEdited(true); }}
+                    placeholder="e.g. 5:00 PM"
+                    placeholderTextColor="#aaaaaa"
+                  />
+                </View>
               </View>
+              {scheduleEdited && (
+                <View style={eh.drawerNotesBtns}>
+                  <TouchableOpacity
+                    style={eh.drawerCancelBtn}
+                    onPress={() => {
+                      setLoadInTime(enquiry.loadInTime ?? '');
+                      setSoundCheckTime(enquiry.soundCheckTime ?? '');
+                      setScheduleEdited(false);
+                    }}
+                  >
+                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={eh.drawerSaveBtn} onPress={saveSchedule} disabled={scheduleSaving}>
+                    {scheduleSaving
+                      ? <ActivityIndicator color="#111111" size="small" />
+                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {/* Payment method */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
@@ -644,6 +698,7 @@ const eh = StyleSheet.create({
   drawerInfoRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
   drawerInfoKey:     { fontSize: 13, fontWeight: '600' },
   drawerInfoVal:     { fontSize: 13, fontWeight: '700' },
+  drawerInlineInput: { fontSize: 13, fontWeight: '700', textAlign: 'right', flex: 1, paddingLeft: 8 },
   drawerNotesInput:  { borderRadius: 12, borderWidth: 1, padding: 14, fontSize: 14, minHeight: 120, lineHeight: 21, marginTop: 0 },
   drawerNotesBtns:   { flexDirection: 'row', gap: 10, marginTop: 10 },
   drawerCancelBtn:   { flex: 1, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },

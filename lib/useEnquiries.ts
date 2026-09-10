@@ -28,6 +28,9 @@ export type Enquiry = {
   artistType?: string;
   about?: string;
   photoUrl?: string;
+  // scheduling
+  loadInTime?: string;
+  soundCheckTime?: string;
   // timetable booking
   listAsBooked?: boolean;
   declineReason?: string;
