@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, type AreaResult } from '@/lib/suburbSearch';
 import { useTheme } from '@/lib/theme-context';
+import { SlidersHorizontal } from 'phosphor-react-native';
 
 const GENRES = [
   'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
@@ -222,11 +223,7 @@ export default function MusiciansScreen() {
           onPress={openFilterPanel}
           activeOpacity={0.8}
         >
-          <View style={{ gap: 3.5 }}>
-            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 18 }} />
-            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 13, marginLeft: 2.5 }} />
-            <View style={{ height: 1.5, backgroundColor: activeFilterCount > 0 ? '#ffffff' : '#555555', borderRadius: 1, width: 8, marginLeft: 5 }} />
-          </View>
+          <SlidersHorizontal size={20} color={activeFilterCount > 0 ? Colors.orange : '#333333'} weight="regular" />
           {activeFilterCount > 0 && (
             <View style={st.filterIconBadge}>
               <Text style={st.filterIconBadgeText}>{activeFilterCount}</Text>
@@ -770,9 +767,9 @@ const st = StyleSheet.create({
   nativePillRow:   { paddingHorizontal: 16, gap: 8, flexDirection: 'row', paddingBottom: 6 },
 
   filterIconBtn:      { borderRadius: 10, borderWidth: 1.5, borderColor: '#dddddd', padding: 10, backgroundColor: '#fafafa', position: 'relative' as any },
-  filterIconBtnOn:    { backgroundColor: Colors.orange, borderColor: Colors.orange },
-  filterIconBadge:    { position: 'absolute' as any, top: -5, right: -5, backgroundColor: '#111111', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
-  filterIconBadgeText:{ color: '#ffffff', fontSize: 9, fontWeight: '800', lineHeight: 16 },
+  filterIconBtnOn:    { borderColor: Colors.orange },
+  filterIconBadge:    { position: 'absolute' as any, top: -7, right: -7, backgroundColor: Colors.orange, borderRadius: 9, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  filterIconBadgeText:{ color: '#ffffff', fontSize: 10, fontWeight: '800', lineHeight: 18 },
 
   activeChip:     { borderRadius: 20, borderWidth: 1, borderColor: Colors.orange, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: Colors.orange + '18' },
   activeChipText: { fontSize: 12, fontWeight: '600', color: Colors.orange },
