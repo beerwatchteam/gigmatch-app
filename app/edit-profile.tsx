@@ -25,7 +25,7 @@ const PLATFORMS = [
   { key: 'spotify',    label: 'Spotify',     placeholder: 'Artist, track, album or playlist URL' },
   { key: 'appleMusic', label: 'Apple Music', placeholder: 'Apple Music URL' },
 ];
-const TABS = ['Settings','Basic Info','About','Music','Gig History','Upcoming','Tech Specs','Photos'];
+const TABS = ['Settings','Basic Info','About','Music','Gig History','Upcoming','Tech Specs & Rider','Photos'];
 
 type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string };
@@ -619,6 +619,7 @@ export default function EditProfileScreen() {
         {activeTab === 'Music' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Music</Text>
+            <Text style={s.hint}>Add links to your tracks so venues can hear what you sound like before booking. Spotify, SoundCloud, YouTube — whatever best represents your sound.</Text>
             {profile.songs.map((song, i) => {
               const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
               return (
@@ -652,6 +653,7 @@ export default function EditProfileScreen() {
         {activeTab === 'Gig History' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Gig History</Text>
+            <Text style={s.hint}>Show venues where you've played. A solid track record builds credibility and gives bookers confidence in your professionalism.</Text>
             {profile.gigHistory.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
               return (
@@ -685,6 +687,7 @@ export default function EditProfileScreen() {
         {activeTab === 'Upcoming' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Upcoming Gigs</Text>
+            <Text style={s.hint}>Let venues know where you're already booked. It shows you're active and in demand — and helps them spot scheduling conflicts early.</Text>
             {profile.upcomingGigs.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
               return (
@@ -711,9 +714,10 @@ export default function EditProfileScreen() {
         )}
 
         {/* ── TECH SPECS ── */}
-        {activeTab === 'Tech Specs' && (
+        {activeTab === 'Tech Specs & Rider' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
+            <Text style={s.hint}>Tell venues what you need to perform. The clearer your rider, the smoother load-in will be — and the more seriously you'll be taken as an act.</Text>
 
             <Field label="Spec Sheet / Documents">
               {(profile.techRiderDocs || []).map((doc, idx) => (
