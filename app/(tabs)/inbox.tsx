@@ -284,6 +284,9 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
         const match = slots.find((s: any) => s.time === time && !s.date);
         setSlotPaymentModel(match?.paymentModel || null);
         setVenuePaymentModels(venueData.payment?.models || []);
+        // Pre-populate load in / sound check from the slot if the enquiry has no saved value
+        if (!enquiry.loadInTime && match?.loadIn) setLoadInTime(match.loadIn);
+        if (!enquiry.soundCheckTime && match?.soundcheck) setSoundCheckTime(match.soundcheck);
       }
     } catch {}
     setPaymentFetched(true);
