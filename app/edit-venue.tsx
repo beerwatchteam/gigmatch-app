@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal,
@@ -18,6 +18,7 @@ import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const SLOT_TYPES     = ['Any','Headline','Support'];
 
@@ -163,68 +164,253 @@ function Select({ options, value, onSelect }: { options: string[]; value: string
   );
 }
 
-function TimePicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function DatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
-  const [layout, setLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const triggerViewRef = { current: null as View | null };
+  const [draft, setDraft] = useState('');
+  const dayScrollRef   = useRef<ScrollView>(null);
+  const monthScrollRef = useRef<ScrollView>(null);
+  const yearScrollRef  = useRef<ScrollView>(null);
 
-  const times: string[] = [];
-  for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 30) {
-      times.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  const START_YEAR = new Date().getFullYear();
+  const years = Array.from({ length: 2099 - START_YEAR + 1 }, (_, i) => START_YEAR + i);
+
+  const daysInMonth = (m: number, y: number) => new Date(y, m, 0).getDate();
+
+  const parse = (v: string) => {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const t = new Date();
+      return { day: t.getDate(), month: t.getMonth() + 1, year: t.getFullYear() };
     }
-  }
-
-  const fmtTime = (t: string) => {
-    if (!t) return '';
-    const [h, m] = t.split(':').map(Number);
-    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+    const [y, m, d] = v.split('-').map(Number);
+    return { day: d, month: m, year: y };
+  };
+  const toInternal = (d: number, m: number, y: number) =>
+    `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const display = (v: string) => {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return '--/--/----';
+    const { day, month, year } = parse(v);
+    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
   };
 
-  function handlePress() {
-    if (Platform.OS !== 'web') {
-      Alert.alert('Select Time', undefined, [
-        ...times.map(t => ({ text: fmtTime(t), onPress: () => onChange(t) })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
-    } else if (triggerViewRef.current) {
-      (triggerViewRef.current as any).measureInWindow((x: number, y: number, width: number, height: number) => {
-        setLayout({ x, y, width, height });
-        setOpen(true);
-      });
-    }
+  const ITEM_H = 20;
+
+  function handleOpen() {
+    const today = new Date();
+    const initial = value || toInternal(today.getDate(), today.getMonth() + 1, today.getFullYear());
+    setDraft(initial);
+    setOpen(true);
+    const { day, month, year } = parse(initial);
+    setTimeout(() => {
+      dayScrollRef.current?.scrollTo({ y: (day - 1) * ITEM_H, animated: false });
+      monthScrollRef.current?.scrollTo({ y: (month - 1) * ITEM_H, animated: false });
+      yearScrollRef.current?.scrollTo({ y: Math.max(0, year - START_YEAR) * ITEM_H, animated: false });
+    }, 50);
   }
 
+  const { day, month, year } = parse(draft);
+  const days = Array.from({ length: daysInMonth(month, year) }, (_, i) => i + 1);
+
   return (
-    <View ref={(r) => { triggerViewRef.current = r; }}>
+    <View>
       <TouchableOpacity
-        onPress={handlePress}
+        onPress={handleOpen}
         style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}
       >
-        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{value ? fmtTime(value) : (placeholder || 'Select time…')}</Text>
-        <Text style={{ fontSize: 10, color: Colors.grey, marginLeft: 4 }}>▼</Text>
+        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{display(value)}</Text>
+        <Text style={{ fontSize: 11, color: Colors.grey }}>📅</Text>
       </TouchableOpacity>
-      {open && layout && (
-        <Modal transparent animationType="none" onRequestClose={() => setOpen(false)}>
-          <View style={{ flex: 1 }}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setOpen(false)} />
-            <View style={{ position: 'absolute', top: layout.y + layout.height + 4, left: layout.x, width: layout.width, maxHeight: 240, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 }}>
-              <ScrollView>
-                {times.map((t, idx) => (
-                  <TouchableOpacity
-                    key={t}
-                    onPress={() => { onChange(t); setOpen(false); }}
-                    style={{ paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: idx < times.length - 1 ? 1 : 0, borderBottomColor: colors.borderFaint, backgroundColor: t === value ? 'rgba(250,131,12,0.06)' : 'transparent' }}
-                  >
-                    <Text style={{ fontSize: 14, color: t === value ? Colors.orange : colors.black, fontWeight: t === value ? '700' : '400' }}>{fmtTime(t)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: colors.bg, borderRadius: 18, padding: 24, width: 320, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>Select Date</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 20 }}>{display(draft)}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* Day */}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Day</Text>
+                <ScrollView ref={dayScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {days.map(d => (
+                    <TouchableOpacity
+                      key={d}
+                      onPress={() => setDraft(toInternal(d, month, year))}
+                      style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: d === day ? Colors.orange : 'transparent', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 15, color: d === day ? '#fff' : colors.black, fontWeight: d === day ? '700' : '400' }}>{String(d).padStart(2, '0')}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* Month */}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Month</Text>
+                <ScrollView ref={monthScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {MONTHS.map((name, idx) => {
+                    const m = idx + 1;
+                    return (
+                      <TouchableOpacity
+                        key={m}
+                        onPress={() => setDraft(toInternal(Math.min(day, daysInMonth(m, year)), m, year))}
+                        style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: m === month ? Colors.orange : 'transparent', alignItems: 'center' }}
+                      >
+                        <Text style={{ fontSize: 15, color: m === month ? '#fff' : colors.black, fontWeight: m === month ? '700' : '400' }}>{name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+              {/* Year */}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Year</Text>
+                <ScrollView ref={yearScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {years.map(y => (
+                    <TouchableOpacity
+                      key={y}
+                      onPress={() => setDraft(toInternal(Math.min(day, daysInMonth(month, y)), month, y))}
+                      style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: y === year ? Colors.orange : 'transparent', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 15, color: y === year ? '#fff' : colors.black, fontWeight: y === year ? '700' : '400' }}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.black, fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { onChange(draft); setOpen(false); }}
+                style={{ flex: 2, backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Done</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      )}
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function TimePicker({ value, onChange, defaultValue = '00:00' }: { value: string; onChange: (v: string) => void; defaultValue?: string }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const hourScrollRef = useRef<ScrollView>(null);
+
+  const parse = (v: string) => {
+    const [h, m] = v.split(':').map(Number);
+    return { hour: h % 12 || 12, minute: m, ampm: h >= 12 ? 'PM' : 'AM' };
+  };
+  const to24hr = (h: number, m: number, ap: string) => {
+    const h24 = ap === 'PM' ? (h % 12) + 12 : h % 12;
+    return `${String(h24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+  const display = (v: string) => {
+    if (!v) return '--:-- --';
+    const { hour, minute, ampm } = parse(v);
+    return `${hour}:${String(minute).padStart(2, '0')} ${ampm}`;
+  };
+
+  function handleOpen() {
+    const initial = value || defaultValue;
+    setDraft(initial);
+    setOpen(true);
+    // Scroll hours to selected hour after modal renders
+    const { hour } = parse(initial);
+    setTimeout(() => {
+      hourScrollRef.current?.scrollTo({ y: (hour - 1) * 20, animated: false });
+    }, 50);
+  }
+
+  const { hour, minute, ampm } = parse(draft || defaultValue);
+  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minutes = Array.from({ length: 12 }, (_, i) => i * 5);
+
+  return (
+    <View>
+      <TouchableOpacity
+        onPress={handleOpen}
+        style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}
+      >
+        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{display(value)}</Text>
+        <Text style={{ fontSize: 11, color: Colors.grey }}>◷</Text>
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: colors.bg, borderRadius: 18, padding: 24, width: 300, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>Select Time</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 20 }}>{display(draft)}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* Hours */}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Hour</Text>
+                <ScrollView ref={hourScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {hours.map(h => (
+                    <TouchableOpacity
+                      key={h}
+                      onPress={() => setDraft(to24hr(h, minute, ampm))}
+                      style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: h === hour ? Colors.orange : 'transparent', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 15, color: h === hour ? '#fff' : colors.black, fontWeight: h === hour ? '700' : '400' }}>{h}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* Minutes */}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Min</Text>
+                <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {minutes.map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      onPress={() => setDraft(to24hr(hour, m, ampm))}
+                      style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: m === minute ? Colors.orange : 'transparent', alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 15, color: m === minute ? '#fff' : colors.black, fontWeight: m === minute ? '700' : '400' }}>{String(m).padStart(2, '0')}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* AM/PM */}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}> </Text>
+                <View style={{ gap: 6 }}>
+                  {(['AM', 'PM'] as const).map(ap => (
+                    <TouchableOpacity
+                      key={ap}
+                      onPress={() => setDraft(to24hr(hour, minute, ap))}
+                      style={{ paddingVertical: 12, borderRadius: 8, backgroundColor: ap === ampm ? Colors.orange : colors.bgFaint, borderWidth: 1, borderColor: ap === ampm ? Colors.orange : colors.border, alignItems: 'center' }}
+                    >
+                      <Text style={{ fontSize: 15, color: ap === ampm ? '#fff' : colors.black, fontWeight: ap === ampm ? '700' : '400' }}>{ap}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}
+              >
+                <Text style={{ color: colors.black, fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { onChange(draft); setOpen(false); }}
+                style={{ flex: 2, backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -336,9 +522,11 @@ export default function EditVenueScreen() {
 
   // ── Gig Nights ──
   function setNight(i: number, field: keyof Night, val: any) {
+    setJustSaved(false);
     setData(prev => ({ ...prev, gigNights: prev.gigNights.map((n, idx) => idx === i ? { ...n, [field]: val } : n) }));
   }
   function setNightFields(i: number, fields: Partial<Night>) {
+    setJustSaved(false);
     setData(prev => ({ ...prev, gigNights: prev.gigNights.map((n, idx) => idx === i ? { ...n, ...fields } : n) }));
   }
   function subtractMinutes(time: string, mins: number): string {
@@ -953,35 +1141,53 @@ export default function EditVenueScreen() {
                           <Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} />
                         </Field>
                       )}
-                      <Field label="Start Time *" error={showErrors && !night.startTime}>
-                        <TimePicker value={night.startTime} onChange={(v: string) => setNightFields(i, { startTime: v, loadIn: subtractMinutes(v, 150), soundcheck: subtractMinutes(v, 90) })} placeholder="Select start time" />
-                      </Field>
-                      <Field label="Set Duration (min)">
-                        <Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" />
-                      </Field>
-                      <Field label="Load-in Time">
-                        <TimePicker value={night.loadIn} onChange={(v: string) => setNight(i, 'loadIn', v)} placeholder="Select load-in time" />
-                      </Field>
-                      <Field label="Soundcheck">
-                        <TimePicker value={night.soundcheck} onChange={(v: string) => setNight(i, 'soundcheck', v)} placeholder="Select soundcheck time" />
-                      </Field>
-                      <Field label="Start Date * (YYYY-MM-DD)" error={showErrors && !night.startDate}>
-                        <Input value={night.startDate} onChangeText={(v: string) => setNight(i, 'startDate', v)} placeholder="2025-01-01" error={showErrors && !night.startDate} />
-                      </Field>
-                      <TouchableOpacity
-                        style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-                        onPress={() => { setNight(i, 'continuous', !night.continuous); if (!night.continuous) setNight(i, 'endDate', ''); }}
-                      >
-                        <View style={[s.checkbox, { borderColor: colors.border }, night.continuous && s.checkboxChecked]}>
-                          {night.continuous && <Text style={s.checkmark}>✓</Text>}
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flex: 2 }}>
+                          <Field label="Start Time *" error={showErrors && !night.startTime}>
+                            <TimePicker value={night.startTime} onChange={(v: string) => setNightFields(i, { startTime: v, loadIn: subtractMinutes(v, 150), soundcheck: subtractMinutes(v, 90) })} defaultValue="19:00" />
+                          </Field>
                         </View>
-                        <Text style={[s.checkLabel, { color: colors.black }]}>Continuous (no end date)</Text>
-                      </TouchableOpacity>
-                      {!night.continuous && (
-                        <Field label="End Date * (YYYY-MM-DD)" error={showErrors && !night.endDate}>
-                          <Input value={night.endDate} onChangeText={(v: string) => setNight(i, 'endDate', v)} placeholder="2025-12-31" error={showErrors && !night.endDate} />
-                        </Field>
-                      )}
+                        <View style={{ flex: 1 }}>
+                          <Field label="Duration (min)">
+                            <Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" />
+                          </Field>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flex: 1 }}>
+                          <Field label="Load-in Time">
+                            <TimePicker value={night.loadIn} onChange={(v: string) => setNight(i, 'loadIn', v)} />
+                          </Field>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Field label="Soundcheck">
+                            <TimePicker value={night.soundcheck} onChange={(v: string) => setNight(i, 'soundcheck', v)} />
+                          </Field>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ flex: 1 }}>
+                          <Field label="Start Date *" error={showErrors && !night.startDate}>
+                            <DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} />
+                          </Field>
+                          <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}
+                            onPress={() => { setNight(i, 'continuous', !night.continuous); if (!night.continuous) setNight(i, 'endDate', ''); }}
+                          >
+                            <View style={[s.checkbox, { borderColor: colors.border }, night.continuous && s.checkboxChecked]}>
+                              {night.continuous && <Text style={s.checkmark}>✓</Text>}
+                            </View>
+                            <Text style={[s.checkLabel, { color: colors.black }]}>Continuous (No end date)</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {!night.continuous && (
+                          <View style={{ flex: 1 }}>
+                            <Field label="End Date *" error={showErrors && !night.endDate}>
+                              <DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} />
+                            </Field>
+                          </View>
+                        )}
+                      </View>
                       {data.payment.models.length > 0 ? (
                         <Field label="Payment">
                           <Pills
@@ -1065,11 +1271,12 @@ export default function EditVenueScreen() {
                           </TouchableOpacity>
                         </View>
                       )}
-                      <Field label="Genres (comma-separated)">
-                        <Input
-                          value={(night.genres || []).join(', ')}
-                          onChangeText={(v: string) => setNight(i, 'genres', v.split(',').map((g: string) => g.trim()).filter(Boolean))}
-                          placeholder="e.g. Rock, Blues, Country"
+                      <Field label="Genres">
+                        <Pills
+                          options={GENRES}
+                          value={night.genres || []}
+                          onSelect={(v: string[]) => setNight(i, 'genres', v)}
+                          multi
                         />
                       </Field>
                       <Field label="Notes">

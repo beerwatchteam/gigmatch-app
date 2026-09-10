@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Switch, Image, Platform,
+  TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -117,6 +117,121 @@ function crossConfirm(title: string, message: string, onConfirm: () => void, des
       { text: destructive ? 'Delete' : 'Confirm', style: destructive ? 'destructive' : 'default', onPress: onConfirm },
     ]);
   }
+}
+
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function DatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const dayScrollRef   = useRef<ScrollView>(null);
+  const monthScrollRef = useRef<ScrollView>(null);
+  const yearScrollRef  = useRef<ScrollView>(null);
+
+  const START_YEAR = new Date().getFullYear() - 10;
+  const years = Array.from({ length: 2099 - START_YEAR + 1 }, (_, i) => START_YEAR + i);
+
+  const daysInMonth = (m: number, y: number) => new Date(y, m, 0).getDate();
+
+  const parse = (v: string) => {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const t = new Date();
+      return { day: t.getDate(), month: t.getMonth() + 1, year: t.getFullYear() };
+    }
+    const [y, m, d] = v.split('-').map(Number);
+    return { day: d, month: m, year: y };
+  };
+  const toInternal = (d: number, m: number, y: number) =>
+    `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const display = (v: string) => {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return v || '--/--/----';
+    const { day, month, year } = parse(v);
+    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+  };
+
+  const ITEM_H = 20;
+
+  function handleOpen() {
+    const today = new Date();
+    const initial = value && /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? value
+      : toInternal(today.getDate(), today.getMonth() + 1, today.getFullYear());
+    setDraft(initial);
+    setOpen(true);
+    const { day, month, year } = parse(initial);
+    setTimeout(() => {
+      dayScrollRef.current?.scrollTo({ y: (day - 1) * ITEM_H, animated: false });
+      monthScrollRef.current?.scrollTo({ y: (month - 1) * ITEM_H, animated: false });
+      yearScrollRef.current?.scrollTo({ y: Math.max(0, year - START_YEAR) * ITEM_H, animated: false });
+    }, 50);
+  }
+
+  const { day, month, year } = parse(draft);
+  const days = Array.from({ length: daysInMonth(month, year) }, (_, i) => i + 1);
+
+  return (
+    <View>
+      <TouchableOpacity
+        onPress={handleOpen}
+        style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}
+      >
+        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{display(value)}</Text>
+        <Text style={{ fontSize: 11, color: Colors.grey }}>📅</Text>
+      </TouchableOpacity>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: colors.bg, borderRadius: 18, padding: 24, width: 320, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>Select Date</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 20 }}>{display(draft)}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Day</Text>
+                <ScrollView ref={dayScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {days.map(d => (
+                    <TouchableOpacity key={d} onPress={() => setDraft(toInternal(d, month, year))} style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: d === day ? Colors.orange : 'transparent', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 15, color: d === day ? '#fff' : colors.black, fontWeight: d === day ? '700' : '400' }}>{String(d).padStart(2, '0')}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Month</Text>
+                <ScrollView ref={monthScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {MONTHS_SHORT.map((name, idx) => {
+                    const m = idx + 1;
+                    return (
+                      <TouchableOpacity key={m} onPress={() => setDraft(toInternal(Math.min(day, daysInMonth(m, year)), m, year))} style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: m === month ? Colors.orange : 'transparent', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 15, color: m === month ? '#fff' : colors.black, fontWeight: m === month ? '700' : '400' }}>{name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Year</Text>
+                <ScrollView ref={yearScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {years.map(y => (
+                    <TouchableOpacity key={y} onPress={() => setDraft(toInternal(Math.min(day, daysInMonth(month, y)), month, y))} style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: y === year ? Colors.orange : 'transparent', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 15, color: y === year ? '#fff' : colors.black, fontWeight: y === year ? '700' : '400' }}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity onPress={() => setOpen(false)} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}>
+                <Text style={{ color: colors.black, fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { onChange(draft); setOpen(false); }} style={{ flex: 2, backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
 }
 
 export default function EditProfileScreen() {
@@ -664,7 +779,9 @@ export default function EditProfileScreen() {
                   </View>
                   <View style={{ height: 8 }} />
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.date?.trim() ? s.inputError : {}]} value={gig.date} onChangeText={v => setGig(i, 'date', v)} placeholder="Date *" placeholderTextColor={Colors.greyLight} />
+                    <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
+                      <DatePicker value={gig.date} onChange={v => setGig(i, 'date', v)} />
+                    </View>
                     <TextInput style={[s.input, { flex: 1 }]} value={gig.attendance || ''} onChangeText={v => setGig(i, 'attendance', v)} placeholder="Attendance" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
                   </View>
                   <View style={{ height: 8 }} />
@@ -698,7 +815,9 @@ export default function EditProfileScreen() {
                   </View>
                   <View style={{ height: 8 }} />
                   <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.date?.trim() ? s.inputError : {}]} value={gig.date} onChangeText={v => setUpcoming(i, 'date', v)} placeholder="Date *" placeholderTextColor={Colors.greyLight} />
+                    <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
+                      <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} />
+                    </View>
                     <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
                     <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeUpcoming(i)}>
                       <Text style={s.removeInlineBtnText}>Remove</Text>
