@@ -413,7 +413,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 {[
                   { key: 'Date',     val: dateStrFull },
                   { key: 'Set Time', val: setStr      },
-                  { key: 'Slot',     val: billing     },
                 ].map((row, i) => (
                   <View key={row.key} style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                     <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{row.key}</Text>
@@ -430,7 +429,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     placeholderTextColor="#aaaaaa"
                   />
                 </View>
-                <View style={eh.drawerInfoRow}>
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Sound Check</Text>
                   <TextInput
                     style={[eh.drawerInlineInput, { color: colors.black }]}
@@ -439,6 +438,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     placeholder="e.g. 5:00 PM"
                     placeholderTextColor="#aaaaaa"
                   />
+                </View>
+                <View style={eh.drawerInfoRow}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Slot</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{billing}</Text>
                 </View>
               </View>
               {scheduleEdited && (
