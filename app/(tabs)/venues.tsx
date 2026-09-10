@@ -1731,7 +1731,7 @@ const st = StyleSheet.create({
   cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
 
   // Card photo (full-width top)
-  cardPhoto:      { width: '100%' as any, height: 160 },
+  cardPhoto:      { width: '100%' as any, height: 120 },
   cardPhotoEmpty: { alignItems: 'center', justifyContent: 'center' },
   cardPhotoLabel: { fontSize: 11, fontStyle: 'italic' },
 
@@ -1757,17 +1757,17 @@ const st = StyleSheet.create({
   slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
 
   // Stats row
-  statsRow:       { flexDirection: 'row', marginTop: 14, paddingTop: 12 },
+  statsRow:       { flexDirection: 'row', marginTop: 10, paddingTop: 10 },
   statCol:        { flex: 1, alignItems: 'center', gap: 3 },
   statDivider:    { width: 1, marginVertical: 2 },
   statVal:        { fontSize: 13, fontWeight: '700' },
   statLabel:      { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, color: '#aaaaaa' },
 
   // Card buttons
-  cardBtns:            { flexDirection: 'row', gap: 10, marginTop: 14, paddingTop: 12 },
-  cardBtnOutlined:     { flex: 1, borderWidth: 1.5, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  cardBtns:            { flexDirection: 'row', gap: 10, marginTop: 10, paddingTop: 10 },
+  cardBtnOutlined:     { flex: 1, borderWidth: 1.5, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
   cardBtnOutlinedText: { fontSize: 14, fontWeight: '700', color: Colors.orange },
-  cardBtnFilled:       { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  cardBtnFilled:       { flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
   cardBtnFilledText:   { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
   // ── Mobile web hero ───────────────────────────────────────────────

@@ -391,11 +391,9 @@ export default function MusiciansScreen() {
             <Text style={[st.meta, { color: colors.grey }]} numberOfLines={1}>{metaParts.join(' · ')}</Text>
           )}
           {(item.genre || []).length > 0 && (
-            <View style={st.genreRow}>
-              {(item.genre || []).slice(0, 3).map((g: string) => (
-                <View key={g} style={st.pill}><Text style={st.pillText}>{g}</Text></View>
-              ))}
-            </View>
+            <Text style={[st.genreText, { color: colors.grey }]} numberOfLines={2}>
+              {(item.genre || []).join(' · ')}
+            </Text>
           )}
           {item.about ? (
             <Text style={[st.about, { color: colors.grey }]} numberOfLines={2}>{item.about}</Text>
@@ -815,9 +813,7 @@ const st = StyleSheet.create({
   typeBadge:      { borderRadius: 4, backgroundColor: '#f4f4f4', paddingHorizontal: 8, paddingVertical: 2 },
   typeText:       { fontSize: 11, fontWeight: '600', color: '#555555' },
   meta:           { fontSize: 12, color: '#666666' },
-  genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 2 },
-  pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
+  genreText:      { fontSize: 12, fontWeight: '400' },
   about:          { fontSize: 13, lineHeight: 19 },
 
   statsStrip:    { flexDirection: 'row', borderTopWidth: 1, marginTop: 10, paddingTop: 10 },
