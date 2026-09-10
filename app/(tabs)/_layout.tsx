@@ -82,34 +82,66 @@ function SlotsIcon({ color }: { color: string }) {
 }
 
 function VenuesIcon({ color }: { color: string }) {
+  const { colors } = useTheme();
+  // Ticket shape: rectangle with semicircular notches on left and right sides
   return (
-    <View style={{ width: 16, height: 22, alignItems: 'center' }}>
-      <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: 4.5, height: 4.5, borderRadius: 2.5, backgroundColor: color }} />
-      </View>
-      <View style={{ width: 1.5, height: 5, backgroundColor: color, marginTop: 0 }} />
+    <View style={{ width: 22, height: 13 }}>
+      {/* Top border */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5, backgroundColor: color }} />
+      {/* Bottom border */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5, backgroundColor: color }} />
+      {/* Left border — top segment */}
+      <View style={{ position: 'absolute', top: 0, left: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
+      {/* Left border — bottom segment */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
+      {/* Right border — top segment */}
+      <View style={{ position: 'absolute', top: 0, right: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
+      {/* Right border — bottom segment */}
+      <View style={{ position: 'absolute', bottom: 0, right: 0, width: 1.5, height: 3.5, backgroundColor: color }} />
+      {/* Left notch circle */}
+      <View style={{ position: 'absolute', left: -4, top: 2.5, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: color, backgroundColor: colors.bg }} />
+      {/* Right notch circle */}
+      <View style={{ position: 'absolute', right: -4, top: 2.5, width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: color, backgroundColor: colors.bg }} />
     </View>
   );
 }
 
 function DiscoverIcon({ color }: { color: string }) {
-  // Compass-style icon: circle with crosshair
+  const { colors } = useTheme();
+  // Compass-style icon: circle with crosshair lines and centre dot
   return (
     <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
       <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: 1.5, height: 10, backgroundColor: color, position: 'absolute' }} />
-        <View style={{ width: 10, height: 1.5, backgroundColor: color, position: 'absolute' }} />
-        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: color }} />
+        {/* Vertical line */}
+        <View style={{ width: 1.5, height: 11, backgroundColor: color, position: 'absolute' }} />
+        {/* Horizontal line */}
+        <View style={{ width: 11, height: 1.5, backgroundColor: color, position: 'absolute' }} />
+        {/* Centre dot — drawn on top with bg fill to punch through the lines */}
+        <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: colors.bg, position: 'absolute' }} />
+        <View style={{ width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: color, position: 'absolute' }} />
       </View>
     </View>
   );
 }
 
 function MusiciansIcon({ color }: { color: string }) {
+  // Microphone: capsule body + curved stand arm + stem + base
   return (
-    <View style={{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: color }} />
-      <View style={{ position: 'absolute', width: 5, height: 5, borderRadius: 2.5, backgroundColor: color }} />
+    <View style={{ width: 20, height: 24, alignItems: 'center' }}>
+      {/* Capsule body */}
+      <View style={{ width: 10, height: 13, borderRadius: 5, borderWidth: 1.5, borderColor: color }} />
+      {/* Stand arc */}
+      <View style={{
+        position: 'absolute', top: 10,
+        width: 18, height: 9,
+        borderBottomLeftRadius: 9, borderBottomRightRadius: 9,
+        borderLeftWidth: 1.5, borderRightWidth: 1.5, borderBottomWidth: 1.5, borderTopWidth: 0,
+        borderColor: color,
+      }} />
+      {/* Stem */}
+      <View style={{ position: 'absolute', bottom: 0, width: 1.5, height: 5, backgroundColor: color }} />
+      {/* Base */}
+      <View style={{ position: 'absolute', bottom: 0, width: 10, height: 1.5, backgroundColor: color }} />
     </View>
   );
 }
@@ -247,7 +279,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
 
         function renderIcon() {
           switch (route.name) {
-            case 'venues':    return <SlotsIcon color={iconColor} />;
+            case 'venues':    return <VenuesIcon color={iconColor} />;
             case 'musicians': return <MusiciansIcon color={iconColor} />;
             case 'discover':  return <DiscoverIcon color={iconColor} />;
             case 'inbox':     return <InboxIcon color={iconColor} />;
