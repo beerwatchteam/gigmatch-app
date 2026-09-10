@@ -382,7 +382,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             {([
               { id: 'overview',  label: 'Overview' },
               { id: 'timetable', label: 'Timetable' },
-              { id: 'rooms',     label: 'Rooms, Tech Specs & Rider' },
+              { id: 'rooms',     label: 'Rooms & Tech Specs' },
               ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
             ] as const).map(tab => (
               <TouchableOpacity
@@ -1346,15 +1346,11 @@ function RoomsTab({ venue }: { venue: Venue }) {
   const techSpecs = venue.techSpecs;
 
   const techRows = [
-    { label: 'PA System',         value: techSpecs?.pa },
-    { label: 'Monitoring',        value: techSpecs?.monitoring },
     { label: 'Backline',          value: techSpecs?.backline },
-    { label: 'Stage Dimensions',  value: techSpecs?.stageDimensions },
+    { label: 'Monitoring',        value: techSpecs?.monitoring },
     { label: 'Power',             value: techSpecs?.power },
-    { label: 'Lighting',          value: techSpecs?.lighting },
     { label: 'Load-in & Parking', value: techSpecs?.loadInParking || (techSpecs?.loadIn || techSpecs?.parking ? [techSpecs?.loadIn, techSpecs?.parking].filter(Boolean).join(' · ') : undefined) },
     { label: 'Curfew / Noise',    value: techSpecs?.curfew },
-    { label: 'Soundcheck',        value: techSpecs?.soundcheck },
   ].filter(r => r.value);
 
   if (rooms.length === 0 && !techSpecs) {
@@ -1393,16 +1389,16 @@ function RoomsTab({ venue }: { venue: Venue }) {
                     <Text style={[rt.specValue, { color: colors.black }]}>{room.stage}</Text>
                   </View>
                 ) : null}
+                {room.pa ? (
+                  <View style={rt.specItem}>
+                    <Text style={[rt.specLabel, { color: colors.grey }]}>PA System</Text>
+                    <Text style={[rt.specValue, { color: colors.black }]}>{room.pa}</Text>
+                  </View>
+                ) : null}
                 {room.lighting ? (
                   <View style={rt.specItem}>
                     <Text style={[rt.specLabel, { color: colors.grey }]}>Lighting</Text>
                     <Text style={[rt.specValue, { color: colors.black }]}>{room.lighting}</Text>
-                  </View>
-                ) : null}
-                {room.pa ? (
-                  <View style={rt.specItem}>
-                    <Text style={[rt.specLabel, { color: colors.grey }]}>PA</Text>
-                    <Text style={[rt.specValue, { color: colors.black }]}>{room.pa}</Text>
                   </View>
                 ) : null}
               </View>
@@ -1442,16 +1438,18 @@ function RoomsTab({ venue }: { venue: Venue }) {
               ))}
             </View>
           )}
-          <View style={rt.specItem}>
-            <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
-            {techSpecs.greenRoom ? (
-              <Text style={[rt.specValue, { color: Colors.orange }]}>
-                ✓ Green room{techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}
-              </Text>
-            ) : (
-              <Text style={[rt.specValue, { color: '#e94560' }]}>✕ No green room</Text>
-            )}
-          </View>
+          {typeof techSpecs.greenRoom !== 'undefined' && (
+            <View style={rt.specItem}>
+              <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
+              {techSpecs.greenRoom ? (
+                <Text style={[rt.specValue, { color: Colors.orange }]}>
+                  ✓ Available{techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}
+                </Text>
+              ) : (
+                <Text style={[rt.specValue, { color: '#e94560' }]}>✕ No green room</Text>
+              )}
+            </View>
+          )}
           {techSpecs.notes ? (
             <View style={[rt.notesBox, { backgroundColor: colors.bgFaint }]}>
               <Text style={[rt.notesText, { color: colors.grey }]}>{techSpecs.notes}</Text>

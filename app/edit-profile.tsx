@@ -252,6 +252,8 @@ export default function EditProfileScreen() {
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
+  const [showStickySave, setShowStickySave] = useState(false);
+  const titleBarBottomRef = useRef(Infinity);
 
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
@@ -452,7 +454,14 @@ export default function EditProfileScreen() {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
-      <ScrollView stickyHeaderIndices={[1]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        stickyHeaderIndices={[1]}
+        showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          setShowStickySave(e.nativeEvent.contentOffset.y > titleBarBottomRef.current);
+        }}
+        scrollEventThrottle={100}
+      >
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
@@ -468,7 +477,12 @@ export default function EditProfileScreen() {
             />
           </View>
 
-          <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <View
+            style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}
+            onLayout={(e) => {
+              titleBarBottomRef.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
+            }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={[s.headerTitle, { color: colors.black }]}>Edit Profile</Text>
               <Text style={[s.headerSub, { color: colors.black }]}>{profile.name || '—'}</Text>
@@ -492,13 +506,24 @@ export default function EditProfileScreen() {
         </View>
 
         {/* ── Tab bar (sticky) ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
-          {TABS.map(tab => (
-            <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-              <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+        <View style={{ backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { borderBottomWidth: 0 }]} contentContainerStyle={s.tabBarContent}>
+            {TABS.map(tab => (
+              <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
+                <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          {showStickySave && (
+            <TouchableOpacity
+              style={[s.saveBtn, { position: 'absolute', right: 12, top: '100%', marginTop: 10, zIndex: 10 }, saving && { opacity: 0.6 }, justSaved && { backgroundColor: '#22c55e' }]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        </View>
 
         <View style={s.body}>
 

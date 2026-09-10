@@ -118,7 +118,7 @@ function MusiciansIcon({ color }: { color: string }) {
 
 function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
   const { colors } = useTheme();
-  const { user: tabUser } = useAuth();
+  const { user: tabUser, profile: tabProfile } = useAuth();
   const router = useRouter();
 
   const BOTTOM_ROUTES = ['venues', 'musicians', 'discover', 'inbox'];
@@ -174,7 +174,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
 
       {tabUser ? (
         <TouchableOpacity style={wb.myProfileBtn} onPress={() => router.push('/(tabs)/profile')} activeOpacity={0.8}>
-          <Text style={wb.myProfileText}>My Profile</Text>
+          <Text style={wb.myProfileText}>{tabProfile?.type === 'venue' ? 'My Venue' : 'My Profile'}</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity style={wb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
@@ -191,7 +191,7 @@ function TopTabBar(_props: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user: tabUser } = useAuth();
+  const { user: tabUser, profile: tabProfile } = useAuth();
 
   return (
     <View style={[tb.bar, { top: insets.top, backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
@@ -201,7 +201,7 @@ function TopTabBar(_props: any) {
 
       {tabUser ? (
         <TouchableOpacity style={tb.myProfileBtn} onPress={() => router.push('/(tabs)/profile')} activeOpacity={0.8}>
-          <Text style={tb.myProfileText}>My Profile</Text>
+          <Text style={tb.myProfileText}>{tabProfile?.type === 'venue' ? 'My Venue' : 'My Profile'}</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity style={tb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>

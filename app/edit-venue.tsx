@@ -92,7 +92,7 @@ const field = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
 });
 
-function Input({ value, onChangeText, placeholder, multiline, keyboardType, error }: any) {
+function Input({ value, onChangeText, placeholder, multiline, autoGrow, keyboardType, error }: any) {
   const { colors } = useTheme();
   return (
     <TextInput
@@ -101,12 +101,30 @@ function Input({ value, onChangeText, placeholder, multiline, keyboardType, erro
       onChangeText={onChangeText}
       placeholder={placeholder}
       placeholderTextColor={Colors.greyLight}
-      multiline={multiline}
+      multiline={multiline || autoGrow}
       numberOfLines={multiline ? 4 : 1}
       keyboardType={keyboardType}
       autoCapitalize="none"
-      textAlignVertical={multiline ? 'top' : 'auto'}
+      textAlignVertical={(multiline || autoGrow) ? 'top' : 'auto'}
     />
+  );
+}
+
+function CurrencyInput({ value, onChangeText, placeholder, error }: any) {
+  const { colors } = useTheme();
+  return (
+    <View style={[s.input, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0, paddingVertical: 0, backgroundColor: colors.bgFaint, borderColor: error ? Colors.danger : colors.border }]}>
+      <Text style={{ paddingLeft: 12, fontSize: 14, color: colors.black, fontWeight: '500' }}>$</Text>
+      <TextInput
+        style={{ flex: 1, paddingHorizontal: 8, paddingVertical: 12, fontSize: 14, color: colors.black }}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder || '0'}
+        placeholderTextColor={Colors.greyLight}
+        keyboardType="numeric"
+        autoCapitalize="none"
+      />
+    </View>
   );
 }
 
@@ -477,6 +495,8 @@ export default function EditVenueScreen() {
   const [stageDocUploading, setStageDocUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
   const [newVideoUrl, setNewVideoUrl] = useState('');
+  const [showStickySave, setShowStickySave] = useState(false);
+  const titleBarBottomRef = useRef(Infinity);
 
   useEffect(() => {
     if (!venueId) { setLoading(false); return; }
@@ -672,7 +692,7 @@ export default function EditVenueScreen() {
     setShowErrors(true);
     const errors: string[] = [];
     if (!data.name?.trim() || !data.streetAddress?.trim() || !data.suburb?.trim() ||
-        !data.state?.trim() || !data.postcode?.trim() || !data.email?.trim() || !data.website?.trim())
+        !data.state?.trim() || !data.postcode?.trim() || !data.email?.trim() || !data.phone?.trim() || !data.website?.trim())
       errors.push('Basic Info');
     if (data.rooms.some(r => !r.name?.trim() || !r.capacity?.toString().trim()))
       errors.push('Rooms');
@@ -739,7 +759,7 @@ export default function EditVenueScreen() {
     const hasErrors =
       !data.name?.trim() || !data.streetAddress?.trim() ||
       !data.suburb?.trim() || !data.state?.trim() || !data.postcode?.trim() ||
-      !data.email?.trim() || !data.website?.trim();
+      !data.email?.trim() || !data.phone?.trim() || !data.website?.trim();
     if (hasErrors) {
       setShowErrors(true);
       crossConfirm('Venue profile incomplete', "Some required fields are missing. Your venue won't be visible until complete. Leave anyway?", goBack, true);
@@ -762,7 +782,14 @@ export default function EditVenueScreen() {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
-      <ScrollView stickyHeaderIndices={[1]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        stickyHeaderIndices={[1]}
+        showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          setShowStickySave(e.nativeEvent.contentOffset.y > titleBarBottomRef.current);
+        }}
+        scrollEventThrottle={100}
+      >
 
         {/* ── Banner + title bar + tab errors ── */}
         <View>
@@ -778,7 +805,12 @@ export default function EditVenueScreen() {
             />
           </View>
 
-          <View style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <View
+            style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}
+            onLayout={(e) => {
+              titleBarBottomRef.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
+            }}
+          >
             <View style={{ flex: 1 }}>
               <Text style={[s.headerTitle, { color: colors.black }]}>Edit Venue Profile</Text>
               <Text style={[s.headerSub, { color: colors.black }]}>{data.name || '—'}</Text>
@@ -802,13 +834,24 @@ export default function EditVenueScreen() {
         </View>
 
         {/* ── Tab bar (sticky) ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} contentContainerStyle={s.tabBarContent}>
-          {TABS.map(tab => (
-            <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-              <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+        <View style={{ backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { borderBottomWidth: 0 }]} contentContainerStyle={s.tabBarContent}>
+            {TABS.map(tab => (
+              <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
+                <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          {showStickySave && (
+            <TouchableOpacity
+              style={[s.saveBtn, { position: 'absolute', right: 12, top: '100%', marginTop: 10, zIndex: 10 }, (saving || justSaved) && { opacity: justSaved ? 1 : 0.6 }, justSaved && { backgroundColor: '#22c55e' }]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          )}
+        </View>
 
         <View style={s.body}>
 
@@ -943,11 +986,15 @@ export default function EditVenueScreen() {
             {/* Contact */}
             <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
-              <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
-              <View style={{ height: 10 }} />
-              <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" />
-              <View style={{ height: 10 }} />
-              <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="Website" error={showErrors && !data.website?.trim()} />
+              <Field label="Email *" error={showErrors && !data.email?.trim()}>
+                <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="venue@email.com" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
+              </Field>
+              <Field label="Phone number *" error={showErrors && !data.phone?.trim()}>
+                <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="04xx xxx xxx" keyboardType="phone-pad" error={showErrors && !data.phone?.trim()} />
+              </Field>
+              <Field label="Website *" error={showErrors && !data.website?.trim()}>
+                <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://yourvenue.com.au" error={showErrors && !data.website?.trim()} />
+              </Field>
             </View>
 
             {/* Description */}
@@ -970,21 +1017,29 @@ export default function EditVenueScreen() {
                 />
               </Field>
 
-              {data.payment.models.includes('Set Fee') && (
-                <Field label="Set Fee">
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <View style={{ width: 110 }}>
-                      <Input value={data.payment.setFeeMin} onChangeText={(v: string) => setPayment('setFeeMin', v)} placeholder="$Min" keyboardType="numeric" />
+              {data.payment.models.includes('Set Fee') && (() => {
+                const minVal = parseFloat(data.payment.setFeeMin);
+                const maxVal = parseFloat(data.payment.setFeeMax);
+                const maxError = data.payment.setFeeMax !== '' && data.payment.setFeeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal;
+                return (
+                  <Field label="Set Fee">
+                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                      <View style={{ width: 100 }}>
+                        <CurrencyInput value={data.payment.setFeeMin} onChangeText={(v: string) => setPayment('setFeeMin', v)} placeholder="Min" />
+                      </View>
+                      <View style={{ width: 100 }}>
+                        <CurrencyInput value={data.payment.setFeeMax} onChangeText={(v: string) => setPayment('setFeeMax', v)} placeholder="Max" error={maxError} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Select options={['Per band', 'Per set', 'Per hour']} value={data.payment.feeBasis} onSelect={(v: string) => setPayment('feeBasis', v)} />
+                      </View>
                     </View>
-                    <View style={{ width: 110 }}>
-                      <Input value={data.payment.setFeeMax} onChangeText={(v: string) => setPayment('setFeeMax', v)} placeholder="$Max" keyboardType="numeric" />
-                    </View>
-                    <View style={{ flex: 1, maxWidth: '50%' }}>
-                      <Select options={['Per band', 'Per set', 'Per hour']} value={data.payment.feeBasis} onSelect={(v: string) => setPayment('feeBasis', v)} />
-                    </View>
-                  </View>
-                </Field>
-              )}
+                    {maxError && (
+                      <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 6 }}>Max must be higher than min.</Text>
+                    )}
+                  </Field>
+                );
+              })()}
 
               {data.payment.models.includes('Door Split') && (
                 <>
@@ -1061,7 +1116,7 @@ export default function EditVenueScreen() {
         {activeTab === 'Rooms' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Rooms</Text>
-            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Add the spaces at your venue where live music happens. Artists will see room names and capacities when browsing your venue. Rooms can be tied to specific gigs on your timetable so artists know exactly where they'll be playing.</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Add the spaces at your venue where live music happens. PA, lighting rig, and stage dimensions are entered per room, since they can differ between spaces. Rooms can be tied to specific gigs on your timetable so artists know exactly where they'll be playing.</Text>
             {data.rooms.map((room, i) => {
               const isOpen = expandedRoom === i;
               const hasError = showErrors && (!room.name?.trim() || !room.capacity?.toString().trim());
@@ -1079,14 +1134,14 @@ export default function EditVenueScreen() {
                       <Field label="Capacity *" error={showErrors && !room.capacity?.toString().trim()}>
                         <Input value={room.capacity} onChangeText={(v: string) => setRoom(i, 'capacity', v)} placeholder="e.g. 200" keyboardType="numeric" error={showErrors && !room.capacity?.toString().trim()} />
                       </Field>
-                      <Field label="Stage description">
-                        <Input value={room.stage} onChangeText={(v: string) => setRoom(i, 'stage', v)} placeholder="e.g. Elevated 6m × 4m stage" />
+                      <Field label="Stage & Dimensions">
+                        <Input value={room.stage} onChangeText={(v: string) => setRoom(i, 'stage', v)} placeholder="e.g. Elevated stage, 6m × 4m" autoGrow />
                       </Field>
                       <Field label="Lighting">
-                        <Input value={room.lighting} onChangeText={(v: string) => setRoom(i, 'lighting', v)} placeholder="e.g. Full rig with follow spot" />
+                        <Input value={room.lighting} onChangeText={(v: string) => setRoom(i, 'lighting', v)} placeholder="e.g. Full rig with follow spot" autoGrow />
                       </Field>
-                      <Field label="PA">
-                        <Input value={room.pa} onChangeText={(v: string) => setRoom(i, 'pa', v)} placeholder="e.g. d&b audiotechnik J-Series" />
+                      <Field label="PA System">
+                        <Input value={room.pa} onChangeText={(v: string) => setRoom(i, 'pa', v)} placeholder="e.g. d&b audiotechnik J-Series" autoGrow />
                       </Field>
                       <TouchableOpacity style={s.removeBtn} onPress={() => removeRoom(i)}>
                         <Text style={s.removeBtnText}>Remove Room</Text>
@@ -1212,21 +1267,29 @@ export default function EditVenueScreen() {
                               setNightFields(i, prefill);
                             }}
                           />
-                          {night.paymentModel === 'Set Fee' && (
-                            <View style={{ marginTop: 10, gap: 8 }}>
-                              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                                <View style={{ width: 100 }}>
-                                  <Input value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min $" keyboardType="numeric" />
+                          {night.paymentModel === 'Set Fee' && (() => {
+                            const minVal = parseFloat(night.feeMin);
+                            const maxVal = parseFloat(night.feeMax);
+                            const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal;
+                            return (
+                              <View style={{ marginTop: 10, gap: 8 }}>
+                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                  <View style={{ width: 100 }}>
+                                    <CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" />
+                                  </View>
+                                  <View style={{ width: 100 }}>
+                                    <CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxError} />
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} />
+                                  </View>
                                 </View>
-                                <View style={{ width: 100 }}>
-                                  <Input value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max $" keyboardType="numeric" />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                  <Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} />
-                                </View>
+                                {maxError && (
+                                  <Text style={{ fontSize: 12, color: Colors.danger }}>Max must be higher than min.</Text>
+                                )}
                               </View>
-                            </View>
-                          )}
+                            );
+                          })()}
                           {night.paymentModel === 'Door Split' && (
                             <View style={{ marginTop: 10, gap: 8 }}>
                               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1302,9 +1365,8 @@ export default function EditVenueScreen() {
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Specs</Text>
-            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Tell artists what your venue has on offer. The more detail you provide, the easier it is for acts to show up prepared and hit the ground running.</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Venue-wide info that's true regardless of which room an artist plays. PA, lighting, and stage dimensions are entered per room.</Text>
 
-            {/* Documents — stays at top */}
             <Field label="Documents">
               {(data.techSpecs?.documents || []).map((doc: { url: string; name: string }, idx: number) => (
                 <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -1319,14 +1381,11 @@ export default function EditVenueScreen() {
               </TouchableOpacity>
             </Field>
 
-            <Field label="PA System">
-              <Input value={data.techSpecs?.pa || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, pa: v })} placeholder="e.g. d&b J-Series" />
+            <Field label="Backline">
+              <Input value={data.techSpecs?.backline || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, backline: v })} placeholder="e.g. house drum kit, 2x guitar amps" />
             </Field>
             <Field label="Monitoring">
               <Input value={data.techSpecs?.monitoring || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, monitoring: v })} placeholder="e.g. 4x wedges, 2 mixes" />
-            </Field>
-            <Field label="Backline">
-              <Input value={data.techSpecs?.backline || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, backline: v })} placeholder="e.g. house drum kit, 2x guitar amps" />
             </Field>
 
             <TouchableOpacity
@@ -1343,34 +1402,13 @@ export default function EditVenueScreen() {
                 <Input
                   value={data.techSpecs?.soundEngineerDetails || ''}
                   onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, soundEngineerDetails: v })}
-                  placeholder="e.g. cost"
+                  placeholder="e.g. included, or available at cost"
                 />
               </View>
             )}
 
-            <Field label="Stage Dimensions">
-              <Input value={data.techSpecs?.stageDimensions || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, stageDimensions: v })} placeholder="e.g. 6m x 4m" />
-            </Field>
-
-            <Field label="Stage Plot / Documents">
-              {(data.techSpecs?.stageDocs || []).map((doc: { url: string; name: string }, idx: number) => (
-                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name || doc.url}</Text>
-                  <TouchableOpacity style={s.removeBtn} onPress={() => set('techSpecs', { ...data.techSpecs, stageDocs: (data.techSpecs?.stageDocs || []).filter((_: any, i: number) => i !== idx) })}>
-                    <Text style={s.removeBtnText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity style={s.addBtn} onPress={pickStagePlotDocument} disabled={stageDocUploading}>
-                <Text style={s.addBtnText}>{stageDocUploading ? 'Uploading…' : '+ Add Stage Plot'}</Text>
-              </TouchableOpacity>
-            </Field>
-
             <Field label="Power">
               <Input value={data.techSpecs?.power || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, power: v })} placeholder="e.g. 4x 15A outlets on stage" />
-            </Field>
-            <Field label="Lighting">
-              <Input value={data.techSpecs?.lighting || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, lighting: v })} placeholder="e.g. basic wash + 2 spots" />
             </Field>
             <Field label="Load-in & Parking">
               <Input value={data.techSpecs?.loadInParking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, loadInParking: v })} placeholder="e.g. rear loading dock, street parking only" />
@@ -1398,7 +1436,7 @@ export default function EditVenueScreen() {
                 />
               )}
             </Field>
-            <Field label="Notes for acts">
+            <Field label="Notes for Acts">
               <Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Any additional info" multiline />
             </Field>
           </View>

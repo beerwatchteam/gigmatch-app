@@ -761,6 +761,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
 }) {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const router = useRouter();
   const messages = useMessages(enquiry.id);
   const scrollRef   = useRef<ScrollView>(null);
   const profileRef  = useRef<View>(null);
@@ -847,9 +848,9 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
           onBack?.();
         }}
-        onScrollToProfile={() => scrollToRef(profileRef)}
-        onScrollToMusic={() => scrollToRef(musicRef)}
-        onScrollToTech={() => scrollToRef(techRef)}
+        onScrollToProfile={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
+        onScrollToMusic={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'music' } })}
+        onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
       />
 
       {/* Messages */}
