@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
@@ -14,6 +14,7 @@ import { searchSuburbs, haversineKm, type AreaResult } from '@/lib/suburbSearch'
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { SlidersHorizontal } from 'phosphor-react-native';
+import { TOP_TAB_H } from './_layout';
 
 const GENRES = [
   'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
@@ -423,6 +424,7 @@ export default function VenuesScreen() {
   const { colors } = useTheme();
   const { profile } = useAuth();
   const isArtist = profile?.type === 'artist';
+  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [venues, setVenues]         = useState<Venue[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -1228,7 +1230,7 @@ export default function VenuesScreen() {
       return (
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
           {/* Hero — outside ScrollView so it's always fully visible */}
-          <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
+          <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6', paddingTop: insets.top + TOP_TAB_H + 20 }]}>
             <Text style={st.mobileWebHeroTitle}>Find your next gig</Text>
             <Text style={st.webHeroSub}>
               {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks

@@ -318,10 +318,12 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' },
           sceneContainerStyle: !isMobileWeb && isWeb
             ? { paddingTop: WEB_TAB_H }
-            : {
-                paddingTop: insets.top + TOP_TAB_H,
-                paddingBottom: bottomPad,
-              },
+            : isMobileWeb
+              ? { paddingBottom: bottomPad }
+              : {
+                  paddingTop: insets.top + TOP_TAB_H,
+                  paddingBottom: bottomPad,
+                },
         }}
       >
         <Tabs.Screen name="index"     options={{ href: null }} />

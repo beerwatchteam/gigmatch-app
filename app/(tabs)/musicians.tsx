@@ -6,13 +6,14 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, type AreaResult } from '@/lib/suburbSearch';
 import { useTheme } from '@/lib/theme-context';
 import { SlidersHorizontal } from 'phosphor-react-native';
+import { TOP_TAB_H } from './_layout';
 
 const GENRES = [
   'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
@@ -68,6 +69,7 @@ const PANEL_W = Math.min(Dimensions.get('window').width * 0.87, 340);
 export default function MusiciansScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
   const [musicians, setMusicians]   = useState<Musician[]>([]);
@@ -451,7 +453,7 @@ export default function MusiciansScreen() {
       return (
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
           {/* Hero — outside ScrollView so it's always fully visible */}
-          <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
+          <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6', paddingTop: insets.top + TOP_TAB_H + 20 }]}>
             <Text style={st.mobileWebHeroTitle}>Find your next act</Text>
             <Text style={st.webHeroSub}>
               {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
