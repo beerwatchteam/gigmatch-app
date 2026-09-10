@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   collection, addDoc, onSnapshot, updateDoc, deleteDoc,
-  doc, query, orderBy, where, getDoc, arrayUnion,
+  doc, query, orderBy, where, getDoc, arrayUnion, increment,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -134,6 +134,23 @@ export async function updateEnquiryStatus(
   status: Enquiry['status'],
   reason?: string,
 ) {
+  // Track reply time: first response from venue (pending → any action)
+  const trackedStatuses: Enquiry['status'][] = ['accepted', 'discussing', 'declined'];
+  if (trackedStatuses.includes(status)) {
+    try {
+      const snap = await getDoc(doc(db, 'inquiries', id));
+      if (snap.exists()) {
+        const data = snap.data() as Enquiry;
+        if (data.status === 'pending' && data.submittedAt && data.venueId) {
+          const elapsedMs = Date.now() - new Date(data.submittedAt).getTime();
+          await updateDoc(doc(db, 'venues', data.venueId), {
+            'replyStats.totalMs': increment(elapsedMs),
+            'replyStats.count':   increment(1),
+          });
+        }
+      }
+    } catch {}
+  }
   await updateDoc(doc(db, 'inquiries', id), {
     status,
     ...(reason && { declineReason: reason }),

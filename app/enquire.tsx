@@ -226,41 +226,9 @@ export default function EnquireScreen() {
             <Text style={[s.venueName, { color: colors.black }]}>{params.venueName}</Text>
             <Text style={s.slotDetail}>{slotParts.join(' · ')}</Text>
           </View>
-          {isWeb ? (
-            <TouchableOpacity onPress={() => router.back()} style={s.closeBtn}>
-              <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* ── Band row ──────────────────────────────────────────── */}
-        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-          {band.photoUrl ? (
-            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
-          ) : (
-            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
-              <Text style={s.bandPhotoLabel}>photo</Text>
-            </View>
-          )}
-          <View style={{ flex: 1, gap: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
-                {band.name || profile?.displayName || 'Your Band'}
-              </Text>
-              {band.artistType ? (
-                <View style={s.typeBadge}>
-                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
-              {[
-                genres.slice(0, 3).join(' · '),
-                band.location,
-                band.drawSize ? `${band.drawSize} draw` : null,
-              ].filter(Boolean).join(' · ')}
-            </Text>
-          </View>
+          <TouchableOpacity onPress={() => router.back()} style={[s.closeBtn, { borderColor: colors.border }]}>
+            <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Set length ────────────────────────────────────────── */}
@@ -325,6 +293,41 @@ export default function EnquireScreen() {
             onChangeText={setNote}
             textAlignVertical="top"
           />
+        </View>
+
+        {/* ── Band row ──────────────────────────────────────────── */}
+        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          {band.photoUrl ? (
+            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
+          ) : (
+            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
+              <Text style={s.bandPhotoLabel}>photo</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
+                {band.name || profile?.displayName || 'Your Band'}
+              </Text>
+              {band.artistType ? (
+                <View style={s.typeBadge}>
+                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
+              {[
+                genres.slice(0, 3).join(' · '),
+                band.location,
+                band.drawSize ? `${band.drawSize} draw` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+          {user?.uid ? (
+            <TouchableOpacity onPress={() => router.push({ pathname: '/musician/[id]', params: { id: user.uid } } as any)} activeOpacity={0.7}>
+              <Text style={s.previewLink}>Preview</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* ── Profile sections shared ───────────────────────────── */}
@@ -406,14 +409,7 @@ export default function EnquireScreen() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top']}>
-      <View style={[s.nativeHeader, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Text style={s.backText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={[s.nativeTitle, { color: colors.black }]}>Enquire</Text>
-        <View style={{ width: 64 }} />
-      </View>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
       {formContent}
     </SafeAreaView>
   );
@@ -484,8 +480,8 @@ const s = StyleSheet.create({
   },
   venueName:  { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   slotDetail: { fontSize: 13, color: Colors.grey, marginTop: 3 },
-  closeBtn:   { padding: 6, marginTop: -2 },
-  closeBtnText: { fontSize: 18, fontWeight: '400' },
+  closeBtn:     { width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginTop: -2 },
+  closeBtnText: { fontSize: 14, fontWeight: '600' },
 
   // ── Field blocks ─────────────────────────────────────────────────────────
   fieldBlock: { gap: 10 },
@@ -519,7 +515,7 @@ const s = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
-    minHeight: 80,
+    minHeight: 100,
     lineHeight: 20,
   },
 
@@ -554,7 +550,8 @@ const s = StyleSheet.create({
     paddingVertical: 1,
   },
   typeBadgeText: { fontSize: 9, fontWeight: '700', color: '#666666', letterSpacing: 0.5 },
-  bandMeta: { fontSize: 11 },
+  bandMeta:    { fontSize: 11 },
+  previewLink: { fontSize: 13, fontWeight: '600', color: Colors.orange },
 
   // ── Profile sections ──────────────────────────────────────────────────────
   sectionsBlock: { gap: 12 },

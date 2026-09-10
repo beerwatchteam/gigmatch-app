@@ -455,7 +455,6 @@ export default function MusiciansScreen() {
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
           {/* Hero — outside ScrollView so it's always fully visible */}
           <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
-            <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
             <Text style={st.mobileWebHeroTitle}>Find your next act</Text>
             <Text style={st.webHeroSub}>
               {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
@@ -495,7 +494,6 @@ export default function MusiciansScreen() {
         <View style={st.webHero}>
           <View style={st.webHeroInner}>
             <View style={{ flex: 1 }}>
-              <Text style={st.webHeroLabel}>MUSICIANS · ARTISTS</Text>
               <Text style={st.webHeroTitle}>Find your next act</Text>
               <Text style={st.webHeroSub}>
                 {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed

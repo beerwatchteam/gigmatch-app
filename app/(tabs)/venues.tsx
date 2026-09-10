@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, haversineKm, type AreaResult } from '@/lib/suburbSearch';
 import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
 
 const GENRES = [
   'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
@@ -82,7 +83,10 @@ type Venue = {
   photoUrl?: string; photos?: string[];
   photoPosition?: { x: number; y: number };
   capacity?: number; feeMin?: number; feeMax?: number;
+  rooms?: { name: string; capacity: string }[];
   slots?: Record<string, any[]>;
+  payment?: { doorSplit?: string; models?: string[] };
+  replyStats?: { totalMs: number; count: number };
   settings?: { listed?: boolean };
 };
 
@@ -268,6 +272,14 @@ const CAL_DOW    = ['M','T','W','T','F','S','S'];
 function toLocalStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+
+function formatReplyTime(ms: number): string {
+  const hrs = ms / (1000 * 60 * 60);
+  if (hrs < 1)  return '< 1 hr';
+  if (hrs < 24) return `~${Math.round(hrs)} hr${Math.round(hrs) === 1 ? '' : 's'}`;
+  const days = hrs / 24;
+  return `~${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'}`;
+}
 function parseLocal(s: string) {
   const [y,m,d] = s.split('-').map(Number);
   return new Date(y, m-1, d);
@@ -408,6 +420,8 @@ let _sessionWebView: 'venue' | 'calendar' = 'venue';
 export default function VenuesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { profile } = useAuth();
+  const isArtist = profile?.type === 'artist';
   const { width: windowWidth } = useWindowDimensions();
   const [venues, setVenues]         = useState<Venue[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -776,11 +790,21 @@ export default function VenuesScreen() {
     const shown      = allSlots.slice(0, 2);
     const totalSlots = countOpenSlotsForRange(item, d0, d42);
     const extraCount = Math.max(0, totalSlots - 2);
-    const feeStr = item.feeMin != null && item.feeMax != null
-      ? `$${item.feeMin.toLocaleString()}–$${item.feeMax.toLocaleString()}`
-      : item.feeMin != null ? `$${item.feeMin.toLocaleString()}+` : null;
-    const metaParts = [item.suburb, item.capacity ? `cap. ${item.capacity}` : null, feeStr].filter(Boolean);
-    const venueGenres = (item.genre || item.genres || []).slice(0, 4);
+    const venueGenres = (item.genre || item.genres || []);
+
+    const lastSlot = allSlots[allSlots.length - 1];
+    const throughMonth = lastSlot?.dateStr
+      ? new Date(lastSlot.dateStr + 'T00:00:00').toLocaleString('default', { month: 'long' })
+      : null;
+
+    const paymentVal = item.payment?.models?.length ? item.payment.models.join(' · ') : '—';
+
+    const roomCaps = item.rooms?.map(r => parseInt(r.capacity) || 0).filter(n => n > 0) ?? [];
+    const maxCapacity = roomCaps.length > 0 ? Math.max(...roomCaps) : (item.capacity ?? null);
+    const avgReplyMs = (item.replyStats?.count ?? 0) > 0
+      ? item.replyStats!.totalMs / item.replyStats!.count
+      : null;
+    const replyVal = avgReplyMs != null ? formatReplyTime(avgReplyMs) : '—';
 
     return (
       <TouchableOpacity
@@ -796,86 +820,127 @@ export default function VenuesScreen() {
           onMouseLeave: () => setHovered(false),
         } : {})}
       >
-        {/* ── Top row: thumbnail + info ── */}
-        <View style={st.cardTop}>
-          {/* Thumbnail */}
-          {photo ? (
-            <Image
-              source={{ uri: photo }}
-              style={[st.cardThumb, { borderColor: colors.border }]}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[st.cardThumb, st.cardThumbEmpty, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-              <Text style={[st.cardThumbLabel, { color: colors.greyLight }]}>photo</Text>
-            </View>
+        {/* ── Photo ── */}
+        {photo ? (
+          <Image source={{ uri: photo }} style={st.cardPhoto} resizeMode="cover" />
+        ) : (
+          <View style={[st.cardPhoto, st.cardPhotoEmpty, { backgroundColor: colors.bgFaint }]}>
+            <Text style={[st.cardPhotoLabel, { color: colors.greyLight }]}>photo</Text>
+          </View>
+        )}
+
+        {/* ── Body ── */}
+        <View style={st.cardBody}>
+          {/* Name + capacity */}
+          <View style={st.cardNameRow}>
+            <Text style={[st.venueName, { color: colors.black, flex: 1 }]} numberOfLines={2}>{item.name}</Text>
+            {maxCapacity ? (
+              <Text style={[st.cardCap, { color: colors.grey }]}>max. {maxCapacity.toLocaleString()} cap</Text>
+            ) : null}
+          </View>
+
+          {/* Suburb */}
+          {item.suburb ? (
+            <Text style={[st.venueAddr, { color: colors.grey }]}>{item.suburb}</Text>
+          ) : null}
+
+          {/* Genres */}
+          {venueGenres.length > 0 && (
+            <Text style={[st.venueGenreText, { color: colors.grey }]} numberOfLines={2}>
+              {venueGenres.join(' · ')}
+            </Text>
           )}
 
-          {/* Info */}
-          <View style={st.cardInfo}>
-            <Text style={[st.venueName, { color: colors.black }]} numberOfLines={2}>{item.name}</Text>
-            {metaParts.length > 0 && (
-              <Text style={[st.venueAddr, { color: colors.grey }]} numberOfLines={1}>
-                {metaParts.join(' · ')}
-              </Text>
-            )}
-            {venueGenres.length > 0 && (
-              <Text style={st.venueGenreText} numberOfLines={1}>
-                {venueGenres.join(' · ')}
-              </Text>
+          {/* ── Slot rows ── */}
+          <View style={[st.cardSlots, { borderTopColor: colors.border }]}>
+            <Text style={[st.slotsLabel, { color: colors.grey }]}>NEXT OPEN SLOTS</Text>
+            {shown.length === 0 ? (
+              <Text style={[st.slotsNone, { color: colors.greyLight }]}>No open slots in the next 6 weeks</Text>
+            ) : (
+              <>
+                {shown.map((slot, i) => {
+                  const enquireParams = {
+                    venueId:   item.id,
+                    venueName: item.name,
+                    day:       slot.day,
+                    ...(slot.dateStr ? { date: slot.dateStr } : {}),
+                    time:      slot.time,
+                    ...(slot.room ? { room: slot.room } : {}),
+                    slotType:  slot.slotType ?? 'Either',
+                    duration:  slot.duration || '',
+                    capacity:  maxCapacity ? String(maxCapacity) : '',
+                  };
+                  return (
+                    <View
+                      key={i}
+                      style={st.slotRow}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[st.slotDate, { color: colors.black }]}>{slot.dateLabel} · {slot.time}</Text>
+                        {slot.slotType ? (
+                          <Text style={[st.slotType, { color: colors.grey, fontSize: 11, fontWeight: '500' }]}>{slot.slotType}</Text>
+                        ) : null}
+                      </View>
+                      {isArtist ? (
+                        <TouchableOpacity
+                          onPress={() => router.push({ pathname: '/enquire', params: enquireParams })}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
+                        >
+                          <Text style={st.slotEnquireLink}>Enquire</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  );
+                })}
+                {extraCount > 0 && (
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={st.moreText}>
+                      +{extraCount} more{throughMonth ? ` through ${throughMonth}` : ' slots'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
-        </View>
 
-        {/* ── Slot rows ── */}
-        <View style={[st.cardSlots, { borderTopColor: colors.border }]}>
-          {shown.length === 0 ? (
-            <Text style={[st.slotsNone, { color: colors.greyLight }]}>No open slots</Text>
-          ) : (
-            <View style={st.slotList}>
-              {shown.map((slot, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={[st.slotRow, { backgroundColor: Colors.orange + '18' }]}
-                  onPress={() => router.push({
-                    pathname: '/enquire',
-                    params: {
-                      venueId:   item.id,
-                      venueName: item.name,
-                      day:       slot.day,
-                      ...(slot.dateStr ? { date: slot.dateStr } : {}),
-                      time:      slot.time,
-                      ...(slot.room ? { room: slot.room } : {}),
-                      slotType:  slot.slotType ?? 'Either',
-                      duration:  slot.duration || '',
-                      capacity:  item.capacity ? String(item.capacity) : '',
-                    },
-                  })}
-                  activeOpacity={0.85}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={st.slotDate}>{slot.dateLabel} · {slot.time}</Text>
-                    {(slot.slotType || slot.duration) ? (
-                      <Text style={[st.slotMeta, { color: Colors.orange }]}>
-                        {[slot.slotType, slot.duration ? `${slot.duration} min` : null].filter(Boolean).join(' · ')}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View style={st.slotEnquireBtn}>
-                    <Text style={st.slotEnquireBtnText}>Enquire</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+          {/* ── Stats ── */}
+          <View style={[st.statsRow, { borderTopColor: colors.border }]}>
+            <View style={st.statCol}>
+              <Text style={[st.statVal, { color: colors.black }]} numberOfLines={2}>{paymentVal}</Text>
+              <Text style={st.statLabel}>PAYMENT</Text>
             </View>
-          )}
-          {extraCount > 0 && (
+            <View style={st.statCol}>
+              <Text style={[st.statVal, { color: colors.black }]}>{replyVal}</Text>
+              <Text style={st.statLabel}>REPLY TIME</Text>
+            </View>
+          </View>
+
+          {/* ── Buttons ── */}
+          <View style={[st.cardBtns, { borderTopColor: colors.border }]}>
             <TouchableOpacity
-              style={[st.moreBtn, { borderColor: colors.border }]}
+              style={[st.cardBtnOutlined, { borderColor: colors.black }]}
               onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+              activeOpacity={0.8}
+              {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
             >
-              <Text style={[st.moreBtnText, { color: colors.grey }]}>+{extraCount} more slots</Text>
+              <Text style={[st.cardBtnOutlinedText, { color: colors.black }]}>Timetable</Text>
             </TouchableOpacity>
-          )}
+            {isArtist ? (
+              <TouchableOpacity
+                style={[st.cardBtnFilled, { backgroundColor: colors.black }]}
+                onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
+                activeOpacity={0.8}
+                {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
+              >
+                <Text style={st.cardBtnFilledText}>Enquire</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -1057,17 +1122,20 @@ export default function VenuesScreen() {
 
         {/* Col 4: ACTION */}
         <View style={st.webColAction}>
+          {isArtist ? (
+            <TouchableOpacity
+              style={st.webEnquireBtn}
+              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+            >
+              <Text style={st.webEnquireBtnText}>Enquire</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
-            style={st.webEnquireBtn}
+            style={[st.webTimetableBtn, { borderColor: colors.black, marginTop: isArtist ? 8 : 0 }]}
             onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+            activeOpacity={0.8}
           >
-            <Text style={st.webEnquireBtnText}>Enquire</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ marginTop: 8, alignItems: 'flex-end' as any }}
-            onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
-          >
-            <Text style={st.webViewTimetableLink}>View timetable</Text>
+            <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Timetable</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1113,32 +1181,34 @@ export default function VenuesScreen() {
         {slotInfo ? <Text style={st.calViewSlotInfo}>{slotInfo}</Text> : null}
         {feeStr ? <Text style={st.calViewSlotFee}>{feeStr}</Text> : null}
         <View style={st.calViewActions}>
+          {isArtist ? (
+            <TouchableOpacity
+              style={st.calViewEnquireBtn}
+              onPress={() => router.push({
+                pathname: '/enquire',
+                params: {
+                  venueId: slot.venue.id,
+                  venueName: slot.venue.name,
+                  day: slot.day,
+                  date: slot.dateISO,
+                  time: slot.time,
+                  slotType: slot.slotType ?? 'Either',
+                  ...(slot.room ? { room: slot.room } : {}),
+                  duration: slot.duration || '',
+                  capacity: slot.venue.capacity ? String(slot.venue.capacity) : '',
+                },
+              })}
+              activeOpacity={0.85}
+            >
+              <Text style={st.calViewEnquireBtnText}>Enquire</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
-            style={st.calViewEnquireBtn}
-            onPress={() => router.push({
-              pathname: '/enquire',
-              params: {
-                venueId: slot.venue.id,
-                venueName: slot.venue.name,
-                day: slot.day,
-                date: slot.dateISO,
-                time: slot.time,
-                slotType: slot.slotType ?? 'Either',
-                ...(slot.room ? { room: slot.room } : {}),
-                duration: slot.duration || '',
-                capacity: slot.venue.capacity ? String(slot.venue.capacity) : '',
-              },
-            })}
-            activeOpacity={0.85}
-          >
-            <Text style={st.calViewEnquireBtnText}>Enquire</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ marginTop: 6, alignItems: 'center' as any }}
+            style={[st.webTimetableBtn, { borderColor: colors.black, marginTop: isArtist ? 6 : 0 }]}
             onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'timetable' } })}
             activeOpacity={0.8}
           >
-            <Text style={st.calViewTimetableLink}>View timetable</Text>
+            <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Timetable</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1162,9 +1232,6 @@ export default function VenuesScreen() {
         <View style={{ flex: 1, backgroundColor: colors.bg }}>
           {/* Hero — outside ScrollView so it's always fully visible */}
           <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6' }]}>
-            <Text style={st.webHeroLabel}>
-              OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
-            </Text>
             <Text style={st.mobileWebHeroTitle}>Find your next gig</Text>
             <Text style={st.webHeroSub}>
               {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
@@ -1203,9 +1270,6 @@ export default function VenuesScreen() {
         <View style={st.webHero}>
           <View style={st.webHeroInner}>
             <View style={{ flex: 1 }}>
-              <Text style={st.webHeroLabel}>
-                OPEN SLOTS{heroLocation ? ` · ${heroLocation.toUpperCase()}` : ''}
-              </Text>
               <Text style={st.webHeroTitle}>Find your next gig</Text>
               <Text style={st.webHeroSub}>
                 {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalOpenSlots} open slots in the next 6 weeks
@@ -1663,36 +1727,49 @@ const st = StyleSheet.create({
   filterIconBadge:    { position: 'absolute' as any, top: -5, right: -5, backgroundColor: '#111111', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   filterIconBadgeText:{ color: '#ffffff', fontSize: 9, fontWeight: '800', lineHeight: 16 },
 
-  // Slot rows (inside VenueCard)
-  slotList:         { gap: 8, marginTop: 4 },
-  slotRow:          { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, gap: 10 },
-  slotDate:         { fontSize: 13, fontWeight: '700', color: '#111111' },
-  slotMeta:         { fontSize: 11, fontWeight: '600', marginTop: 1 },
-  slotEnquireBtn:   { borderRadius: 8, backgroundColor: '#111111', paddingHorizontal: 14, paddingVertical: 7 },
-  slotEnquireBtnText:{ fontSize: 12, fontWeight: '700', color: '#ffffff' },
-  moreBtn:          { borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', marginTop: 4 },
-  moreBtnText:      { fontSize: 13, fontWeight: '600' },
-
   // Cards
   card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 14, overflow: 'hidden', marginBottom: 14 },
   cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
 
-  // Card top: horizontal thumbnail + info
-  cardTop:        { flexDirection: 'row', padding: 14, gap: 14, alignItems: 'flex-start' },
-  cardThumb:      { width: 80, height: 80, borderRadius: 8, borderWidth: 1 },
-  cardThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
-  cardThumbLabel: { fontSize: 10, fontStyle: 'italic' },
-  cardInfo:       { flex: 1, gap: 5, justifyContent: 'center' },
-  venueName:      { fontSize: 17, fontWeight: '700', color: '#111111', lineHeight: 22 },
-  venueAddr:      { fontSize: 12, color: '#666666' },
-  venueGenreText: { fontSize: 12, color: Colors.orange, fontWeight: '500', marginTop: 3 },
+  // Card photo (full-width top)
+  cardPhoto:      { width: '100%' as any, height: 160 },
+  cardPhotoEmpty: { alignItems: 'center', justifyContent: 'center' },
+  cardPhotoLabel: { fontSize: 11, fontStyle: 'italic' },
+
+  // Card body
+  cardBody:       { padding: 14, gap: 4 },
+  cardNameRow:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  cardCap:        { fontSize: 12, fontWeight: '500', marginTop: 3 },
+  venueName:      { fontSize: 18, fontWeight: '700', color: '#111111', lineHeight: 23 },
+  venueAddr:      { fontSize: 13, color: '#666666', marginTop: 1 },
+  venueGenreText: { fontSize: 12, fontWeight: '400', marginTop: 3 },
   genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
   pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
 
   // Card slots section
-  cardSlots:      { paddingHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, paddingTop: 12, gap: 0 },
+  cardSlots:      { marginTop: 12, paddingTop: 12, borderTopWidth: 1, gap: 0 },
+  slotsLabel:     { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 6 },
+  slotRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 9 },
+  slotDate:         { fontSize: 13, fontWeight: '700' },
+  slotType:         { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  slotEnquireLink:  { fontSize: 13, fontWeight: '700', color: Colors.orange },
+  moreText:         { fontSize: 12, color: Colors.orange, marginTop: 6 },
   slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
+
+  // Stats row
+  statsRow:       { flexDirection: 'row', marginTop: 14, paddingTop: 12 },
+  statCol:        { flex: 1, alignItems: 'center', gap: 3 },
+  statDivider:    { width: 1, marginVertical: 2 },
+  statVal:        { fontSize: 13, fontWeight: '700' },
+  statLabel:      { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, color: '#aaaaaa' },
+
+  // Card buttons
+  cardBtns:            { flexDirection: 'row', gap: 10, marginTop: 14, paddingTop: 12 },
+  cardBtnOutlined:     { flex: 1, borderWidth: 1.5, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  cardBtnOutlinedText: { fontSize: 14, fontWeight: '700', color: Colors.orange },
+  cardBtnFilled:       { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  cardBtnFilledText:   { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
   // ── Mobile web hero ───────────────────────────────────────────────
   mobileWebHero:      { paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },
@@ -1763,6 +1840,8 @@ const st = StyleSheet.create({
   webRowGenres:        { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
   webEnquireBtn:       { backgroundColor: '#111111', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
   webEnquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  webTimetableBtn:     { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7, alignItems: 'center' as const, alignSelf: 'flex-end' as const },
+  webTimetableBtnText: { fontSize: 13, fontWeight: '600' },
   webViewTimetableLink:{ fontSize: 12, color: Colors.orange, fontWeight: '600' },
   webViewToggle:           { flexDirection: 'row', backgroundColor: '#f0ede8', borderRadius: 8, padding: 3, gap: 2 },
   webViewToggleBtn:        { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7 },
