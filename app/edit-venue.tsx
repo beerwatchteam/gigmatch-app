@@ -40,6 +40,7 @@ type Payment = {
   ticketSalesSplit: string; ticketingHandledBy: string;
   timing: string;
   invoiceRequired: boolean;
+  invoiceDoc?: { url: string; name: string } | null;
   gstRegistered: boolean;
   cancellationTerms: string;
   additionalNotes: string;
@@ -61,7 +62,7 @@ const BLANK_PAYMENT: Payment = {
   models: [], setFeeMin: '', setFeeMax: '', feeBasis: 'Per band',
   doorSplit: '', coverCharge: '', barSplit: '',
   ticketSalesSplit: '', ticketingHandledBy: '',
-  timing: '', invoiceRequired: true, gstRegistered: false,
+  timing: '', invoiceRequired: true, invoiceDoc: null, gstRegistered: false,
   cancellationTerms: '', additionalNotes: '',
 };
 
@@ -493,6 +494,7 @@ export default function EditVenueScreen() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
   const [stageDocUploading, setStageDocUploading] = useState(false);
+  const [invoiceDocUploading, setInvoiceDocUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [showStickySave, setShowStickySave] = useState(false);
@@ -622,6 +624,26 @@ export default function EditVenueScreen() {
       Alert.alert('Upload failed', String(e));
     } finally {
       setStageDocUploading(false);
+    }
+  }
+
+  async function pickInvoiceDocument() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setInvoiceDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `invoices/${venueId}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      setPayment('invoiceDoc', { url, name: asset.name });
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setInvoiceDocUploading(false);
     }
   }
 
@@ -1046,7 +1068,7 @@ export default function EditVenueScreen() {
                   <Field label="Door Split">
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <View style={{ flex: 3 }}>
-                        <Input value={data.payment.doorSplit} onChangeText={(v: string) => setPayment('doorSplit', v)} placeholder="e.g. 70/30 artist/venue" />
+                        <Input value={data.payment.doorSplit} onChangeText={(v: string) => setPayment('doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" />
                       </View>
                       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10 }}>
                         <Text style={{ fontSize: 14, color: Colors.grey, marginRight: 2 }}>$</Text>
@@ -1087,18 +1109,40 @@ export default function EditVenueScreen() {
                 </Field>
               </View>
 
-              <TouchableOpacity
-                style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-                activeOpacity={0.7}
-                onPress={() => setPayment('invoiceRequired', !data.payment.invoiceRequired)}
-              >
-                <View style={[s.checkbox, { borderColor: colors.border }, data.payment.invoiceRequired && s.checkboxChecked]}>
-                  {data.payment.invoiceRequired && <Text style={s.checkmark}>✓</Text>}
-                </View>
-                <Text style={[s.checkLabel, { color: colors.black }]}>Invoice Required</Text>
-              </TouchableOpacity>
+              {/* Invoice */}
+              <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.borderFaint }}>
+                <Text style={[s.sectionTitle, { color: colors.black, marginBottom: 12 }]}>Invoice</Text>
 
-<View style={{ marginTop: 12 }}>
+                <TouchableOpacity
+                  style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
+                  activeOpacity={0.7}
+                  onPress={() => setPayment('invoiceRequired', !data.payment.invoiceRequired)}
+                >
+                  <View style={[s.checkbox, { borderColor: colors.border }, data.payment.invoiceRequired && s.checkboxChecked]}>
+                    {data.payment.invoiceRequired && <Text style={s.checkmark}>✓</Text>}
+                  </View>
+                  <Text style={[s.checkLabel, { color: colors.black }]}>Invoice Required</Text>
+                </TouchableOpacity>
+
+                <Text style={{ fontSize: 13, color: Colors.grey, marginTop: 14, marginBottom: 10, lineHeight: 19 }}>
+                  Do you have a preferred invoice document? Upload it here.
+                </Text>
+
+                {data.payment.invoiceDoc ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12 }}>
+                    <Text style={{ flex: 1, fontSize: 13, color: colors.black }} numberOfLines={1}>↓ {data.payment.invoiceDoc.name}</Text>
+                    <TouchableOpacity onPress={() => setPayment('invoiceDoc', null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={{ fontSize: 14, color: '#e94560', fontWeight: '700' }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={s.addBtn} onPress={pickInvoiceDocument} disabled={invoiceDocUploading}>
+                    <Text style={s.addBtnText}>{invoiceDocUploading ? 'Uploading…' : '+ Upload Invoice Template'}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={{ marginTop: 12 }}>
                 <Field label="Deposit / Cancellation Terms">
                   <Input value={data.payment.cancellationTerms} onChangeText={(v: string) => setPayment('cancellationTerms', v)} placeholder="e.g. No deposit required. 48hr cancellation notice needed to avoid forfeiting fee." multiline />
                 </Field>
@@ -1294,7 +1338,7 @@ export default function EditVenueScreen() {
                             <View style={{ marginTop: 10, gap: 8 }}>
                               <View style={{ flexDirection: 'row', gap: 8 }}>
                                 <View style={{ flex: 3 }}>
-                                  <Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue" />
+                                  <Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" />
                                 </View>
                                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10 }}>
                                   <Text style={{ fontSize: 14, color: Colors.grey, marginRight: 2 }}>$</Text>

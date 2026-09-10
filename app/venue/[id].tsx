@@ -100,6 +100,7 @@ type Venue = {
   techSpecs?: TechSpecs;
   gigNights?: GigNight[];
   nightPreferences?: GigNight[];
+  payment?: { models?: string[] };
 };
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -500,7 +501,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
       {/* Venue Info */}
       {(venue.phone || venue.email || venue.website) ? (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Venue Info</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Venue Info</Text>
           <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
             {venue.phone ? (
               <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
@@ -529,6 +530,20 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
           </View>
         </View>
       ) : null}
+
+      {/* Payment */}
+      {(venue.payment?.models || []).length > 0 && (
+        <View style={s.section}>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Payment</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {(venue.payment!.models!).map((model) => (
+              <View key={model} style={[s.genrePill, { borderColor: colors.border }]}>
+                <Text style={[s.genreText, { color: colors.black }]}>{model}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Description */}
       {desc ? (
@@ -578,7 +593,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {nights.length > 0 ? (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Timetable</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Gig Timetable</Text>
           {nights.map((night, i) => (
             <View key={i} style={s.nightRow}>
               <Text style={[s.nightDay, { color: colors.black }]}>{night.day}</Text>
@@ -1316,7 +1331,7 @@ function PhotosTab({ venue }: { venue: Venue }) {
     <View style={[s.tabBody, isWeb && pt.webGrid]}>
       {photos.length > 0 && (
         <View style={[pt.mediaSection, isWeb && pt.mediaSectionWeb]}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Photos</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Photos</Text>
           <MediaCarousel
             items={photos}
             renderSlide={(url) => (
@@ -1327,7 +1342,7 @@ function PhotosTab({ venue }: { venue: Venue }) {
       )}
       {videos.length > 0 && (
         <View style={[pt.mediaSection, isWeb && pt.mediaSectionWeb]}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Videos</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Videos</Text>
           <MediaCarousel
             items={videos}
             renderSlide={(url) => <VideoPlayer url={url} />}
@@ -1365,7 +1380,7 @@ function RoomsTab({ venue }: { venue: Venue }) {
     <View style={s.tabBody}>
       {rooms.length > 0 && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Rooms</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Rooms</Text>
           {rooms.map((room, i) => (
             <View key={i} style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <View style={rt.roomNameRow}>
@@ -1409,12 +1424,13 @@ function RoomsTab({ venue }: { venue: Venue }) {
 
       {techSpecs && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Tech Specs</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Tech Specs</Text>
+          <View style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, marginBottom: 0 }]}>
           <View style={rt.specsGrid}>
             {techRows.map(({ label, value }) => (
               <View key={label} style={rt.specItem}>
                 <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
-                <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
+                <Text style={[rt.specValue, { color: Colors.orange }]}>{value}</Text>
               </View>
             ))}
             {typeof techSpecs.soundEngineer !== 'undefined' && (
@@ -1452,7 +1468,7 @@ function RoomsTab({ venue }: { venue: Venue }) {
           )}
           {techSpecs.notes ? (
             <View style={[rt.notesBox, { backgroundColor: colors.bgFaint }]}>
-              <Text style={[rt.notesText, { color: colors.grey }]}>{techSpecs.notes}</Text>
+              <Text style={[rt.notesText, { color: Colors.orange }]}>{techSpecs.notes}</Text>
             </View>
           ) : null}
           {(techSpecs.documents && techSpecs.documents.length > 0) ? (
@@ -1469,6 +1485,7 @@ function RoomsTab({ venue }: { venue: Venue }) {
               <Text style={s.link}>{techSpecs.riderUrl}</Text>
             </TouchableOpacity>
           ) : null}
+          </View>
         </View>
       )}
     </View>

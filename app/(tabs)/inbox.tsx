@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Image, Linking, useWindowDimensions, Modal, Animated,
+  ScrollView, Image, Linking, useWindowDimensions, Modal, Animated, Alert,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +25,7 @@ import {
   type DMConv,
 } from '@/lib/useDirectMessages';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 
 /** Fetches and caches a venue's photoUrl for display in artist-side tiles/threads. */
 function useVenuePhoto(venueId: string | null | undefined): string | null {
@@ -216,7 +218,7 @@ function DealSheetGrid({ enquiry, onDetails }: { enquiry: Enquiry; onDetails: ()
         <Text style={dg.value} numberOfLines={1}>{setStr}</Text>
       </View>
       <TouchableOpacity style={dg.detailsBtn} onPress={onDetails} activeOpacity={0.7}>
-        <Text style={dg.detailsText}>Details →</Text>
+        <Text style={dg.detailsText}>More Details →</Text>
       </TouchableOpacity>
     </View>
   );
@@ -251,13 +253,41 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [notes,       setNotes]       = useState<string>((enquiry as any).importantNotes ?? '');
-  const [notesEdited, setNotesEdited] = useState(false);
-  const [notesSaving, setNotesSaving] = useState(false);
+  const [notes,            setNotes]            = useState<string>((enquiry as any).importantNotes ?? '');
+  const [notesEdited,      setNotesEdited]      = useState(false);
+  const [notesSaving,      setNotesSaving]      = useState(false);
+  const [paymentInfo,      setPaymentInfo]      = useState<string>((enquiry as any).paymentInfo ?? '');
+  const [paymentInfoEdited,setPaymentInfoEdited]= useState(false);
+  const [paymentInfoSaving,setPaymentInfoSaving]= useState(false);
+  const [notesDoc,         setNotesDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
+  const [notesDocUploading,setNotesDocUploading]= useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  const [slotPaymentModel,    setSlotPaymentModel]    = useState<string | null>(null);
+  const [venuePaymentModels,  setVenuePaymentModels]  = useState<string[]>([]);
+  const [paymentFetched,      setPaymentFetched]      = useState(false);
+  const [paymentPickerOpen,   setPaymentPickerOpen]   = useState(false);
+  const [enquiryPaymentModel, setEnquiryPaymentModel] = useState<string | null>((enquiry as any).paymentModel ?? null);
+
+  async function fetchPaymentData() {
+    if (paymentFetched) return;
+    try {
+      const venueSnap = await getDoc(doc(db, 'venues', enquiry.venueId));
+      if (venueSnap.exists()) {
+        const venueData = venueSnap.data();
+        const { day, time } = enquiry.requestedSlot;
+        const slots: any[] = venueData.slots?.[day] || [];
+        const match = slots.find((s: any) => s.time === time && !s.date);
+        setSlotPaymentModel(match?.paymentModel || null);
+        setVenuePaymentModels(venueData.payment?.models || []);
+      }
+    } catch {}
+    setPaymentFetched(true);
+  }
 
   function openDetails() {
     setDetailsOpen(true);
+    fetchPaymentData();
     Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, tension: 65, friction: 11 }).start();
   }
 
@@ -270,6 +300,31 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     await updateDoc(doc(db, 'inquiries', enquiry.id), { importantNotes: notes.trim() });
     setNotesEdited(false);
     setNotesSaving(false);
+  }
+
+  async function pickNotesDocument() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    setNotesDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `enquiry-docs/${enquiry.id}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      const newDoc = { url, name: asset.name };
+      await updateDoc(doc(db, 'inquiries', enquiry.id), { notesDoc: newDoc });
+      setNotesDoc(newDoc);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setNotesDocUploading(false);
+    }
   }
 
   const quickLinks = [
@@ -336,7 +391,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             <ScrollView contentContainerStyle={eh.drawerContent} showsVerticalScrollIndicator={false}>
 
               {/* Gig info */}
-              <Text style={eh.drawerSectionLabel}>GIG INFO</Text>
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Gig Info</Text>
               <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
                 {[
                   { key: 'Date',     val: dateStrFull },
@@ -351,10 +406,79 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 ))}
               </View>
 
+              {/* Payment method */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
+              {(() => {
+                const displayModel = slotPaymentModel || enquiryPaymentModel;
+                if (displayModel) {
+                  return (
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      <View style={eh.drawerInfoRow}>
+                        <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Method</Text>
+                        <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{displayModel}</Text>
+                      </View>
+                    </View>
+                  );
+                }
+                if (!isVenue) {
+                  return (
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      <View style={eh.drawerInfoRow}>
+                        <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Method</Text>
+                        <Text style={[eh.drawerInfoVal, { color: colors.grey }]}>Not set</Text>
+                      </View>
+                    </View>
+                  );
+                }
+                return (
+                  <TouchableOpacity
+                    style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, paddingVertical: 14, alignItems: 'center' }]}
+                    onPress={() => setPaymentPickerOpen(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.orange }}>+ Add Payment Method</Text>
+                  </TouchableOpacity>
+                );
+              })()}
+              <TextInput
+                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 72, marginTop: 6 }]}
+                value={paymentInfo}
+                onChangeText={t => { setPaymentInfo(t); setPaymentInfoEdited(true); }}
+                placeholder="Add payment details for this gig, e.g. agreed amount, timing, special terms..."
+                placeholderTextColor="#aaaaaa"
+                multiline
+                textAlignVertical="top"
+              />
+              {paymentInfoEdited && (
+                <View style={eh.drawerNotesBtns}>
+                  <TouchableOpacity
+                    style={eh.drawerCancelBtn}
+                    onPress={() => { setPaymentInfo((enquiry as any).paymentInfo ?? ''); setPaymentInfoEdited(false); }}
+                  >
+                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={eh.drawerSaveBtn}
+                    onPress={async () => {
+                      setPaymentInfoSaving(true);
+                      await updateDoc(doc(db, 'inquiries', enquiry.id), { paymentInfo: paymentInfo.trim() });
+                      setPaymentInfoEdited(false);
+                      setPaymentInfoSaving(false);
+                    }}
+                    disabled={paymentInfoSaving}
+                  >
+                    {paymentInfoSaving
+                      ? <ActivityIndicator color="#111111" size="small" />
+                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Quick links */}
               {quickLinks.length > 0 && (
                 <>
-                  <Text style={eh.drawerSectionLabel}>QUICK VIEW</Text>
+                  <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Quick View</Text>
                   <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
                     {quickLinks.map((l, i, arr) => (
                       <TouchableOpacity
@@ -372,12 +496,12 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
               )}
 
               {/* Important Notes */}
-              <Text style={eh.drawerSectionLabel}>IMPORTANT NOTES</Text>
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Important Notes</Text>
               <TextInput
                 style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border }]}
                 value={notes}
                 onChangeText={t => { setNotes(t); setNotesEdited(true); }}
-                placeholder="Add key details, agreements, requirements — anything worth keeping..."
+                placeholder="Add key details, agreements, requirements, anything worth pinning..."
                 placeholderTextColor="#aaaaaa"
                 multiline
                 textAlignVertical="top"
@@ -397,6 +521,34 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     }
                   </TouchableOpacity>
                 </View>
+              )}
+
+              {/* Notes document */}
+              {notesDoc ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginTop: 10 }}>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => Linking.openURL(notesDoc.url)}>
+                    <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }} numberOfLines={1}>↓ {notesDoc.name}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await updateDoc(doc(db, 'inquiries', enquiry.id), { notesDoc: null });
+                      setNotesDoc(null);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={{ fontSize: 14, color: '#e94560', fontWeight: '700' }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{ marginTop: 10, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint }}
+                  onPress={pickNotesDocument}
+                  disabled={notesDocUploading}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.orange }}>
+                    {notesDocUploading ? 'Uploading…' : '+ Attach Document'}
+                  </Text>
+                </TouchableOpacity>
               )}
 
             </ScrollView>
@@ -435,6 +587,36 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal visible={paymentPickerOpen} transparent animationType="fade" onRequestClose={() => setPaymentPickerOpen(false)}>
+        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setPaymentPickerOpen(false)}>
+          <View style={[md.sheet, { backgroundColor: colors.bg }]}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#888888', letterSpacing: 0.5, textTransform: 'uppercase', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 4 }}>Select Payment Method</Text>
+            {venuePaymentModels.length === 0 ? (
+              <View style={{ paddingHorizontal: 24, paddingVertical: 16 }}>
+                <Text style={{ fontSize: 14, color: '#888888' }}>No payment methods set up on your venue profile yet.</Text>
+              </View>
+            ) : (
+              venuePaymentModels.map((model) => (
+                <TouchableOpacity
+                  key={model}
+                  style={md.sheetItem}
+                  onPress={async () => {
+                    await updateDoc(doc(db, 'inquiries', enquiry.id), { paymentModel: model });
+                    setEnquiryPaymentModel(model);
+                    setPaymentPickerOpen(false);
+                  }}
+                >
+                  <Text style={[md.sheetText, { color: colors.black }]}>{model}</Text>
+                </TouchableOpacity>
+              ))
+            )}
+            <TouchableOpacity style={[md.sheetItem, md.sheetCancelItem]} onPress={() => setPaymentPickerOpen(false)}>
+              <Text style={[md.sheetText, { color: colors.grey }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </>
   );
 }
@@ -457,7 +639,7 @@ const eh = StyleSheet.create({
   drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   drawerClose:       { fontSize: 18, color: '#aaaaaa', fontWeight: '600' },
   drawerContent:     { padding: 20, gap: 6, paddingBottom: 40 },
-  drawerSectionLabel:{ fontSize: 10, fontWeight: '700', color: '#aaaaaa', letterSpacing: 0.7, textTransform: 'uppercase' as const, marginTop: 16, marginBottom: 6 },
+  drawerSectionLabel:{ fontSize: 15, fontWeight: '800', color: '#111111', letterSpacing: -0.2, marginTop: 20, marginBottom: 8 },
   drawerInfoCard:    { borderRadius: 12, borderWidth: 1, overflow: 'hidden' as const },
   drawerInfoRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 12 },
   drawerInfoKey:     { fontSize: 13, fontWeight: '600' },
