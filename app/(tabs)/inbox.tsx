@@ -409,9 +409,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
               <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
                 {[
                   { key: 'Date',     val: dateStrFull },
-                  { key: 'Time/Set', val: setStr      },
+                  { key: 'Set Time', val: setStr      },
                   { key: 'Slot',     val: billing     },
-                  { key: 'Fee',      val: fee         },
                 ].map((row, i) => (
                   <View key={row.key} style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                     <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{row.key}</Text>
