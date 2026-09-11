@@ -929,16 +929,6 @@ export default function VenuesScreen() {
             >
               <Text style={[st.cardBtnOutlinedText, { color: colors.black }]}>Timetable</Text>
             </TouchableOpacity>
-            {isArtist ? (
-              <TouchableOpacity
-                style={[st.cardBtnFilled, { backgroundColor: colors.black }]}
-                onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'overview' } })}
-                activeOpacity={0.8}
-                {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
-              >
-                <Text style={st.cardBtnFilledText}>Enquire</Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -1121,21 +1111,24 @@ export default function VenuesScreen() {
 
         {/* Col 4: ACTION */}
         <View style={st.webColAction}>
-          {isArtist ? (
+          <View style={{ alignSelf: 'flex-end' }}>
+            {isArtist ? (
+              <TouchableOpacity
+                style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
+                onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+                activeOpacity={0.8}
+              >
+                <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
-              style={st.webEnquireBtn}
+              style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: isArtist ? 8 : 0 }]}
               onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+              activeOpacity={0.8}
             >
-              <Text style={st.webEnquireBtnText}>Enquire</Text>
+              <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Timetable</Text>
             </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity
-            style={[st.webTimetableBtn, { borderColor: colors.black, marginTop: isArtist ? 8 : 0 }]}
-            onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
-            activeOpacity={0.8}
-          >
-            <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Timetable</Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -1182,7 +1175,7 @@ export default function VenuesScreen() {
         <View style={st.calViewActions}>
           {isArtist ? (
             <TouchableOpacity
-              style={st.calViewEnquireBtn}
+              style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
               onPress={() => router.push({
                 pathname: '/enquire',
                 params: {
@@ -1199,11 +1192,11 @@ export default function VenuesScreen() {
               })}
               activeOpacity={0.85}
             >
-              <Text style={st.calViewEnquireBtnText}>Enquire</Text>
+              <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
-            style={[st.webTimetableBtn, { borderColor: colors.black, marginTop: isArtist ? 6 : 0 }]}
+            style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: isArtist ? 6 : 0 }]}
             onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'timetable' } })}
             activeOpacity={0.8}
           >
@@ -1881,7 +1874,7 @@ const st = StyleSheet.create({
   calViewSlotThumbLabel:{ fontSize: 9, color: '#aaaaaa', fontStyle: 'italic' },
   calViewVenueName:     { fontSize: 15, fontWeight: '700', color: '#111111' },
   calViewVenueMeta:     { fontSize: 12, color: '#888888', marginTop: 2 },
-  calViewGenreText:     { fontSize: 12, color: Colors.orange, marginTop: 4, fontWeight: '500' },
+  calViewGenreText:     { fontSize: 12, color: '#111111', marginTop: 4, fontWeight: '500' },
   calViewSlotInfo:      { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
   calViewSlotFee:       { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },
   calViewRoom:          { flex: 1, fontSize: 13, color: '#555555', textAlign: 'center' as any },

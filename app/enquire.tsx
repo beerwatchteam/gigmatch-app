@@ -231,6 +231,36 @@ export default function EnquireScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ── Band row ──────────────────────────────────────────── */}
+        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          {band.photoUrl ? (
+            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
+          ) : (
+            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
+              <Text style={s.bandPhotoLabel}>photo</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
+                {band.name || profile?.displayName || 'Your Band'}
+              </Text>
+              {band.artistType ? (
+                <View style={s.typeBadge}>
+                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
+              {[
+                genres.slice(0, 3).join(' · '),
+                band.location,
+                band.drawSize ? `${band.drawSize} draw` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        </View>
+
         {/* ── Set length ────────────────────────────────────────── */}
         <View style={s.fieldBlock}>
           <Text style={[s.fieldLabel, { color: colors.black }]}>Set length</Text>
@@ -293,41 +323,6 @@ export default function EnquireScreen() {
             onChangeText={setNote}
             textAlignVertical="top"
           />
-        </View>
-
-        {/* ── Band row ──────────────────────────────────────────── */}
-        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-          {band.photoUrl ? (
-            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
-          ) : (
-            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
-              <Text style={s.bandPhotoLabel}>photo</Text>
-            </View>
-          )}
-          <View style={{ flex: 1, gap: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
-                {band.name || profile?.displayName || 'Your Band'}
-              </Text>
-              {band.artistType ? (
-                <View style={s.typeBadge}>
-                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
-              {[
-                genres.slice(0, 3).join(' · '),
-                band.location,
-                band.drawSize ? `${band.drawSize} draw` : null,
-              ].filter(Boolean).join(' · ')}
-            </Text>
-          </View>
-          {user?.uid ? (
-            <TouchableOpacity onPress={() => router.push({ pathname: '/musician/[id]', params: { id: user.uid } } as any)} activeOpacity={0.7}>
-              <Text style={s.previewLink}>Preview</Text>
-            </TouchableOpacity>
-          ) : null}
         </View>
 
         {/* ── Profile sections shared ───────────────────────────── */}
@@ -506,7 +501,7 @@ const s = StyleSheet.create({
 
   // ── Locked field ──────────────────────────────────────────────────────────
   lockedRow:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  lockedValue: { fontSize: 14, fontWeight: '600' },
+  lockedValue: { fontSize: 13, fontWeight: '400' },
   lockedHint: { fontSize: 12, color: Colors.grey },
 
   // ── Textarea ──────────────────────────────────────────────────────────────
