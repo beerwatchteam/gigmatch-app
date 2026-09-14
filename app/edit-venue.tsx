@@ -22,7 +22,7 @@ const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop',
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const SLOT_TYPES     = ['Headline','Other'];
 
-type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string };
+type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; _isNew?: boolean };
 type Night = {
   day: string; startTime: string; duration: number; slotType: string;
   startDate: string; endDate: string; continuous: boolean;
@@ -31,6 +31,7 @@ type Night = {
   doorSplit: string; coverCharge: string;
   barSplit: string;
   ticketSalesSplit: string; ticketingHandledBy: string;
+  _isNew?: boolean;
 };
 type Payment = {
   models: string[];
@@ -532,7 +533,7 @@ export default function EditVenueScreen() {
   }
   function addRoom() {
     setData(prev => {
-      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '' }];
+      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '', _isNew: true }];
       setExpandedRoom(rooms.length - 1);
       return { ...prev, rooms };
     });
@@ -566,6 +567,7 @@ export default function EditVenueScreen() {
         feeMin: '', feeMax: '', feeBasis: '', loadIn: '', soundcheck: '',
         room: '', genres: [], notes: '', paymentModel: '',
         doorSplit: '', coverCharge: '', barSplit: '', ticketSalesSplit: '', ticketingHandledBy: '',
+        _isNew: true,
       }];
       setExpandedNight(nights.length - 1);
       return { ...prev, gigNights: nights };
@@ -727,6 +729,8 @@ export default function EditVenueScreen() {
 
     try {
       const { id, ...fields } = data as any;
+      fields.rooms = data.rooms.map(({ _isNew, ...r }: any) => r);
+      fields.gigNights = data.gigNights.map(({ _isNew, ...n }: any) => n);
       const existingSlots = data.slots || {};
       const newSlots: Record<string, any> = {};
       CANONICAL_DAYS.forEach(day => {
@@ -755,6 +759,11 @@ export default function EditVenueScreen() {
 
       await updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots });
       setSaved(data);
+      setData(prev => ({
+        ...prev,
+        rooms: prev.rooms.map(({ _isNew, ...r }: any) => r),
+        gigNights: prev.gigNights.map(({ _isNew, ...n }: any) => n),
+      }));
       setShowErrors(false);
       setJustSaved(true);
     } catch (e: any) {
@@ -1187,9 +1196,14 @@ export default function EditVenueScreen() {
                       <Field label="PA System">
                         <Input value={room.pa} onChangeText={(v: string) => setRoom(i, 'pa', v)} placeholder="e.g. d&b audiotechnik J-Series" autoGrow />
                       </Field>
-                      <TouchableOpacity style={s.removeBtn} onPress={() => removeRoom(i)}>
-                        <Text style={s.removeBtnText}>Remove Room</Text>
-                      </TouchableOpacity>
+                      <View style={s.itemBtnRow}>
+                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeRoom(i)}>
+                          <Text style={s.removeBtnText}>Remove Room</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
+                          <Text style={s.itemSaveBtnText}>{room._isNew ? 'Add Room' : 'Save'}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -1391,9 +1405,14 @@ export default function EditVenueScreen() {
                           multi
                         />
                       </Field>
-                      <TouchableOpacity style={s.removeBtn} onPress={() => removeNight(i)}>
-                        <Text style={s.removeBtnText}>Remove Gig</Text>
-                      </TouchableOpacity>
+                      <View style={s.itemBtnRow}>
+                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeNight(i)}>
+                          <Text style={s.removeBtnText}>Remove Gig</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
+                          <Text style={s.itemSaveBtnText}>{night._isNew ? 'Add Gig' : 'Save'}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -1594,6 +1613,9 @@ const s = StyleSheet.create({
   addBtnText:    { fontSize: 14, color: Colors.orange, fontWeight: '600' },
   removeBtn:     { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 10, alignItems: 'center', marginTop: 4 },
   removeBtnText: { fontSize: 13, color: Colors.grey },
+  itemBtnRow:      { flexDirection: 'row', gap: 8, marginTop: 4 },
+  itemSaveBtn:     { flex: 1, backgroundColor: Colors.orange, borderRadius: 8, padding: 10, alignItems: 'center' },
+  itemSaveBtnText: { fontSize: 13, color: Colors.black, fontWeight: '600' },
   photoGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
   photoItem:     { width: '47%', aspectRatio: 4/3, borderRadius: 10, overflow: 'hidden' },
   photoImg:      { width: '100%', height: '100%' },

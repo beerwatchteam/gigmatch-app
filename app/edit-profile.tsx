@@ -28,7 +28,7 @@ const PLATFORMS = [
 const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
 
 type Song    = { title: string; url: string; notes: string };
-type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string };
+type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string; _isNew?: boolean };
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; location: string;
@@ -295,14 +295,14 @@ export default function EditProfileScreen() {
   function setGig(i: number, field: keyof Gig, val: string) {
     setProfile(prev => ({ ...prev, gigHistory: prev.gigHistory.map((g, idx) => idx === i ? { ...g, [field]: val } : g) }));
   }
-  function addGig() { setProfile(prev => ({ ...prev, gigHistory: [{ venue: '', suburb: '', date: '', notes: '', attendance: '' }, ...prev.gigHistory] })); }
+  function addGig() { setProfile(prev => ({ ...prev, gigHistory: [{ venue: '', suburb: '', date: '', notes: '', attendance: '', _isNew: true }, ...prev.gigHistory] })); }
   function removeGig(i: number) { setProfile(prev => ({ ...prev, gigHistory: prev.gigHistory.filter((_, idx) => idx !== i) })); }
 
   // ── Upcoming ──
   function setUpcoming(i: number, field: keyof Gig, val: string) {
     setProfile(prev => ({ ...prev, upcomingGigs: prev.upcomingGigs.map((g, idx) => idx === i ? { ...g, [field]: val } : g) }));
   }
-  function addUpcoming() { setProfile(prev => ({ ...prev, upcomingGigs: [...prev.upcomingGigs, { venue: '', suburb: '', date: '', notes: '' }] })); }
+  function addUpcoming() { setProfile(prev => ({ ...prev, upcomingGigs: [...prev.upcomingGigs, { venue: '', suburb: '', date: '', notes: '', _isNew: true }] })); }
   function removeUpcoming(i: number) { setProfile(prev => ({ ...prev, upcomingGigs: prev.upcomingGigs.filter((_, idx) => idx !== i) })); }
 
   // ── Photo upload ──
@@ -406,12 +406,19 @@ export default function EditProfileScreen() {
         feeMin:      toNum(profile.feeMin),
         feeMax:      toNum(profile.feeMax),
         averageDraw: toNum(profile.averageDraw),
+        gigHistory:   profile.gigHistory.map(({ _isNew, ...g }: any) => g),
+        upcomingGigs: profile.upcomingGigs.map(({ _isNew, ...g }: any) => g),
       };
       await setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true });
       // Also update username in users doc
       await updateDoc(doc(db, 'users', uid), { username: newUsername });
       originalUsername.current = newUsername;
       setSaved(profile);
+      setProfile(prev => ({
+        ...prev,
+        gigHistory:   prev.gigHistory.map(({ _isNew, ...g }: any) => g),
+        upcomingGigs: prev.upcomingGigs.map(({ _isNew, ...g }: any) => g),
+      }));
       setShowErrors(false);
       setJustSaved(true);
     } catch (e: any) {
@@ -825,10 +832,13 @@ export default function EditProfileScreen() {
                     <TextInput style={[s.input, { flex: 1 }]} value={gig.attendance || ''} onChangeText={v => setGig(i, 'attendance', v)} placeholder="Attendance" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
                   </View>
                   <View style={{ height: 8 }} />
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setGig(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                    <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeGig(i)}>
-                      <Text style={s.removeInlineBtnText}>Remove</Text>
+                  <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setGig(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
+                  <View style={s.itemBtnRow}>
+                    <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeGig(i)}>
+                      <Text style={s.removeBtnText}>Remove Gig</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
+                      <Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add Gig' : 'Save'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -854,13 +864,18 @@ export default function EditProfileScreen() {
                     <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
                   </View>
                   <View style={{ height: 8 }} />
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
                       <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} />
                     </View>
                     <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                    <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeUpcoming(i)}>
-                      <Text style={s.removeInlineBtnText}>Remove</Text>
+                  </View>
+                  <View style={s.itemBtnRow}>
+                    <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeUpcoming(i)}>
+                      <Text style={s.removeBtnText}>Remove Gig</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
+                      <Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add Gig' : 'Save'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -985,6 +1000,11 @@ const s = StyleSheet.create({
   cardError:          { borderColor: Colors.danger },
   addBtn:             { borderWidth: 1, borderColor: 'rgba(250,131,12,0.4)', borderStyle: 'dashed', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 },
   addBtnText:         { fontSize: 14, color: Colors.orange, fontWeight: '600' },
+  removeBtn:          { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 10, alignItems: 'center' as const },
+  removeBtnText:      { fontSize: 13, color: Colors.grey },
+  itemBtnRow:         { flexDirection: 'row', gap: 8, marginTop: 8 },
+  itemSaveBtn:        { flex: 1, backgroundColor: Colors.orange, borderRadius: 8, padding: 10, alignItems: 'center' },
+  itemSaveBtnText:    { fontSize: 13, color: Colors.black, fontWeight: '600' },
   removeInlineBtn:    { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, flexShrink: 0 },
   removeInlineBtnText:{ fontSize: 12, color: Colors.grey },
   photoGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
