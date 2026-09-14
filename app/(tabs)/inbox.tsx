@@ -2559,7 +2559,6 @@ export default function InboxScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const isWideWeb = isWeb && screenWidth >= 768;
   // Explicit pixel height for mobile web thread panel (avoids outer page scroll)
   const mobileWebHeight = isWeb && !isWideWeb
