@@ -79,7 +79,7 @@ export default function MessagesScreen() {
       getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
         if (snap.exists()) {
           const bp = snap.data();
-          if (bp.bandName) setMyName(bp.bandName);
+          if (bp.name) setMyName(bp.name);
           setMyPhoto(bp.photoUrl ?? null);
         }
       }).catch(() => {});
@@ -113,7 +113,7 @@ export default function MessagesScreen() {
       if (ud.type === 'artist') {
         const bp = await getDoc(doc(db, 'bandProfiles', otherUid));
         if (!cancelled && bp.exists()) {
-          name  = bp.data().bandName || name;
+          name  = bp.data().name || name;
           photo = bp.data().photoUrl ?? null;
         }
       } else if (ud.type === 'venue' && ud.venueId) {

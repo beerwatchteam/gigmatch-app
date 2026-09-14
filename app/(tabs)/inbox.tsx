@@ -64,7 +64,7 @@ function useUserDisplayInfo(uid: string | null): { name: string | null; photoUrl
         if (!cancelled && bpSnap.exists()) {
           const bp = bpSnap.data();
           // Use bandName (same source as enquiry tiles) and bandProfiles photoUrl
-          name = bp.bandName || name;
+          name = bp.name || name;
           photoUrl = bp.photoUrl ?? null;
         }
       } else if (type === 'venue' && venueId) {
