@@ -441,12 +441,11 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   </TouchableOpacity>
                 </View>
               ))}
-              {quickLinks.length > 0 && <Text style={eh.quickLinkSep}>·</Text>}
-              <TouchableOpacity onPress={openDetails} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-                <Text style={eh.detailsLink}>Details</Text>
-              </TouchableOpacity>
             </View>
           </View>
+          <TouchableOpacity onPress={openDetails} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={eh.detailsBtn}>
+            <Text style={eh.detailsLink}>Details</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -795,9 +794,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
 const eh = StyleSheet.create({
   card:              { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 14, borderBottomWidth: 1, flexShrink: 0 },
-  titleRow:          { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 2 },
+  titleRow:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
   rightCol:          { alignItems: 'flex-end', flexShrink: 0, marginRight: 4 },
-  detailsLink:       { fontSize: 13, fontWeight: '600', color: '#111111' },
+  detailsBtn:        { flexShrink: 0, paddingLeft: 4 },
+  detailsLink:       { fontSize: 13, fontWeight: '600', color: Colors.orange },
   back:              { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
   titleInfo:         { flex: 1, minWidth: 0 },
   name:              { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
