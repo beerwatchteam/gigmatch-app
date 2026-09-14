@@ -14,18 +14,24 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import {
-  useArtistEnquiries, useVenueEnquiries, useMessages,
+  useArtistEnquiries, useVenueEnquiries, useMessages, useSupportEnquiries,
+  useParticipants,
   updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
   bookSlotOnTimetable, cancelAcceptance, markEnquiryRead,
-  type Enquiry,
+  inviteParticipants, leaveGig, removeParticipantFromGig,
+  confirmHeadliner, ensureVenueParticipant,
+  normalizeEnquiryStatus,
+  fetchVenuePastCollaborators, fetchHeadlinerPastCollaborators,
+  type Enquiry, type Participant,
 } from '@/lib/useEnquiries';
 import {
   useDMConversations, useDMMessages,
   sendDMMessage, acceptDMRequest, deleteDMConv,
   type DMConv,
 } from '@/lib/useDirectMessages';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, getDocs, collection, query, where, limit, arrayRemove } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
+import { Toast } from '@/components/Toast';
 
 /** Fetches and caches a venue's photoUrl for display in artist-side tiles/threads. */
 function useVenuePhoto(venueId: string | null | undefined): string | null {
@@ -128,21 +134,22 @@ function getInitials(name: string): string {
 type StatusCfg = { label: string; color: string; bg: string };
 
 function getStatusCfg(status: string, isVenue: boolean): StatusCfg {
-  switch (status) {
-    case 'pending':
+  const s = normalizeEnquiryStatus(status as Enquiry['status']);
+  switch (s) {
+    case 'enquired':
       return isVenue
         ? { label: 'AWAITING RESPONSE', color: '#f5a623', bg: 'rgba(245,166,35,0.12)' }
         : { label: 'AWAITING REPLY',    color: '#888888', bg: 'rgba(0,0,0,0.06)'      };
     case 'discussing':
       return { label: 'DISCUSSING', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' };
-    case 'accepted':
+    case 'confirmed':
       return { label: 'CONFIRMED',  color: '#16a34a', bg: 'rgba(22,163,74,0.1)'  };
     case 'declined':
       return { label: 'DECLINED',   color: '#dc2626', bg: 'rgba(220,38,38,0.1)'  };
     case 'cancelled':
       return { label: 'CANCELLED',  color: '#888888', bg: 'rgba(0,0,0,0.06)'     };
     default:
-      return { label: status.toUpperCase(), color: '#888888', bg: 'rgba(0,0,0,0.06)' };
+      return { label: s.toUpperCase(), color: '#888888', bg: 'rgba(0,0,0,0.06)' };
   }
 }
 
@@ -196,6 +203,51 @@ function Avatar({ photoUrl, name, size }: { photoUrl?: string | null; name: stri
       <Text style={{ fontSize: size * 0.35, fontWeight: '700', color: '#999999' }}>
         {getInitials(name)}
       </Text>
+    </View>
+  );
+}
+
+// ── AvatarStack — overlapping avatars for group gig tiles ──────────────────
+
+function AvatarStack({
+  participants,
+  venuePhoto,
+  size = 36,
+}: {
+  participants: Participant[];
+  venuePhoto: string | null;
+  size?: number;
+}) {
+  // Show venue first, then up to 2 more, then +N badge
+  const active = participants.filter(p => p.role !== 'venue' && (p.state === 'confirmed' || p.state === 'invited'));
+  const shown  = active.slice(0, 2);
+  const extra  = active.length - shown.length;
+  const overlap = Math.round(size * 0.4);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', width: size + (shown.length) * (size - overlap) + (extra > 0 ? size * 0.6 : 0) }}>
+      {/* Venue avatar */}
+      <View style={{ zIndex: 10, borderRadius: size / 2, borderWidth: 2, borderColor: '#ffffff' }}>
+        <Avatar photoUrl={venuePhoto} name="Venue" size={size} />
+      </View>
+      {shown.map((p, i) => (
+        <View
+          key={p.id}
+          style={{ marginLeft: -overlap, zIndex: 9 - i, borderRadius: size / 2, borderWidth: 2, borderColor: '#ffffff' }}
+        >
+          <Avatar photoUrl={p.photoUrl} name={p.displayName} size={size} />
+        </View>
+      ))}
+      {extra > 0 && (
+        <View style={{
+          marginLeft: -overlap, zIndex: 1,
+          width: size * 0.75, height: size * 0.75, borderRadius: size * 0.375,
+          backgroundColor: '#e0e0e0', alignItems: 'center', justifyContent: 'center',
+          borderWidth: 2, borderColor: '#ffffff',
+        }}>
+          <Text style={{ fontSize: size * 0.28, fontWeight: '700', color: '#666666' }}>+{extra}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -379,14 +431,18 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
               </View>
             )}
           </View>
-          <StatusBadge status={enquiry.status} isVenue={isVenue} />
+          <View style={eh.rightCol}>
+            <StatusBadge status={enquiry.status} isVenue={isVenue} />
+            <TouchableOpacity onPress={openDetails} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={eh.detailsLink}>Details →</Text>
+            </TouchableOpacity>
+          </View>
           {onDelete && (
             <TouchableOpacity onPress={() => setMenuOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={eh.dots}>⋯</Text>
             </TouchableOpacity>
           )}
         </View>
-        <DealSheetGrid enquiry={enquiry} onDetails={openDetails} />
       </View>
 
       {/* Details drawer */}
@@ -681,8 +737,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 }
 
 const eh = StyleSheet.create({
-  card:              { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 0, borderBottomWidth: 1, flexShrink: 0 },
-  titleRow:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
+  card:              { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 14, borderBottomWidth: 1, flexShrink: 0 },
+  titleRow:          { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 2 },
+  rightCol:          { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
+  detailsLink:       { fontSize: 12, fontWeight: '600', color: Colors.orange },
   back:              { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
   titleInfo:         { flex: 1, minWidth: 0 },
   name:              { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
@@ -712,12 +770,391 @@ const eh = StyleSheet.create({
   drawerSaveBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
 });
 
+// ── Participant strip ───────────────────────────────────────────────────────
+
+type OnOpenSubThread = (otherUid: string, otherName: string, otherPhoto: string | null) => void;
+
+function ParticipantStrip({
+  participants,
+  currentUserUid,
+  enquiryId,
+  venueName,
+  gigDate,
+  onOpenSubThread,
+  onInvite,
+  onRemove,
+}: {
+  participants: Participant[];
+  currentUserUid: string;
+  enquiryId: string;
+  venueName: string;
+  gigDate: string;
+  onOpenSubThread: OnOpenSubThread;
+  onInvite: () => void;
+  onRemove: (p: Participant) => void;
+}) {
+  const { colors } = useTheme();
+  const myParticipant = participants.find(p => p.userId === currentUserUid);
+  const canInvite = myParticipant?.role === 'venue' || myParticipant?.role === 'headliner';
+  const canRemove = myParticipant?.role === 'venue';
+
+  // Active = invited or confirmed (shown in strip). Declined shown de-emphasised. Left = hidden.
+  const active   = participants.filter(p => p.state === 'invited' || p.state === 'confirmed');
+  const declined = participants.filter(p => p.state === 'declined');
+
+  const [contextMenu, setContextMenu] = useState<{ participant: Participant; x: number; y: number } | null>(null);
+
+  function stateTag(p: Participant) {
+    if (p.role === 'venue') return null;
+    if (p.state === 'confirmed') return { label: 'Confirmed', color: '#16a34a', bg: 'rgba(22,163,74,0.1)', border: '#bbf7d0' };
+    if (p.state === 'invited')   return { label: 'Invited',   color: '#888888', bg: 'rgba(0,0,0,0.05)',    border: '#d0ccc7' };
+    return null;
+  }
+
+  return (
+    <>
+      <View style={[ps.strip, { borderBottomColor: colors.border, backgroundColor: colors.bgFaint }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={ps.row}
+        >
+          {active.map(p => {
+            const tag  = stateTag(p);
+            const isMe = p.userId === currentUserUid;
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={ps.avatarCol}
+                onPress={() => {
+                  if (!isMe) onOpenSubThread(p.userId, p.displayName, p.photoUrl);
+                }}
+                onLongPress={e => {
+                  if (canRemove && !isMe && p.role !== 'venue' && p.role !== 'headliner') {
+                    const { pageX, pageY } = e.nativeEvent;
+                    setContextMenu({ participant: p, x: pageX, y: pageY });
+                  }
+                }}
+                activeOpacity={isMe ? 1 : 0.7}
+              >
+                <View style={ps.avatarWrap}>
+                  <Avatar photoUrl={p.photoUrl} name={p.displayName} size={30} />
+                </View>
+                <Text style={[ps.avatarName, { color: colors.black }]} numberOfLines={1}>{p.displayName}</Text>
+                {tag && (
+                  <View style={[ps.stateTag, { backgroundColor: tag.bg, borderColor: tag.border }]}>
+                    <Text style={[ps.stateTagText, { color: tag.color }]}>{tag.label}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+
+          {declined.map(p => (
+            <View key={p.id} style={[ps.avatarCol, ps.avatarColDeclined]}>
+              <View style={[ps.avatarWrap, { opacity: 0.4 }]}>
+                <Avatar photoUrl={p.photoUrl} name={p.displayName} size={40} />
+              </View>
+              <Text style={[ps.avatarName, { color: colors.grey }]} numberOfLines={1}>{p.displayName}</Text>
+              <View style={[ps.stateTag, { backgroundColor: 'rgba(220,38,38,0.08)', borderColor: '#fca5a5' }]}>
+                <Text style={[ps.stateTagText, { color: '#dc2626' }]}>Declined</Text>
+              </View>
+            </View>
+          ))}
+
+          {canInvite && (
+            <TouchableOpacity style={ps.inviteBtn} onPress={onInvite} activeOpacity={0.7}>
+              <View style={[ps.inviteCircle, { borderColor: colors.border }]}>
+                <Text style={[ps.invitePlus, { color: Colors.orange }]}>+</Text>
+              </View>
+              <Text style={[ps.avatarName, { color: Colors.orange }]}>Invite</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Action sheet for venue removing a participant */}
+      {contextMenu && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setContextMenu(null)}>
+          <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setContextMenu(null)}>
+            <View style={[md.sheet, { backgroundColor: colors.bg }]}>
+              <View style={{ paddingVertical: 10, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: '#888888', fontWeight: '600' }}>
+                  {contextMenu.participant.displayName}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={md.sheetItem}
+                onPress={() => { setContextMenu(null); onRemove(contextMenu.participant); }}
+              >
+                <Text style={md.sheetDanger}>Remove from gig</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[md.sheetItem, md.sheetCancelItem]} onPress={() => setContextMenu(null)}>
+                <Text style={[md.sheetText, { color: colors.grey }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+const ps = StyleSheet.create({
+  strip:           { borderBottomWidth: 1 },
+  row:             { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 6, gap: 2, alignItems: 'flex-start' },
+  avatarCol:       { alignItems: 'center', gap: 2, paddingHorizontal: 6 },
+  avatarColDeclined: { opacity: 0.7 },
+  avatarWrap:      { borderRadius: 16 },
+  avatarName:      { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  stateTag:        { borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1, borderWidth: 1 },
+  stateTagText:    { fontSize: 8, fontWeight: '700', letterSpacing: 0.2 },
+  inviteBtn:       { alignItems: 'center', gap: 2, paddingHorizontal: 6 },
+  inviteCircle:    { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  invitePlus:      { fontSize: 18, fontWeight: '300', lineHeight: 22, marginTop: -1 },
+});
+
+// ── Invite sheet ────────────────────────────────────────────────────────────
+
+type MusicianRow = {
+  userId: string;
+  displayName: string;
+  photoUrl: string | null;
+  genre?: string;
+  location?: string;
+};
+
+function InviteSheet({
+  visible,
+  onClose,
+  enquiryId,
+  participants,
+  inviterUid,
+  inviterName,
+  inviterRole,
+  venueId,
+  venueName,
+  onInvited,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  enquiryId: string;
+  participants: Participant[];
+  inviterUid: string;
+  inviterName: string;
+  inviterRole: 'venue' | 'headliner';
+  venueId: string;
+  venueName: string;
+  onInvited: () => void;
+}) {
+  const { colors } = useTheme();
+  const [search, setSearch]           = useState('');
+  const [allMusicians, setAll]        = useState<MusicianRow[]>([]);
+  const [pastCollabs, setPastCollabs] = useState<MusicianRow[]>([]);
+  const [selected, setSelected]       = useState<Set<string>>(new Set());
+  const [loading, setLoading]         = useState(false);
+  const [submitting, setSubmitting]   = useState(false);
+
+  const alreadyIn = new Set(participants.map(p => p.userId));
+
+  useEffect(() => {
+    if (!visible) { setSearch(''); setSelected(new Set()); return; }
+    setLoading(true);
+
+    async function load() {
+      try {
+        // Load past collaborators
+        if (inviterRole === 'venue') {
+          const collabs = await fetchVenuePastCollaborators(venueId);
+          setPastCollabs(collabs.filter(c => !alreadyIn.has(c.userId)));
+        } else {
+          const collabs = await fetchHeadlinerPastCollaborators(inviterUid);
+          setPastCollabs(collabs.filter(c => !alreadyIn.has(c.userId)));
+        }
+
+        // Load all band profiles
+        const snap = await getDocs(query(collection(db, 'bandProfiles'), limit(200)));
+        const rows: MusicianRow[] = snap.docs
+          .map(d => ({
+            userId:      d.id,
+            displayName: d.data().name || d.data().bandName || 'Unknown',
+            photoUrl:    d.data().photoUrl ?? null,
+            genre:       (d.data().genre || []).slice(0, 2).join(', '),
+            location:    d.data().location ?? '',
+          }))
+          .filter(r => !alreadyIn.has(r.userId));
+        setAll(rows);
+      } catch (e) {
+        console.error('InviteSheet load:', e);
+      }
+      setLoading(false);
+    }
+    load();
+  }, [visible, enquiryId]);
+
+  const pastCollabIds = new Set(pastCollabs.map(c => c.userId));
+  const filteredAll   = allMusicians.filter(m =>
+    !pastCollabIds.has(m.userId) &&
+    (!search || m.displayName.toLowerCase().includes(search.toLowerCase()) || (m.location ?? '').toLowerCase().includes(search.toLowerCase()))
+  );
+  const filteredPast  = pastCollabs.filter(m =>
+    !search || m.displayName.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function toggle(userId: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  }
+
+  async function handleInvite() {
+    if (selected.size === 0) return;
+    setSubmitting(true);
+    const invitees = [...selected].map(uid => {
+      const m = allMusicians.find(r => r.userId === uid) || pastCollabs.find(r => r.userId === uid);
+      return { userId: uid, displayName: m?.displayName ?? 'Unknown', photoUrl: m?.photoUrl ?? null };
+    });
+    try {
+      await inviteParticipants(enquiryId, invitees, inviterUid, inviterName);
+      onInvited();
+      onClose();
+    } catch (e) {
+      console.error('inviteParticipants:', e);
+    }
+    setSubmitting(false);
+  }
+
+  function MusicianItem({ m }: { m: MusicianRow }) {
+    const checked = selected.has(m.userId);
+    return (
+      <TouchableOpacity
+        style={[inv.row, checked && { backgroundColor: 'rgba(245,166,35,0.07)' }]}
+        onPress={() => toggle(m.userId)}
+        activeOpacity={0.7}
+      >
+        <Avatar photoUrl={m.photoUrl} name={m.displayName} size={38} />
+        <View style={inv.rowInfo}>
+          <Text style={[inv.rowName, { color: colors.black }]}>{m.displayName}</Text>
+          {(m.genre || m.location) ? (
+            <Text style={[inv.rowSub, { color: colors.grey }]} numberOfLines={1}>
+              {[m.genre, m.location].filter(Boolean).join(' · ')}
+            </Text>
+          ) : null}
+        </View>
+        <View style={[inv.checkbox, checked && inv.checkboxChecked]}>
+          {checked && <Text style={inv.checkMark}>✓</Text>}
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType={isWeb ? 'fade' : 'slide'}
+      onRequestClose={onClose}
+    >
+      <View style={inv.backdrop}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <View style={[inv.sheet, { backgroundColor: colors.bg }]}>
+          {/* Handle / header */}
+          <View style={[inv.header, { borderBottomColor: colors.border }]}>
+            <Text style={[inv.title, { color: colors.black }]}>Invite musicians</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[inv.close, { color: colors.grey }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Search */}
+          <View style={[inv.searchWrap, { borderBottomColor: colors.border }]}>
+            <TextInput
+              style={[inv.searchInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border }]}
+              placeholder="Search musicians"
+              placeholderTextColor="#aaaaaa"
+              value={search}
+              onChangeText={setSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          {loading ? (
+            <View style={inv.loadingWrap}><ActivityIndicator color={Colors.orange} /></View>
+          ) : (
+            <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+              {filteredPast.length > 0 && (
+                <>
+                  <Text style={[inv.sectionLabel, { color: colors.grey }]}>Past collaborators</Text>
+                  {filteredPast.map(m => <MusicianItem key={m.userId} m={m} />)}
+                </>
+              )}
+              {filteredAll.length > 0 && (
+                <>
+                  <Text style={[inv.sectionLabel, { color: colors.grey }]}>All musicians</Text>
+                  {filteredAll.map(m => <MusicianItem key={m.userId} m={m} />)}
+                </>
+              )}
+              {filteredPast.length === 0 && filteredAll.length === 0 && (
+                <Text style={[inv.empty, { color: colors.grey }]}>No musicians found</Text>
+              )}
+            </ScrollView>
+          )}
+
+          {/* Invite button — appears once someone is selected */}
+          {selected.size > 0 && (
+            <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bg }}>
+              <View style={[inv.footer, { borderTopColor: colors.border }]}>
+                <TouchableOpacity
+                  style={[inv.inviteBtn, submitting && { opacity: 0.6 }]}
+                  onPress={handleInvite}
+                  disabled={submitting}
+                >
+                  {submitting
+                    ? <ActivityIndicator color="#111111" size="small" />
+                    : <Text style={inv.inviteBtnText}>Invite {selected.size}</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const inv = StyleSheet.create({
+  backdrop:     { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet:        { borderTopLeftRadius: isWeb ? 0 : 20, borderTopRightRadius: isWeb ? 0 : 20, maxHeight: '85%', minHeight: 300, ...(isWeb && { borderRadius: 16, maxWidth: 480, width: '100%', alignSelf: 'center', marginBottom: 'auto', marginTop: 'auto', maxHeight: '80%' } as any) },
+  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingHorizontal: 20, borderBottomWidth: 1 },
+  title:        { fontSize: 16, fontWeight: '800' },
+  close:        { fontSize: 18 },
+  searchWrap:   { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
+  searchInput:  { borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14 },
+  loadingWrap:  { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6, textTransform: 'uppercase' as const },
+  row:          { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
+  rowInfo:      { flex: 1, minWidth: 0 },
+  rowName:      { fontSize: 14, fontWeight: '700' },
+  rowSub:       { fontSize: 12, marginTop: 1 },
+  checkbox:     { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: '#d0ccc7', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  checkboxChecked: { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  checkMark:    { fontSize: 13, fontWeight: '700', color: '#111111' },
+  empty:        { textAlign: 'center', padding: 40, fontSize: 14 },
+  footer:       { borderTopWidth: 1, padding: 14, paddingHorizontal: 16 },
+  inviteBtn:    { backgroundColor: Colors.orange, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  inviteBtnText:{ fontSize: 15, fontWeight: '800', color: '#111111' },
+});
+
 // ── Thread tile ────────────────────────────────────────────────────────────
 
 const STATUS_MOVE_OPTIONS: { status: Enquiry['status']; label: string }[] = [
-  { status: 'pending',    label: 'Enquired'   },
+  { status: 'enquired',   label: 'Enquired'   },
   { status: 'discussing', label: 'Discuss'    },
-  { status: 'accepted',   label: 'Confirm'    },
+  { status: 'confirmed',  label: 'Confirm'    },
   { status: 'declined',   label: 'Decline'    },
 ];
 
@@ -725,8 +1162,13 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
   item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void;
 }) {
   const who = isVenue ? item.bandName : item.venueName;
-  const venuePhoto = useVenuePhoto(!isVenue ? item.venueId : null);
+  const venuePhoto  = useVenuePhoto(!isVenue ? item.venueId : null);
   const avatarPhoto = isVenue ? (item.photoUrl ?? null) : venuePhoto;
+
+  // Group gig detection: enquiry has more than 2 participantUids (venue + headliner + support)
+  const isGroup = Array.isArray(item.participantUids) && item.participantUids.length > 2;
+  const participants = useParticipants(isGroup ? item.id : null);
+
   const isUnread = !!(
     item.lastMessageAt &&
     (!item.lastReadAt?.[myUid] || item.lastMessageAt > item.lastReadAt[myUid])
@@ -754,10 +1196,11 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
     await updateEnquiryStatus(item.id, status);
   }
 
+  const normStatus = normalizeEnquiryStatus(item.status);
   const options = STATUS_MOVE_OPTIONS.filter(o => {
-    if (o.status === item.status) return false;
-    if (item.status === 'discussing') return o.status === 'accepted' || o.status === 'declined';
-    if (item.status === 'accepted')  return o.status === 'discussing' || o.status === 'declined';
+    if (normalizeEnquiryStatus(o.status) === normStatus) return false;
+    if (normStatus === 'discussing') return o.status === 'confirmed' || o.status === 'declined';
+    if (normStatus === 'confirmed')  return o.status === 'discussing' || o.status === 'declined';
     return true;
   });
 
@@ -768,7 +1211,11 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
         onPress={onPress}
         activeOpacity={0.75}
       >
-        <Avatar photoUrl={avatarPhoto} name={who} size={44} />
+        {isGroup && participants.length > 0 ? (
+          <AvatarStack participants={participants} venuePhoto={isVenue ? null : venuePhoto} size={40} />
+        ) : (
+          <Avatar photoUrl={avatarPhoto} name={who} size={44} />
+        )}
         <View style={tt.body}>
           <View style={tt.topRow}>
             <Text style={[tt.name, isSelected && { color: Colors.orange }, isUnread && { fontWeight: '800' }]} numberOfLines={1}>{who}</Text>
@@ -1004,11 +1451,12 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
-  const messages = useMessages(enquiry.id);
-  const scrollRef   = useRef<ScrollView>(null);
-  const profileRef  = useRef<View>(null);
-  const musicRef    = useRef<View>(null);
-  const techRef     = useRef<View>(null);
+  const messages     = useMessages(enquiry.id);
+  const participants = useParticipants(enquiry.id);
+  const scrollRef    = useRef<ScrollView>(null);
+  const profileRef   = useRef<View>(null);
+  const musicRef     = useRef<View>(null);
+  const techRef      = useRef<View>(null);
 
   function scrollToRef(ref: React.RefObject<View>) {
     ref.current?.measureLayout(
@@ -1024,12 +1472,48 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   const [expandedForm,  setExpandedForm]  = useState<null | 'decline' | 'confirm'>(null);
   const [listingChoice, setListingChoice] = useState<'pending' | 'booked'>('pending');
   const [submitting,    setSubmitting]    = useState(false);
+  const [inviteOpen,    setInviteOpen]    = useState(false);
+  const [toastVisible,  setToastVisible]  = useState(false);
+  const [toastMsg,      setToastMsg]      = useState('');
+  const [undoData,      setUndoData]      = useState<{ participantId: string; uid: string } | null>(null);
 
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
   const venueThreadPhoto = useVenuePhoto(!isVenue ? enquiry.venueId : null);
   const otherPhotoResolved = isVenue ? (enquiry.photoUrl ?? null) : venueThreadPhoto;
   const declineReasonSaved = (enquiry as any).declineReason || (enquiry as any).reason;
   const isClosed = enquiry.status === 'declined' || enquiry.status === 'cancelled';
+
+  // Determine my participant record (for group gig role checks)
+  const myParticipant = participants.find(p => p.userId === user?.uid);
+  const isGroupGig    = participants.length > 0;
+  const isSupportAct  = myParticipant?.role === 'support';
+  const myDisplayName = myParticipant?.displayName ?? (user as any)?.displayName ?? '';
+
+  // Venue profile for invite sheet + confirm headliner
+  const [venueDisplayName, setVenueDisplayName] = useState('');
+  const [venuePhotoUrl,    setVenuePhotoUrl]    = useState<string | null>(null);
+  const [venueOwnerUid,    setVenueOwnerUid]    = useState<string | null>(null);
+  useEffect(() => {
+    if (!enquiry.venueId) return;
+    // Fetch venue doc for name/photo
+    getDoc(doc(db, 'venues', enquiry.venueId)).then(snap => {
+      if (snap.exists()) {
+        setVenueDisplayName(snap.data().name ?? enquiry.venueName ?? '');
+        setVenuePhotoUrl(snap.data().photoUrl ?? null);
+      }
+    }).catch(() => {});
+    // Fetch venue owner UID from users collection
+    getDocs(query(collection(db, 'users'), where('venueId', '==', enquiry.venueId), limit(1))).then(snap => {
+      if (!snap.empty) setVenueOwnerUid(snap.docs[0].id);
+    }).catch(() => {});
+  }, [enquiry.venueId]);
+
+  // Auto-add venue as a participant when the thread is opened (works for both
+  // venue and musician views), as long as the subcollection is already set up.
+  useEffect(() => {
+    if (!venueOwnerUid || !enquiry.id || !venueDisplayName || participants.length === 0) return;
+    ensureVenueParticipant(enquiry.id, venueOwnerUid, venueDisplayName, venuePhotoUrl).catch(() => {});
+  }, [venueOwnerUid, enquiry.id, venueDisplayName, venuePhotoUrl, participants.length]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
@@ -1068,11 +1552,76 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
     if (!user) return;
     setSubmitting(true);
     if (confirmText.trim()) await sendMessage(enquiry.id, user.uid, confirmText.trim());
-    await updateEnquiryStatus(enquiry.id, 'accepted');
+    await updateEnquiryStatus(enquiry.id, 'confirmed');
     await bookSlotOnTimetable(enquiry, listingChoice === 'booked');
+    // Create participant records for headliner + venue
+    await confirmHeadliner(
+      enquiry.id,
+      enquiry.createdBy,
+      user.uid,
+      venueDisplayName || enquiry.venueName,
+      venuePhotoUrl,
+    ).catch(() => {});
     setExpandedForm(null);
     setConfirmText('');
     setSubmitting(false);
+  }
+
+  async function handleDelete() {
+    if (!user) return;
+    // Support acts in a group gig: delete-as-leave with undo toast
+    if (isGroupGig && isSupportAct && myParticipant) {
+      await leaveGig(enquiry.id, myParticipant.id, user.uid, myDisplayName);
+      setToastMsg(`Left ${enquiry.venueName}`);
+      setUndoData({ participantId: myParticipant.id, uid: user.uid });
+      setToastVisible(true);
+      onBack?.();
+    } else {
+      // Standard archive for venue / headliner (non-group or existing flow)
+      await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
+      onBack?.();
+    }
+  }
+
+  async function handleUndoLeave() {
+    if (!undoData || !user) return;
+    const { participantId, uid } = undoData;
+    await Promise.all([
+      updateDoc(doc(db, 'inquiries', enquiry.id, 'participants', participantId), {
+        state: 'confirmed',
+        leftAt: null,
+      }),
+      updateDoc(doc(db, 'inquiries', enquiry.id), {
+        deletedBy: arrayRemove(uid),
+      }),
+    ]);
+    setUndoData(null);
+  }
+
+  function handleOpenSubThread(otherUid: string, otherName: string, otherPhoto: string | null) {
+    const { day, date, time } = enquiry.requestedSlot;
+    const dateStr = date ? fmtSlotDate(date) : (day || '');
+    router.push({
+      pathname: '/sub-thread',
+      params: {
+        enquiryId: enquiry.id,
+        otherUid,
+        otherName,
+        venueName:  enquiry.venueName,
+        gigDate:    [dateStr, time].filter(Boolean).join(' · '),
+      },
+    } as any);
+  }
+
+  async function handleRemoveParticipant(p: Participant) {
+    if (!user) return;
+    await removeParticipantFromGig(
+      enquiry.id,
+      p.id,
+      p.userId,
+      p.displayName,
+      venueDisplayName || enquiry.venueName,
+    ).catch(console.error);
   }
 
   return (
@@ -1085,15 +1634,25 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         enquiry={enquiry}
         isVenue={isVenue}
         onBack={onBack}
-        onDelete={async () => {
-          if (!user) return;
-          await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
-          onBack?.();
-        }}
+        onDelete={handleDelete}
         onScrollToProfile={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
         onScrollToMusic={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'music' } })}
         onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
       />
+
+      {/* Participant strip — only for group gigs with participant records */}
+      {isGroupGig && (
+        <ParticipantStrip
+          participants={participants}
+          currentUserUid={user?.uid ?? ''}
+          enquiryId={enquiry.id}
+          venueName={enquiry.venueName}
+          gigDate={enquiry.requestedSlot.date ? fmtSlotDate(enquiry.requestedSlot.date) : (enquiry.requestedSlot.day ?? '')}
+          onOpenSubThread={handleOpenSubThread}
+          onInvite={() => setInviteOpen(true)}
+          onRemove={handleRemoveParticipant}
+        />
+      )}
 
       {/* Messages */}
       <ScrollView
@@ -1106,21 +1665,46 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         <EnquiryBubble enquiry={enquiry} isVenue={isVenue} profileRef={profileRef} musicRef={musicRef} techRef={techRef} />
         {(() => {
           // Build sender groups for avatar + timestamp logic
+          // System messages are rendered separately — not grouped with chat messages
           type MsgGroup = { sender: string; msgs: typeof messages; startMs: number; endMs: number };
           const groups: MsgGroup[] = [];
           for (const m of messages) {
+            if (m.type === 'system') {
+              // System messages break the group and render inline
+              groups.push({ sender: '__system__', msgs: [m], startMs: new Date(m.timestamp).getTime(), endMs: new Date(m.timestamp).getTime() });
+              continue;
+            }
             const last = groups[groups.length - 1];
             const ms = new Date(m.timestamp).getTime();
-            if (last && last.sender === m.sender) {
+            if (last && last.sender === m.sender && last.sender !== '__system__') {
               last.msgs.push(m);
               last.endMs = ms;
             } else {
               groups.push({ sender: m.sender, msgs: [m], startMs: ms, endMs: ms });
             }
           }
-          const otherPhoto = otherPhotoResolved;
-          const otherName  = who;
+
+          // Resolve sender photo for group gigs
+          function senderPhoto(senderUid: string): string | null {
+            const p = participants.find(pt => pt.userId === senderUid);
+            return p?.photoUrl ?? (senderUid === user?.uid ? null : otherPhotoResolved);
+          }
+          function senderName(senderUid: string): string {
+            const p = participants.find(pt => pt.userId === senderUid);
+            return p?.displayName ?? who;
+          }
+
           return groups.map(group => {
+            // System message — centered event label
+            if (group.sender === '__system__') {
+              const m = group.msgs[0];
+              return (
+                <View key={m.id} style={tp.systemMsgRow}>
+                  <Text style={tp.systemMsgText}>{m.text}</Text>
+                </View>
+              );
+            }
+
             const spansHour = group.endMs - group.startMs > 3600000;
             return group.msgs.map((m, i) => {
               const mine = m.sender === user?.uid;
@@ -1137,13 +1721,19 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               const showSep = prevMsgTimestamp
                 ? new Date(m.timestamp).getTime() - new Date(prevMsgTimestamp).getTime() > 60 * 60 * 1000
                 : false;
+              const photo = mine ? null : (isGroupGig ? senderPhoto(m.sender) : otherPhotoResolved);
+              const name  = mine ? '' : (isGroupGig ? senderName(m.sender) : who);
               return (
                 <View key={m.id}>
                   {showSep && <DateSep label={getDateLabel(m.timestamp)} />}
+                  {/* Sender name in group gigs for non-mine messages */}
+                  {!mine && isGroupGig && i === 0 && (
+                    <Text style={[tp.senderName, { color: colors.grey }]}>{name}</Text>
+                  )}
                   <View style={[tp.msgRow, mine ? tp.rowMine : tp.rowTheirs, i > 0 && { marginTop: 2 }]}>
                     {!mine && (
                       isLast
-                        ? <Avatar photoUrl={otherPhoto} name={otherName} size={28} />
+                        ? <Avatar photoUrl={photo} name={name} size={28} />
                         : <View style={{ width: 28 }} />
                     )}
                     <View style={[tp.msgCol, mine && tp.msgColMine]}>
@@ -1170,6 +1760,28 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         ) : null}
       </ScrollView>
 
+      {/* Invite sheet */}
+      <InviteSheet
+        visible={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        enquiryId={enquiry.id}
+        participants={participants}
+        inviterUid={user?.uid ?? ''}
+        inviterName={myDisplayName}
+        inviterRole={isVenue ? 'venue' : 'headliner'}
+        venueId={enquiry.venueId}
+        venueName={enquiry.venueName}
+        onInvited={() => setInviteOpen(false)}
+      />
+
+      {/* Undo toast (leave gig) */}
+      <Toast
+        visible={toastVisible}
+        message={toastMsg}
+        onUndo={undoData ? handleUndoLeave : undefined}
+        onDismiss={() => { setToastVisible(false); setUndoData(null); }}
+      />
+
       {/* ── Bottom action area ─────────────────────────────────────── */}
       <View>
 
@@ -1180,7 +1792,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           </Text>
         </View>
 
-      ) : isVenue && enquiry.status === 'pending' ? (
+      ) : isVenue && (enquiry.status === 'pending' || enquiry.status === 'enquired') ? (
         // ── Venue pending: reply + action buttons
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: '#fafafa' }}>
           <View style={[vp.wrap, { borderTopColor: colors.border }]}>
@@ -1282,8 +1894,10 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               <TouchableOpacity
                 style={[vp.pendingBtn, vp.pendingBtnDiscuss]}
                 onPress={async () => {
+                  if (!user) return;
                   setSubmitting(true);
                   await updateEnquiryStatus(enquiry.id, 'discussing');
+                  await ensureVenueParticipant(enquiry.id, user.uid, venueDisplayName || enquiry.venueName, venuePhotoUrl).catch(() => {});
                   setSubmitting(false);
                 }}
                 disabled={submitting}
@@ -1303,7 +1917,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           </View>
         </SafeAreaView>
 
-      ) : !isVenue && enquiry.status === 'pending' ? (
+      ) : !isVenue && (enquiry.status === 'pending' || enquiry.status === 'enquired') ? (
         // ── Artist pending: awaiting response
         <SafeAreaView
           edges={['bottom']}
@@ -1317,7 +1931,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           </View>
         </SafeAreaView>
 
-      ) : isVenue && enquiry.status === 'accepted' ? (
+      ) : isVenue && (enquiry.status === 'accepted' || enquiry.status === 'confirmed') ? (
         // ── Venue accepted: compact single row — chat + timetable controls
         <SafeAreaView edges={['bottom']} style={{ borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bgFaint }}>
           <View style={[vp.wrap, { borderTopWidth: 0 }]}>
@@ -1477,8 +2091,11 @@ const tp = StyleSheet.create({
   bubbleTheirs:  { backgroundColor: '#f0ede8', borderBottomLeftRadius: 4 },
   bubbleText:    { fontSize: 15, color: '#111111', lineHeight: 22 },
   bubbleTextMine:{ color: '#ffffff' },
-  msgTime:       { fontSize: 10, color: '#bbbbbb', marginTop: 3, marginLeft: 2 },
-  msgTimeRight:  { textAlign: 'right', marginLeft: 0, marginRight: 2 },
+  msgTime:        { fontSize: 10, color: '#bbbbbb', marginTop: 3, marginLeft: 2 },
+  msgTimeRight:   { textAlign: 'right', marginLeft: 0, marginRight: 2 },
+  systemMsgRow:   { alignItems: 'center', marginVertical: 10 },
+  systemMsgText:  { fontSize: 12, color: '#aaaaaa', fontStyle: 'italic', textAlign: 'center', paddingHorizontal: 16 },
+  senderName:     { fontSize: 11, color: '#888888', fontWeight: '600', marginBottom: 2, marginLeft: 36 },
   reasonBanner: { backgroundColor: '#fef3cd', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#fcd34d', marginTop: 8 },
   reasonLabel:  { fontSize: 10, fontWeight: '700', color: '#888888', letterSpacing: 0.5, marginBottom: 3 },
   reasonText:   { fontSize: 13, color: '#333333' },
@@ -1804,15 +2421,17 @@ type FilterKey = 'enquired' | 'discussing' | 'confirmed';
 
 function getFilterConfig(isVenue: boolean) {
   return [
-    { key: 'enquired'   as FilterKey, label: isVenue ? 'Awaiting Response' : 'Enquired', statuses: ['pending'] },
+    { key: 'enquired'   as FilterKey, label: isVenue ? 'Awaiting Response' : 'Enquired', statuses: ['enquired', 'pending'] },
     { key: 'discussing' as FilterKey, label: 'Discussing', statuses: ['discussing'] },
-    { key: 'confirmed'  as FilterKey, label: 'Confirmed',  statuses: ['accepted'] },
+    { key: 'confirmed'  as FilterKey, label: 'Confirmed',  statuses: ['confirmed', 'accepted'] },
   ];
 }
 
 function matchesFilter(enquiry: Enquiry, filter: FilterKey): boolean {
   const cfg = getFilterConfig(true).find(f => f.key === filter);
-  return cfg ? cfg.statuses.includes(enquiry.status) : true;
+  if (!cfg) return true;
+  const norm = normalizeEnquiryStatus(enquiry.status);
+  return cfg.statuses.includes(enquiry.status) || cfg.statuses.includes(norm);
 }
 
 // ── Main inbox screen ──────────────────────────────────────────────────────
@@ -1831,9 +2450,17 @@ export default function InboxScreen() {
   const isVenue = profile?.type === 'venue';
   const venueId = profile?.venueId ?? null;
 
-  const artistData = useArtistEnquiries(!isVenue ? (user?.uid ?? null) : null);
-  const venueData  = useVenueEnquiries(isVenue ? venueId : null);
-  const { enquiries, loading } = isVenue ? venueData : artistData;
+  const artistData   = useArtistEnquiries(!isVenue ? (user?.uid ?? null) : null);
+  const supportData  = useSupportEnquiries(!isVenue ? (user?.uid ?? null) : null);
+  const venueData    = useVenueEnquiries(isVenue ? venueId : null);
+  const rawArtist    = isVenue ? venueData : artistData;
+  // Merge artist headliner enquiries + support-act invites (deduplicate by id)
+  const mergedEnquiries = isVenue
+    ? rawArtist.enquiries
+    : [...artistData.enquiries, ...supportData.enquiries.filter(s => !artistData.enquiries.find(a => a.id === s.id))];
+  const { enquiries, loading } = isVenue
+    ? venueData
+    : { enquiries: mergedEnquiries, loading: artistData.loading && supportData.loading };
 
   const [selected,  setSelected]  = useState<Enquiry | null>(null);
   const [filter,    setFilter]    = useState<FilterKey>('enquired');

@@ -139,7 +139,6 @@ export default function EnquireScreen() {
         venueName:   params.venueName,
         venueId:     params.venueId,
         createdBy:   user.uid,
-        status:      'pending',
         submittedAt: new Date().toISOString(),
         additionalInfo: note,
         requestedSlot: {

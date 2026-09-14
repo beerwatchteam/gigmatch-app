@@ -23,6 +23,7 @@ function AppShell() {
         <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
         <Stack.Screen name="enquire" options={{ headerShown: false, presentation: isWeb ? 'transparentModal' : 'modal', animation: 'fade', contentStyle: isWeb ? { backgroundColor: 'transparent' } : undefined }} />
         <Stack.Screen name="messages/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="sub-thread" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade' }} />
       </Stack>
       <StatusBar style={isDark ? 'light' : 'dark'} />

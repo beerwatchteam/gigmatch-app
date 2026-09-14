@@ -2,8 +2,25 @@ import { useState, useEffect } from 'react';
 import {
   collection, addDoc, onSnapshot, updateDoc, deleteDoc,
   doc, query, orderBy, where, getDoc, arrayUnion, increment,
+  writeBatch, getDocs, limit,
 } from 'firebase/firestore';
 import { db } from './firebase';
+
+export type ParticipantRole  = 'venue' | 'headliner' | 'support';
+export type ParticipantState = 'invited' | 'confirmed' | 'declined' | 'left';
+
+export type Participant = {
+  id: string;
+  userId: string;
+  role: ParticipantRole;
+  state: ParticipantState;
+  invitedBy: string | null;
+  displayName: string;
+  photoUrl: string | null;
+  joinedAt: string | null;
+  respondedAt: string | null;
+  leftAt: string | null;
+};
 
 export type Enquiry = {
   id: string;
@@ -11,7 +28,12 @@ export type Enquiry = {
   venueName: string;
   venueId: string;
   createdBy: string;
-  status: 'pending' | 'discussing' | 'accepted' | 'declined' | 'cancelled';
+  /**
+   * New values: 'enquired' | 'discussing' | 'confirmed' | 'declined' | 'cancelled'
+   * Legacy values (existing Firestore docs): 'pending' | 'accepted'
+   * Read normalizeEnquiryStatus() to map legacy → new before using in UI logic.
+   */
+  status: 'enquired' | 'discussing' | 'confirmed' | 'declined' | 'cancelled' | 'pending' | 'accepted';
   submittedAt: string;
   additionalInfo?: string;
   requestedSlot: {
@@ -46,9 +68,46 @@ export type Message = {
   sender: string;
   text: string;
   timestamp: string;
+  /** 'system' messages are rendered inline as centered event labels (no avatar, no sender) */
+  type?: 'system';
 };
 
-// ── Artist inbox — listens to all enquiries they submitted ──
+// ── Status normalisation ────────────────────────────────────────────────────
+
+/** Maps legacy Firestore status values to the current canonical set. */
+export function normalizeEnquiryStatus(
+  status: Enquiry['status'],
+): 'enquired' | 'discussing' | 'confirmed' | 'declined' | 'cancelled' {
+  if (status === 'pending')  return 'enquired';
+  if (status === 'accepted') return 'confirmed';
+  return status as 'enquired' | 'discussing' | 'confirmed' | 'declined' | 'cancelled';
+}
+
+// ── Rollup ──────────────────────────────────────────────────────────────────
+
+/**
+ * Derives the thread status from participant records.
+ * Active = state is 'invited' or 'confirmed'. 'declined' and 'left' are excluded.
+ */
+function computeRollupStatus(
+  participants: Participant[],
+): 'enquired' | 'discussing' | 'confirmed' {
+  const active = participants.filter(p => p.state === 'invited' || p.state === 'confirmed');
+  if (active.length === 0) return 'discussing';
+  if (active.every(p => p.state === 'confirmed')) return 'confirmed';
+  if (active.every(p => p.state === 'invited'))   return 'enquired';
+  return 'discussing';
+}
+
+async function updateRollupStatus(enquiryId: string): Promise<void> {
+  const snap = await getDocs(collection(db, 'inquiries', enquiryId, 'participants'));
+  const participants = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Participant[];
+  if (participants.length === 0) return; // legacy thread — don't overwrite explicit status
+  const status = computeRollupStatus(participants);
+  await updateDoc(doc(db, 'inquiries', enquiryId), { status });
+}
+
+// ── Artist inbox — listens to all enquiries they submitted ──────────────────
 export function useArtistEnquiries(uid: string | null) {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -72,7 +131,40 @@ export function useArtistEnquiries(uid: string | null) {
   return { enquiries, loading };
 }
 
-// ── Venue inbox — listens to all enquiries for a venueId ──
+/**
+ * Returns enquiries where this artist was invited as a support act.
+ * Uses the denormalised `participantUids` array written by `inviteParticipants`.
+ * Only enquiries they didn't create themselves (those come from useArtistEnquiries).
+ */
+export function useSupportEnquiries(uid: string | null) {
+  const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    if (!uid) { setLoading(false); return; }
+    const q = query(
+      collection(db, 'inquiries'),
+      where('participantUids', 'array-contains', uid),
+    );
+    const unsub = onSnapshot(q, snap => {
+      setEnquiries(
+        (snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[])
+          // Exclude enquiries they created (already shown via useArtistEnquiries)
+          .filter(e => e.createdBy !== uid && !e.deletedBy?.includes(uid))
+      );
+      setLoading(false);
+    }, () => {
+      // participantUids field not yet indexed or doesn't exist — safe to ignore
+      setEnquiries([]);
+      setLoading(false);
+    });
+    return unsub;
+  }, [uid]);
+
+  return { enquiries, loading };
+}
+
+// ── Venue inbox — listens to all enquiries for a venueId ───────────────────
 export function useVenueEnquiries(venueId: string | null) {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -96,7 +188,25 @@ export function useVenueEnquiries(venueId: string | null) {
   return { enquiries, loading };
 }
 
-// ── Messages for a single enquiry ──
+// ── Participants for a single enquiry ───────────────────────────────────────
+export function useParticipants(enquiryId: string | null): Participant[] {
+  const [participants, setParticipants] = useState<Participant[]>([]);
+
+  useEffect(() => {
+    if (!enquiryId) return;
+    const unsub = onSnapshot(
+      collection(db, 'inquiries', enquiryId, 'participants'),
+      snap => {
+        setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Participant[]);
+      },
+    );
+    return unsub;
+  }, [enquiryId]);
+
+  return participants;
+}
+
+// ── Messages for a single enquiry ──────────────────────────────────────────
 export function useMessages(enquiryId: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -115,17 +225,33 @@ export function useMessages(enquiryId: string | null) {
   return messages;
 }
 
-// ── Write helpers ──
+// ── Write helpers ───────────────────────────────────────────────────────────
+
 export async function addEnquiry(inquiry: Omit<Enquiry, 'id'>): Promise<string> {
   const now = new Date().toISOString();
   const ref = await addDoc(collection(db, 'inquiries'), {
     ...inquiry,
-    status: 'pending',
+    status: 'enquired',
     submittedAt: now,
     lastMessageAt: now,
-    // Artist who submitted it has already "seen" it — only venue will see the unread dot
     lastReadAt: { [inquiry.createdBy]: now },
+    // denormalised array so support-act inbox queries can filter cheaply
+    participantUids: [inquiry.createdBy],
   });
+
+  // Create the headliner participant record
+  await addDoc(collection(db, 'inquiries', ref.id, 'participants'), {
+    userId:      inquiry.createdBy,
+    role:        'headliner',
+    state:       'invited',
+    invitedBy:   null,
+    displayName: inquiry.bandName,
+    photoUrl:    inquiry.photoUrl ?? null,
+    joinedAt:    now,
+    respondedAt: null,
+    leftAt:      null,
+  });
+
   return ref.id;
 }
 
@@ -134,14 +260,15 @@ export async function updateEnquiryStatus(
   status: Enquiry['status'],
   reason?: string,
 ) {
-  // Track reply time: first response from venue (pending → any action)
-  const trackedStatuses: Enquiry['status'][] = ['accepted', 'discussing', 'declined'];
+  // Track reply time: first response from venue (enquired/pending → any action)
+  const trackedStatuses: Enquiry['status'][] = ['confirmed', 'accepted', 'discussing', 'declined'];
   if (trackedStatuses.includes(status)) {
     try {
       const snap = await getDoc(doc(db, 'inquiries', id));
       if (snap.exists()) {
         const data = snap.data() as Enquiry;
-        if (data.status === 'pending' && data.submittedAt && data.venueId) {
+        const wasInitial = data.status === 'pending' || data.status === 'enquired';
+        if (wasInitial && data.submittedAt && data.venueId) {
           const elapsedMs = Date.now() - new Date(data.submittedAt).getTime();
           await updateDoc(doc(db, 'venues', data.venueId), {
             'replyStats.totalMs': increment(elapsedMs),
@@ -165,6 +292,21 @@ export async function sendMessage(inquiryId: string, sender: string, text: strin
   ]);
 }
 
+/** Post a system event message (e.g. "X added Y to the gig") — no sender, rendered inline */
+export async function postSystemMessage(enquiryId: string, text: string): Promise<void> {
+  const now = new Date().toISOString();
+  await Promise.all([
+    addDoc(collection(db, 'messages'), {
+      inquiryId: enquiryId,
+      sender: '',
+      text,
+      timestamp: now,
+      type: 'system',
+    }),
+    updateDoc(doc(db, 'inquiries', enquiryId), { lastMessageAt: now }),
+  ]);
+}
+
 export async function markEnquiryRead(id: string, uid: string) {
   await updateDoc(doc(db, 'inquiries', id), {
     [`lastReadAt.${uid}`]: new Date().toISOString(),
@@ -180,7 +322,253 @@ export async function archiveEnquiry(id: string, uid: string) {
   await updateDoc(doc(db, 'inquiries', id), { deletedBy: arrayUnion(uid) });
 }
 
-// ── Timetable helpers ──
+// ── Participant management ──────────────────────────────────────────────────
+
+/**
+ * Ensure a venue participant record exists for this enquiry.
+ * Called when the venue first responds (they're authenticated at that point).
+ */
+export async function ensureVenueParticipant(
+  enquiryId: string,
+  venueUserId: string,
+  displayName: string,
+  photoUrl: string | null,
+): Promise<void> {
+  const snap = await getDocs(
+    query(
+      collection(db, 'inquiries', enquiryId, 'participants'),
+      where('userId', '==', venueUserId),
+    )
+  );
+  if (!snap.empty) return; // already exists
+  const now = new Date().toISOString();
+  await addDoc(collection(db, 'inquiries', enquiryId, 'participants'), {
+    userId:      venueUserId,
+    role:        'venue',
+    state:       'confirmed',
+    invitedBy:   null,
+    displayName,
+    photoUrl:    photoUrl ?? null,
+    joinedAt:    now,
+    respondedAt: now,
+    leftAt:      null,
+  });
+}
+
+/**
+ * Update the headliner participant state to 'confirmed' (used when venue confirms the gig).
+ * Also creates the venue participant record if it doesn't exist.
+ */
+export async function confirmHeadliner(
+  enquiryId: string,
+  headlinerUserId: string,
+  venueUserId: string,
+  venueDisplayName: string,
+  venuePhotoUrl: string | null,
+): Promise<void> {
+  const now = new Date().toISOString();
+
+  // Ensure venue participant exists
+  await ensureVenueParticipant(enquiryId, venueUserId, venueDisplayName, venuePhotoUrl);
+
+  // Find + update headliner participant
+  const snap = await getDocs(
+    query(
+      collection(db, 'inquiries', enquiryId, 'participants'),
+      where('userId', '==', headlinerUserId),
+    )
+  );
+  if (!snap.empty) {
+    await updateDoc(snap.docs[0].ref, { state: 'confirmed', respondedAt: now });
+  } else {
+    // Headliner record missing (legacy enquiry) — create it as confirmed
+    const enqSnap = await getDoc(doc(db, 'inquiries', enquiryId));
+    const enqData = enqSnap.data() as Enquiry | undefined;
+    await addDoc(collection(db, 'inquiries', enquiryId, 'participants'), {
+      userId:      headlinerUserId,
+      role:        'headliner',
+      state:       'confirmed',
+      invitedBy:   null,
+      displayName: enqData?.bandName ?? '',
+      photoUrl:    enqData?.photoUrl ?? null,
+      joinedAt:    now,
+      respondedAt: now,
+      leftAt:      null,
+    });
+  }
+}
+
+/**
+ * Invite one or more musicians to a gig thread.
+ * Creates participant records and posts a batched system message.
+ */
+export async function inviteParticipants(
+  enquiryId: string,
+  invitees: { userId: string; displayName: string; photoUrl: string | null }[],
+  invitedBy: string,
+  inviterName: string,
+): Promise<void> {
+  if (invitees.length === 0) return;
+  const now = new Date().toISOString();
+  const batch = writeBatch(db);
+
+  for (const invitee of invitees) {
+    const ref = doc(collection(db, 'inquiries', enquiryId, 'participants'));
+    batch.set(ref, {
+      userId:      invitee.userId,
+      role:        'support',
+      state:       'invited',
+      invitedBy,
+      displayName: invitee.displayName,
+      photoUrl:    invitee.photoUrl ?? null,
+      joinedAt:    now,
+      respondedAt: null,
+      leftAt:      null,
+    });
+  }
+
+  // Denormalise participantUids on the enquiry doc for cheap inbox filtering
+  batch.update(doc(db, 'inquiries', enquiryId), {
+    participantUids: arrayUnion(...invitees.map(i => i.userId)),
+  });
+
+  await batch.commit();
+
+  // System message (batched: "X added Y and Z to the gig")
+  const names = invitees.map(i => i.displayName);
+  const namesList = names.length === 1
+    ? names[0]
+    : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  await postSystemMessage(enquiryId, `${inviterName} added ${namesList} to the gig`);
+
+  // Recompute rollup
+  await updateRollupStatus(enquiryId);
+}
+
+/**
+ * Support act leaves a gig (delete-as-leave).
+ * Sets participant state to 'left', posts system message, and soft-deletes from the actor's inbox.
+ */
+export async function leaveGig(
+  enquiryId: string,
+  participantId: string,
+  uid: string,
+  leaverName: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await Promise.all([
+    updateDoc(doc(db, 'inquiries', enquiryId, 'participants', participantId), {
+      state:  'left',
+      leftAt: now,
+    }),
+    updateDoc(doc(db, 'inquiries', enquiryId), {
+      deletedBy: arrayUnion(uid),
+    }),
+  ]);
+  await postSystemMessage(enquiryId, `${leaverName} left the group`);
+  await updateRollupStatus(enquiryId);
+}
+
+/**
+ * Venue removes a support act from the gig.
+ * Semantically equivalent to 'left' but initiated by the venue, not the participant.
+ */
+export async function removeParticipantFromGig(
+  enquiryId: string,
+  participantId: string,
+  removedUserId: string,
+  removedName: string,
+  actorName: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await Promise.all([
+    updateDoc(doc(db, 'inquiries', enquiryId, 'participants', participantId), {
+      state:  'left',
+      leftAt: now,
+    }),
+    updateDoc(doc(db, 'inquiries', enquiryId), {
+      deletedBy: arrayUnion(removedUserId),
+    }),
+  ]);
+  await postSystemMessage(enquiryId, `${actorName} removed ${removedName} from the gig`);
+  await updateRollupStatus(enquiryId);
+}
+
+// ── Past collaborators for invite sheet ─────────────────────────────────────
+
+export type CollaboratorInfo = {
+  userId: string;
+  displayName: string;
+  photoUrl: string | null;
+};
+
+/**
+ * Returns musicians who have previously played a specific venue
+ * (confirmed/accepted enquiries where venueId matches).
+ */
+export async function fetchVenuePastCollaborators(venueId: string): Promise<CollaboratorInfo[]> {
+  try {
+    const snap = await getDocs(
+      query(
+        collection(db, 'inquiries'),
+        where('venueId', '==', venueId),
+        where('status', 'in', ['confirmed', 'accepted']),
+        limit(50),
+      )
+    );
+    const seen = new Set<string>();
+    const result: CollaboratorInfo[] = [];
+    for (const d of snap.docs) {
+      const data = d.data() as Enquiry;
+      if (!data.createdBy || seen.has(data.createdBy)) continue;
+      seen.add(data.createdBy);
+      result.push({
+        userId:      data.createdBy,
+        displayName: data.bandName,
+        photoUrl:    data.photoUrl ?? null,
+      });
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns musicians the headliner has previously performed alongside
+ * (other participants in confirmed gigs where this user was a participant).
+ */
+export async function fetchHeadlinerPastCollaborators(headlinerUid: string): Promise<CollaboratorInfo[]> {
+  try {
+    // Find enquiries where headliner was a participant (support role in other gigs)
+    const snap = await getDocs(
+      query(
+        collection(db, 'inquiries'),
+        where('participantUids', 'array-contains', headlinerUid),
+        where('status', 'in', ['confirmed', 'accepted']),
+        limit(20),
+      )
+    );
+    const seen = new Set<string>([headlinerUid]);
+    const result: CollaboratorInfo[] = [];
+    for (const d of snap.docs) {
+      const participantsSnap = await getDocs(
+        collection(db, 'inquiries', d.id, 'participants')
+      );
+      for (const pd of participantsSnap.docs) {
+        const p = pd.data() as Participant;
+        if (!p.userId || seen.has(p.userId) || p.role === 'venue') continue;
+        seen.add(p.userId);
+        result.push({ userId: p.userId, displayName: p.displayName, photoUrl: p.photoUrl });
+      }
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+// ── Timetable helpers ───────────────────────────────────────────────────────
 
 const normSlot = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 
@@ -207,7 +595,6 @@ export async function bookSlotOnTimetable(enquiry: Enquiry, listAsBooked: boolea
   if (existingIdx >= 0) {
     daySlots[existingIdx] = { ...daySlots[existingIdx], status: newStatus, bandName: enquiry.bandName };
   } else {
-    // Base on matching open recurring slot if found
     const openSlot = daySlots.find(s => !s.date && s.status === 'open' && normSlot(s.time) === normSlot(time));
     daySlots.push({
       ...(openSlot ? { ...openSlot } : {}),
@@ -227,14 +614,17 @@ export async function bookSlotOnTimetable(enquiry: Enquiry, listAsBooked: boolea
   ]);
 }
 
-// ── Inbox badge count ──
+// ── Inbox badge count ───────────────────────────────────────────────────────
 
 /** Returns the number of pending enquiries for the current user (artist or venue). */
 export function useInboxBadgeCount(uid: string | null, venueId: string | null): number {
   const { enquiries: artistEnqs } = useArtistEnquiries(!venueId ? uid : null);
   const { enquiries: venueEnqs  } = useVenueEnquiries(venueId);
   const enqs = venueId ? venueEnqs : artistEnqs;
-  return enqs.filter(e => e.status === 'pending').length;
+  return enqs.filter(e => {
+    const s = normalizeEnquiryStatus(e.status);
+    return s === 'enquired';
+  }).length;
 }
 
 /** Remove the booked/pending slot override and move enquiry back to discussing. */
