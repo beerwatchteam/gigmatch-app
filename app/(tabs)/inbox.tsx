@@ -324,6 +324,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [scheduleEdited,   setScheduleEdited]   = useState(false);
   const [scheduleSaving,   setScheduleSaving]   = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const { width: windowWidth } = useWindowDimensions();
 
   const [slotPaymentModel,    setSlotPaymentModel]    = useState<string | null>(null);
   const [venuePaymentModels,  setVenuePaymentModels]  = useState<string[]>([]);
@@ -411,7 +412,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     { label: 'Tech Specs', onPress: onScrollToTech    },
   ].filter(l => l.onPress);
 
-  const DRAWER_WIDTH = isWeb ? 340 : 300;
+  const DRAWER_WIDTH = isWeb ? 340 : windowWidth;
 
   return (
     <>
