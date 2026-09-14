@@ -37,7 +37,7 @@ export default function WebHeader() {
   return (
     <View style={[styles.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       {/* Logo */}
-      <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.logoWrap}>
+      <TouchableOpacity onPress={() => router.push('/landing')} style={styles.logoWrap}>
         <Text style={[styles.logo, { color: colors.black }]}>GigMatch</Text>
         <View style={styles.beta}>
           <Text style={styles.betaText}>Beta</Text>
