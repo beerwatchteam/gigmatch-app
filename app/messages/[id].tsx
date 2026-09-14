@@ -18,7 +18,7 @@ import {
   mkDMId, useDMConv, useDMMessages,
   startDM, sendDMMessage, acceptDMRequest, deleteDMConv,
 } from '@/lib/useDirectMessages';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 const isWeb = Platform.OS === 'web';
@@ -83,14 +83,23 @@ export default function MessagesScreen() {
           setMyPhoto(bp.photoUrl ?? null);
         }
       }).catch(() => {});
-    } else if (profile.type === 'venue' && profile.venueId) {
-      getDoc(doc(db, 'venues', profile.venueId)).then(snap => {
-        if (snap.exists()) {
+    } else if (profile.type === 'venue') {
+      (async () => {
+        let snap: any = null;
+        if (profile.venueId) {
+          snap = await getDoc(doc(db, 'venues', profile.venueId));
+        }
+        if (!snap || !snap.exists()) {
+          const q = query(collection(db, 'venues'), where('claimedBy', '==', user!.uid), limit(1));
+          const result = await getDocs(q);
+          if (!result.empty) snap = result.docs[0];
+        }
+        if (snap && snap.exists()) {
           const vd = snap.data();
-          if (vd.venueName) setMyName(vd.venueName);
+          if (vd.name || vd.venueName) setMyName(vd.name || vd.venueName);
           setMyPhoto(vd.photoUrl ?? null);
         }
-      }).catch(() => {});
+      })().catch(() => {});
     }
   }, [user?.uid, profile?.type, profile?.venueId]);
 
@@ -116,10 +125,18 @@ export default function MessagesScreen() {
           name  = bp.data().name || name;
           photo = bp.data().photoUrl ?? null;
         }
-      } else if (ud.type === 'venue' && ud.venueId) {
-        const vn = await getDoc(doc(db, 'venues', ud.venueId));
-        if (!cancelled && vn.exists()) {
-          name  = vn.data().venueName || name;
+      } else if (ud.type === 'venue') {
+        let vn: any = null;
+        if (ud.venueId) {
+          vn = await getDoc(doc(db, 'venues', ud.venueId));
+        }
+        if (!vn || !vn.exists()) {
+          const q = query(collection(db, 'venues'), where('claimedBy', '==', otherUid), limit(1));
+          const result = await getDocs(q);
+          if (!result.empty) vn = result.docs[0];
+        }
+        if (!cancelled && vn && vn.exists()) {
+          name  = vn.data().name || vn.data().venueName || name;
           photo = vn.data().photoUrl ?? null;
         }
       }

@@ -25,7 +25,7 @@ const PLATFORMS = [
   { key: 'spotify',    label: 'Spotify',     placeholder: 'Artist, track, album or playlist URL' },
   { key: 'appleMusic', label: 'Apple Music', placeholder: 'Apple Music URL' },
 ];
-const TABS = ['Settings','Basic Info','About','Music','Gig History','Upcoming','Tech Specs & Rider','Photos'];
+const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
 
 type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string };
@@ -351,7 +351,7 @@ export default function EditProfileScreen() {
       const res  = await fetch(asset.uri);
       const blob = await res.blob();
       const ext  = asset.name.split('.').pop() || 'pdf';
-      const ref  = sRef(storage, `riders/bands/${uid}/${Date.now()}.${ext}`);
+      const ref  = sRef(storage, `riders/${uid}/${Date.now()}.${ext}`);
       await uploadBytes(ref, blob);
       const url  = await getDownloadURL(ref);
       set('techRiderDocs', [...(profile.techRiderDocs || []), { url, name: asset.name }]);
@@ -375,9 +375,9 @@ export default function EditProfileScreen() {
     if (profile.songs.some(s => !s.title?.trim() || !s.url?.trim()))
       errors.push('Music');
     if (profile.gigHistory.some(g => !g.venue?.trim() || !g.suburb?.trim() || !g.date?.trim()))
-      errors.push('Gig History');
+      errors.push('Past Gigs');
     if (profile.upcomingGigs.some(g => !g.venue?.trim() || !g.suburb?.trim() || !g.date?.trim()))
-      errors.push('Upcoming');
+      errors.push('Timetable');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
@@ -629,13 +629,23 @@ export default function EditProfileScreen() {
           <View style={s.section}>
 
             {/* Stage Details */}
-            <View style={s.sectionBlock}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Details</Text>
               <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
                 <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
               </Field>
               <Field label="Username *" error={showErrors && !profile.username?.trim()}>
-                <Input value={profile.username} onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))} placeholder="e.g. thedahlias" error={showErrors && !profile.username?.trim()} />
+                <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: showErrors && !profile.username?.trim() ? Colors.danger : colors.border }]}>
+                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>@</Text>
+                  <TextInput
+                    style={[s.prefixTextInput, { color: colors.black }]}
+                    value={profile.username}
+                    onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))}
+                    placeholder="username"
+                    placeholderTextColor={Colors.greyLight}
+                    autoCapitalize="none"
+                  />
+                </View>
               </Field>
               <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}>
                 <Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} />
@@ -660,62 +670,67 @@ export default function EditProfileScreen() {
             </View>
 
             {/* Contact */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
-              <Field label="Location *" error={showErrors && !profile.location?.trim()}>
-                <Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="e.g. Frankston City, VIC" error={showErrors && !profile.location?.trim()} />
-              </Field>
-              <Field label="Email *" error={showErrors && !profile.email?.trim()}>
-                <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email address" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
-              </Field>
-              <Field label="Phone">
-                <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" />
-              </Field>
+              <View style={{ marginBottom: 14 }}>
+                <Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="Location *" error={showErrors && !profile.location?.trim()} />
+              </View>
+              <View style={{ marginBottom: 14 }}>
+                <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
+              </View>
+              <View style={{ marginBottom: 14 }}>
+                <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" />
+              </View>
             </View>
 
             {/* Fee Range */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Fee Range</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Field label="Min ($)">
-                    <Input value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="0" keyboardType="numeric" />
-                  </Field>
+                <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                  <TextInput
+                    style={[s.prefixTextInput, { color: colors.black }]}
+                    value={profile.feeMin}
+                    onChangeText={(v: string) => set('feeMin', v)}
+                    placeholder="Min"
+                    placeholderTextColor={Colors.greyLight}
+                    keyboardType="numeric"
+                  />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="Max ($)">
-                    <Input value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="0" keyboardType="numeric" />
-                  </Field>
+                <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                  <TextInput
+                    style={[s.prefixTextInput, { color: colors.black }]}
+                    value={profile.feeMax}
+                    onChangeText={(v: string) => set('feeMax', v)}
+                    placeholder="Max"
+                    placeholderTextColor={Colors.greyLight}
+                    keyboardType="numeric"
+                  />
                 </View>
               </View>
             </View>
 
             {/* Average Draw */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Average Draw Per Show</Text>
-              <Field label="Avg. audience size (optional)">
-                <Input
-                  value={profile.averageDraw}
-                  onChangeText={(v: string) => set('averageDraw', v)}
-                  placeholder="e.g. 120"
-                  keyboardType="numeric"
-                />
-              </Field>
+              <Input
+                value={profile.averageDraw}
+                onChangeText={(v: string) => set('averageDraw', v)}
+                placeholder="Avg. audience size (optional), e.g. 120"
+                keyboardType="numeric"
+              />
             </View>
 
             {/* Social Links */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Social Links</Text>
               {PLATFORMS.map(p => (
                 <Field key={p.key} label={p.label}>
                   <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} />
                 </Field>
               ))}
-            </View>
-
-            {/* Custom Links */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Custom Links</Text>
               {profile.customLinks.map((link, i) => (
                 <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <TextInput
@@ -790,9 +805,9 @@ export default function EditProfileScreen() {
         )}
 
         {/* ── GIG HISTORY ── */}
-        {activeTab === 'Gig History' && (
+        {activeTab === 'Past Gigs' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Gig History</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Past Gigs</Text>
             <Text style={s.hint}>Show venues where you've played. A solid track record builds credibility and gives bookers confidence in your professionalism.</Text>
             {profile.gigHistory.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
@@ -826,9 +841,9 @@ export default function EditProfileScreen() {
         )}
 
         {/* ── UPCOMING ── */}
-        {activeTab === 'Upcoming' && (
+        {activeTab === 'Timetable' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Upcoming Gigs</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
             <Text style={s.hint}>Let venues know where you're already booked. It shows you're active and in demand — and helps them spot scheduling conflicts early.</Text>
             {profile.upcomingGigs.map((gig, i) => {
               const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
@@ -852,18 +867,18 @@ export default function EditProfileScreen() {
               );
             })}
             <TouchableOpacity style={s.addBtn} onPress={addUpcoming}>
-              <Text style={s.addBtnText}>+ Add Upcoming Gig</Text>
+              <Text style={s.addBtnText}>+ Add Gig</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* ── TECH SPECS ── */}
-        {activeTab === 'Tech Specs & Rider' && (
+        {activeTab === 'Tech Rider' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
-            <Text style={s.hint}>Tell venues what you need to perform. The clearer your rider, the smoother load-in will be — and the more seriously you'll be taken as an act.</Text>
+            <Text style={s.hint}>Your tech rider is basically your "here's what I need to play" sheet: your stage setup, backline, mics/DI boxes, power, and sound requirements.{'\n\n'}Having it on your profile means venues can see straight away whether their space can handle your set (or what they'd need to sort out) before you even message them, so you skip the back-and-forth and only get enquiries from venues that are actually a good fit.</Text>
 
-            <Field label="Spec Sheet / Documents">
+            <Field label="Tech Spec / Hospitality Rider Documents">
               {(profile.techRiderDocs || []).map((doc, idx) => (
                 <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
@@ -951,6 +966,10 @@ const s = StyleSheet.create({
   bannerEditBadgeText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
   section:            { gap: 4 },
   sectionBlock:       { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
+  sectionBox:         { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 12 },
+  prefixInput:        { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  prefixSymbol:       { fontSize: 14, fontWeight: '600', marginRight: 4 },
+  prefixTextInput:    { flex: 1, fontSize: 14, padding: 0 },
   sectionTitle:       { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, marginBottom: 16 },
   hint:               { fontSize: 13, color: Colors.grey, fontStyle: 'italic', marginBottom: 12 },
   input:              { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },

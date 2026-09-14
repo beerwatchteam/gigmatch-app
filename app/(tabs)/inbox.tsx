@@ -8,7 +8,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Text } from '@/components/Text';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOP_TAB_H, BOTTOM_TAB_H, WEB_TAB_H } from './_layout';
 import { Colors } from '@/constants/colors';
@@ -52,31 +52,42 @@ function useUserDisplayInfo(uid: string | null): { name: string | null; photoUrl
   useEffect(() => {
     if (!uid) return;
     let cancelled = false;
-    getDoc(doc(db, 'users', uid)).then(async userSnap => {
-      if (cancelled || !userSnap.exists()) return;
-      const userData = userSnap.data();
-      const type = userData.type as string;
-      const venueId = userData.venueId as string | undefined;
-      let name: string | null = userData.displayName || null;
+    (async () => {
+      let name: string | null = null;
       let photoUrl: string | null = null;
+
+      // Read users doc first to get type + venueId (rule now allows isSignedIn reads)
+      const userSnap = await getDoc(doc(db, 'users', uid));
+      if (cancelled) return;
+
+      const userData = userSnap.exists() ? userSnap.data() : null;
+      const type = userData?.type as string | undefined;
+      const venueId = userData?.venueId as string | undefined;
+
       if (type === 'artist') {
+        // Artist: read public bandProfiles doc
         const bpSnap = await getDoc(doc(db, 'bandProfiles', uid));
         if (!cancelled && bpSnap.exists()) {
-          const bp = bpSnap.data();
-          // Use bandName (same source as enquiry tiles) and bandProfiles photoUrl
-          name = bp.name || name;
-          photoUrl = bp.photoUrl ?? null;
+          name = bpSnap.data().name || null;
+          photoUrl = bpSnap.data().photoUrl ?? null;
         }
-      } else if (type === 'venue' && venueId) {
-        const vSnap = await getDoc(doc(db, 'venues', venueId));
-        if (!cancelled && vSnap.exists()) {
+      } else {
+        // Venue (or unknown type): try venueId first, then claimedBy query
+        let vSnap: any = null;
+        if (venueId) vSnap = await getDoc(doc(db, 'venues', venueId));
+        if (!vSnap?.exists()) {
+          const snap = await getDocs(query(collection(db, 'venues'), where('claimedBy', '==', uid), limit(1)));
+          if (!snap.empty) vSnap = snap.docs[0];
+        }
+        if (!cancelled && vSnap?.exists()) {
           const vd = vSnap.data();
-          name = vd.venueName || name;
+          name = vd.name || vd.venueName || null;
           photoUrl = vd.photoUrl ?? null;
         }
       }
+
       if (!cancelled) setInfo({ name, photoUrl });
-    }).catch(() => {});
+    })().catch(() => {});
     return () => { cancelled = true; };
   }, [uid]);
   return info;
@@ -2699,6 +2710,7 @@ function matchesFilter(enquiry: Enquiry, filter: FilterKey): boolean {
 
 export default function InboxScreen() {
   const router = useRouter();
+  const { openEnquiryId } = useLocalSearchParams<{ openEnquiryId?: string }>();
   const { user, profile } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -2726,6 +2738,7 @@ export default function InboxScreen() {
   const [selected,  setSelected]  = useState<Enquiry | null>(null);
   const [filter,    setFilter]    = useState<FilterKey>('enquired');
   const [inboxTab,  setInboxTabRaw]  = useState<'enquiries' | 'messages'>(_sessionInboxTab);
+
   function setInboxTab(tab: 'enquiries' | 'messages') { _sessionInboxTab = tab; setInboxTabRaw(tab); }
   const [dmFilter,  setDmFilter]  = useState<'accepted' | 'requests'>('accepted');
   const [selectedDMId, setSelectedDMId] = useState<string | null>(null);
@@ -2759,6 +2772,13 @@ export default function InboxScreen() {
   const enquiryNotifCount = !isVenue
     ? enquiries.filter(e => e.status !== 'declined' && e.status !== 'cancelled').length
     : 0;
+
+  // Auto-open a specific enquiry when navigated here with openEnquiryId
+  useEffect(() => {
+    if (!openEnquiryId || enquiries.length === 0) return;
+    const match = enquiries.find(e => e.id === openEnquiryId);
+    if (match) { setSelected(match); setInboxTab('enquiries'); }
+  }, [openEnquiryId, enquiries]);
 
   // Lock browser page scroll on web — inner ScrollViews handle their own scroll
   useEffect(() => {

@@ -16,11 +16,7 @@ import { useTheme } from '@/lib/theme-context';
 const isWeb = Platform.OS === 'web';
 
 const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
-const SLOT_PREFS: { value: string; label: string }[] = [
-  { value: 'Headline',   label: 'Headline' },
-  { value: 'Support Act', label: 'Support'  },
-  { value: 'Either',     label: 'Either'   },
-];
+const SLOT_PREFS = ['Headline', 'Other'] as const;
 
 type SectionKey = 'about' | 'music' | 'gigHistory' | 'upcomingGigs' | 'socials' | 'techRider' | 'photos' | 'contact';
 
@@ -47,16 +43,17 @@ export default function EnquireScreen() {
   const params = useLocalSearchParams<{
     venueId: string; venueName: string;
     day: string; date?: string; time: string;
-    room?: string; slotType?: string; duration?: string; capacity?: string;
+    room?: string; slotType?: string; duration?: string; capacity?: string; slotNote?: string;
   }>();
 
   // Locked by venue
   const lockedDuration = params.duration ? `${params.duration} min` : null;
-  const lockedSlotType = (params.slotType && params.slotType !== 'Either') ? params.slotType : null;
+  const lockedSlotType = (params.slotType === 'Headline' || params.slotType === 'Other') ? params.slotType : null;
 
   const [band, setBand]           = useState<Record<string, any>>({});
   const [setLength, setSetLength] = useState(lockedDuration || '45 min');
-  const [slotPref,  setSlotPref]  = useState(lockedSlotType  || 'Either');
+  const [slotPref,  setSlotPref]  = useState<string>(lockedSlotType || 'Headline');
+  const [otherNote, setOtherNote] = useState('');
   const [note, setNote]           = useState('');
   const [sections, setSections]   = useState<Record<SectionKey, boolean>>({
     about: true, music: true, gigHistory: true, upcomingGigs: true,
@@ -147,6 +144,7 @@ export default function EnquireScreen() {
           time:      params.time,
           room:      params.room ?? null,
           slotType:  slotPref,
+          slotNote:  slotPref === 'Other' ? otherNote : undefined,
           setLength,
         },
         sharedSections: sections,
@@ -224,6 +222,7 @@ export default function EnquireScreen() {
             <Text style={s.enquiryLabel}>ENQUIRY</Text>
             <Text style={[s.venueName, { color: colors.black }]}>{params.venueName}</Text>
             <Text style={s.slotDetail}>{slotParts.join(' · ')}</Text>
+            {params.slotNote ? <Text style={s.slotNote}>{params.slotNote}</Text> : null}
           </View>
           <TouchableOpacity onPress={() => router.back()} style={[s.closeBtn, { borderColor: colors.border }]}>
             <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
@@ -295,14 +294,26 @@ export default function EnquireScreen() {
             <View style={s.pillGroup}>
               {SLOT_PREFS.map(p => (
                 <TouchableOpacity
-                  key={p.value}
-                  style={[s.pill, { borderColor: colors.border }, slotPref === p.value && s.pillActive]}
-                  onPress={() => setSlotPref(p.value)}
+                  key={p}
+                  style={[s.pill, { borderColor: colors.border }, slotPref === p && s.pillActive]}
+                  onPress={() => setSlotPref(p)}
                 >
-                  <Text style={[s.pillText, { color: colors.grey }, slotPref === p.value && s.pillTextActive]}>{p.label}</Text>
+                  <Text style={[s.pillText, { color: colors.grey }, slotPref === p && s.pillTextActive]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
+          )}
+          {(slotPref === 'Other' || lockedSlotType === 'Other') && (
+            <TextInput
+              style={[s.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border, marginTop: 10 }]}
+              placeholder="Describe the type of slot you're looking for..."
+              placeholderTextColor={colors.greyLight}
+              multiline
+              numberOfLines={2}
+              value={otherNote}
+              onChangeText={setOtherNote}
+              textAlignVertical="top"
+            />
           )}
         </View>
 
@@ -367,7 +378,7 @@ export default function EnquireScreen() {
       {/* ── Footer bar ────────────────────────────────────────────── */}
       <View style={[s.footer, { borderTopColor: colors.border, backgroundColor: colors.bg }]}>
         <Text style={[s.footerSummary, { color: colors.grey }]} numberOfLines={1}>
-          {setLength} · {SLOT_PREFS.find(p => p.value === slotPref)?.label ?? slotPref} · {selectedCount} of {SECTIONS.length} sections shared
+          {setLength} · {slotPref} · {selectedCount} of {SECTIONS.length} sections shared
         </Text>
         <View style={s.footerActions}>
           <TouchableOpacity
@@ -474,6 +485,7 @@ const s = StyleSheet.create({
   },
   venueName:  { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   slotDetail: { fontSize: 13, color: Colors.grey, marginTop: 3 },
+  slotNote:   { fontSize: 13, color: Colors.grey, marginTop: 4, fontStyle: 'italic' },
   closeBtn:     { width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginTop: -2 },
   closeBtnText: { fontSize: 14, fontWeight: '600' },
 

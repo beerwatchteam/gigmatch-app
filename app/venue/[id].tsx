@@ -206,6 +206,35 @@ function inferSlotDate(enq: Enquiry): string {
   return isoDate(addDays(base, daysAhead));
 }
 
+type SlotOccurrence = { date: Date; dateISO: string; day: string; slot: Slot };
+
+function generateAllUpcoming(venue: Venue, months: number, startMonthOffset = 0): SlotOccurrence[] {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const startDate = new Date(today); startDate.setMonth(startDate.getMonth() + startMonthOffset);
+  const endDate = new Date(startDate); endDate.setMonth(endDate.getMonth() + months);
+  const results: SlotOccurrence[] = [];
+  const cur = new Date(startDate);
+  while (cur <= endDate) {
+    const day = DOW_TO_DAY[cur.getDay()];
+    const dateISO = isoDate(cur);
+    const slots = getSlotsForDate(venue, day, dateISO);
+    slots.forEach(slot => results.push({ date: new Date(cur), dateISO, day, slot }));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return results;
+}
+
+function groupSlotsByMonth(items: SlotOccurrence[]): { year: number; month: number; items: SlotOccurrence[] }[] {
+  const groups: { year: number; month: number; items: SlotOccurrence[] }[] = [];
+  items.forEach(item => {
+    const y = item.date.getFullYear(), m = item.date.getMonth();
+    let g = groups.find(g => g.year === y && g.month === m);
+    if (!g) { g = { year: y, month: m, items: [] }; groups.push(g); }
+    g.items.push(item);
+  });
+  return groups;
+}
+
 // ── Slot merging ─────────────────────────────────────────────────────
 
 function mergeSlots(recurringOpen: Slot[], overrides: Slot[]): Slot[] {
@@ -423,6 +452,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                   slotType:  slot.slotType || 'Either',
                   duration:  slot.duration || '',
                   capacity:  venue.capacity ? String(venue.capacity) : '',
+                  slotNote:  slot.notes || '',
                 },
               });
             }}
@@ -498,39 +528,6 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
   const main = (
     <View style={!isMobileLayout ? s.overviewMain : null}>
 
-      {/* Venue Info */}
-      {(venue.phone || venue.email || venue.website) ? (
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Venue Info</Text>
-          <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
-            {venue.phone ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.phone}`)}>
-                  <Text style={s.link}>{venue.phone}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            {venue.email ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.email}`)}>
-                  <Text style={s.link}>{venue.email}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            {venue.website ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Website</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(venue.website!)}>
-                  <Text style={s.link}>{venue.website}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-        </View>
-      ) : null}
-
       {/* Payment */}
       {(venue.payment?.models || []).length > 0 && (
         <View style={s.section}>
@@ -548,7 +545,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
       {/* Description */}
       {desc ? (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>About</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>About</Text>
           <Text style={[s.body, { color: colors.black }]}>
             {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '…' : desc}
           </Text>
@@ -610,8 +607,41 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {genres.length > 0 ? (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Genre Preferences</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Genre Preferences</Text>
           <Text style={s.genreOrangeText}>{genres.join(' · ')}</Text>
+        </View>
+      ) : null}
+
+      {/* Venue Info */}
+      {(venue.phone || venue.email || venue.website) ? (
+        <View style={s.section}>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Venue Info</Text>
+          <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
+            {venue.phone ? (
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
+                <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.phone}`)}>
+                  <Text style={s.link}>{venue.phone}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {venue.email ? (
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
+                <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.email}`)}>
+                  <Text style={s.link}>{venue.email}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {venue.website ? (
+              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                <Text style={[s.infoLabel, { color: colors.grey }]}>Website</Text>
+                <TouchableOpacity onPress={() => Linking.openURL(venue.website!)}>
+                  <Text style={s.link}>{venue.website}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
         </View>
       ) : null}
 
@@ -651,160 +681,180 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
 }) {
   const { colors } = useTheme();
   const today = new Date();
-  const [viewMode, setViewMode]               = useState<'week' | 'month'>('week');
-  const [weekStart, setWeekStart]             = useState(() => getMondayOfWeek(today));
-  const [currentMonth, setCurrentMonth]       = useState(today.getMonth());
-  const [currentYear, setCurrentYear]         = useState(today.getFullYear());
-  const [activeDay, setActiveDay]             = useState<string>(() => {
+
+  // Web state
+  const [filterTab, setFilterTab] = useState<'open' | 'all' | 'mine'>('open');
+
+  // Native state
+  const [activeDay, setActiveDay] = useState<string>(() => {
     const fd = CANONICAL_DAYS.find(d => (venue.slots?.[d] || []).some(s => s.status === 'open'));
-    return fd || CANONICAL_DAYS[4]; // Friday fallback
+    return fd || CANONICAL_DAYS[4];
   });
-  const [showPastDays, setShowPastDays]       = useState(false);
 
-  const weekEnd = addDays(weekStart, 6);
-  const rangeLabel = viewMode === 'week'
-    ? `${fmtShort(weekStart)} — ${fmtShort(weekEnd)} ${weekEnd.getFullYear()}`
-    : `${LONG_MONTHS[currentMonth]} ${currentYear}`;
-
-  function handlePrev() {
-    if (viewMode === 'week') setWeekStart(d => addDays(d, -7));
-    else if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y-1); }
-    else setCurrentMonth(m => m-1);
-  }
-  function handleNext() {
-    if (viewMode === 'week') setWeekStart(d => addDays(d, 7));
-    else if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y+1); }
-    else setCurrentMonth(m => m+1);
-  }
-
-  // Week view row data (web only)
-  const todayNorm = new Date(); todayNorm.setHours(0,0,0,0);
-  const wvDays = CANONICAL_DAYS.map(day => {
-    const date = addDays(weekStart, DAY_WEEK_OFFSET[day]);
-    const dateISO = isoDate(date);
-    const slots = getSlotsForDate(venue, day, dateISO);
-    const dn = new Date(date); dn.setHours(0,0,0,0);
-    return { day, date, dateISO, slots, isPast: dn < todayNorm, isToday: dn.getTime() === todayNorm.getTime() };
-  });
-  const wvPastDays     = wvDays.filter(d => d.isPast);
-  const wvUpcomingDays = wvDays.filter(d => !d.isPast && (d.isToday || d.slots.length > 0));
-  const wvPastHasSlots = wvPastDays.some(d => d.slots.length > 0);
-  const wvPastLabel    = wvPastDays.length === 0 ? ''
-    : wvPastDays.length === 1
-      ? `${wvPastDays[0].day.slice(0,3)} ${fmtShort(wvPastDays[0].date)}`
-      : `${wvPastDays[0].day.slice(0,3)} ${fmtShort(wvPastDays[0].date)} — ${wvPastDays[wvPastDays.length-1].day.slice(0,3)} ${fmtShort(wvPastDays[wvPastDays.length-1].date)}`;
-  const wvPastSuffix   = `${wvPastDays.length} day${wvPastDays.length !== 1 ? 's' : ''} passed`;
-
-  // Month open slot count
-  const monthSlotCount = (() => {
-    const start = new Date(currentYear, currentMonth, 1);
-    const end   = new Date(currentYear, currentMonth + 1, 0);
-    const counts: Record<string, number> = {};
-    const DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const cur = new Date(start);
-    while (cur <= end) { const d = DOW[cur.getDay()]; counts[d] = (counts[d]||0)+1; cur.setDate(cur.getDate()+1); }
-    return Object.entries(counts).reduce((acc, [day, occ]) => {
-      const open = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open').length;
-      return acc + open * occ;
-    }, 0);
-  })();
+  const [monthOffset, setMonthOffset] = useState(0);
 
   if (isWeb) {
-    // ── Web: week/month grid ──
+    const allUpcoming = generateAllUpcoming(venue, 3, monthOffset);
+
+    const matchEnquiry = (enq: Enquiry, day: string, time: string, dateISO: string) =>
+      enq.status !== 'declined' && enq.status !== 'cancelled' &&
+      enq.requestedSlot?.day === day && enq.requestedSlot?.time === time &&
+      inferSlotDate(enq) === dateISO;
+
+    const hasEnquiryFor = (day: string, time: string, dateISO: string) =>
+      userEnquiries.some(e => matchEnquiry(e, day, time, dateISO));
+
+    const filtered = allUpcoming.filter(({ day, dateISO, slot }) => {
+      if (filterTab === 'open') return slot.status === 'open' && !hasEnquiryFor(day, slot.time, dateISO);
+      if (filterTab === 'mine') return hasEnquiryFor(day, slot.time, dateISO);
+      return true;
+    });
+
+    const monthGroups = groupSlotsByMonth(filtered);
+
+    const windowLabel = 'over 3 months';
+    const countLabel = filterTab === 'open'
+      ? `${filtered.length} open slot${filtered.length !== 1 ? 's' : ''} ${windowLabel}`
+      : filterTab === 'mine'
+        ? `${filtered.length} slot${filtered.length !== 1 ? 's' : ''}`
+        : `${filtered.length} slots listed`;
+
+    const recurringSchedule = CANONICAL_DAYS.flatMap(day => {
+      const slots = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open');
+      return slots.map(s => ({ day, slot: s }));
+    });
+
     return (
       <View style={s.tabBody}>
-        {/* Controls */}
-        <View style={s.ttControls}>
-          <View style={[s.ttToggle, { borderColor: colors.border }]}>
-            {(['week','month'] as const).map(mode => (
+        {/* Usually open bar */}
+        {recurringSchedule.length > 0 && (
+          <View style={[lv.usuallyBar, { borderBottomColor: colors.border }]}>
+            <Text style={[lv.usuallyLabel, { color: colors.grey }]}>Usually open</Text>
+            {recurringSchedule.map(({ day, slot }, i) => (
+              <Text key={i} style={lv.usuallyItem}>
+                <Text style={{ color: Colors.orange, fontWeight: '700' }}>{day.slice(0,3)} </Text>
+                <Text style={{ color: colors.black }}>{slot.time}</Text>
+                {slot.room ? <Text style={{ color: colors.grey }}>{'  '}{slot.room}</Text> : null}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        {/* Filter tabs + count */}
+        <View style={lv.filterRow}>
+          <View style={[lv.filterTabs, { borderColor: colors.border }]}>
+            {(['open', 'all', 'mine'] as const).map(tab => (
               <TouchableOpacity
-                key={mode}
-                style={[s.ttToggleBtn, viewMode === mode && s.ttToggleBtnActive]}
-                onPress={() => setViewMode(mode)}
+                key={tab}
+                style={[lv.filterTab, filterTab === tab && lv.filterTabActive]}
+                onPress={() => setFilterTab(tab)}
               >
-                <Text style={[s.ttToggleText, { color: colors.grey }, viewMode === mode && s.ttToggleTextActive]}>
-                  {mode === 'week' ? 'Week' : 'Month'}
+                <Text style={[lv.filterTabText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
+                  {tab === 'open' ? 'Open' : tab === 'all' ? 'All slots' : 'Mine'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={[s.ttRangeLabel, { color: colors.black }]}>{rangeLabel}</Text>
-            {viewMode === 'month' && monthSlotCount > 0 && (
-              <Text style={s.ttSlotCount}>{monthSlotCount} open slot{monthSlotCount !== 1 ? 's' : ''}</Text>
-            )}
-          </View>
-          <View style={s.ttNavBtns}>
-            <TouchableOpacity style={[s.ttNavBtn, { borderColor: colors.border }]} onPress={handlePrev}>
-              <Text style={[s.ttNavBtnText, { color: colors.black }]}>←</Text>
-            </TouchableOpacity>
-            {viewMode === 'month' && (
-              <TouchableOpacity
-                style={[s.ttNavBtn, { borderColor: colors.border }]}
-                onPress={() => { setCurrentMonth(today.getMonth()); setCurrentYear(today.getFullYear()); }}
-              >
-                <Text style={[s.ttNavBtnText, { color: colors.black }]}>Today</Text>
+          <View style={lv.countRow}>
+            <Text style={[lv.countLabel, { color: colors.grey }]}>{countLabel}</Text>
+            <View style={lv.monthNavRow}>
+              {monthOffset > 0 && (
+                <TouchableOpacity style={lv.monthNavBtn} onPress={() => setMonthOffset(o => o - 3)}>
+                  <Text style={[lv.monthNavText, { color: colors.black }]}>&larr; Previous 3 Months</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={lv.monthNavBtn} onPress={() => setMonthOffset(o => o + 3)}>
+                <Text style={[lv.monthNavText, { color: colors.black }]}>Next 3 Months &rarr;</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity style={[s.ttNavBtn, { borderColor: colors.border }]} onPress={handleNext}>
-              <Text style={[s.ttNavBtnText, { color: colors.black }]}>→</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Legend */}
-        <View style={s.ttLegend}>
-          <View style={s.ttLegendItem}>
-            <View style={[s.ttLegendDot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.orange }]} />
-            <Text style={[s.ttLegendText, { color: colors.grey }]}>Open — enquire</Text>
-          </View>
-          <View style={s.ttLegendItem}>
-            <View style={[s.ttLegendDot, { backgroundColor: 'rgba(250,131,12,0.18)' }]} />
-            <Text style={[s.ttLegendText, { color: colors.grey }]}>Enquired</Text>
-          </View>
-          <View style={s.ttLegendItem}>
-            <View style={[s.ttLegendDot, { backgroundColor: '#e0e0e0' }]} />
-            <Text style={[s.ttLegendText, { color: colors.grey }]}>Booked</Text>
-          </View>
-          {userEnquiries.some(e => e.status === 'accepted') && (
-            <View style={s.ttLegendItem}>
-              <View style={[s.ttLegendDot, { backgroundColor: '#d4f0d4' }]} />
-              <Text style={[s.ttLegendText, { color: colors.grey }]}>Booked By Me</Text>
             </View>
-          )}
+          </View>
         </View>
 
-        {viewMode === 'week' && (
-          <View style={s.wvContainer}>
-            {wvPastDays.length > 0 && (
-              <>
-                <View style={s.wvPastBar}>
-                  <Text style={[s.wvPastBarText, { color: colors.grey }]} numberOfLines={2}>
-                    {wvPastLabel} · {wvPastSuffix}{!wvPastHasSlots ? ', no gigs scheduled' : ''}
-                  </Text>
-                  {wvPastHasSlots && (
-                    <TouchableOpacity style={s.wvPastBarToggle} onPress={() => setShowPastDays(p => !p)}>
-                      <Text style={s.wvPastBarToggleText}>{showPastDays ? 'Hide days' : 'Show days'}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {showPastDays && wvPastDays.map(({ day, date, dateISO, slots, isToday }) => (
-                  <WvDaySection key={day} day={day} date={date} dateISO={dateISO} slots={slots} isToday={isToday} isPast={true} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
-                ))}
-              </>
-            )}
-            {wvUpcomingDays.map(({ day, date, dateISO, slots, isToday }) => (
-              <WvDaySection key={day} day={day} date={date} dateISO={dateISO} slots={slots} isToday={isToday} isPast={false} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
-            ))}
-            {wvUpcomingDays.length === 0 && (
-              <Text style={[s.wvEmpty, { color: colors.grey }]}>No upcoming slots this week.</Text>
+        {/* Body: mini calendar panel + slot list */}
+        <View style={lv.body}>
+          {/* Left: availability calendar */}
+          <View style={[lv.calPanel, { borderColor: colors.border }]}>
+            <Text style={[lv.calPanelTitle, { color: colors.grey }]}>AVAILABILITY AT A GLANCE</Text>
+            <View style={lv.calLegend}>
+              <View style={lv.calLegendItem}>
+                <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.orange }]} />
+                <Text style={[lv.calLegendText, { color: colors.grey }]}>Open</Text>
+              </View>
+              <View style={lv.calLegendItem}>
+                <View style={[lv.calDot, { backgroundColor: '#e0e0e0' }]} />
+                <Text style={[lv.calLegendText, { color: colors.grey }]}>Booked</Text>
+              </View>
+              <View style={lv.calLegendItem}>
+                <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#22c55e' }]} />
+                <Text style={[lv.calLegendText, { color: colors.grey }]}>Enquired by me</Text>
+              </View>
+              <View style={lv.calLegendItem}>
+                <View style={[lv.calDot, { backgroundColor: '#22c55e' }]} />
+                <Text style={[lv.calLegendText, { color: colors.grey }]}>Booked by me</Text>
+              </View>
+            </View>
+            {(() => {
+              const windowStart = new Date(today); windowStart.setMonth(windowStart.getMonth() + monthOffset); windowStart.setHours(0,0,0,0);
+              const windowEnd = new Date(windowStart); windowEnd.setMonth(windowEnd.getMonth() + 3);
+              const calMonths: { year: number; month: number }[] = [];
+              const calCur = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
+              const calEnd = new Date(windowEnd.getFullYear(), windowEnd.getMonth(), 1);
+              while (calCur <= calEnd) {
+                calMonths.push({ year: calCur.getFullYear(), month: calCur.getMonth() });
+                calCur.setMonth(calCur.getMonth() + 1);
+              }
+              return calMonths.map(({ year, month }) => (
+                <MiniCalendarMonth
+                  key={`${year}-${month}`}
+                  venue={venue}
+                  month={month}
+                  year={year}
+                  today={today}
+                  windowStart={windowStart}
+                  windowEnd={windowEnd}
+                  userEnquiries={userEnquiries}
+                  colors={colors}
+                />
+              ));
+            })()}
+          </View>
+
+          {/* Right: slot list */}
+          <View style={lv.listArea}>
+            {monthGroups.length === 0 ? (
+              <Text style={[lv.emptyText, { color: colors.grey }]}>No slots to show.</Text>
+            ) : (
+              monthGroups.map(group => {
+                const openCount = group.items.filter(i => i.slot.status === 'open').length;
+                return (
+                  <View key={`${group.year}-${group.month}`} style={lv.monthGroup}>
+                    <View style={lv.monthHeader}>
+                      <Text style={[lv.monthLabel, { color: colors.black }]}>
+                        {LONG_MONTHS[group.month].toUpperCase()} {group.year}
+                      </Text>
+                      {openCount > 0 && (
+                        <Text style={lv.monthOpenCount}>{openCount} open</Text>
+                      )}
+                    </View>
+                    {group.items.map(({ date, dateISO, day, slot }, i) => (
+                      <LvSlotRow
+                        key={`${dateISO}-${slot.id || i}`}
+                        slot={slot}
+                        date={date}
+                        dateISO={dateISO}
+                        day={day}
+                        isArtist={isArtist}
+                        isLoggedIn={isLoggedIn}
+                        userEnquiries={userEnquiries}
+                        onEnquire={onEnquire}
+                      />
+                    ))}
+                  </View>
+                );
+              })
             )}
           </View>
-        )}
-
-        {viewMode === 'month' && (
-          <MonthGrid venue={venue} month={currentMonth} year={currentYear} isArtist={isArtist} isLoggedIn={isLoggedIn} userEnquiries={userEnquiries} onEnquire={onEnquire} />
-        )}
+        </View>
       </View>
     );
   }
@@ -863,252 +913,140 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
   );
 }
 
-// ── Week view row components (web) ────────────────────────────────────
+// ── Mini calendar month (web) ─────────────────────────────────────────
 
-function WvSlotRow({ slot, day, dateISO, isPast, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
-  slot: Slot; day: string; dateISO: string; isPast: boolean;
-  isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
-  onEnquire: (s: Slot, d: string, date?: string) => void;
+function MiniCalendarMonth({ venue, month, year, today, windowStart, windowEnd, userEnquiries, colors }: {
+  venue: Venue; month: number; year: number; today: Date;
+  windowStart?: Date; windowEnd?: Date;
+  userEnquiries: Enquiry[]; colors: any;
 }) {
-  const { colors } = useTheme();
-
-  const matchesSlot = (enq: Enquiry) => {
-    if (enq.requestedSlot?.day !== day || enq.requestedSlot?.time !== slot.time) return false;
-    return inferSlotDate(enq) === dateISO;
-  };
-  const hasEnquired  = slot.status === 'open' && userEnquiries.some(enq =>
-    enq.status !== 'declined' && enq.status !== 'cancelled' && matchesSlot(enq)
-  );
-  const isBookedByMe = slot.status === 'booked' && userEnquiries.some(enq =>
-    enq.status === 'accepted' && matchesSlot(enq)
-  );
-  const canEnquire   = !isPast && !hasEnquired && slot.status === 'open' && isArtist;
-
-  let rowStyle: object[];
-  let timeColor: string;
-  let statusLabel: string;
-  let statusColor: string;
-
-  if (slot.status === 'booked') {
-    if (isBookedByMe) {
-      rowStyle = [wvs.row, wvs.rowBookedMine];
-      statusLabel = 'Booked By Me';
-      timeColor = '#16a34a'; statusColor = '#16a34a';
-    } else {
-      rowStyle = [wvs.row, wvs.rowBooked];
-      statusLabel = slot.bandName || 'Booked';
-      timeColor = '#999999'; statusColor = '#888888';
-    }
-  } else if (slot.status === 'pending') {
-    rowStyle = [wvs.row, wvs.rowPending];
-    statusLabel = slot.bandName ? `Pending — ${slot.bandName}` : 'Pending';
-    timeColor = '#f5a623'; statusColor = '#c48400';
-  } else if (hasEnquired) {
-    rowStyle = [wvs.row, wvs.rowEnquired];
-    statusLabel = 'Enquired — Awaiting venue';
-    timeColor = '#fa830c'; statusColor = '#c96200';
-  } else {
-    rowStyle = [wvs.row, wvs.rowOpen];
-    statusLabel = 'Open';
-    timeColor = '#fa830c'; statusColor = '#fa830c';
-  }
-
-  const meta = [slot.room, slot.capacity ? `Cap. ${slot.capacity}` : null].filter(Boolean).join(' · ');
-
-  return (
-    <View style={rowStyle}>
-      <View style={wvs.timeCell}>
-        <Text style={[wvs.time, { color: timeColor }]}>{slot.time}</Text>
-      </View>
-      <View style={[wvs.info, { borderLeftColor: colors.border }]}>
-        <Text style={[wvs.status, { color: statusColor }]}>{statusLabel}</Text>
-        {meta ? <Text style={wvs.meta}>{meta}</Text> : null}
-      </View>
-      {canEnquire && (
-        <View style={wvs.action}>
-          <TouchableOpacity style={wvs.enquireBtn} onPress={() => onEnquire(slot, day, dateISO)}>
-            <Text style={wvs.enquireBtnText}>Enquire</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function WvDaySection({ day, date, dateISO, slots, isToday, isPast, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
-  day: string; date: Date; dateISO: string; slots: Slot[];
-  isToday: boolean; isPast: boolean;
-  isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
-  onEnquire: (s: Slot, d: string, date?: string) => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View pointerEvents={isPast ? 'none' : 'auto'} style={[wvs.daySection, { borderTopColor: colors.border }, isPast && wvs.daySectionPast]}>
-      <View style={wvs.dayHeader}>
-        <Text style={[wvs.dayName, { color: colors.black }]}>{day.slice(0,3).toUpperCase()}</Text>
-        <Text style={[wvs.dayDate, { color: colors.grey }]}>{fmtShort(date)}</Text>
-        {isToday && <View style={wvs.todayBadge}><Text style={wvs.todayBadgeText}>TODAY</Text></View>}
-        {slots.length > 0 && (
-          <>
-            <View style={{ flex: 1 }} />
-            <Text style={[wvs.slotCount, { color: colors.grey }]}>{slots.length} slot{slots.length !== 1 ? 's' : ''}</Text>
-          </>
-        )}
-      </View>
-      {slots.length === 0
-        ? <Text style={[wvs.dayEmpty, { color: colors.greyLight }]}>No gigs scheduled</Text>
-        : slots.map((slot, i) => (
-            <WvSlotRow
-              key={slot.id || i}
-              slot={slot}
-              day={day}
-              dateISO={dateISO}
-              isPast={isPast}
-              isArtist={isArtist}
-              isLoggedIn={isLoggedIn}
-              userEnquiries={userEnquiries}
-              onEnquire={onEnquire}
-            />
-          ))
-      }
-    </View>
-  );
-}
-
-// ── Web slot card ─────────────────────────────────────────────────────
-
-function WebSlotCard({ slot, day, dateISO, past, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
-  slot: Slot; day: string; dateISO: string; past: boolean;
-  isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
-  onEnquire: (s: Slot, d: string, date?: string) => void;
-}) {
-  const { colors } = useTheme();
-  const hasEnquired = slot.status === 'open' && userEnquiries.some(enq =>
-    enq.status !== 'declined' && enq.status !== 'cancelled' &&
-    enq.requestedSlot?.day === day && enq.requestedSlot?.time === slot.time &&
-    inferSlotDate(enq) === dateISO
-  );
-
-  if (slot.status === 'booked') {
-    return (
-      <View style={[ws.card, { borderColor: colors.border }]}>
-        {slot.featured ? (
-          <View style={ws.featuredBadge}><Text style={ws.featuredText}>★ Featured</Text></View>
-        ) : null}
-        <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
-        <Text style={[ws.bandName, { color: colors.black }]}>{slot.bandName}</Text>
-        {slot.slotType ? <View style={[ws.typePill, { backgroundColor: colors.bgFaint }]}><Text style={[ws.typeText, { color: colors.grey }]}>{slot.slotType}</Text></View> : null}
-        {slot.ticketUrl ? (
-          <TouchableOpacity onPress={() => Linking.openURL(slot.ticketUrl!)} style={ws.ticketBtn}>
-            <Text style={ws.ticketBtnText}>Tickets</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    );
-  }
-  if (slot.status === 'pending') {
-    return (
-      <View style={[ws.card, ws.cardPending, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-        <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
-        <Text style={ws.pendingLabel}>Pending</Text>
-        {slot.bandName ? <Text style={[ws.bandNameMuted, { color: colors.grey }]}>{slot.bandName}</Text> : null}
-        {slot.room ? <Text style={[ws.room, { color: colors.grey }]}>{slot.room}</Text> : null}
-      </View>
-    );
-  }
-  if (hasEnquired) {
-    return (
-      <View style={[ws.card, ws.cardEnquired, { borderColor: colors.border }]}>
-        <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
-        <Text style={ws.enquiredLabel}>Enquired — Waiting on venue response</Text>
-        {slot.room ? <Text style={[ws.room, { color: colors.grey }]}>{slot.room}</Text> : null}
-      </View>
-    );
-  }
-  // open
-  const canEnquire = !past && isArtist;
-  return (
-    <TouchableOpacity
-      style={[ws.card, ws.cardOpen, { borderColor: colors.border, backgroundColor: colors.bgFaint }, canEnquire && ws.cardOpenClickable]}
-      onPress={canEnquire ? () => onEnquire(slot, day, dateISO) : undefined}
-      activeOpacity={canEnquire ? 0.75 : 1}
-    >
-      <Text style={[ws.time, { color: colors.black }]}>{slot.time}</Text>
-      <Text style={ws.openLabel}>Open{canEnquire ? ' — Enquire' : ''}</Text>
-      {slot.room ? <Text style={[ws.room, { color: colors.grey }]}>{slot.room}</Text> : null}
-    </TouchableOpacity>
-  );
-}
-
-// ── Month grid ────────────────────────────────────────────────────────
-
-function MonthGrid({ venue, month, year, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
-  venue: Venue; month: number; year: number;
-  isArtist: boolean; isLoggedIn: boolean; userEnquiries: Enquiry[];
-  onEnquire: (s: Slot, d: string, date?: string) => void;
-}) {
-  const { colors } = useTheme();
-  const today = new Date();
-  const firstDow    = (new Date(year, month, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-  const cells: (Date|null)[] = [];
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [];
   for (let i = 0; i < firstDow; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <View style={mg.wrap}>
-      {DOW_HEADERS.map(h => <Text key={h} style={[mg.dow, { color: colors.grey }]}>{h}</Text>)}
-      {cells.map((date, i) => {
-        if (!date) return <View key={`e${i}`} style={[mg.cell, { borderColor: colors.border }]} />;
-        const isToday = date.getFullYear()===today.getFullYear() && date.getMonth()===today.getMonth() && date.getDate()===today.getDate();
-        const slotKey = DOW_TO_DAY[date.getDay()];
-        const dateISO = isoDate(date);
-        const slots   = getSlotsForDate(venue, slotKey, dateISO);
-        return (
-          <View key={`${date.getMonth()}-${date.getDate()}`} style={[mg.cell, { borderColor: colors.border }]}>
-            {isToday
-              ? <View style={mg.todayCircle}><Text style={mg.todayCircleText}>{date.getDate()}</Text></View>
-              : <Text style={[mg.dayNum, { color: colors.black }]}>{date.getDate()}</Text>
-            }
-            {slots.slice(0,3).map((slot,j) => {
-              const hasEnq = slot.status === 'open' && userEnquiries.some(enq =>
-                enq.status !== 'declined' && enq.status !== 'cancelled' &&
-                enq.requestedSlot?.day === slotKey && enq.requestedSlot?.time === slot.time &&
-                inferSlotDate(enq) === dateISO
-              );
-              const isBookedByMe = slot.status === 'booked' && userEnquiries.some(enq =>
-                enq.status === 'accepted' &&
-                enq.requestedSlot?.day === slotKey && enq.requestedSlot?.time === slot.time &&
-                inferSlotDate(enq) === dateISO
-              );
-              let pillStyle, textStyle;
-              if (slot.status === 'open') {
-                pillStyle = hasEnq ? mg.pillEnquired : mg.pillOpen;
-                textStyle = hasEnq ? mg.pillTextEnquired : mg.pillTextOpen;
-              } else if (isBookedByMe) {
-                pillStyle = mg.pillBookedMine; textStyle = mg.pillTextBookedMine;
-              } else {
-                pillStyle = mg.pillBooked; textStyle = mg.pillTextBooked;
-              }
-              return (
-                <TouchableOpacity
-                  key={slot.id||j}
-                  style={[mg.pill, pillStyle]}
-                  onPress={slot.status === 'open' && !hasEnq && isArtist ? () => onEnquire(slot, slotKey, dateISO) : undefined}
-                >
-                  <Text style={textStyle} numberOfLines={1}>
-                    {slot.status === 'open'
-                      ? (hasEnq ? `Enquired — ${slot.time}` : `Open — ${slot.time}`)
-                      : isBookedByMe ? 'Booked By Me'
-                      : (slot.bandName || (slot.status === 'pending' ? 'Pending' : 'Booked'))}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        );
-      })}
+    <View style={lv.calMonth}>
+      <Text style={[lv.calMonthLabel, { color: colors.black }]}>{LONG_MONTHS[month]} {year}</Text>
+      <View style={lv.calDowRow}>
+        {['M','T','W','T','F','S','S'].map((d, i) => (
+          <Text key={i} style={[lv.calDow, { color: colors.greyLight }]}>{d}</Text>
+        ))}
+      </View>
+      <View style={lv.calGrid}>
+        {cells.map((dayNum, i) => {
+          if (!dayNum) return <View key={`e${i}`} style={lv.calCell} />;
+          const date = new Date(year, month, dayNum);
+          const dateISO = isoDate(date);
+          const dayName = DOW_TO_DAY[date.getDay()];
+          const todayNorm = new Date(today); todayNorm.setHours(0,0,0,0);
+          const dateNorm = new Date(date); dateNorm.setHours(0,0,0,0);
+          const winStart = windowStart ? new Date(windowStart) : todayNorm;
+          const winEnd = windowEnd ? new Date(windowEnd) : null;
+          winStart.setHours(0,0,0,0);
+          if (winEnd) winEnd.setHours(0,0,0,0);
+          const isOutOfRange = dateNorm < winStart || (winEnd !== null && dateNorm > winEnd);
+          const isToday = dateNorm.getTime() === todayNorm.getTime();
+          const slots = getSlotsForDate(venue, dayName, dateISO);
+          const hasOpen = slots.some(s => s.status === 'open');
+          const hasBooked = slots.some(s => s.status === 'booked');
+          const myEnq = userEnquiries.find(e =>
+            e.status !== 'declined' && e.status !== 'cancelled' &&
+            slots.some(s => e.requestedSlot?.day === dayName && e.requestedSlot?.time === s.time && inferSlotDate(e) === dateISO)
+          );
+          const isBookedByMe = hasBooked && userEnquiries.some(e =>
+            e.status === 'accepted' &&
+            slots.some(s => e.requestedSlot?.day === dayName && e.requestedSlot?.time === s.time && inferSlotDate(e) === dateISO)
+          );
+          return (
+            <View key={`${year}-${month}-${dayNum}`} style={lv.calCell}>
+              <View style={[lv.calDayCircle, isToday && lv.calDayCircleToday]}>
+                <Text style={[lv.calDayNum, { color: isToday ? '#ffffff' : isOutOfRange ? colors.greyLight : colors.black }]}>{dayNum}</Text>
+              </View>
+              <View style={lv.calDots}>
+                {!isOutOfRange && hasOpen && !myEnq && <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} />}
+                {!isOutOfRange && !!myEnq && <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#22c55e' }]} />}
+                {!isOutOfRange && isBookedByMe && <View style={[lv.calDot, { backgroundColor: '#22c55e' }]} />}
+                {!isOutOfRange && hasBooked && !isBookedByMe && <View style={[lv.calDot, { backgroundColor: '#e0e0e0' }]} />}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ── List view slot row (web) ───────────────────────────────────────────
+
+function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
+  slot: Slot; date: Date; dateISO: string; day: string;
+  isArtist: boolean; isLoggedIn: boolean;
+  userEnquiries: Enquiry[];
+  onEnquire: (s: Slot, d: string, date?: string) => void;
+}) {
+  const { colors } = useTheme();
+  const router = useRouter();
+
+  const matchesSlot = (e: Enquiry) =>
+    e.requestedSlot?.day === day && e.requestedSlot?.time === slot.time && inferSlotDate(e) === dateISO;
+
+  const activeEnquiry = userEnquiries.find(e =>
+    e.status !== 'declined' && e.status !== 'cancelled' && matchesSlot(e)
+  );
+  const hasEnquired  = slot.status === 'open' && !!activeEnquiry;
+  const isBookedByMe = slot.status === 'booked' && userEnquiries.some(e => e.status === 'accepted' && matchesSlot(e));
+  const canEnquire   = slot.status === 'open' && !hasEnquired && isArtist;
+
+  let leftBorderColor: string;
+  let badgeLabel: string;
+  let badgeTextColor: string;
+  let badgeBg: string;
+  let badgeBorderColor: string;
+
+  if (isBookedByMe) {
+    leftBorderColor = '#22c55e';
+    badgeLabel = 'Your gig'; badgeTextColor = '#ffffff'; badgeBg = '#22c55e'; badgeBorderColor = '#22c55e';
+  } else if (hasEnquired) {
+    leftBorderColor = '#22c55e';
+    badgeLabel = 'Enquiry sent'; badgeTextColor = '#16a34a'; badgeBg = 'transparent'; badgeBorderColor = '#22c55e';
+  } else if (slot.status === 'booked') {
+    leftBorderColor = '#e0e0e0';
+    badgeLabel = 'Booked'; badgeTextColor = '#888888'; badgeBg = 'transparent'; badgeBorderColor = '#e0e0e0';
+  } else if (slot.status === 'pending') {
+    leftBorderColor = Colors.orange;
+    badgeLabel = 'Pending'; badgeTextColor = Colors.orange; badgeBg = 'transparent'; badgeBorderColor = Colors.orange;
+  } else {
+    leftBorderColor = Colors.orange;
+    badgeLabel = 'Open'; badgeTextColor = Colors.orange; badgeBg = 'transparent'; badgeBorderColor = Colors.orange;
+  }
+
+  return (
+    <View style={[lv.slotRow, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: colors.bg }]}>
+      <View style={lv.dateBox}>
+        <Text style={[lv.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
+        <Text style={[lv.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
+      </View>
+      <Text style={[lv.dayAbbrev, { color: colors.grey }]}>{day.slice(0,3).toUpperCase()}</Text>
+      <Text style={[lv.slotTime, { color: colors.black }]}>
+        {slot.time}{slot.room ? <Text style={[lv.slotRoom, { color: colors.grey }]}> · {slot.room}</Text> : null}
+      </Text>
+      <View style={{ flex: 1 }} />
+      <View style={[lv.statusBadge, { borderColor: badgeBorderColor, backgroundColor: badgeBg }]}>
+        <Text style={[lv.statusBadgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+      </View>
+      {canEnquire && (
+        <TouchableOpacity style={lv.enquireBtn} onPress={() => onEnquire(slot, day, dateISO)}>
+          <Text style={lv.enquireBtnText}>Enquire</Text>
+        </TouchableOpacity>
+      )}
+      {(hasEnquired || isBookedByMe) && activeEnquiry && (
+        <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { openEnquiryId: activeEnquiry.id } } as any)}>
+          <Text style={lv.viewLink}>View</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1147,7 +1085,7 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
         ) : null}
         {isOpen && !hasEnquired && (
           <View style={ns.openMeta}>
-            {slot.slotType && slot.slotType !== 'Any' ? (
+            {slot.slotType && slot.slotType !== 'Headline' ? (
               <View style={ns.typePill}><Text style={ns.typeText}>{slot.slotType}</Text></View>
             ) : null}
             {slot.duration ? <Text style={ns.metaText}>{slot.duration} min</Text> : null}
@@ -1514,7 +1452,7 @@ const s = StyleSheet.create({
   genreText:          { fontSize: 12, color: Colors.orange, fontWeight: '500' },
   genrePillSmall:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   genreTextSmall:     { fontSize: 11, color: Colors.orange },
-  genreOrangeText:    { fontSize: 12, color: Colors.orange, fontWeight: '500', marginTop: 2 },
+  genreOrangeText:    { fontSize: 12, color: Colors.black, fontWeight: '500', marginTop: 2 },
   breadcrumb:         { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1.4, marginBottom: 6 },
   editProfileBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start' },
   editProfileBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
@@ -1619,74 +1557,59 @@ const s = StyleSheet.create({
   wvEmpty:            { paddingVertical: 48, textAlign: 'center', fontSize: 15 },
 });
 
-// Web slot card styles
-const ws = StyleSheet.create({
-  card:             { borderRadius: 6, padding: 8, marginBottom: 4, borderWidth: 1, borderColor: '#e8e8e8', gap: 4 },
-  cardOpen:         { borderColor: '#e0e0e0', backgroundColor: '#fafafa' },
-  cardOpenClickable:{ borderColor: Colors.orange, backgroundColor: '#fff8f0' },
-  cardEnquired:     { borderColor: '#f5a623', backgroundColor: '#fffbf0' },
-  cardPending:      { borderColor: '#cccccc', backgroundColor: '#f8f8f8' },
-  time:             { fontSize: 13, fontWeight: '700', color: '#111111' },
-  openLabel:        { fontSize: 12, color: Colors.orange, fontWeight: '600' },
-  enquiredLabel:    { fontSize: 12, color: '#f5a623', fontWeight: '600' },
-  pendingLabel:     { fontSize: 12, color: '#888888', fontWeight: '600' },
-  bandName:         { fontSize: 12, fontWeight: '700', color: '#111111' },
-  bandNameMuted:    { fontSize: 12, color: '#888888' },
-  room:             { fontSize: 11, color: '#888888' },
-  typePill:         { alignSelf: 'flex-start', backgroundColor: '#f4f4f4', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  typeText:         { fontSize: 10, fontWeight: '700', color: '#333333', textTransform: 'uppercase' },
-  ticketBtn:        { alignSelf: 'flex-start', backgroundColor: Colors.orange, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, marginTop: 2 },
-  ticketBtnText:    { fontSize: 11, fontWeight: '700', color: '#111111' },
-  featuredBadge:    { alignSelf: 'flex-start', backgroundColor: '#fbbf24', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 4 },
-  featuredText:     { fontSize: 10, fontWeight: '700', color: '#111111' },
-});
-
-// Week view row styles (web)
-const wvs = StyleSheet.create({
-  row:              { flexDirection: 'row', alignItems: 'stretch', borderRadius: 8, borderWidth: 1, borderColor: '#e8e8e8', backgroundColor: '#ffffff', minHeight: 52, marginBottom: 8, overflow: 'hidden' },
-  rowOpen:          { borderColor: Colors.orange, borderLeftWidth: 3 },
-  rowEnquired:      { backgroundColor: 'rgba(250,131,12,0.06)', borderColor: 'rgba(250,131,12,0.35)' },
-  rowBooked:        { backgroundColor: '#f6f6f6', borderColor: '#e0e0e0' },
-  rowBookedMine:    { backgroundColor: '#e8f8e8', borderColor: '#4ade80' },
-  rowPending:       { backgroundColor: 'rgba(245,166,35,0.07)', borderColor: 'rgba(245,166,35,0.4)' },
-  timeCell:         { width: 80, justifyContent: 'center', paddingHorizontal: 12 },
-  time:             { fontSize: 13, fontWeight: '600' },
-  info:             { flex: 1, justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 12, borderLeftWidth: 1, borderLeftColor: '#eeeeee', gap: 3 },
-  status:           { fontSize: 14, fontWeight: '600' },
-  meta:             { fontSize: 12, color: '#999999' },
-  action:           { justifyContent: 'center', paddingHorizontal: 12 },
-  enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
+// List view styles (web desktop timetable)
+const lv = StyleSheet.create({
+  usuallyBar:       { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 18, paddingBottom: 14, borderBottomWidth: 1, marginBottom: 20 },
+  usuallyLabel:     { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  usuallyItem:      { fontSize: 13 },
+  filterRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  filterTabs:       { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  filterTab:        { paddingHorizontal: 18, paddingVertical: 9 },
+  filterTabActive:  { backgroundColor: Colors.orange },
+  filterTabText:    { fontSize: 13, fontWeight: '600' },
+  countRow:         { gap: 8 },
+  countLabel:       { fontSize: 13, fontWeight: '500' },
+  monthNavRow:      { flexDirection: 'row', gap: 10 },
+  monthNavBtn:      { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#e0e0e0' },
+  monthNavText:     { fontSize: 13, fontWeight: '600' },
+  body:             { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },
+  // Mini calendar panel
+  calPanel:         { width: 210, borderWidth: 1, borderRadius: 12, padding: 16 },
+  calPanelTitle:    { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  calLegend:        { gap: 6, marginBottom: 20 },
+  calLegendItem:    { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  calLegendText:    { fontSize: 11 },
+  calDot:           { width: 8, height: 8, borderRadius: 4 },
+  calMonth:         { marginBottom: 18 },
+  calMonthLabel:    { fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  calDowRow:        { flexDirection: 'row', marginBottom: 2 },
+  calDow:           { flex: 1, textAlign: 'center' as const, fontSize: 9, fontWeight: '700' },
+  calGrid:          { flexDirection: 'row', flexWrap: 'wrap' },
+  calCell:          { width: '14.28%' as any, alignItems: 'center', paddingVertical: 2 },
+  calDayCircle:     { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  calDayCircleToday:{ backgroundColor: Colors.orange },
+  calDayNum:        { fontSize: 10, fontWeight: '600' },
+  calDots:          { flexDirection: 'row', gap: 1, minHeight: 6, marginTop: 1, justifyContent: 'center' },
+  // Slot list
+  listArea:         { flex: 1 },
+  emptyText:        { fontSize: 15, paddingVertical: 40, textAlign: 'center' as const },
+  monthGroup:       { marginBottom: 24 },
+  monthHeader:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  monthLabel:       { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+  monthOpenCount:   { fontSize: 11, color: Colors.orange, fontWeight: '600' },
+  // Slot row
+  slotRow:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderLeftWidth: 4, borderRadius: 8, marginBottom: 8, paddingVertical: 14, paddingHorizontal: 16, gap: 14 },
+  dateBox:          { width: 36, alignItems: 'center', flexShrink: 0 },
+  dateNum:          { fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  dateMonth:        { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
+  dayAbbrev:        { width: 28, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: 0.5, flexShrink: 0 },
+  slotTime:         { fontSize: 16, fontWeight: '700', minWidth: 70, flexShrink: 0 },
+  slotRoom:         { fontSize: 13, fontWeight: '500' },
+  statusBadge:      { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, flexShrink: 0 },
+  statusBadgeText:  { fontSize: 12, fontWeight: '600' },
+  enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
   enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },
-  daySection:       { borderTopWidth: 1, borderTopColor: '#eeeeee', paddingTop: 16, paddingBottom: 4, marginBottom: 4 },
-  daySectionPast:   { opacity: 0.55 },
-  dayHeader:        { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  dayName:          { fontSize: 12, fontWeight: '800', letterSpacing: 1.2, minWidth: 28 },
-  dayDate:          { fontSize: 13, fontWeight: '500' },
-  todayBadge:       { backgroundColor: Colors.orange, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  todayBadgeText:   { fontSize: 10, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.6 },
-  slotCount:        { fontSize: 12 },
-  dayEmpty:         { fontSize: 13, paddingVertical: 6 },
-});
-
-// Month grid styles — 7 equal columns via flexBasis
-const CELL_W = '14.28%';
-const mg = StyleSheet.create({
-  wrap:             { flexDirection: 'row', flexWrap: 'wrap' },
-  dow:              { width: CELL_W, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#888888', paddingVertical: 8 },
-  cell:             { width: CELL_W, borderWidth: 0.5, borderColor: '#eeeeee', minHeight: 90, padding: 5 },
-  dayNum:           { fontSize: 12, fontWeight: '600', color: '#333333', marginBottom: 4 },
-  todayCircle:      { width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  todayCircleText:  { fontSize: 12, fontWeight: '700', color: '#111111' },
-  pill:             { borderRadius: 5, paddingHorizontal: 5, paddingVertical: 3, marginBottom: 3 },
-  pillOpen:         { backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: Colors.orange },
-  pillBooked:       { backgroundColor: '#eeeeee' },
-  pillBookedMine:   { backgroundColor: '#d4f0d4' },
-  pillEnquired:     { backgroundColor: 'rgba(250,131,12,0.15)' },
-  pillText:         { fontSize: 10, color: '#333333' },
-  pillTextOpen:     { fontSize: 10, color: Colors.orange, fontWeight: '600' },
-  pillTextBooked:   { fontSize: 10, color: '#888888' },
-  pillTextBookedMine: { fontSize: 10, color: '#16a34a', fontWeight: '600' },
-  pillTextEnquired: { fontSize: 10, color: Colors.orange, fontWeight: '500' },
+  viewLink:         { fontSize: 13, fontWeight: '600', color: Colors.orange, paddingHorizontal: 4, flexShrink: 0 },
 });
 
 // Native slot card styles
@@ -1709,7 +1632,7 @@ const ns = StyleSheet.create({
   genreRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   genrePill:        { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   genreText:        { fontSize: 11, color: '#888888' },
-  genreOrangeText:  { fontSize: 11, color: Colors.orange, fontWeight: '500', marginTop: 2 },
+  genreOrangeText:  { fontSize: 11, color: Colors.black, fontWeight: '500', marginTop: 2 },
   notes:            { fontSize: 13, color: '#888888', fontStyle: 'italic' },
   enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },

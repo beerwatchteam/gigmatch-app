@@ -20,7 +20,7 @@ import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
-const SLOT_TYPES     = ['Any','Headline','Support'];
+const SLOT_TYPES     = ['Headline','Other'];
 
 type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string };
 type Night = {
@@ -561,7 +561,7 @@ export default function EditVenueScreen() {
     const day = CANONICAL_DAYS.find(d => !usedDays.includes(d)) || 'Monday';
     setData(prev => {
       const nights = [...prev.gigNights, {
-        day, startTime: '', duration: 60, slotType: 'Any',
+        day, startTime: '', duration: 60, slotType: 'Headline',
         startDate: '', endDate: '', continuous: true,
         feeMin: '', feeMax: '', feeBasis: '', loadIn: '', soundcheck: '',
         room: '', genres: [], notes: '', paymentModel: '',
@@ -739,7 +739,7 @@ export default function EditVenueScreen() {
           return {
             id: `open-${day.toLowerCase()}-${idx}`,
             time, status: 'open',
-            slotType: night.slotType || 'Any',
+            slotType: night.slotType || 'Headline',
             room: night.room || '',
             feeMin: night.feeMin !== '' ? Number(night.feeMin) : null,
             feeMax: night.feeMax !== '' ? Number(night.feeMax) : null,
@@ -980,7 +980,7 @@ export default function EditVenueScreen() {
           <View style={s.section}>
 
             {/* Venue Details */}
-            <View style={s.sectionBlock}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Venue Details</Text>
               <Field label="Venue name *" error={showErrors && !data.name?.trim()}>
                 <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} />
@@ -1006,27 +1006,27 @@ export default function EditVenueScreen() {
             </View>
 
             {/* Contact */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
               <Field label="Email *" error={showErrors && !data.email?.trim()}>
-                <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="venue@email.com" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
+                <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
               </Field>
               <Field label="Phone number *" error={showErrors && !data.phone?.trim()}>
-                <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="04xx xxx xxx" keyboardType="phone-pad" error={showErrors && !data.phone?.trim()} />
+                <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone *" keyboardType="phone-pad" error={showErrors && !data.phone?.trim()} />
               </Field>
               <Field label="Website *" error={showErrors && !data.website?.trim()}>
-                <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://yourvenue.com.au" error={showErrors && !data.website?.trim()} />
+                <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="Website *" error={showErrors && !data.website?.trim()} />
               </Field>
             </View>
 
             {/* Description */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Description</Text>
               <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Tell musicians about your venue…" multiline />
             </View>
 
             {/* Payment */}
-            <View style={[s.sectionBlock, { borderTopColor: colors.borderFaint }]}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Payment</Text>
               <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Set out how you pay artists so everyone's on the same page before a gig is booked. Clear payment terms build trust and reduce back-and-forth.</Text>
 
@@ -1233,8 +1233,13 @@ export default function EditVenueScreen() {
                         <Pills options={CANONICAL_DAYS} value={night.day} onSelect={(v: string) => setNight(i, 'day', v)} />
                       </Field>
                       <Field label="Slot Type">
-                        <Pills options={SLOT_TYPES} value={night.slotType || 'Any'} onSelect={(v: string) => setNight(i, 'slotType', v)} />
+                        <Pills options={SLOT_TYPES} value={night.slotType || 'Headline'} onSelect={(v: string) => setNight(i, 'slotType', v)} />
                       </Field>
+                      {night.slotType === 'Other' && (
+                        <Field label="Note for artists">
+                          <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="Describe this slot e.g. support act, acoustic set, residency..." multiline />
+                        </Field>
+                      )}
                       {data.rooms.length > 0 && (
                         <Field label="Room">
                           <Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} />
@@ -1385,9 +1390,6 @@ export default function EditVenueScreen() {
                           onSelect={(v: string[]) => setNight(i, 'genres', v)}
                           multi
                         />
-                      </Field>
-                      <Field label="Notes">
-                        <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="Any notes for acts" multiline />
                       </Field>
                       <TouchableOpacity style={s.removeBtn} onPress={() => removeNight(i)}>
                         <Text style={s.removeBtnText}>Remove Gig</Text>
@@ -1572,6 +1574,7 @@ const s = StyleSheet.create({
   bannerEditBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   section:       { gap: 4 },
   sectionBlock:  { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
+  sectionBox:    { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 12 },
   sectionTitle:  { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, marginBottom: 16 },
   input:         { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },
   textarea:      { minHeight: 100, textAlignVertical: 'top' },

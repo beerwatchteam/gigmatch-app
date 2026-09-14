@@ -150,30 +150,16 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
   const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
   const hasContact     = !!(m.email || m.phone);
   const hasSocials     = socialLinks.length > 0 || customLinks.length > 0;
-  const hasFee         = m.feeMin != null || m.feeMax != null;
   const hasTechRider   = !!(m.techRider && Object.values(m.techRider).some(v => v));
   const hasTechDocs    = !!(m.techRiderDocs && m.techRiderDocs.length > 0);
-  const hasSidebar     = hasFee || hasContact || hasSocials || !!m.availability || hasTechRider || hasTechDocs;
+  const hasSidebar     = hasContact || hasSocials || !!m.availability || hasTechRider || hasTechDocs;
 
-  const feeStr = hasFee
-    ? (m.feeMin != null && m.feeMax != null
-        ? `$${m.feeMin.toLocaleString()} – $${m.feeMax.toLocaleString()}`
-        : m.feeMin != null
-          ? `From $${m.feeMin.toLocaleString()}`
-          : `Up to $${m.feeMax!.toLocaleString()}`)
-    : null;
 
   const sidebar = (
     <View style={!isMobileLayout ? styles.overviewSidebar : styles.mobileSidebar}>
-      {feeStr && (
-        <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>FEE</Text>
-          <Text style={[styles.sideFee, { color: colors.black }]}>{feeStr}</Text>
-        </View>
-      )}
       {hasContact && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>CONTACT</Text>
+          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Contact</Text>
           {m.email && (
             <TouchableOpacity onPress={() => Linking.openURL(`mailto:${m.email}`)}>
               <Text style={styles.sideLink}>{m.email}</Text>
@@ -188,7 +174,7 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
       )}
       {hasSocials && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>SOCIALS</Text>
+          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Socials</Text>
           {socialLinks.map(p => (
             <TouchableOpacity key={p.key} onPress={() => Linking.openURL((m as any)[p.key])}>
               <Text style={styles.sideLink}>{p.label} →</Text>
@@ -203,13 +189,13 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
       )}
       {m.availability && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>AVAILABILITY</Text>
+          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Availability</Text>
           <Text style={[styles.sideBody, { color: colors.black }]}>{m.availability}</Text>
         </View>
       )}
-      {hasTechRider && (
+      {(hasTechRider || hasTechDocs) && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>TECH RIDER</Text>
+          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Tech Rider</Text>
           {m.techRider?.monitoring && (
             <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
               <Text style={{ fontWeight: '700' }}>Monitoring: </Text>{m.techRider.monitoring}
@@ -231,18 +217,18 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
             </Text>
           )}
           {m.techRider?.notes && (
-            <Text style={[styles.sideBody, { color: colors.greyLight, marginTop: 4 }]}>{m.techRider.notes}</Text>
+            <Text style={[styles.sideBody, { color: colors.greyLight, marginTop: 4, marginBottom: hasTechDocs ? 8 : 0 }]}>{m.techRider.notes}</Text>
           )}
-        </View>
-      )}
-      {hasTechDocs && (
-        <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.greyLight }]}>SPEC SHEETS</Text>
-          {(m.techRiderDocs || []).map((doc, i) => (
-            <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
-              <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {doc.name}</Text>
-            </TouchableOpacity>
-          ))}
+          {hasTechDocs && (
+            <View style={{ marginTop: hasTechRider ? 10 : 0 }}>
+              <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Spec Sheets</Text>
+              {(m.techRiderDocs || []).map((doc, i) => (
+                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
+                  <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {doc.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -252,7 +238,7 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
     <View style={!isMobileLayout ? styles.overviewMain : undefined}>
       {about ? (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>ABOUT</Text>
+          <Text style={[styles.sectionLabel, { color: colors.black }]}>About</Text>
           <Text style={[styles.body, { color: colors.black }]}>
             {shouldTruncate && !expanded ? about.slice(0, MAX_DESC) + '…' : about}
           </Text>
@@ -266,7 +252,7 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
 
       {gigHistory.length > 0 && (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>GIG HISTORY</Text>
+          <Text style={[styles.sectionLabel, { color: colors.black }]}>Past Gigs</Text>
           <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
             <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
@@ -294,20 +280,20 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
     </View>
   );
 
-  if (!isMobileLayout) {
+  if (isMobileLayout) {
     return (
-      <View style={styles.overviewLayout}>
-        {main}
-        {hasSidebar && <View>{sidebar}</View>}
-      </View>
+      <>
+        <View style={styles.mobileContent}>{main}</View>
+        {hasSidebar && <View style={styles.mobileContent}>{sidebar}</View>}
+      </>
     );
   }
 
   return (
-    <>
-      {hasSidebar && <View style={styles.mobileContent}>{sidebar}</View>}
-      <View style={styles.mobileContent}>{main}</View>
-    </>
+    <View style={styles.overviewLayout}>
+      {main}
+      {hasSidebar && <View>{sidebar}</View>}
+    </View>
   );
 }
 
@@ -426,6 +412,56 @@ function MusicTab({ m }: { m: Musician }) {
   );
 }
 
+// ── Timetable Tab ─────────────────────────────────────────────────
+
+function TimetableTab({ m }: { m: Musician }) {
+  const { colors } = useTheme();
+  const upcoming = (m.upcomingGigs || [])
+    .filter(g => g.venue || g.date)
+    .slice()
+    .sort((a, b) => {
+      const da = a.date ? Date.parse(a.date) : NaN;
+      const db = b.date ? Date.parse(b.date) : NaN;
+      if (isNaN(da) && isNaN(db)) return 0;
+      if (isNaN(da)) return 1;
+      if (isNaN(db)) return -1;
+      return da - db;
+    });
+
+  if (upcoming.length === 0) {
+    return (
+      <View style={styles.tabContent}>
+        <Text style={[styles.emptyState, { color: colors.greyLight }]}>No upcoming gigs listed yet.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.tabContent}>
+      <View style={styles.section}>
+        <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
+          <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
+          <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
+          <Text style={[styles.gigColDraw, styles.gigTableHdr, { color: colors.greyLight }]}>DATE</Text>
+        </View>
+        {upcoming.map((gig, i) => (
+          <View key={i} style={[styles.gigTableRow, { borderBottomColor: colors.borderFaint }]}>
+            <Text style={[styles.gigColVenue, styles.gigCellText, { color: colors.black }]} numberOfLines={1}>
+              {gig.venue || '—'}
+            </Text>
+            <Text style={[styles.gigColSuburb, styles.gigCellText, { color: colors.grey }]} numberOfLines={1}>
+              {gig.suburb || '—'}
+            </Text>
+            <Text style={[styles.gigColDraw, styles.gigCellText, { color: colors.black }]}>
+              {gig.date || '—'}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 // ── Main Screen ───────────────────────────────────────────────────
 
 export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
@@ -441,8 +477,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   const [musician, setMusician]   = useState<Musician | null>(null);
   const [loading, setLoading]     = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'music'>(
-    initialTab === 'music' ? 'music' : 'overview'
+  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable'>(
+    initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : 'overview'
   );
 
   const isOwn = user?.uid === id;
@@ -496,10 +532,20 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Auto-count gigs from gigHistory entries whose date contains the current year
   const gigsThisYear = (musician.gigHistory || []).filter(g => g.date && g.date.includes(String(year))).length;
 
+  const hasFee = musician.feeMin != null || musician.feeMax != null;
+  const feeStr = hasFee
+    ? (musician.feeMin != null && musician.feeMax != null
+        ? `$${musician.feeMin.toLocaleString()} – $${musician.feeMax.toLocaleString()}`
+        : musician.feeMin != null
+          ? `From $${musician.feeMin.toLocaleString()}`
+          : `Up to $${musician.feeMax!.toLocaleString()}`)
+    : null;
+
   const statsItems = [
     musician.averageDraw != null ? { value: String(musician.averageDraw), label: 'TYPICAL DRAW' } : null,
-    musician.actSize             ? { value: musician.actSize,             label: 'ACT SIZE'     } : null,
     gigsThisYear > 0             ? { value: String(gigsThisYear),         label: `GIGS IN ${year}` } : null,
+    feeStr                       ? { value: feeStr,                        label: 'FEE'          } : null,
+    musician.actSize             ? { value: musician.actSize,             label: 'ACT SIZE'     } : null,
     musician.backline            ? { value: musician.backline,            label: 'BACKLINE'     } : null,
   ].filter(Boolean) as { value: string; label: string }[];
 
@@ -598,8 +644,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {/* Tab bar */}
         <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
           {([
-            { id: 'overview', label: 'Overview'       },
-            { id: 'music',    label: 'Music & Social' },
+            { id: 'overview',   label: 'Overview'       },
+            { id: 'music',      label: 'Music & Social' },
+            { id: 'timetable',  label: 'Timetable'      },
           ] as const).map(tab => (
             <TouchableOpacity
               key={tab.id}
@@ -618,10 +665,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'
-          ? <OverviewTab m={musician} isMobileLayout={isMobileLayout} />
-          : <MusicTab m={musician} />
-        }
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} />}
+        {activeTab === 'music'      && <MusicTab m={musician} />}
+        {activeTab === 'timetable'  && <TimetableTab m={musician} />}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -713,13 +759,13 @@ const styles = StyleSheet.create({
   overviewMain:    { flex: 1, paddingBottom: 28 },
   overviewSidebar: { width: 240, gap: 0 },
   mobileSidebar:   { gap: 0 },
-  mobileContent:   { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 },
+  mobileContent:   { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 24, paddingBottom: 4 },
   tabContent:      { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28 },
 
   section:      { marginBottom: 28 },
   sectionLabel: {
-    fontSize: 11, fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12,
+    fontSize: 16, fontWeight: '700',
+    letterSpacing: -0.2, marginBottom: 16,
   },
   body:      { fontSize: 15, lineHeight: 22 },
   readMore:  { fontSize: 14, color: Colors.orange, fontWeight: '600', marginTop: 8 },
@@ -731,8 +777,8 @@ const styles = StyleSheet.create({
     padding: 16, marginBottom: 12,
   },
   sideSectionLabel: {
-    fontSize: 10, fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8,
+    fontSize: 16, fontWeight: '700',
+    letterSpacing: -0.2, marginBottom: 10,
   },
   sideFee:  { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   sideLink: { fontSize: 14, color: Colors.orange, fontWeight: '500', marginBottom: 6 },

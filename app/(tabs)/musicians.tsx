@@ -361,9 +361,9 @@ export default function MusiciansScreen() {
       ? `$${item.feeMin}–$${item.feeMax}`
       : item.feeMin != null ? `$${item.feeMin}+` : null;
     const stats = [
-      item.averageDraw != null  ? { value: String(item.averageDraw),  label: 'DRAW'          } : null,
-      feeStr                    ? { value: feeStr,                     label: 'FEE'           } : null,
+      item.averageDraw != null  ? { value: String(item.averageDraw),  label: 'DRAW'               } : null,
       gigsThisYear > 0          ? { value: String(gigsThisYear),       label: `GIGS '${yearShort}` } : null,
+      feeStr                    ? { value: feeStr,                     label: 'FEE'                } : null,
     ].filter(Boolean) as { value: string; label: string }[];
 
     return (
@@ -405,7 +405,7 @@ export default function MusiciansScreen() {
           {stats.length > 0 && (
             <View style={[st.statsStrip, { borderTopColor: colors.borderFaint }]}>
               {stats.map((stat, i) => (
-                <View key={stat.label} style={[st.statItem, i < stats.length - 1 && { borderRightWidth: 1, borderRightColor: colors.borderFaint }]}>
+                <View key={stat.label} style={st.statItem}>
                   <Text style={[st.statValue, { color: colors.black }]}>{stat.value}</Text>
                   <Text style={[st.statLabel, { color: colors.grey }]}>{stat.label}</Text>
                 </View>
