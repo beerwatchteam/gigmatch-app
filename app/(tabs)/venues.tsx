@@ -588,7 +588,7 @@ export default function VenuesScreen() {
       if (!hasOpen) return false;
     }
     return true;
-  });
+  }).sort((a, b) => (a.id === 'test-venue' ? -1 : b.id === 'test-venue' ? 1 : 0));
 
   // ── Active filter state ───────────────────────────────────────────
   const feeActive  = feeRanges.length > 0;
