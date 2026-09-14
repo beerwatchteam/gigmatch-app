@@ -12,7 +12,7 @@ import { auth } from '@/lib/firebase';
 
 const isWeb = Platform.OS === 'web';
 export const TOP_TAB_H   = 52;
-export const BOTTOM_TAB_H = 60;
+export const BOTTOM_TAB_H = 52;
 export const WEB_TAB_H   = 48;
 
 
@@ -136,6 +136,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
         backgroundColor: colors.bg,
         borderTopColor: colors.border,
         paddingBottom: insets.bottom,
+        height: BOTTOM_TAB_H + insets.bottom,
         bottom: 0,
       },
     ]}>
@@ -266,7 +267,7 @@ const bb = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
   },
-  tab:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 8 },
+  tab:       { flex: 1, alignItems: 'center', justifyContent: 'flex-start', gap: 3, paddingTop: 10 },
   activeBar: { position: 'absolute', top: 0, left: 12, right: 12, height: 2, backgroundColor: Colors.orange, borderRadius: 1 },
   iconWrap:  { position: 'relative' },
   label:     { fontSize: 10, fontWeight: '600', letterSpacing: 0.2 },
@@ -316,7 +317,7 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
           tabBarStyle: { display: 'none' },
-          sceneContainerStyle: !isMobileWeb && isWeb
+          sceneStyle: !isMobileWeb && isWeb
             ? { paddingTop: WEB_TAB_H }
             : isMobileWeb
               ? { paddingBottom: bottomPad }

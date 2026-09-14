@@ -908,7 +908,7 @@ export default function VenuesScreen() {
           </View>
 
           {/* ── Stats ── */}
-          <View style={[st.statsRow, { borderTopColor: colors.border }]}>
+          <View style={st.statsRow}>
             <View style={st.statCol}>
               <Text style={[st.statVal, { color: colors.black }]} numberOfLines={2}>{paymentVal}</Text>
               <Text style={st.statLabel}>PAYMENT</Text>
@@ -1571,7 +1571,15 @@ export default function VenuesScreen() {
   const totalNativeSlots = filtered.reduce((sum, v) => sum + countOpenSlotsForRange(v, nD0, nD42), 0);
 
   return (
-    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+    <View style={[st.safe, { backgroundColor: colors.bg }]}>
+      {/* Hero */}
+      <View style={st.nativeHero}>
+        <Text style={st.nativeTitle}>Find your next gig</Text>
+        <Text style={st.nativeSub}>
+          {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalNativeSlots} open slot{totalNativeSlots !== 1 ? 's' : ''}
+        </Text>
+      </View>
+
       {/* Filter bar — outside ScrollView so dropdown always renders on top */}
       <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>{NativeFilterBar}</View>
 
@@ -1579,14 +1587,7 @@ export default function VenuesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={st.nativeContent}>
-          {/* Header */}
-          <View style={st.nativeHeader}>
-            <Text style={[st.nativeTitle, { color: colors.black }]}>Find your next gig</Text>
-            <Text style={[st.nativeSub, { color: colors.grey }]}>
-              {filtered.length} venue{filtered.length !== 1 ? 's' : ''} · {totalNativeSlots} open slot{totalNativeSlots !== 1 ? 's' : ''}
-            </Text>
-          </View>
+        <View style={[st.nativeContent, { paddingTop: 14 }]}>
           {loading
             ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
             : filtered.length === 0
@@ -1597,7 +1598,7 @@ export default function VenuesScreen() {
         </View>
       </ScrollView>
       {FilterPanel}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1708,10 +1709,9 @@ const st = StyleSheet.create({
   nativeContent:  { paddingHorizontal: 16 },
   countRow:       { paddingTop: 14, paddingBottom: 8 },
 
-  // Native header
-  nativeHeader:   { paddingTop: 20, paddingBottom: 12 },
-  nativeTitle:    { fontSize: 26, fontWeight: '800', color: '#111111', letterSpacing: -0.5 },
-  nativeSub:      { fontSize: 13, color: '#666666', marginTop: 3 },
+  nativeHero:     { backgroundColor: '#f2ede6', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 24 },
+  nativeTitle:    { fontSize: 30, fontWeight: '800', color: '#111111', letterSpacing: -0.5, lineHeight: 36 },
+  nativeSub:      { fontSize: 13, color: '#666666', marginTop: 4 },
 
   // Filter icon button
   filterIconBtn:      { borderRadius: 10, borderWidth: 1.5, borderColor: '#dddddd', padding: 10, backgroundColor: '#fafafa', position: 'relative' as any },
@@ -1724,44 +1724,44 @@ const st = StyleSheet.create({
   cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
 
   // Card photo (full-width top)
-  cardPhoto:      { width: '100%' as any, height: 120 },
+  cardPhoto:      { width: '100%' as any, height: 85 },
   cardPhotoEmpty: { alignItems: 'center', justifyContent: 'center' },
   cardPhotoLabel: { fontSize: 11, fontStyle: 'italic' },
 
   // Card body
-  cardBody:       { padding: 14, gap: 4 },
+  cardBody:       { padding: 12, gap: 3 },
   cardNameRow:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
-  cardCap:        { fontSize: 12, fontWeight: '500', marginTop: 3 },
-  venueName:      { fontSize: 18, fontWeight: '700', color: '#111111', lineHeight: 23 },
-  venueAddr:      { fontSize: 13, color: '#666666', marginTop: 1 },
-  venueGenreText: { fontSize: 12, fontWeight: '400', marginTop: 3 },
+  cardCap:        { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  venueName:      { fontSize: 16, fontWeight: '700', color: '#111111', lineHeight: 21 },
+  venueAddr:      { fontSize: 12, color: '#666666', marginTop: 1 },
+  venueGenreText: { fontSize: 11, fontWeight: '400', marginTop: 2 },
   genreRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
   pill:           { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 9, paddingVertical: 2 },
   pillText:       { fontSize: 11, color: Colors.orange, fontWeight: '500' },
 
   // Card slots section
-  cardSlots:      { marginTop: 12, paddingTop: 12, borderTopWidth: 1, gap: 0 },
-  slotsLabel:     { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 6 },
-  slotRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 9 },
+  cardSlots:      { marginTop: 8, paddingTop: 8, borderTopWidth: 1, gap: 0 },
+  slotsLabel:     { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 4 },
+  slotRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 5 },
   slotDate:         { fontSize: 13, fontWeight: '700' },
-  slotType:         { fontSize: 11, fontWeight: '500', marginTop: 2 },
+  slotType:         { fontSize: 11, fontWeight: '500', marginTop: 1 },
   slotEnquireLink:  { fontSize: 13, fontWeight: '700', color: Colors.orange },
-  moreText:         { fontSize: 12, color: Colors.orange, marginTop: 6 },
-  slotsNone:      { fontSize: 13, color: '#aaaaaa', fontStyle: 'italic' },
+  moreText:         { fontSize: 12, color: Colors.orange, marginTop: 4 },
+  slotsNone:      { fontSize: 12, color: '#aaaaaa', fontStyle: 'italic' },
 
   // Stats row
-  statsRow:       { flexDirection: 'row', marginTop: 10, paddingTop: 10 },
-  statCol:        { flex: 1, alignItems: 'center', gap: 3 },
+  statsRow:       { flexDirection: 'row', marginTop: 6, paddingTop: 4 },
+  statCol:        { flex: 1, alignItems: 'center', gap: 2 },
   statDivider:    { width: 1, marginVertical: 2 },
-  statVal:        { fontSize: 13, fontWeight: '700' },
+  statVal:        { fontSize: 12, fontWeight: '700' },
   statLabel:      { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, color: '#aaaaaa' },
 
   // Card buttons
-  cardBtns:            { flexDirection: 'row', gap: 10, marginTop: 10, paddingTop: 10 },
-  cardBtnOutlined:     { flex: 1, borderWidth: 1.5, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
-  cardBtnOutlinedText: { fontSize: 14, fontWeight: '700', color: Colors.orange },
-  cardBtnFilled:       { flex: 1, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
-  cardBtnFilledText:   { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  cardBtns:            { flexDirection: 'row', gap: 10, marginTop: 8, paddingTop: 4 },
+  cardBtnOutlined:     { flex: 1, borderWidth: 1.5, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
+  cardBtnOutlinedText: { fontSize: 13, fontWeight: '700', color: Colors.orange },
+  cardBtnFilled:       { flex: 1, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
+  cardBtnFilledText:   { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 
   // ── Mobile web hero ───────────────────────────────────────────────
   mobileWebHero:      { paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },

@@ -4,7 +4,6 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, getDocs, limit, query, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -284,7 +283,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+    <View style={[s.safe, { backgroundColor: colors.bg }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
 
         {/* ── Hero ── */}
@@ -417,7 +416,7 @@ export default function HomeScreen() {
         </View>
 
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, type AreaResult } from '@/lib/suburbSearch';
 import { useTheme } from '@/lib/theme-context';
+import { useAuth } from '@/lib/auth-context';
 import { SlidersHorizontal } from 'phosphor-react-native';
 import { TOP_TAB_H } from './_layout';
 
@@ -40,7 +41,7 @@ type Musician = {
   settings?: { listed?: boolean };
 };
 
-const CARD_H = 120;
+const CARD_H = 85;
 function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: number } }) {
   const [w, setW] = useState(0);
   const [dims, setDims] = useState({ nw: 0, nh: 0 });
@@ -69,6 +70,7 @@ const PANEL_W = Math.min(Dimensions.get('window').width * 0.87, 340);
 export default function MusiciansScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
@@ -427,6 +429,7 @@ export default function MusiciansScreen() {
               style={st.messageBtn}
               onPress={e => {
                 e.stopPropagation?.();
+                if (!user) { router.push('/login'); return; }
                 router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name || 'Musician' } });
               }}
               activeOpacity={0.85}
@@ -694,7 +697,15 @@ export default function MusiciansScreen() {
 
   // ── Native layout ─────────────────────────────────────────────────
   return (
-    <SafeAreaView style={[st.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+    <View style={[st.safe, { backgroundColor: colors.bg }]}>
+      {/* Hero */}
+      <View style={st.nativeHero}>
+        <Text style={st.nativeTitle}>Find your next act</Text>
+        <Text style={st.nativeSub}>
+          {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+        </Text>
+      </View>
+
       {/* Filter bar — outside ScrollView so dropdown always renders on top */}
       <View style={[st.nativeFilterBg, { backgroundColor: colors.bg, borderBottomColor: colors.border, zIndex: 100, overflow: 'visible' as any }]}>
         {NativeFilterBar}
@@ -704,14 +715,7 @@ export default function MusiciansScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.orange} />}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={st.nativeContent}>
-          {/* Header */}
-          <View style={st.nativeHeader}>
-            <Text style={[st.nativeTitle, { color: colors.black }]}>Find your next act</Text>
-            <Text style={[st.nativeSub, { color: colors.grey }]}>
-              {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
-            </Text>
-          </View>
+        <View style={[st.nativeContent, { paddingTop: 14 }]}>
           {loading
             ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
             : filtered.length === 0
@@ -722,7 +726,7 @@ export default function MusiciansScreen() {
         </View>
       </ScrollView>
       {FilterPanel}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -798,33 +802,33 @@ const st = StyleSheet.create({
 
   // ── Native layout ─────────────────────────────────────────────────
   nativeContent: { paddingHorizontal: 16 },
-  nativeHeader:  { paddingTop: 20, paddingBottom: 12 },
-  nativeTitle:   { fontSize: 26, fontWeight: '800', color: '#111111', letterSpacing: -0.5 },
-  nativeSub:     { fontSize: 13, color: '#666666', marginTop: 3 },
+  nativeHero:    { backgroundColor: '#f2ede6', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 24 },
+  nativeTitle:   { fontSize: 30, fontWeight: '800', color: '#111111', letterSpacing: -0.5, lineHeight: 36 },
+  nativeSub:     { fontSize: 13, color: '#666666', marginTop: 4 },
 
   // ── Musician card ─────────────────────────────────────────────────
-  card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
+  card:           { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 12, overflow: 'hidden', marginBottom: 14 },
   cardHovered:    { transform: [{ scale: 1.012 }], shadowColor: Colors.orange, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 8 },
   cardPhotoEmpty: { width: '100%', height: CARD_H, alignItems: 'center', justifyContent: 'center' },
-  cardPhotoLabel: { fontSize: 12, fontStyle: 'italic' },
-  cardBody:       { padding: 14, paddingHorizontal: 16, gap: 7 },
+  cardPhotoLabel: { fontSize: 11, fontStyle: 'italic' },
+  cardBody:       { padding: 12, gap: 3 },
   nameRow:        { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  name:           { fontSize: 18, fontWeight: '700', color: '#111111' },
+  name:           { fontSize: 16, fontWeight: '700', color: '#111111' },
   typeBadge:      { borderRadius: 4, backgroundColor: '#f4f4f4', paddingHorizontal: 8, paddingVertical: 2 },
   typeText:       { fontSize: 11, fontWeight: '600', color: '#555555' },
   meta:           { fontSize: 12, color: '#666666' },
-  genreText:      { fontSize: 12, fontWeight: '400' },
-  about:          { fontSize: 13, lineHeight: 19 },
+  genreText:      { fontSize: 11, fontWeight: '400' },
+  about:          { fontSize: 12, lineHeight: 17 },
 
-  statsStrip:    { flexDirection: 'row', borderTopWidth: 1, marginTop: 10, paddingTop: 10 },
-  statItem:      { flex: 1, gap: 3 },
-  statValue:     { fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
+  statsStrip:    { flexDirection: 'row', borderTopWidth: 1, marginTop: 6, paddingTop: 8 },
+  statItem:      { flex: 1, gap: 2 },
+  statValue:     { fontSize: 12, fontWeight: '700', letterSpacing: -0.3 },
   statLabel:     { fontSize: 9, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' as const },
-  cardFooter:    { flexDirection: 'row', gap: 10, paddingTop: 14, marginTop: 4, borderTopWidth: 1 },
-  listenBtn:     { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.orange, paddingVertical: 9, alignItems: 'center' },
-  listenBtnText: { fontSize: 14, fontWeight: '700', color: Colors.orange },
-  messageBtn:    { flex: 1, borderRadius: 10, backgroundColor: '#111111', paddingVertical: 9, alignItems: 'center' },
-  messageBtnText:{ fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  cardFooter:    { flexDirection: 'row', gap: 10, paddingTop: 8, marginTop: 6 },
+  listenBtn:     { flex: 1, borderRadius: 10, borderWidth: 1.5, borderColor: Colors.orange, paddingVertical: 8, alignItems: 'center' },
+  listenBtnText: { fontSize: 13, fontWeight: '700', color: Colors.orange },
+  messageBtn:    { flex: 1, borderRadius: 10, backgroundColor: '#ffffff', borderWidth: 1.5, borderColor: '#111111', paddingVertical: 8, alignItems: 'center' },
+  messageBtnText:{ fontSize: 13, fontWeight: '700', color: '#111111' },
 
   // ── Mobile web hero ───────────────────────────────────────────────
   mobileWebHero:      { paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },

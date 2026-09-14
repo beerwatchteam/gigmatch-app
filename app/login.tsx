@@ -341,7 +341,9 @@ export default function LoginScreen() {
           <TextInput style={s.input} placeholder="Password" placeholderTextColor="#999"
             value={siPassword} onChangeText={setSiPassword} secureTextEntry />
           <TouchableOpacity style={s.rememberRow} onPress={() => setSiRemember(v => !v)} activeOpacity={0.7}>
-            <View style={[s.checkbox, siRemember && s.checkboxOn]} />
+            <View style={[s.checkbox, siRemember && s.checkboxOn]}>
+              {siRemember && <Text style={s.checkboxTick}>✓</Text>}
+            </View>
             <Text style={s.rememberText}>Remember me</Text>
           </TouchableOpacity>
           {siError ? <Text style={s.errorText}>{siError}</Text> : null}
@@ -414,7 +416,9 @@ export default function LoginScreen() {
               )}
 
               <TouchableOpacity style={s.termsRow} onPress={() => setMTerms(v => !v)}>
-                <View style={[s.checkbox, mTerms && s.checkboxOn]} />
+                <View style={[s.checkbox, mTerms && s.checkboxOn]}>
+                  {mTerms && <Text style={s.checkboxTick}>✓</Text>}
+                </View>
                 <Text style={s.termsText}>I accept the <Text style={{ color: Colors.orange }}>Terms & Conditions</Text></Text>
               </TouchableOpacity>
               {mFieldErrors.terms ? <Text style={s.fieldError}>{mFieldErrors.terms}</Text> : null}
@@ -548,7 +552,9 @@ export default function LoginScreen() {
               )}
 
               <TouchableOpacity style={s.termsRow} onPress={() => setVTerms(v => !v)}>
-                <View style={[s.checkbox, vTerms && s.checkboxOn]} />
+                <View style={[s.checkbox, vTerms && s.checkboxOn]}>
+                  {vTerms && <Text style={s.checkboxTick}>✓</Text>}
+                </View>
                 <Text style={s.termsText}>I accept the <Text style={{ color: Colors.orange }}>Terms & Conditions</Text></Text>
               </TouchableOpacity>
               {vFieldErrors.terms ? <Text style={s.fieldError}>{vFieldErrors.terms}</Text> : null}
@@ -707,8 +713,9 @@ const s = StyleSheet.create({
   rememberText: { fontSize: 13, color: '#555555' },
 
   termsRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  checkbox:   { width: 16, height: 16, borderRadius: 3, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: '#fafafa' },
-  checkboxOn: { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  checkbox:     { width: 16, height: 16, borderRadius: 3, borderWidth: 1, borderColor: '#e0e0e0', backgroundColor: '#fafafa', alignItems: 'center', justifyContent: 'center' },
+  checkboxOn:   { backgroundColor: Colors.orange, borderColor: Colors.orange },
+  checkboxTick: { fontSize: 10, color: '#ffffff', fontWeight: '900', textAlign: 'center', includeFontPadding: false, marginTop: -2 } as any,
   termsText:  { fontSize: 13, color: '#555555', flex: 1 },
 
   submitBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 16, marginBottom: 8 },
