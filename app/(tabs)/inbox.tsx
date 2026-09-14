@@ -55,16 +55,25 @@ function useUserDisplayInfo(uid: string | null): { name: string | null; photoUrl
     getDoc(doc(db, 'users', uid)).then(async userSnap => {
       if (cancelled || !userSnap.exists()) return;
       const userData = userSnap.data();
-      const name = userData.displayName || null;
       const type = userData.type as string;
       const venueId = userData.venueId as string | undefined;
+      let name: string | null = userData.displayName || null;
       let photoUrl: string | null = null;
       if (type === 'artist') {
         const bpSnap = await getDoc(doc(db, 'bandProfiles', uid));
-        if (!cancelled && bpSnap.exists()) photoUrl = bpSnap.data().photoUrl ?? null;
+        if (!cancelled && bpSnap.exists()) {
+          const bp = bpSnap.data();
+          // Use bandName (same source as enquiry tiles) and bandProfiles photoUrl
+          name = bp.bandName || name;
+          photoUrl = bp.photoUrl ?? null;
+        }
       } else if (type === 'venue' && venueId) {
         const vSnap = await getDoc(doc(db, 'venues', venueId));
-        if (!cancelled && vSnap.exists()) photoUrl = vSnap.data().photoUrl ?? null;
+        if (!cancelled && vSnap.exists()) {
+          const vd = vSnap.data();
+          name = vd.venueName || name;
+          photoUrl = vd.photoUrl ?? null;
+        }
       }
       if (!cancelled) setInfo({ name, photoUrl });
     }).catch(() => {});
@@ -444,7 +453,12 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             </View>
           </View>
           <TouchableOpacity onPress={openDetails} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={eh.detailsBtn}>
-            <Text style={eh.detailsLink}>Details</Text>
+            <View style={eh.detailsBtnInner}>
+              <View style={eh.detailsCircle}>
+                <Text style={eh.detailsCircleText}>i</Text>
+              </View>
+              <Text style={eh.detailsLink}>Details</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -547,7 +561,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           <TouchableOpacity
                             key={p.id}
                             style={[eh.drawerInfoRow, i < visible.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                            onPress={() => { if (!isMe && onOpenSubThread) { closeDetails(); setTimeout(() => onOpenSubThread(p.userId, p.displayName, p.photoUrl), 350); } }}
+                            onPress={() => { if (!isMe && onOpenSubThread) { closeDetails(() => onOpenSubThread(p.userId, p.displayName, p.photoUrl)); } }}
                             activeOpacity={isMe ? 1 : 0.7}
                           >
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
@@ -568,7 +582,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       {canInvite && (
                         <TouchableOpacity
                           style={[eh.drawerInfoRow, { borderTopWidth: visible.length > 0 ? 1 : 0, borderTopColor: colors.border }]}
-                          onPress={() => { closeDetails(); setTimeout(() => onInvite!(), 350); }}
+                          onPress={() => closeDetails(onInvite)}
                           activeOpacity={0.7}
                         >
                           <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.orange }}>+ Invite Support Act</Text>
@@ -657,7 +671,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       <TouchableOpacity
                         key={l.label}
                         style={[eh.drawerInfoRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                        onPress={() => { closeDetails(); setTimeout(() => l.onPress?.(), 350); }}
+                        onPress={() => closeDetails(l.onPress ?? undefined)}
                         activeOpacity={0.7}
                       >
                         <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.orange }}>{l.label}</Text>
@@ -797,7 +811,10 @@ const eh = StyleSheet.create({
   titleRow:          { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 2 },
   rightCol:          { alignItems: 'flex-end', flexShrink: 0, marginRight: 4 },
   detailsBtn:        { flexShrink: 0, paddingLeft: 4 },
-  detailsLink:       { fontSize: 13, fontWeight: '600', color: Colors.orange },
+  detailsBtnInner:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  detailsCircle:     { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: '#111111', alignItems: 'center', justifyContent: 'center' },
+  detailsCircleText: { fontSize: 11, fontWeight: '800', color: '#111111', lineHeight: 13 },
+  detailsLink:       { fontSize: 13, fontWeight: '600', color: '#111111' },
   back:              { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
   titleInfo:         { flex: 1, minWidth: 0 },
   name:              { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
@@ -1229,6 +1246,42 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete }: {
   const isGroup = Array.isArray(item.participantUids) && item.participantUids.length > 2;
   const participants = useParticipants(isGroup ? item.id : null);
 
+  // Build group title (Instagram-style): exclude self, show named members + overflow count
+  const groupTitle = (() => {
+    if (!isGroup || participants.length === 0) return null;
+    const active = participants.filter(p => p.state !== 'declined' && p.state !== 'left');
+    const myP = active.find(p => p.userId === myUid);
+    const myRole = myP?.role ?? (isVenue ? 'venue' : 'headliner');
+
+    let named: string[] = [];
+    let overflow = 0;
+
+    if (myRole === 'support') {
+      // Support act: always show Venue, then Headliner, then +N others
+      const venue     = active.find(p => p.role === 'venue');
+      const headliner = active.find(p => p.role === 'headliner');
+      const others    = active.filter(p => p.role === 'support' && p.userId !== myUid);
+      if (venue)     named.push(venue.displayName);
+      if (headliner) named.push(headliner.displayName);
+      overflow = others.length;
+    } else if (myRole === 'venue') {
+      // Venue: show headliner first, then +N for support acts
+      const headliner = active.find(p => p.role === 'headliner');
+      const supports  = active.filter(p => p.role === 'support');
+      if (headliner) named.push(headliner.displayName);
+      overflow = supports.length;
+    } else {
+      // Headliner: show venue, then +N for support acts
+      const venue    = active.find(p => p.role === 'venue');
+      const supports = active.filter(p => p.role === 'support');
+      if (venue) named.push(venue.displayName);
+      overflow = supports.length;
+    }
+
+    const base = named.join(', ');
+    return overflow > 0 ? `${base} +${overflow}` : base;
+  })();
+
   const isUnread = !!(
     item.lastMessageAt &&
     (!item.lastReadAt?.[myUid] || item.lastMessageAt > item.lastReadAt[myUid])
@@ -1294,7 +1347,7 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete }: {
         )}
         <View style={tt.body}>
           <View style={tt.topRow}>
-            <Text style={[tt.name, isSelected && { color: Colors.orange }, isUnread && { fontWeight: '800' }]} numberOfLines={1}>{who}</Text>
+            <Text style={[tt.name, isSelected && { color: Colors.orange }, isUnread && { fontWeight: '800' }]} numberOfLines={1}>{groupTitle ?? who}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               {isUnread && <View style={tt.unreadDot} />}
               <Text style={tt.time}>{formatTileDate(item.submittedAt)}</Text>
@@ -2235,37 +2288,73 @@ const tp = StyleSheet.create({
 
 // ── DM tile ────────────────────────────────────────────────────────────────
 
-function DMTile({ conv, myUid, isSelected, onPress }: {
-  conv: DMConv; myUid: string; isSelected: boolean; onPress: () => void;
+function DMTile({ conv, myUid, isSelected, onPress, onDelete }: {
+  conv: DMConv; myUid: string; isSelected: boolean; onPress: () => void; onDelete?: () => void;
 }) {
   const otherUid   = conv.participants.find(p => p !== myUid) ?? '';
   const resolved   = useUserDisplayInfo(otherUid || null);
   const otherName  = resolved.name ?? conv.participantNames[otherUid] ?? 'Unknown';
   const otherPhoto = resolved.photoUrl ?? conv.participantPhotos?.[otherUid] ?? null;
   const isRequest  = conv.initiatedBy !== myUid && !conv.acceptedBy.includes(myUid);
+  const swipeRef   = useRef<Swipeable>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  function renderRightActions() {
+    if (!onDelete) return null;
+    return (
+      <TouchableOpacity
+        style={tt.swipeDelete}
+        onPress={() => { swipeRef.current?.close(); setConfirmDel(true); }}
+        activeOpacity={0.85}
+      >
+        <Text style={tt.swipeDeleteText}>Delete</Text>
+      </TouchableOpacity>
+    );
+  }
 
   return (
-    <TouchableOpacity
-      style={[dmt.tile, isSelected && dmt.tileActive]}
-      onPress={onPress}
-      activeOpacity={0.75}
-    >
-      <Avatar photoUrl={otherPhoto} name={otherName} size={44} />
-      <View style={dmt.body}>
-        <View style={dmt.topRow}>
-          <Text style={[dmt.name, isSelected && { color: Colors.orange }]} numberOfLines={1}>{otherName}</Text>
-          <Text style={dmt.time}>{formatTileDate(conv.lastMessageAt)}</Text>
-        </View>
-        <View style={dmt.previewRow}>
-          <Text style={dmt.preview} numberOfLines={1}>{conv.lastMessage || 'No messages yet'}</Text>
-          {isRequest && (
-            <View style={dm.reqBadge}>
-              <Text style={dm.reqBadgeText}>Request</Text>
+    <>
+      <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false} friction={2}>
+        <TouchableOpacity
+          style={[dmt.tile, isSelected && dmt.tileActive]}
+          onPress={onPress}
+          activeOpacity={0.75}
+        >
+          <Avatar photoUrl={otherPhoto} name={otherName} size={44} />
+          <View style={dmt.body}>
+            <View style={dmt.topRow}>
+              <Text style={[dmt.name, isSelected && { color: Colors.orange }]} numberOfLines={1}>{otherName}</Text>
+              <Text style={dmt.time}>{formatTileDate(conv.lastMessageAt)}</Text>
             </View>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
+            <View style={dmt.previewRow}>
+              <Text style={dmt.preview} numberOfLines={1}>{conv.lastMessage || 'No messages yet'}</Text>
+              {isRequest && (
+                <View style={dm.reqBadge}>
+                  <Text style={dm.reqBadgeText}>Request</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Swipeable>
+
+      <Modal visible={confirmDel} transparent animationType="fade" onRequestClose={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+          <View style={[md.confirm, { backgroundColor: '#ffffff' }]}>
+            <Text style={md.confirmTitle}>Delete conversation?</Text>
+            <Text style={md.confirmBody}>This will remove it from your inbox. This can't be undone.</Text>
+            <View style={md.confirmBtns}>
+              <TouchableOpacity style={[md.confirmBtn, { borderColor: '#e8e8e8' }]} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+                <Text style={[md.confirmBtnText, { color: '#888888' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmDel(false); onDelete?.(); }}>
+                <Text style={md.confirmBtnDangerText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
   );
 }
 
@@ -2313,11 +2402,25 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
   const otherAccepted = conv.acceptedBy.includes(otherUid);
   const canSend     = isAccepted && (isInitiator ? otherAccepted : true);
 
-  const [text, setText]             = useState('');
-  const [sending, setSending]       = useState(false);
-  const [menuOpen, setMenuOpen]     = useState(false);
+  const [text, setText]               = useState('');
+  const [sending, setSending]         = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef   = useRef<ScrollView>(null);
+  const slideAnim   = useRef(new Animated.Value(0)).current;
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  function openDetails() {
+    setDetailsOpen(true);
+    Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, tension: 65, friction: 11 }).start();
+  }
+  function closeDetails(onClosed?: () => void) {
+    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start(() => {
+      setDetailsOpen(false);
+      onClosed?.();
+    });
+  }
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
@@ -2360,8 +2463,13 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
         <View style={dmp.headerInfo}>
           <Text style={[dmp.name, { color: colors.black }]} numberOfLines={1}>{otherName}</Text>
         </View>
-        <TouchableOpacity onPress={() => setMenuOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={dmp.deleteIcon}>⋯</Text>
+        <TouchableOpacity onPress={openDetails} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={eh.detailsBtn}>
+          <View style={eh.detailsBtnInner}>
+            <View style={eh.detailsCircle}>
+              <Text style={eh.detailsCircleText}>i</Text>
+            </View>
+            <Text style={eh.detailsLink}>Details</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -2377,33 +2485,42 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
             <Text style={dmp.emptyText}>Say hello to {otherName} 👋</Text>
           </View>
         )}
-        {dmGroups.map(group => {
+        {dmGroups.map((group, gi) => {
           const spansHour = group.endMs - group.startMs > 3600000;
-          return group.msgs.map((msg, i) => {
-            const isMine = msg.senderId === myUid;
-            const isLast = i === group.msgs.length - 1;
-            const showTimestamp = spansHour || isLast;
-            return (
-              <View
-                key={msg.id}
-                style={[dmp.msgRow, isMine ? dmp.rowMine : dmp.rowTheirs, i > 0 && { marginTop: 2 }]}
-              >
-                {!isMine && (
-                  isLast
-                    ? <Avatar photoUrl={otherPhoto} name={otherName} size={28} />
-                    : <View style={{ width: 28 }} />
-                )}
-                <View style={[dmp.msgCol, isMine && dmp.msgColMine]}>
-                  <View style={[dmp.bubble, isMine ? dmp.bubbleMine : dmp.bubbleTheirs]}>
-                    <Text style={[dmp.bubbleText, isMine && dmp.bubbleTextMine]}>{msg.text}</Text>
-                  </View>
-                  {showTimestamp && (
-                    <Text style={[dmp.time, isMine && dmp.timeRight]}>{fmtMsgTime(msg.createdAt)}</Text>
-                  )}
-                </View>
+          const prevGroup = dmGroups[gi - 1];
+          const showDateSep = !prevGroup || new Date(group.msgs[0].createdAt).toDateString() !== new Date(prevGroup.msgs[0].createdAt).toDateString();
+          return [
+            showDateSep && (
+              <View key={`sep-${gi}`} style={dmp.dateSepRow}>
+                <Text style={dmp.dateSepText}>{getDateLabel(group.msgs[0].createdAt)}</Text>
               </View>
-            );
-          });
+            ),
+            ...group.msgs.map((msg, i) => {
+              const isMine = msg.senderId === myUid;
+              const isLast = i === group.msgs.length - 1;
+              const showTimestamp = spansHour || isLast;
+              return (
+                <View
+                  key={msg.id}
+                  style={[dmp.msgRow, isMine ? dmp.rowMine : dmp.rowTheirs, i > 0 && { marginTop: 2 }]}
+                >
+                  {!isMine && (
+                    isLast
+                      ? <Avatar photoUrl={otherPhoto} name={otherName} size={28} />
+                      : <View style={{ width: 28 }} />
+                  )}
+                  <View style={[dmp.msgCol, isMine && dmp.msgColMine]}>
+                    <View style={[dmp.bubble, isMine ? dmp.bubbleMine : dmp.bubbleTheirs]}>
+                      <Text style={[dmp.bubbleText, isMine && dmp.bubbleTextMine]}>{msg.text}</Text>
+                    </View>
+                    {showTimestamp && (
+                      <Text style={[dmp.time, isMine && dmp.timeRight]}>{fmtMsgTime(msg.createdAt)}</Text>
+                    )}
+                  </View>
+                </View>
+              );
+            }),
+          ];
         })}
       </ScrollView>
 
@@ -2455,17 +2572,40 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
         </SafeAreaView>
       )}
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
-          <View style={[md.sheet, { backgroundColor: colors.bg }]}>
-            <TouchableOpacity style={md.sheetItem} onPress={() => { setMenuOpen(false); setConfirmOpen(true); }}>
-              <Text style={md.sheetDanger}>Delete this conversation</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[md.sheetItem, md.sheetCancelItem]} onPress={() => setMenuOpen(false)}>
-              <Text style={[md.sheetText, { color: colors.grey }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
+      {/* Details panel */}
+      <Modal visible={detailsOpen} transparent animationType="none" onRequestClose={() => closeDetails()}>
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <TouchableOpacity style={eh.drawerBackdrop} activeOpacity={1} onPress={() => closeDetails()} />
+          <Animated.View style={[
+            eh.drawerPanel,
+            { width: isWeb ? 340 : windowWidth, backgroundColor: colors.bg, borderLeftColor: colors.border },
+            { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [isWeb ? 340 : windowWidth, 0] }) }] },
+          ]}>
+            <View style={[eh.drawerHeader, { borderBottomColor: colors.border, paddingTop: (isWeb ? 0 : insets.top) + 16 }]}>
+              <TouchableOpacity onPress={() => closeDetails()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 60 }}>
+                <Text style={[eh.drawerBack, { color: Colors.orange }]}>← Back</Text>
+              </TouchableOpacity>
+              <Text style={[eh.drawerTitle, { color: colors.black }]}>Details</Text>
+              <View style={{ width: 60 }} />
+            </View>
+            <ScrollView contentContainerStyle={[eh.drawerContent, { alignItems: 'center', paddingTop: 32 }]} showsVerticalScrollIndicator={false}>
+
+              {/* Profile */}
+              <Avatar photoUrl={otherPhoto} name={otherName} size={72} />
+              <Text style={[eh.drawerSectionLabel, { textAlign: 'center', marginTop: 16, fontSize: 20, fontWeight: '800' }]}>{otherName}</Text>
+
+              {/* Delete */}
+              <TouchableOpacity
+                style={{ marginTop: 40, width: '100%', paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: '#fca5a5', alignItems: 'center', backgroundColor: 'rgba(220,38,38,0.04)' }}
+                onPress={() => closeDetails(() => setConfirmOpen(true))}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#dc2626' }}>Delete this conversation</Text>
+              </TouchableOpacity>
+
+            </ScrollView>
+          </Animated.View>
+        </View>
       </Modal>
 
       <Modal visible={confirmOpen} transparent animationType="fade" onRequestClose={() => setConfirmOpen(false)}>
@@ -2499,6 +2639,8 @@ const dmp = StyleSheet.create({
   deleteIcon:    { fontSize: 22, color: '#aaaaaa', letterSpacing: 1 },
   msgList:       { paddingHorizontal: isWeb ? 20 : 14, paddingVertical: 16, gap: 3, flexGrow: 1 },
   emptyWrap:     { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 48 },
+  dateSepRow:    { alignItems: 'center', marginVertical: 12 },
+  dateSepText:   { fontSize: 11, fontWeight: '600', color: '#aaaaaa', letterSpacing: 0.3 },
   emptyText:     { fontSize: 15, color: '#aaaaaa' },
   msgRow:        { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   rowMine:       { justifyContent: 'flex-end' },
@@ -2784,6 +2926,7 @@ export default function InboxScreen() {
                     myUid={myUid}
                     isSelected={selectedDMId === c.id}
                     onPress={() => setSelectedDMId(c.id)}
+                    onDelete={() => deleteDMConv(c.id, myUid)}
                   />
                 ))}
               </ScrollView>
@@ -2998,6 +3141,7 @@ export default function InboxScreen() {
                   const otherName = item.participantNames[otherUid] ?? 'User';
                   router.push({ pathname: '/messages/[id]', params: { id: otherUid, name: otherName } });
                 }}
+                onDelete={() => deleteDMConv(item.id, myUid)}
               />
             )}
           />

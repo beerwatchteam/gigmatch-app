@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  collection, doc, addDoc, setDoc, updateDoc,
-  arrayUnion, onSnapshot, query, orderBy,
+  collection, doc, addDoc, setDoc, updateDoc, getDoc,
+  arrayUnion, arrayRemove, onSnapshot, query, orderBy,
   serverTimestamp, where,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -148,12 +148,27 @@ export async function startDM(
   return id;
 }
 
-/** Send a message in an existing (accepted) conversation */
+/** Send a message in an existing (accepted) conversation.
+ * If the other party had deleted the conversation, clear deletedBy and
+ * remove them from acceptedBy so it appears as a new Request for them.
+ */
 export async function sendDMMessage(convId: string, senderUid: string, text: string) {
-  await updateDoc(doc(db, 'directMessages', convId), {
+  const snap = await getDoc(doc(db, 'directMessages', convId));
+  const data = snap.exists() ? snap.data() : null;
+  const deletedBy: string[] = data?.deletedBy ?? [];
+  const othersWhoDeleted = deletedBy.filter(uid => uid !== senderUid);
+
+  const update: Record<string, any> = {
     lastMessage:   text,
     lastMessageAt: serverTimestamp(),
-  });
+    deletedBy:     [],
+  };
+  // Un-accept anyone who deleted so conversation becomes a Request for them
+  for (const uid of othersWhoDeleted) {
+    update.acceptedBy = arrayRemove(uid);
+  }
+
+  await updateDoc(doc(db, 'directMessages', convId), update);
   await addDoc(collection(db, 'directMessages', convId, 'messages'), {
     senderId:  senderUid,
     text,
@@ -168,7 +183,7 @@ export async function acceptDMRequest(convId: string, uid: string) {
   });
 }
 
-/** Soft-delete — hides the conversation from this user's inbox */
+/** Hide a conversation from the deleter's inbox */
 export async function deleteDMConv(convId: string, uid: string) {
   await updateDoc(doc(db, 'directMessages', convId), {
     deletedBy: arrayUnion(uid),
