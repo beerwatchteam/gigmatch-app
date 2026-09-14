@@ -1266,7 +1266,7 @@ export default function EditVenueScreen() {
                           </Field>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Field label="Duration (min)">
+                          <Field label="Per Set Duration (Min)">
                             <Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" />
                           </Field>
                         </View>

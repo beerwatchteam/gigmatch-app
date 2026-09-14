@@ -261,7 +261,7 @@ export default function EnquireScreen() {
 
         {/* ── Set length ────────────────────────────────────────── */}
         <View style={s.fieldBlock}>
-          <Text style={[s.fieldLabel, { color: colors.black }]}>Set length</Text>
+          <Text style={[s.fieldLabel, { color: colors.black }]}>Per Set Duration (Min)</Text>
           {lockedDuration ? (
             <View style={s.lockedRow}>
               <Text style={[s.lockedValue, { color: colors.black }]}>{lockedDuration}</Text>
