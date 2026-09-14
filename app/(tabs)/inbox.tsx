@@ -451,9 +451,9 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       </View>
 
       {/* Details drawer */}
-      <Modal visible={detailsOpen} transparent animationType="none" onRequestClose={closeDetails}>
+      <Modal visible={detailsOpen} transparent animationType="none" onRequestClose={() => closeDetails()}>
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <TouchableOpacity style={eh.drawerBackdrop} activeOpacity={1} onPress={closeDetails} />
+          <TouchableOpacity style={eh.drawerBackdrop} activeOpacity={1} onPress={() => closeDetails()} />
           <Animated.View style={[
             eh.drawerPanel,
             { width: DRAWER_WIDTH, backgroundColor: colors.bg, borderLeftColor: colors.border },
@@ -462,7 +462,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             {/* Drawer header */}
             <View style={[eh.drawerHeader, { borderBottomColor: colors.border, paddingTop: (isWeb ? 0 : insets.top) + 16 }]}>
               <Text style={[eh.drawerTitle, { color: colors.black }]}>Details</Text>
-              <TouchableOpacity onPress={closeDetails} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => closeDetails()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={eh.drawerClose}>✕</Text>
               </TouchableOpacity>
             </View>
