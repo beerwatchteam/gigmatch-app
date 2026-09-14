@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Swipeable } from 'react-native-gesture-handler';
 import {
   View, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -355,8 +356,11 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, tension: 65, friction: 11 }).start();
   }
 
-  function closeDetails() {
-    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start(() => setDetailsOpen(false));
+  function closeDetails(onClosed?: () => void) {
+    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 65, friction: 11 }).start(() => {
+      setDetailsOpen(false);
+      onClosed?.();
+    });
   }
 
   async function saveSchedule() {
@@ -419,34 +423,28 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             </TouchableOpacity>
           )}
           <View style={eh.titleInfo}>
-            <Text style={[eh.name, { color: colors.black }]} numberOfLines={1}>{who}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+              <Text style={[eh.name, { color: colors.black }]} numberOfLines={1}>{who}</Text>
+              <StatusBadge status={enquiry.status} isVenue={isVenue} />
+            </View>
             {slotStr ? (
               <Text style={[eh.slot, { color: colors.grey }]} numberOfLines={1}>{slotStr}</Text>
             ) : null}
-            {quickLinks.length > 0 && (
-              <View style={eh.quickLinks}>
-                {quickLinks.map((l, i) => (
-                  <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {i > 0 && <Text style={eh.quickLinkSep}>·</Text>}
-                    <TouchableOpacity onPress={l.onPress} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-                      <Text style={eh.quickLinkText}>{l.label}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
+            <View style={eh.quickLinks}>
+              {quickLinks.map((l, i) => (
+                <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {i > 0 && <Text style={eh.quickLinkSep}>·</Text>}
+                  <TouchableOpacity onPress={l.onPress} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                    <Text style={eh.quickLinkText}>{l.label}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {quickLinks.length > 0 && <Text style={eh.quickLinkSep}>·</Text>}
+              <TouchableOpacity onPress={openDetails} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+                <Text style={eh.detailsLink}>Details</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={eh.rightCol}>
-            <StatusBadge status={enquiry.status} isVenue={isVenue} />
-            <TouchableOpacity onPress={openDetails} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={eh.detailsLink}>Details →</Text>
-            </TouchableOpacity>
-          </View>
-          {onDelete && (
-            <TouchableOpacity onPress={() => setMenuOpen(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={eh.dots}>⋯</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
 
@@ -552,7 +550,12 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           >
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                               <Avatar photoUrl={p.photoUrl} name={p.displayName} size={28} />
-                              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }} numberOfLines={1}>{p.displayName}</Text>
+                              <View>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }} numberOfLines={1}>{p.displayName}</Text>
+                                <Text style={{ fontSize: 11, color: colors.grey }}>
+                                  {p.role === 'venue' ? 'Venue' : p.role === 'headliner' ? 'Headliner' : 'Support Act'}
+                                </Text>
+                              </View>
                             </View>
                             {pending && (
                               <Text style={{ fontSize: 11, fontWeight: '600', color: '#888888' }}>Invited</Text>
@@ -719,22 +722,20 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 </TouchableOpacity>
               )}
 
+              {/* Delete conversation */}
+              {onDelete && (
+                <TouchableOpacity
+                  style={{ marginTop: 24, marginBottom: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: '#fca5a5', alignItems: 'center', backgroundColor: 'rgba(220,38,38,0.04)' }}
+                  onPress={() => closeDetails(() => setConfirmOpen(true))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#dc2626' }}>Delete this conversation</Text>
+                </TouchableOpacity>
+              )}
+
             </ScrollView>
           </Animated.View>
         </View>
-      </Modal>
-
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
-          <View style={[md.sheet, { backgroundColor: colors.bg }]}>
-            <TouchableOpacity style={md.sheetItem} onPress={() => { setMenuOpen(false); setConfirmOpen(true); }}>
-              <Text style={md.sheetDanger}>Delete this conversation</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[md.sheetItem, md.sheetCancelItem]} onPress={() => setMenuOpen(false)}>
-              <Text style={[md.sheetText, { color: colors.grey }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
       </Modal>
 
       <Modal visible={confirmOpen} transparent animationType="fade" onRequestClose={() => setConfirmOpen(false)}>
@@ -792,8 +793,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 const eh = StyleSheet.create({
   card:              { paddingTop: isWeb ? 16 : 14, paddingHorizontal: isWeb ? 24 : 16, paddingBottom: 14, borderBottomWidth: 1, flexShrink: 0 },
   titleRow:          { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 2 },
-  rightCol:          { alignItems: 'flex-end', gap: 6, flexShrink: 0 },
-  detailsLink:       { fontSize: 12, fontWeight: '600', color: Colors.orange },
+  rightCol:          { alignItems: 'flex-end', flexShrink: 0, marginRight: 4 },
+  detailsLink:       { fontSize: 13, fontWeight: '600', color: '#111111' },
   back:              { fontSize: 18, color: Colors.orange, fontWeight: '600', marginRight: 2 },
   titleInfo:         { flex: 1, minWidth: 0 },
   name:              { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
@@ -1211,8 +1212,8 @@ const STATUS_MOVE_OPTIONS: { status: Enquiry['status']; label: string }[] = [
   { status: 'declined',   label: 'Decline'    },
 ];
 
-function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
-  item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void;
+function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete }: {
+  item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void; onDelete?: () => void;
 }) {
   const who = isVenue ? item.bandName : item.venueName;
   const venuePhoto  = useVenuePhoto(!isVenue ? item.venueId : null);
@@ -1232,9 +1233,11 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
   const cfg = getStatusCfg(item.status, isVenue);
   const fee = (item as any).fee ? `$${(item as any).fee}` : null;
 
-  const badgeRef = useRef<View>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos,  setMenuPos]  = useState<{ x: number; y: number } | null>(null);
+  const badgeRef   = useRef<View>(null);
+  const swipeRef   = useRef<Swipeable>(null);
+  const [menuOpen,    setMenuOpen]    = useState(false);
+  const [menuPos,     setMenuPos]     = useState<{ x: number; y: number } | null>(null);
+  const [confirmDel,  setConfirmDel]  = useState(false);
 
   function openMenu(e: any) {
     e.stopPropagation?.();
@@ -1257,8 +1260,22 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
     return true;
   });
 
+  function renderRightActions() {
+    if (!onDelete) return null;
+    return (
+      <TouchableOpacity
+        style={tt.swipeDelete}
+        onPress={() => { swipeRef.current?.close(); setConfirmDel(true); }}
+        activeOpacity={0.85}
+      >
+        <Text style={tt.swipeDeleteText}>Delete</Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <>
+      <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false} friction={2}>
       <TouchableOpacity
         style={[tt.tile, isSelected && tt.tileActive]}
         onPress={onPress}
@@ -1299,6 +1316,7 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
           </View>
         </View>
       </TouchableOpacity>
+      </Swipeable>
 
       <Modal visible={menuOpen} transparent animationType="none" onRequestClose={() => setMenuOpen(false)}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuOpen(false)}>
@@ -1320,6 +1338,23 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress }: {
               })}
             </View>
           )}
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={confirmDel} transparent animationType="fade" onRequestClose={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+          <View style={[md.confirm, { backgroundColor: '#ffffff' }]}>
+            <Text style={md.confirmTitle}>Delete conversation?</Text>
+            <Text style={md.confirmBody}>This will remove it from your inbox. This can't be undone.</Text>
+            <View style={md.confirmBtns}>
+              <TouchableOpacity style={[md.confirmBtn, { borderColor: '#e8e8e8' }]} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+                <Text style={[md.confirmBtnText, { color: '#888888' }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmDel(false); onDelete?.(); }}>
+                <Text style={md.confirmBtnDangerText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </TouchableOpacity>
       </Modal>
     </>
@@ -1344,6 +1379,8 @@ const tt = StyleSheet.create({
   menuItemBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   menuDot:        { width: 8, height: 8, borderRadius: 4 },
   menuLabel:      { fontSize: 13, fontWeight: '700' },
+  swipeDelete:    { backgroundColor: '#dc2626', justifyContent: 'center', alignItems: 'center', width: 80 },
+  swipeDeleteText:{ fontSize: 14, fontWeight: '700', color: '#ffffff' },
 });
 
 // ── Enquiry details bubble (expandable from header, venue view) ────────────
@@ -2721,6 +2758,7 @@ export default function InboxScreen() {
                     myUid={myUid}
                     isSelected={selected?.id === item.id}
                     onPress={() => setSelected(item)}
+                    onDelete={() => archiveEnquiry(item.id, isVenue ? (venueId ?? myUid) : myUid)}
                   />
                 ))}
               </ScrollView>
@@ -2921,7 +2959,7 @@ export default function InboxScreen() {
             keyExtractor={item => item.id}
             contentContainerStyle={{ paddingVertical: 8, paddingBottom: 40 }}
             renderItem={({ item }) => (
-              <ThreadTile item={item} isVenue={isVenue} myUid={myUid} isSelected={false} onPress={() => setSelected(item)} />
+              <ThreadTile item={item} isVenue={isVenue} myUid={myUid} isSelected={false} onPress={() => setSelected(item)} onDelete={() => archiveEnquiry(item.id, isVenue ? (venueId ?? myUid) : myUid)} />
             )}
           />
         )
