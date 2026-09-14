@@ -461,10 +461,11 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
           ]}>
             {/* Drawer header */}
             <View style={[eh.drawerHeader, { borderBottomColor: colors.border, paddingTop: (isWeb ? 0 : insets.top) + 16 }]}>
-              <Text style={[eh.drawerTitle, { color: colors.black }]}>Details</Text>
-              <TouchableOpacity onPress={() => closeDetails()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={eh.drawerClose}>✕</Text>
+              <TouchableOpacity onPress={() => closeDetails()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 60 }}>
+                <Text style={[eh.drawerBack, { color: Colors.orange }]}>← Back</Text>
               </TouchableOpacity>
+              <Text style={[eh.drawerTitle, { color: colors.black }]}>Details</Text>
+              <View style={{ width: 60 }} />
             </View>
             <ScrollView contentContainerStyle={eh.drawerContent} showsVerticalScrollIndicator={false}>
 
@@ -809,7 +810,8 @@ const eh = StyleSheet.create({
   drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: -4, height: 0 }, elevation: 12 },
   drawerHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1 },
-  drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, flex: 1, textAlign: 'center' },
+  drawerBack:        { fontSize: 14, fontWeight: '700' },
   drawerClose:       { fontSize: 18, color: '#aaaaaa', fontWeight: '600' },
   drawerContent:     { padding: 20, gap: 6, paddingBottom: 40 },
   drawerSectionLabel:{ fontSize: 15, fontWeight: '800', color: '#111111', letterSpacing: -0.2, marginTop: 20, marginBottom: 8 },
