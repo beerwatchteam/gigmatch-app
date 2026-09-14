@@ -29,7 +29,7 @@ import {
   sendDMMessage, acceptDMRequest, deleteDMConv,
   type DMConv,
 } from '@/lib/useDirectMessages';
-import { doc, getDoc, updateDoc, getDocs, collection, query, where, limit, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, getDocs, collection, query, where, limit, arrayRemove, addDoc } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
 import { Toast } from '@/components/Toast';
 
@@ -288,9 +288,14 @@ const dg = StyleSheet.create({
 
 // ── Enquiry header (compact) ───────────────────────────────────────────────
 
-function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, onScrollToMusic, onScrollToTech }: {
+function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, onScrollToMusic, onScrollToTech, participants, currentUserUid, onOpenSubThread, onInvite, onRemove }: {
   enquiry: Enquiry; isVenue: boolean; onBack?: () => void; onDelete?: () => void;
   onScrollToProfile?: () => void; onScrollToMusic?: () => void; onScrollToTech?: () => void;
+  participants?: Participant[];
+  currentUserUid?: string;
+  onOpenSubThread?: OnOpenSubThread;
+  onInvite?: () => void;
+  onRemove?: (p: Participant) => void;
 }) {
   const { colors } = useTheme();
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
@@ -520,6 +525,54 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   </TouchableOpacity>
                 </View>
               )}
+
+              {/* Participants — always shown for venues; also shown when participants exist */}
+              {(isVenue || (participants && participants.length > 0)) && onInvite && (() => {
+                const visible   = (participants ?? []).filter(p => p.state !== 'left');
+                const myPart    = (participants ?? []).find(p => p.userId === currentUserUid);
+                const canInvite = isVenue || myPart?.role === 'headliner';
+                return (
+                  <>
+                    <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Participants</Text>
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      {visible.length === 0 && (
+                        <View style={eh.drawerInfoRow}>
+                          <Text style={{ fontSize: 14, color: colors.grey }}>No participants yet.</Text>
+                        </View>
+                      )}
+                      {visible.map((p, i) => {
+                        const isMe = p.userId === currentUserUid;
+                        const pending = p.state === 'invited';
+                        return (
+                          <TouchableOpacity
+                            key={p.id}
+                            style={[eh.drawerInfoRow, i < visible.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                            onPress={() => { if (!isMe && onOpenSubThread) { closeDetails(); setTimeout(() => onOpenSubThread(p.userId, p.displayName, p.photoUrl), 350); } }}
+                            activeOpacity={isMe ? 1 : 0.7}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                              <Avatar photoUrl={p.photoUrl} name={p.displayName} size={28} />
+                              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }} numberOfLines={1}>{p.displayName}</Text>
+                            </View>
+                            {pending && (
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: '#888888' }}>Invited</Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {canInvite && (
+                        <TouchableOpacity
+                          style={[eh.drawerInfoRow, { borderTopWidth: visible.length > 0 ? 1 : 0, borderTopColor: colors.border }]}
+                          onPress={() => { closeDetails(); setTimeout(() => onInvite!(), 350); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.orange }}>+ Invite Support Act</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </>
+                );
+              })()}
 
               {/* Payment method */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
@@ -1331,7 +1384,7 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
   return (
     <View>
       <Text style={tp.enquirySentLabel}>{sentLabel} · {sentDate}</Text>
-      <View style={isMine ? tp.rowMine : tp.rowTheirs}>
+      <View style={[tp.msgRow, isMine ? tp.rowMine : tp.rowTheirs]}>
       <View style={[tp.msgCol, isMine && tp.msgColMine]}>
         <View style={[eq.bubble, isMine ? tp.bubbleMine : tp.bubbleTheirs]}>
 
@@ -1508,12 +1561,15 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
     }).catch(() => {});
   }, [enquiry.venueId]);
 
-  // Auto-add venue as a participant when the thread is opened (works for both
-  // venue and musician views), as long as the subcollection is already set up.
+  // Auto-add venue as a participant when the thread is opened.
+  // When the viewer IS the venue, use their uid directly (no lookup needed).
+  // When the viewer is an artist, use the looked-up venueOwnerUid.
   useEffect(() => {
-    if (!venueOwnerUid || !enquiry.id || !venueDisplayName || participants.length === 0) return;
-    ensureVenueParticipant(enquiry.id, venueOwnerUid, venueDisplayName, venuePhotoUrl).catch(() => {});
-  }, [venueOwnerUid, enquiry.id, venueDisplayName, venuePhotoUrl, participants.length]);
+    const uid  = isVenue ? user?.uid : venueOwnerUid;
+    const name = venueDisplayName || enquiry.venueName;
+    if (!uid || !enquiry.id || !name || participants.length === 0) return;
+    ensureVenueParticipant(enquiry.id, uid, name, venuePhotoUrl).catch(() => {});
+  }, [isVenue, user?.uid, venueOwnerUid, enquiry.id, venueDisplayName, venuePhotoUrl, participants.length]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 80);
@@ -1624,6 +1680,34 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
     ).catch(console.error);
   }
 
+  // Bootstrap headliner + venue participant records if they don't exist yet,
+  // then open the invite sheet. This allows venues to start a group line-up
+  // on any enquiry, including ones created before the multi-party feature.
+  async function handleOpenInvite() {
+    const now = new Date().toISOString();
+    const existingUids = new Set(participants.map(p => p.userId));
+    // Ensure headliner exists
+    if (!existingUids.has(enquiry.createdBy)) {
+      await addDoc(collection(db, 'inquiries', enquiry.id, 'participants'), {
+        userId:      enquiry.createdBy,
+        role:        'headliner',
+        state:       'invited',
+        invitedBy:   null,
+        displayName: enquiry.bandName,
+        photoUrl:    enquiry.photoUrl ?? null,
+        joinedAt:    now,
+        respondedAt: null,
+        leftAt:      null,
+      }).catch(() => {});
+    }
+    // Ensure venue exists — use current user uid when they are the venue
+    const venueUid = isVenue ? user?.uid : venueOwnerUid;
+    if (venueUid) {
+      await ensureVenueParticipant(enquiry.id, venueUid, venueDisplayName || enquiry.venueName, venuePhotoUrl).catch(() => {});
+    }
+    setInviteOpen(true);
+  }
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, minHeight: 0, backgroundColor: colors.bg, overflow: 'hidden' as any }}
@@ -1638,21 +1722,12 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         onScrollToProfile={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
         onScrollToMusic={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'music' } })}
         onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
+        participants={participants}
+        currentUserUid={user?.uid}
+        onOpenSubThread={handleOpenSubThread}
+        onInvite={handleOpenInvite}
+        onRemove={handleRemoveParticipant}
       />
-
-      {/* Participant strip — only for group gigs with participant records */}
-      {isGroupGig && (
-        <ParticipantStrip
-          participants={participants}
-          currentUserUid={user?.uid ?? ''}
-          enquiryId={enquiry.id}
-          venueName={enquiry.venueName}
-          gigDate={enquiry.requestedSlot.date ? fmtSlotDate(enquiry.requestedSlot.date) : (enquiry.requestedSlot.day ?? '')}
-          onOpenSubThread={handleOpenSubThread}
-          onInvite={() => setInviteOpen(true)}
-          onRemove={handleRemoveParticipant}
-        />
-      )}
 
       {/* Messages */}
       <ScrollView

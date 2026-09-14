@@ -243,12 +243,12 @@ export async function addEnquiry(inquiry: Omit<Enquiry, 'id'>): Promise<string> 
   await addDoc(collection(db, 'inquiries', ref.id, 'participants'), {
     userId:      inquiry.createdBy,
     role:        'headliner',
-    state:       'invited',
+    state:       'confirmed',
     invitedBy:   null,
     displayName: inquiry.bandName,
     photoUrl:    inquiry.photoUrl ?? null,
     joinedAt:    now,
-    respondedAt: null,
+    respondedAt: now,
     leftAt:      null,
   });
 
