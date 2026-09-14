@@ -299,6 +299,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   onRemove?: (p: Participant) => void;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
   const { day, date, time, slotType, setLength } = enquiry.requestedSlot;
   const dateStr    = date ? fmtSlotDate(date) : '';
@@ -459,7 +460,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [DRAWER_WIDTH, 0] }) }] },
           ]}>
             {/* Drawer header */}
-            <View style={[eh.drawerHeader, { borderBottomColor: colors.border }]}>
+            <View style={[eh.drawerHeader, { borderBottomColor: colors.border, paddingTop: (isWeb ? 0 : insets.top) + 16 }]}>
               <Text style={[eh.drawerTitle, { color: colors.black }]}>Details</Text>
               <TouchableOpacity onPress={closeDetails} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={eh.drawerClose}>✕</Text>
@@ -807,7 +808,7 @@ const eh = StyleSheet.create({
   // Details drawer
   drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: -4, height: 0 }, elevation: 12 },
-  drawerHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
+  drawerHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1 },
   drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
   drawerClose:       { fontSize: 18, color: '#aaaaaa', fontWeight: '600' },
   drawerContent:     { padding: 20, gap: 6, paddingBottom: 40 },
@@ -849,6 +850,7 @@ function ParticipantStrip({
   onRemove: (p: Participant) => void;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const myParticipant = participants.find(p => p.userId === currentUserUid);
   const canInvite = myParticipant?.role === 'venue' || myParticipant?.role === 'headliner';
   const canRemove = myParticipant?.role === 'venue';
@@ -1003,6 +1005,7 @@ function InviteSheet({
   onInvited: () => void;
 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [search, setSearch]           = useState('');
   const [allMusicians, setAll]        = useState<MusicianRow[]>([]);
   const [pastCollabs, setPastCollabs] = useState<MusicianRow[]>([]);
@@ -1541,6 +1544,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
 }) {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const messages     = useMessages(enquiry.id);
   const participants = useParticipants(enquiry.id);
@@ -2553,6 +2557,7 @@ export default function InboxScreen() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isWideWeb = isWeb && screenWidth >= 768;
