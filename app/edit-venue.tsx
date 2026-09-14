@@ -27,7 +27,7 @@ type Night = {
   day: string; startTime: string; duration: number; slotType: string;
   startDate: string; endDate: string; continuous: boolean;
   feeMin: string; feeMax: string; feeBasis: string; loadIn: string; soundcheck: string;
-  room: string; genres: string[]; notes: string; paymentModel: string;
+  room: string; genres: string[]; notes: string; paymentModel: string; paymentModels?: string[];
   doorSplit: string; coverCharge: string;
   barSplit: string;
   ticketSalesSplit: string; ticketingHandledBy: string;
@@ -565,7 +565,7 @@ export default function EditVenueScreen() {
         day, startTime: '', duration: 60, slotType: 'Headline',
         startDate: '', endDate: '', continuous: true,
         feeMin: '', feeMax: '', feeBasis: '', loadIn: '', soundcheck: '',
-        room: '', genres: [], notes: '', paymentModel: '',
+        room: '', genres: [], notes: '', paymentModel: '', paymentModels: [],
         doorSplit: '', coverCharge: '', barSplit: '', ticketSalesSplit: '', ticketingHandledBy: '',
         _isNew: true,
       }];
@@ -1310,27 +1310,29 @@ export default function EditVenueScreen() {
                         <Field label="Payment">
                           <Pills
                             options={data.payment.models}
-                            value={night.paymentModel}
-                            onSelect={(v: string) => {
-                              const newModel = night.paymentModel === v ? '' : v;
-                              const prefill: Partial<Night> = { paymentModel: newModel };
-                              if (newModel === 'Set Fee') {
+                            value={night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])}
+                            onSelect={(newModels: string[]) => {
+                              const current = night.paymentModels || (night.paymentModel ? [night.paymentModel] : []);
+                              const added = newModels.find(m => !current.includes(m));
+                              const prefill: Partial<Night> = { paymentModels: newModels, paymentModel: '' };
+                              if (added === 'Set Fee') {
                                 prefill.feeMin = data.payment.setFeeMin;
                                 prefill.feeMax = data.payment.setFeeMax;
                                 prefill.feeBasis = data.payment.feeBasis;
-                              } else if (newModel === 'Door Split') {
+                              } else if (added === 'Door Split') {
                                 prefill.doorSplit = data.payment.doorSplit;
                                 prefill.coverCharge = data.payment.coverCharge;
-                              } else if (newModel === 'Bar Split') {
+                              } else if (added === 'Bar Split') {
                                 prefill.barSplit = data.payment.barSplit;
-                              } else if (newModel === 'Ticket Sales Split') {
+                              } else if (added === 'Ticket Sales Split') {
                                 prefill.ticketSalesSplit = data.payment.ticketSalesSplit;
                                 prefill.ticketingHandledBy = data.payment.ticketingHandledBy;
                               }
                               setNightFields(i, prefill);
                             }}
+                            multi
                           />
-                          {night.paymentModel === 'Set Fee' && (() => {
+                          {(() => { const activeModels = night.paymentModels || (night.paymentModel ? [night.paymentModel] : []); return activeModels.includes('Set Fee'); })() && (() => {
                             const minVal = parseFloat(night.feeMin);
                             const maxVal = parseFloat(night.feeMax);
                             const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal;
@@ -1353,7 +1355,7 @@ export default function EditVenueScreen() {
                               </View>
                             );
                           })()}
-                          {night.paymentModel === 'Door Split' && (
+                          {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Door Split') && (
                             <View style={{ marginTop: 10, gap: 8 }}>
                               <View style={{ flexDirection: 'row', gap: 8 }}>
                                 <View style={{ flex: 3 }}>
@@ -1373,12 +1375,12 @@ export default function EditVenueScreen() {
                               </View>
                             </View>
                           )}
-                          {night.paymentModel === 'Bar Split' && (
+                          {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Bar Split') && (
                             <View style={{ marginTop: 10 }}>
                               <Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar sales during set" />
                             </View>
                           )}
-                          {night.paymentModel === 'Ticket Sales Split' && (
+                          {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Ticket Sales Split') && (
                             <View style={{ marginTop: 10, gap: 8 }}>
                               <Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" />
                               <Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={night.ticketingHandledBy} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} />
