@@ -766,11 +766,11 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
             <View style={lv.monthNavRow}>
               {monthOffset > 0 && (
                 <TouchableOpacity style={lv.monthNavBtn} onPress={() => setMonthOffset(o => o - 3)}>
-                  <Text style={[lv.monthNavText, { color: colors.black }]}>&larr; Previous 3 Months</Text>
+                  <Text style={[lv.monthNavText, { color: colors.grey }]}>&larr; Previous 3 Months</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={lv.monthNavBtn} onPress={() => setMonthOffset(o => o + 3)}>
-                <Text style={[lv.monthNavText, { color: colors.black }]}>Next 3 Months &rarr;</Text>
+                <Text style={[lv.monthNavText, { color: colors.grey }]}>Next 3 Months &rarr;</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -935,21 +935,17 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
         </View>
         <View style={{ flex: 1 }} />
         {nativeMonthOffset > 0 && (
-          <TouchableOpacity style={[nt.navBtn, { borderColor: colors.border }]} onPress={() => setNativeMonthOffset(o => o - 3)}>
-            <Text style={[nt.navBtnText, { color: colors.black }]}>← Prev</Text>
+          <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o - 3)}>
+            <Text style={[nt.navBtnText, { color: colors.grey }]}>← Prev</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={[nt.navBtn, { borderColor: colors.border }]} onPress={() => setNativeMonthOffset(o => o + 3)}>
-          <Text style={[nt.navBtnText, { color: colors.black }]}>Next 3 Months →</Text>
+        <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o + 3)}>
+          <Text style={[nt.navBtnText, { color: colors.grey }]}>Next 3 Months →</Text>
         </TouchableOpacity>
       </View>
 
       {/* Count + legend */}
       <View style={nt.countNav}>
-        <View style={nt.countRow}>
-          <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
-          <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
-        </View>
         {/* Legend */}
         <View style={nt.legend}>
           {[
@@ -964,10 +960,14 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
             </View>
           ))}
         </View>
+        <View style={nt.countRow}>
+          <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
+          <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
+        </View>
       </View>
 
       {/* Slot list grouped by month */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 }}>
         {nativeMonthGroups.length === 0
           ? <View style={s.noSlots}><Text style={[s.noSlotsText, { color: colors.grey }]}>No slots to show.</Text></View>
           : nativeMonthGroups.map(group => (
@@ -1841,20 +1841,20 @@ const nt = StyleSheet.create({
   usuallyChipDay:        { fontSize: 12, fontWeight: '700' },
   usuallyChipTime:       { fontSize: 12, fontWeight: '600' },
   usuallyChipRoom:       { fontSize: 11 },
-  filterRow:             { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  countNav:              { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 8 },
+  filterRow:             { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countNav:              { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8, gap: 16 },
   countRow:              { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 4 },
   countLabel:            { fontSize: 13, fontWeight: '500' },
   dateRange:             { fontSize: 12, fontWeight: '400' },
   navBtns:               { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as const },
-  navBtn:                { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, alignSelf: 'flex-start' as const },
-  navBtnText:            { fontSize: 13, fontWeight: '600' },
+  navBtn:                { paddingHorizontal: 4, paddingVertical: 9, alignSelf: 'flex-start' as const },
+  navBtnText:            { fontSize: 13, fontWeight: '500' },
   legend:                { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 12, marginTop: 4 },
   legendItem:            { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot:             { width: 9, height: 9, borderRadius: 5 },
   legendText:            { fontSize: 12 },
   filterControl:         { flexDirection: 'row', borderWidth: 1, borderRadius: 10, overflow: 'hidden', alignSelf: 'flex-start' },
-  filterBtn:             { paddingHorizontal: 18, paddingVertical: 10 },
+  filterBtn:             { paddingHorizontal: 14, paddingVertical: 10 },
   filterDivider:         { width: 1, alignSelf: 'stretch' as const },
   filterBtnActive:       { backgroundColor: Colors.orange },
   filterText:            { fontSize: 13, fontWeight: '700' },
