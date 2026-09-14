@@ -414,14 +414,16 @@ export default function EnquireScreen() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+      <View style={s.sheetHandle} />
       {formContent}
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1 },
+  safe:        { flex: 1 },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#d0d0d0', alignSelf: 'center', marginTop: 10, marginBottom: 4 },
 
   // ── Web overlay ──────────────────────────────────────────────────────────
   webOverlayFull: {

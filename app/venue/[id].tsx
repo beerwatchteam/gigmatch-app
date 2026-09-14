@@ -686,10 +686,8 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
   const [filterTab, setFilterTab] = useState<'open' | 'all' | 'mine'>('open');
 
   // Native state
-  const [activeDay, setActiveDay] = useState<string>(() => {
-    const fd = CANONICAL_DAYS.find(d => (venue.slots?.[d] || []).some(s => s.status === 'open'));
-    return fd || CANONICAL_DAYS[4];
-  });
+  const [nativeFilter, setNativeFilter] = useState<'open' | 'all' | 'mine'>('open');
+  const [nativeMonthOffset, setNativeMonthOffset] = useState(0);
 
   const [monthOffset, setMonthOffset] = useState(0);
 
@@ -712,12 +710,17 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
 
     const monthGroups = groupSlotsByMonth(filtered);
 
-    const windowLabel = 'over 3 months';
     const countLabel = filterTab === 'open'
-      ? `${filtered.length} open slot${filtered.length !== 1 ? 's' : ''} ${windowLabel}`
+      ? `${filtered.length} open slot${filtered.length !== 1 ? 's' : ''}`
       : filterTab === 'mine'
         ? `${filtered.length} slot${filtered.length !== 1 ? 's' : ''}`
         : `${filtered.length} slots listed`;
+
+    const webWindowStart = new Date(today);
+    webWindowStart.setMonth(webWindowStart.getMonth() + monthOffset);
+    const webWindowEnd = new Date(webWindowStart);
+    webWindowEnd.setMonth(webWindowEnd.getMonth() + 3);
+    const webDateRange = `(${LONG_MONTHS[webWindowStart.getMonth()]} ${webWindowStart.getDate()} – ${LONG_MONTHS[webWindowEnd.getMonth()]} ${webWindowEnd.getDate()})`;
 
     const recurringSchedule = CANONICAL_DAYS.flatMap(day => {
       const slots = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open');
@@ -726,10 +729,10 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
 
     return (
       <View style={s.tabBody}>
-        {/* Usually open bar */}
+        {/* Recurring bar */}
         {recurringSchedule.length > 0 && (
           <View style={[lv.usuallyBar, { borderBottomColor: colors.border }]}>
-            <Text style={[lv.usuallyLabel, { color: colors.grey }]}>Usually open</Text>
+            <Text style={[lv.usuallyLabel, { color: colors.grey }]}>Recurring</Text>
             {recurringSchedule.map(({ day, slot }, i) => (
               <Text key={i} style={lv.usuallyItem}>
                 <Text style={{ color: Colors.orange, fontWeight: '700' }}>{day.slice(0,3)} </Text>
@@ -756,7 +759,10 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
             ))}
           </View>
           <View style={lv.countRow}>
-            <Text style={[lv.countLabel, { color: colors.grey }]}>{countLabel}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[lv.countLabel, { color: colors.grey }]}>{countLabel}</Text>
+              <Text style={[lv.countLabel, { color: colors.grey, fontWeight: '400' }]}>{webDateRange}</Text>
+            </View>
             <View style={lv.monthNavRow}>
               {monthOffset > 0 && (
                 <TouchableOpacity style={lv.monthNavBtn} onPress={() => setMonthOffset(o => o - 3)}>
@@ -859,59 +865,273 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
     );
   }
 
-  // ── Native: day selector + slot list ──
-  const nativeDateISO = nextDateForDay(activeDay);
-  const daySlots  = venue.slots?.[activeDay] || [];
-  const openRec   = daySlots.filter(s => s.status === 'open' && !s.date);
-  const overrides = daySlots.filter(s => s.date === nativeDateISO && (s.status === 'booked' || s.status === 'pending'));
-  const merged    = mergeSlots(openRec, overrides);
+  // ── Native: all dates layout ──
+  const allUpcomingNative = generateAllUpcoming(venue, 3, nativeMonthOffset);
+  const hasEnquiryForNative = (day: string, time: string, dateISO: string) =>
+    userEnquiries.some(e =>
+      e.status !== 'declined' && e.status !== 'cancelled' &&
+      e.requestedSlot?.day === day && e.requestedSlot?.time === time &&
+      inferSlotDate(e) === dateISO
+    );
+  const nativeFiltered = allUpcomingNative.filter(({ day, dateISO, slot }) => {
+    if (nativeFilter === 'open') return slot.status === 'open' && !hasEnquiryForNative(day, slot.time, dateISO);
+    if (nativeFilter === 'mine') return hasEnquiryForNative(day, slot.time, dateISO);
+    return true;
+  });
+  const nativeMonthGroups = groupSlotsByMonth(nativeFiltered);
+
+  const recurringSchedule = CANONICAL_DAYS.flatMap(day => {
+    const slots = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open');
+    return slots.map(s => ({ day, slot: s }));
+  });
+
+  const nativeCountLabel = nativeFilter === 'open'
+    ? `${nativeFiltered.length} open slot${nativeFiltered.length !== 1 ? 's' : ''}`
+    : nativeFilter === 'mine'
+      ? `${nativeFiltered.length} slot${nativeFiltered.length !== 1 ? 's' : ''}`
+      : `${nativeFiltered.length} slots listed`;
+
+  const windowStart = new Date(today);
+  windowStart.setMonth(windowStart.getMonth() + nativeMonthOffset);
+  const windowEnd = new Date(windowStart);
+  windowEnd.setMonth(windowEnd.getMonth() + 3);
+  const nativeDateRange = `(${LONG_MONTHS[windowStart.getMonth()]} ${windowStart.getDate()} – ${LONG_MONTHS[windowEnd.getMonth()]} ${windowEnd.getDate()})`;
 
   return (
     <View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.dayBar, { borderBottomColor: colors.border }]} contentContainerStyle={s.dayBarContent}>
-        {CANONICAL_DAYS.map(day => {
-          const hasSlots = (venue.slots?.[day] || []).length > 0;
-          return (
-            <TouchableOpacity
-              key={day}
-              style={[s.dayBtn, { borderColor: colors.border }, activeDay === day && s.dayBtnActive, !hasSlots && s.dayBtnEmpty]}
-              onPress={() => setActiveDay(day)}
-              disabled={!hasSlots}
-            >
-              <Text style={[s.dayBtnText, { color: colors.grey }, activeDay === day && s.dayBtnTextActive, !hasSlots && s.dayBtnTextEmpty]}>
-                {day.slice(0,3)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-      <View style={s.slotList}>
-        {merged.length === 0
-          ? <View style={s.noSlots}><Text style={[s.noSlotsText, { color: colors.grey }]}>No gig slots for {activeDay}</Text></View>
-          : merged.map((slot, i) => {
-              const hasEnquired = userEnquiries.some(enq =>
-                enq.status !== 'declined' && enq.status !== 'cancelled' &&
-                enq.requestedSlot?.day === activeDay &&
-                enq.requestedSlot?.time === slot.time &&
-                inferSlotDate(enq) === nativeDateISO
-              );
-              return (
-                <NativeSlotCard
-                  key={slot.id||i}
-                  slot={slot}
-                  day={activeDay}
-                  isArtist={isArtist}
-                  isLoggedIn={isLoggedIn}
-                  hasEnquired={hasEnquired}
-                  onEnquire={() => onEnquire(slot, activeDay, nativeDateISO)}
-                />
-              );
-            })
+      {/* Recurring */}
+      {recurringSchedule.length > 0 && (
+        <View style={[nt.usuallyBar, { borderBottomColor: colors.border }]}>
+          <Text style={[nt.usuallyLabel, { color: colors.grey }]}>Recurring</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={nt.usuallyScroll}>
+            {recurringSchedule.map(({ day, slot }, i) => (
+              <View key={i} style={[nt.usuallyChip, { borderColor: colors.border }]}>
+                <Text style={[nt.usuallyChipDay, { color: Colors.orange }]}>{day.slice(0, 3)}</Text>
+                <Text style={[nt.usuallyChipTime, { color: colors.black }]}>{slot.time}</Text>
+                {slot.room ? <Text style={[nt.usuallyChipRoom, { color: colors.grey }]}>{slot.room}</Text> : null}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Filter tabs + nav button */}
+      <View style={nt.filterRow}>
+        <View style={[nt.filterControl, { borderColor: colors.border }]}>
+          {(['open', 'all', 'mine'] as const).map((tab, idx) => (
+            <>
+              {idx > 0 && <View key={`div-${tab}`} style={[nt.filterDivider, { backgroundColor: colors.border }]} />}
+              <TouchableOpacity
+                key={tab}
+                style={[nt.filterBtn, nativeFilter === tab && nt.filterBtnActive]}
+                onPress={() => setNativeFilter(tab)}
+              >
+                <Text style={[nt.filterText, { color: nativeFilter === tab ? '#111111' : colors.grey }]}>
+                  {tab === 'open' ? 'Open' : tab === 'all' ? 'All slots' : 'Mine'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ))}
+        </View>
+        <View style={{ flex: 1 }} />
+        {nativeMonthOffset > 0 && (
+          <TouchableOpacity style={[nt.navBtn, { borderColor: colors.border }]} onPress={() => setNativeMonthOffset(o => o - 3)}>
+            <Text style={[nt.navBtnText, { color: colors.black }]}>← Prev</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={[nt.navBtn, { borderColor: colors.border }]} onPress={() => setNativeMonthOffset(o => o + 3)}>
+          <Text style={[nt.navBtnText, { color: colors.black }]}>Next 3 Months →</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Count + legend */}
+      <View style={nt.countNav}>
+        <View style={nt.countRow}>
+          <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
+          <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
+        </View>
+        {/* Legend */}
+        <View style={nt.legend}>
+          {[
+            { label: 'Open',           dot: { borderWidth: 1.5, borderColor: Colors.orange, backgroundColor: 'transparent' } },
+            { label: 'Booked',         dot: { backgroundColor: '#e0e0e0' } },
+            { label: 'Enquired by me', dot: { borderWidth: 1.5, borderColor: '#22c55e', backgroundColor: 'transparent' } },
+            { label: 'Booked by me',   dot: { backgroundColor: '#22c55e' } },
+          ].map(({ label, dot }) => (
+            <View key={label} style={nt.legendItem}>
+              <View style={[nt.legendDot, dot]} />
+              <Text style={[nt.legendText, { color: colors.grey }]}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Slot list grouped by month */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+        {nativeMonthGroups.length === 0
+          ? <View style={s.noSlots}><Text style={[s.noSlotsText, { color: colors.grey }]}>No slots to show.</Text></View>
+          : nativeMonthGroups.map(group => (
+              <View key={`${group.year}-${group.month}`} style={{ marginBottom: 24 }}>
+                <Text style={[nt.monthLabel, { color: colors.grey }]}>
+                  {LONG_MONTHS[group.month].toUpperCase()} {group.year}
+                </Text>
+                {group.items.map(({ date, dateISO, day, slot }, i) => {
+                  const hasEnquired = hasEnquiryForNative(day, slot.time, dateISO);
+                  return (
+                    <AllDatesSlotRow
+                      key={`${dateISO}-${slot.id || i}`}
+                      slot={slot}
+                      date={date}
+                      dateISO={dateISO}
+                      day={day}
+                      isArtist={isArtist}
+                      isLoggedIn={isLoggedIn}
+                      hasEnquired={hasEnquired}
+                      onEnquire={() => onEnquire(slot, day, dateISO)}
+                      colors={colors}
+                    />
+                  );
+                })}
+              </View>
+            ))
         }
       </View>
     </View>
   );
 }
+
+// ── Week slot row (native "This week" view) ───────────────────────────
+
+function WeekSlotRow({ date, dateISO, dayName, slot, isArtist, isLoggedIn, hasEnquired, onEnquire, colors }: {
+  date: Date; dateISO: string; dayName: string; slot: Slot;
+  isArtist: boolean; isLoggedIn: boolean; hasEnquired: boolean;
+  onEnquire: () => void; colors: any;
+}) {
+  const isOpen   = slot.status === 'open';
+  const isBooked = slot.status === 'booked';
+  const dayAbbr  = dayName.slice(0, 3).toUpperCase();
+
+  const metaParts = [
+    slot.room,
+    isBooked  ? (slot.bandName || 'Booked')
+    : hasEnquired ? 'Enquiry sent'
+    : 'Open',
+  ].filter(Boolean);
+
+  return (
+    <View style={[wr.row, { borderBottomColor: colors.border, backgroundColor: colors.bg }]}>
+      <View style={wr.left}>
+        <View style={wr.topLine}>
+          <Text style={[wr.dayDate, { color: colors.grey }]}>{dayAbbr} {date.getDate()}</Text>
+          <Text style={[wr.time, { color: colors.black }]}>{slot.time}</Text>
+        </View>
+        <Text style={[wr.meta, { color: hasEnquired ? '#16a34a' : colors.grey }]}>{metaParts.join(' · ')}</Text>
+      </View>
+      {isOpen && !hasEnquired && isArtist && (
+        <TouchableOpacity style={wr.enquireBtn} onPress={onEnquire}>
+          <Text style={wr.enquireBtnText}>Enquire</Text>
+        </TouchableOpacity>
+      )}
+      {isOpen && !hasEnquired && !isLoggedIn && (
+        <TouchableOpacity style={wr.loginBtn} onPress={onEnquire}>
+          <Text style={[wr.loginBtnText, { color: Colors.orange }]}>Log in</Text>
+        </TouchableOpacity>
+      )}
+      {hasEnquired && (
+        <View style={[wr.statusBadge, { borderColor: '#22c55e' }]}>
+          <Text style={[wr.statusText, { color: '#16a34a' }]}>Sent</Text>
+        </View>
+      )}
+      {isBooked && !hasEnquired && (
+        <View style={[wr.statusBadge, { borderColor: colors.border }]}>
+          <Text style={[wr.statusText, { color: colors.grey }]}>Booked</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const wr = StyleSheet.create({
+  row:            { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20, borderBottomWidth: 1, gap: 12 },
+  left:           { flex: 1, gap: 3 },
+  topLine:        { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  dayDate:        { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: 0.4 },
+  time:           { fontSize: 18, fontWeight: '800' },
+  meta:           { fontSize: 13 },
+  enquireBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, flexShrink: 0 },
+  enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
+  loginBtn:       { borderWidth: 1, borderColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexShrink: 0 },
+  loginBtnText:   { fontSize: 13, fontWeight: '600' },
+  statusBadge:    { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, flexShrink: 0 },
+  statusText:     { fontSize: 12, fontWeight: '600' },
+});
+
+// ── All dates slot row (native "All dates" view) ─────────────────────
+
+function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEnquired, onEnquire, colors }: {
+  slot: Slot; date: Date; dateISO: string; day: string;
+  isArtist: boolean; isLoggedIn: boolean; hasEnquired: boolean;
+  onEnquire: () => void; colors: any;
+}) {
+  const isBooked = slot.status === 'booked';
+  const isOpen   = slot.status === 'open';
+
+  let leftBorderColor: string;
+  let badgeLabel: string;
+  let badgeTextColor: string;
+  let badgeBorderColor: string;
+
+  if (hasEnquired) {
+    leftBorderColor = '#22c55e'; badgeLabel = 'Enquiry sent'; badgeTextColor = '#16a34a'; badgeBorderColor = '#22c55e';
+  } else if (isBooked) {
+    leftBorderColor = '#e0e0e0'; badgeLabel = 'Booked'; badgeTextColor = '#888888'; badgeBorderColor = '#e0e0e0';
+  } else {
+    leftBorderColor = Colors.orange; badgeLabel = 'Open'; badgeTextColor = Colors.orange; badgeBorderColor = Colors.orange;
+  }
+
+  return (
+    <View style={[ad.row, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: colors.bg }]}>
+      <View style={ad.dateBox}>
+        <Text style={[ad.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
+        <Text style={[ad.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
+      </View>
+      <Text style={[ad.dayAbbrev, { color: colors.grey }]}>{day.slice(0, 3).toUpperCase()}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[ad.time, { color: colors.black }]}>{slot.time}</Text>
+        {slot.room ? <Text style={[ad.room, { color: colors.grey }]}>{slot.room}</Text> : null}
+      </View>
+      {isOpen && !hasEnquired && isArtist && (
+        <TouchableOpacity style={ad.enquireBtn} onPress={onEnquire}>
+          <Text style={ad.enquireBtnText}>Enquire</Text>
+        </TouchableOpacity>
+      )}
+      {isOpen && !hasEnquired && !isLoggedIn && (
+        <TouchableOpacity style={[ad.enquireBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} onPress={onEnquire}>
+          <Text style={[ad.enquireBtnText, { color: Colors.orange }]}>Log in</Text>
+        </TouchableOpacity>
+      )}
+      {(!isOpen || hasEnquired) && (
+        <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
+          <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const ad = StyleSheet.create({
+  row:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderLeftWidth: 4, borderRadius: 10, marginBottom: 10, paddingVertical: 14, paddingHorizontal: 14, gap: 12 },
+  dateBox:      { width: 34, alignItems: 'center', flexShrink: 0 },
+  dateNum:      { fontSize: 22, fontWeight: '800', lineHeight: 24 },
+  dateMonth:    { fontSize: 9, fontWeight: '700', letterSpacing: 0.4, marginTop: 1 },
+  dayAbbrev:    { width: 26, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, flexShrink: 0 },
+  time:         { fontSize: 16, fontWeight: '800' },
+  room:         { fontSize: 12, marginTop: 2 },
+  enquireBtn:   { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexShrink: 0 },
+  enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
+  badge:        { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
+  badgeText:    { fontSize: 11, fontWeight: '600' },
+});
 
 // ── Mini calendar month (web) ─────────────────────────────────────────
 
@@ -1560,7 +1780,7 @@ const s = StyleSheet.create({
 // List view styles (web desktop timetable)
 const lv = StyleSheet.create({
   usuallyBar:       { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 18, paddingBottom: 14, borderBottomWidth: 1, marginBottom: 20 },
-  usuallyLabel:     { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  usuallyLabel:     { fontSize: 13, fontWeight: '700', letterSpacing: 0 },
   usuallyItem:      { fontSize: 13 },
   filterRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   filterTabs:       { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
@@ -1610,6 +1830,36 @@ const lv = StyleSheet.create({
   enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
   enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },
   viewLink:         { fontSize: 13, fontWeight: '600', color: Colors.orange, paddingHorizontal: 4, flexShrink: 0 },
+});
+
+// Native timetable styles
+const nt = StyleSheet.create({
+  usuallyBar:            { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, gap: 8 },
+  usuallyLabel:          { fontSize: 13, fontWeight: '700', letterSpacing: 0 },
+  usuallyScroll:         { flexDirection: 'row', gap: 8, paddingRight: 4 },
+  usuallyChip:           { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  usuallyChipDay:        { fontSize: 12, fontWeight: '700' },
+  usuallyChipTime:       { fontSize: 12, fontWeight: '600' },
+  usuallyChipRoom:       { fontSize: 11 },
+  filterRow:             { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countNav:              { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 8 },
+  countRow:              { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 4 },
+  countLabel:            { fontSize: 13, fontWeight: '500' },
+  dateRange:             { fontSize: 12, fontWeight: '400' },
+  navBtns:               { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as const },
+  navBtn:                { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, alignSelf: 'flex-start' as const },
+  navBtnText:            { fontSize: 13, fontWeight: '600' },
+  legend:                { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 12, marginTop: 4 },
+  legendItem:            { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot:             { width: 9, height: 9, borderRadius: 5 },
+  legendText:            { fontSize: 12 },
+  filterControl:         { flexDirection: 'row', borderWidth: 1, borderRadius: 10, overflow: 'hidden', alignSelf: 'flex-start' },
+  filterBtn:             { paddingHorizontal: 18, paddingVertical: 10 },
+  filterDivider:         { width: 1, alignSelf: 'stretch' as const },
+  filterBtnActive:       { backgroundColor: Colors.orange },
+  filterText:            { fontSize: 13, fontWeight: '700' },
+  monthGroup:            { marginBottom: 20 },
+  monthLabel:            { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, paddingHorizontal: 4, paddingBottom: 10, paddingTop: 6, textTransform: 'uppercase' as const },
 });
 
 // Native slot card styles
