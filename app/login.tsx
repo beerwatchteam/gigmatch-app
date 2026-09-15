@@ -701,10 +701,10 @@ const s = StyleSheet.create({
   fieldError: { fontSize: 12, color: '#e94560', marginTop: -10, marginBottom: 10 },
   errorText:  { fontSize: 13, color: '#e94560', textAlign: 'center', marginBottom: 12 },
 
-  pillRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   typePill: {
-    flex: 1, borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0',
-    paddingVertical: 8, alignItems: 'center',
+    borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0',
+    paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center',
   },
   typePillActive:     { backgroundColor: Colors.orange, borderColor: Colors.orange },
   typePillText:       { fontSize: 13, fontWeight: '600', color: '#666666' },
