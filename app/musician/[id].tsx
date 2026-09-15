@@ -790,19 +790,21 @@ function TimetableTab({ m, isOwn, isMobileLayout }: { m: Musician; isOwn: boolea
         </View>
       </View>
       <View style={[nmt.countNav, { borderBottomColor: colors.border }]}>
-        <View style={nmt.countRow}>
-          <Text style={[nmt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
-          <Text style={[nmt.dateRange, { color: colors.grey }]}>{rangeLabel}</Text>
-        </View>
-        <View style={nmt.navBtns}>
-          {monthOffset > 0 && (
-            <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o - 3)}>
-              <Text style={[nmt.navBtnText, { color: colors.grey }]}>← Prev 3 months</Text>
+        <View style={{ gap: 4 }}>
+          <View style={nmt.countRow}>
+            <Text style={[nmt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
+            <Text style={[nmt.dateRange, { color: colors.grey }]}>{rangeLabel}</Text>
+          </View>
+          <View style={[nmt.navBtns, { justifyContent: 'flex-end' }]}>
+            {monthOffset > 0 && (
+              <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o - 3)}>
+                <Text style={[nmt.navBtnText, { color: colors.grey }]}>← Prev 3 months</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o + 3)}>
+              <Text style={[nmt.navBtnText, { color: colors.grey }]}>Next 3 months →</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o + 3)}>
-            <Text style={[nmt.navBtnText, { color: colors.grey }]}>Next 3 months →</Text>
-          </TouchableOpacity>
+          </View>
         </View>
         <View style={nmt.legend}>
           <View style={nmt.legendItem}>
