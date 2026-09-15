@@ -196,8 +196,7 @@ export default function LoginScreen() {
         settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
         createdAt: new Date().toISOString(),
       });
-      await sendEmailVerification(user);
-      mUserRef.current = user; setMVerifyEmail(mEmail.trim()); setMVerifyPending(true);
+      router.back();
     } catch (err: any) { setMError(err.message || 'Failed to create account.'); }
     finally { setMLoading(false); }
   }
