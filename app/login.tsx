@@ -483,8 +483,11 @@ export default function LoginScreen() {
                 value={mConfirm} onChangeText={setMConfirm} secureTextEntry />
               {mFieldErrors.confirm ? <Text style={s.fieldError}>{mFieldErrors.confirm}</Text> : null}
 
-              <TextInput style={s.input} placeholder="Username (e.g. thedahlias)" placeholderTextColor="#999"
-                value={mUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setMUsername(val); setMUsernameTouched(val.length > 0); }} autoCapitalize="none" />
+              <View style={s.atWrap}>
+                <Text style={s.atSign}>@</Text>
+                <TextInput style={s.atInput} placeholder="thedahlias" placeholderTextColor="#999"
+                  value={mUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setMUsername(val); setMUsernameTouched(val.length > 0); }} autoCapitalize="none" autoCorrect={false} />
+              </View>
               <Text style={s.hint}>Used to identify you on GigMatch</Text>
               {mFieldErrors.username ? <Text style={s.fieldError}>{mFieldErrors.username}</Text> : null}
 
@@ -608,8 +611,11 @@ export default function LoginScreen() {
                 value={vConfirm} onChangeText={setVConfirm} secureTextEntry />
               {vFieldErrors.confirm ? <Text style={s.fieldError}>{vFieldErrors.confirm}</Text> : null}
 
-              <TextInput style={s.input} placeholder="Username" placeholderTextColor="#999"
-                value={vUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setVUsername(val); setVUsernameTouched(val.length > 0); }} autoCapitalize="none" />
+              <View style={s.atWrap}>
+                <Text style={s.atSign}>@</Text>
+                <TextInput style={s.atInput} placeholder="thebluemoon" placeholderTextColor="#999"
+                  value={vUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setVUsername(val); setVUsernameTouched(val.length > 0); }} autoCapitalize="none" autoCorrect={false} />
+              </View>
               <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
               {vFieldErrors.username ? <Text style={s.fieldError}>{vFieldErrors.username}</Text> : null}
 
@@ -681,10 +687,13 @@ export default function LoginScreen() {
                 value={aConfirm} onChangeText={setAConfirm} secureTextEntry />
               {aFieldErrors.confirm ? <Text style={s.fieldError}>{aFieldErrors.confirm}</Text> : null}
 
-              <TextInput style={s.input} placeholder="Username (e.g. smithmusicagency)" placeholderTextColor="#999"
-                value={aUsername}
-                onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setAUsername(val); setAUsernameTouched(val.length > 0); }}
-                autoCapitalize="none" />
+              <View style={s.atWrap}>
+                <Text style={s.atSign}>@</Text>
+                <TextInput style={s.atInput} placeholder="smithmusicagency" placeholderTextColor="#999"
+                  value={aUsername}
+                  onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setAUsername(val); setAUsernameTouched(val.length > 0); }}
+                  autoCapitalize="none" autoCorrect={false} />
+              </View>
               <Text style={s.hint}>Used to identify your agency on GigMatch</Text>
               {aFieldErrors.username ? <Text style={s.fieldError}>{aFieldErrors.username}</Text> : null}
 
@@ -852,6 +861,13 @@ const s = StyleSheet.create({
     padding: 12, paddingHorizontal: 16, fontSize: 15, color: '#111111',
     backgroundColor: '#fafafa', marginBottom: 14,
   },
+  atWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8,
+    paddingHorizontal: 16, backgroundColor: '#fafafa', marginBottom: 14,
+  },
+  atSign: { fontSize: 15, color: '#111111', fontWeight: '600' },
+  atInput: { flex: 1, paddingVertical: 12, paddingLeft: 2, fontSize: 15, color: '#111111' },
   hint:       { fontSize: 12, color: '#888888', marginTop: -10, marginBottom: 12 },
   fieldError: { fontSize: 12, color: '#e94560', marginTop: -10, marginBottom: 10 },
   errorText:  { fontSize: 13, color: '#e94560', textAlign: 'center', marginBottom: 12 },
