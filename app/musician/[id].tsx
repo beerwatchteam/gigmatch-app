@@ -85,7 +85,7 @@ function getInstagramHandle(val: string): string | null {
 
 type CustomLink = { label: string; url: string };
 type Song       = { title?: string; url?: string; duration?: string };
-type GigEntry   = { venue?: string; suburb?: string; date?: string; attendance?: number; notes?: string };
+type GigEntry   = { venue?: string; suburb?: string; date?: string; attendance?: number; notes?: string; socialPostUrl?: string; ticketUrl?: string };
 
 type Musician = {
   id: string;
@@ -412,52 +412,426 @@ function MusicTab({ m }: { m: Musician }) {
   );
 }
 
+// ── Timetable helpers ──────────────────────────────────────────────
+
+const SHORT_MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const LONG_MO  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function isoDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+type EntryItem = { date: Date; dateISO: string; entry: GigEntry };
+type MonthGroup = { year: number; month: number; items: EntryItem[] };
+
+function groupByMonth(items: EntryItem[]): MonthGroup[] {
+  const groups: MonthGroup[] = [];
+  items.forEach(item => {
+    const y = item.date.getFullYear(), mo = item.date.getMonth();
+    let g = groups.find(g => g.year === y && g.month === mo);
+    if (!g) { g = { year: y, month: mo, items: [] }; groups.push(g); }
+    g.items.push(item);
+  });
+  return groups;
+}
+
+function MusicianCalendarMonth({ entries, month, year, today, windowStart, windowEnd, colors }: {
+  entries: GigEntry[]; month: number; year: number; today: Date;
+  windowStart: Date; windowEnd: Date; colors: any;
+}) {
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const byDate = new Map<string, GigEntry[]>();
+  entries.forEach(e => {
+    if (e.date) { const a = byDate.get(e.date) || []; a.push(e); byDate.set(e.date, a); }
+  });
+
+  return (
+    <View style={mt.calMonth}>
+      <Text style={[mt.calMonthLabel, { color: colors.black }]}>{LONG_MO[month]} {year}</Text>
+      <View style={mt.calDowRow}>
+        {['M','T','W','T','F','S','S'].map((d, i) => (
+          <Text key={i} style={[mt.calDow, { color: colors.greyLight }]}>{d}</Text>
+        ))}
+      </View>
+      <View style={mt.calGrid}>
+        {cells.map((dayNum, ci) => {
+          if (!dayNum) return <View key={`e${ci}`} style={mt.calCell} />;
+          const date = new Date(year, month, dayNum);
+          const iso = isoDate(date);
+          const todayN = new Date(today); todayN.setHours(0,0,0,0);
+          const dateN = new Date(date); dateN.setHours(0,0,0,0);
+          const wsN = new Date(windowStart); wsN.setHours(0,0,0,0);
+          const weN = new Date(windowEnd); weN.setHours(0,0,0,0);
+          const outOfRange = dateN < wsN || dateN > weN;
+          const isToday = dateN.getTime() === todayN.getTime();
+          const dayEntries = byDate.get(iso) || [];
+          const hasFree = dayEntries.some(e => (e.type || 'gig') === 'free');
+          const hasGig  = dayEntries.some(e => (e.type || 'gig') === 'gig');
+          const hasAway = dayEntries.some(e => (e.type || 'gig') === 'away');
+          return (
+            <View key={`${year}-${month}-${dayNum}`} style={mt.calCell}>
+              <View style={[mt.calDayCircle, isToday && mt.calDayCircleToday]}>
+                <Text style={[mt.calDayNum, { color: isToday ? '#ffffff' : outOfRange ? colors.greyLight : colors.black }]}>{dayNum}</Text>
+              </View>
+              <View style={mt.calDots}>
+                {!outOfRange && hasFree && <View style={[mt.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} />}
+                {!outOfRange && hasGig  && <View style={[mt.calDot, { backgroundColor: '#22c55e' }]} />}
+                {!outOfRange && hasAway && <View style={[mt.calDot, { backgroundColor: '#e0e0e0' }]} />}
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function MusEntryRow({ entry, date, isOwn, musicianId, musicianName }: {
+  entry: GigEntry; date: Date; isOwn: boolean; musicianId: string; musicianName: string;
+}) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const type = entry.type || 'gig';
+
+  const leftBorderColor = type === 'gig' ? '#22c55e' : type === 'away' ? '#e0e0e0' : Colors.orange;
+  const badgeLabel      = type === 'gig' ? 'Booked' : type === 'away' ? 'Away' : 'Free';
+  const badgeColor      = type === 'gig' ? '#16a34a' : type === 'away' ? '#888888' : Colors.orange;
+  const badgeBorderCol  = type === 'gig' ? '#22c55e' : type === 'away' ? '#e0e0e0' : Colors.orange;
+  const dayAbbrev = date.toLocaleDateString('en-AU', { weekday: 'short' }).toUpperCase();
+
+  return (
+    <View style={[mt.entryRow, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: colors.bg }]}>
+      <View style={mt.dateBox}>
+        <Text style={[mt.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
+        <Text style={[mt.dateMonth, { color: colors.grey }]}>{SHORT_MO[date.getMonth()].toUpperCase()}</Text>
+      </View>
+      <Text style={[mt.dayAbbrev, { color: colors.grey }]}>{dayAbbrev}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[mt.entryMain, { color: colors.black }]} numberOfLines={1}>
+          {type === 'gig' ? (entry.venue || 'Gig') : type === 'away' ? (entry.notes || 'Away') : (entry.notes || 'Available')}
+        </Text>
+        {type === 'gig' && entry.suburb
+          ? <Text style={[mt.entrySub, { color: colors.grey }]}>{entry.suburb}</Text>
+          : null}
+      </View>
+      <View style={[mt.statusBadge, { borderColor: badgeBorderCol }]}>
+        <Text style={[mt.statusBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+      </View>
+      {type === 'gig' && (entry.socialPostUrl || entry.ticketUrl) ? (
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {entry.socialPostUrl ? (
+            <TouchableOpacity
+              style={[mt.linkBtn, { borderColor: colors.border }]}
+              onPress={() => { const u = entry.socialPostUrl!; if (u.startsWith('http')) Linking.openURL(u); }}
+            >
+              <Text style={[mt.linkBtnText, { color: colors.black }]}>Post →</Text>
+            </TouchableOpacity>
+          ) : null}
+          {entry.ticketUrl ? (
+            <TouchableOpacity
+              style={mt.ticketBtn}
+              onPress={() => { const u = entry.ticketUrl!; if (u.startsWith('http')) Linking.openURL(u); }}
+            >
+              <Text style={mt.ticketBtnText}>Tickets →</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+      {type === 'free' && !isOwn ? (
+        <TouchableOpacity
+          style={mt.messageBtn}
+          onPress={() => router.push({ pathname: '/messages/[id]', params: { id: musicianId, name: musicianName } } as any)}
+        >
+          <Text style={mt.messageBtnText}>Message →</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
+  entry: GigEntry; date: Date; isOwn: boolean; musicianId: string; musicianName: string;
+}) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const type = entry.type || 'gig';
+  const borderColor = type === 'gig' ? '#22c55e' : type === 'away' ? '#e0e0e0' : Colors.orange;
+  const badgeLabel  = type === 'gig' ? 'Booked' : type === 'away' ? 'Away' : 'Free';
+  const badgeColor  = type === 'gig' ? '#16a34a' : type === 'away' ? '#888888' : Colors.orange;
+
+  return (
+    <View style={[nmt.card, { borderColor, backgroundColor: colors.bg }]}>
+      <View style={nmt.dateBox}>
+        <Text style={[nmt.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
+        <Text style={[nmt.dateMonth, { color: colors.grey }]}>{SHORT_MO[date.getMonth()].toUpperCase()}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[nmt.main, { color: colors.black }]} numberOfLines={1}>
+          {type === 'gig' ? (entry.venue || 'Gig') : type === 'away' ? 'Away' : 'Available'}
+        </Text>
+        {type === 'gig' && entry.suburb
+          ? <Text style={[nmt.sub, { color: colors.grey }]}>{entry.suburb}</Text>
+          : null}
+        {entry.notes ? <Text style={[nmt.notes, { color: colors.grey }]}>{entry.notes}</Text> : null}
+        {type === 'gig' && (entry.socialPostUrl || entry.ticketUrl) ? (
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+            {entry.socialPostUrl ? (
+              <TouchableOpacity onPress={() => { const u = entry.socialPostUrl!; if (u.startsWith('http')) Linking.openURL(u); }}>
+                <Text style={nmt.linkText}>Social post →</Text>
+              </TouchableOpacity>
+            ) : null}
+            {entry.ticketUrl ? (
+              <TouchableOpacity onPress={() => { const u = entry.ticketUrl!; if (u.startsWith('http')) Linking.openURL(u); }}>
+                <Text style={[nmt.linkText, { fontWeight: '700' }]}>Tickets →</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+        {type === 'free' && !isOwn ? (
+          <TouchableOpacity
+            style={nmt.msgBtn}
+            onPress={() => router.push({ pathname: '/messages/[id]', params: { id: musicianId, name: musicianName } } as any)}
+          >
+            <Text style={nmt.msgBtnText}>Message →</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <View style={[nmt.badge, { borderColor }]}>
+        <Text style={[nmt.badgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+      </View>
+    </View>
+  );
+}
+
 // ── Timetable Tab ─────────────────────────────────────────────────
 
-function TimetableTab({ m }: { m: Musician }) {
+function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
   const { colors } = useTheme();
-  const upcoming = (m.upcomingGigs || [])
-    .filter(g => g.venue || g.date)
-    .slice()
-    .sort((a, b) => {
-      const da = a.date ? Date.parse(a.date) : NaN;
-      const db = b.date ? Date.parse(b.date) : NaN;
-      if (isNaN(da) && isNaN(db)) return 0;
-      if (isNaN(da)) return 1;
-      if (isNaN(db)) return -1;
-      return da - db;
-    });
+  const today = new Date();
+  const [filterTab, setFilterTab]   = useState<'free' | 'all' | 'gigs'>('all');
+  const [monthOffset, setMonthOffset] = useState(0);
 
-  if (upcoming.length === 0) {
+  const allEntries: EntryItem[] = (m.upcomingGigs || [])
+    .filter(g => !!g.date)
+    .map(g => { const d = new Date(g.date!); return { date: d, dateISO: isoDate(d), entry: g }; })
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  const windowStart = new Date(today);
+  windowStart.setMonth(windowStart.getMonth() + monthOffset);
+  windowStart.setHours(0,0,0,0);
+  const windowEnd = new Date(windowStart);
+  windowEnd.setMonth(windowEnd.getMonth() + 3);
+  windowEnd.setHours(23,59,59,999);
+
+  const windowEntries = allEntries.filter(({ date }) => date >= windowStart && date <= windowEnd);
+  const filtered = windowEntries.filter(({ entry }) => {
+    const t = entry.type || 'gig';
+    if (filterTab === 'free')  return t === 'free';
+    if (filterTab === 'gigs')  return t === 'gig';
+    return true;
+  });
+  const monthGroups = groupByMonth(filtered);
+
+  const countLabel = filterTab === 'free'
+    ? `${filtered.length} free date${filtered.length !== 1 ? 's' : ''}`
+    : filterTab === 'gigs'
+      ? `${filtered.length} gig${filtered.length !== 1 ? 's' : ''}`
+      : `${filtered.length} entr${filtered.length !== 1 ? 'ies' : 'y'}`;
+
+  const rangeLabel = `(${LONG_MO[windowStart.getMonth()]} – ${LONG_MO[windowEnd.getMonth()]} ${windowEnd.getFullYear()})`;
+  const musicianId   = m.id;
+  const musicianName = m.name || 'Musician';
+
+  if (isWeb) {
     return (
-      <View style={styles.tabContent}>
-        <Text style={[styles.emptyState, { color: colors.greyLight }]}>No upcoming gigs listed yet.</Text>
+      <View style={mt.tabBody}>
+        {/* Filter row */}
+        <View style={mt.filterRow}>
+          <View style={[mt.filterTabs, { borderColor: colors.border }]}>
+            {(['free', 'all', 'gigs'] as const).map(tab => (
+              <TouchableOpacity
+                key={tab}
+                style={[mt.filterTab, filterTab === tab && mt.filterTabActive]}
+                onPress={() => setFilterTab(tab)}
+              >
+                <Text style={[mt.filterTabText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
+                  {tab === 'free' ? 'Free' : tab === 'all' ? 'All' : 'Gigs'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={mt.countRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[mt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
+              <Text style={[mt.countLabel, { color: colors.grey, fontWeight: '400' }]}>{rangeLabel}</Text>
+            </View>
+            <View style={mt.monthNavRow}>
+              {monthOffset > 0 && (
+                <TouchableOpacity style={mt.monthNavBtn} onPress={() => setMonthOffset(o => o - 3)}>
+                  <Text style={[mt.monthNavText, { color: colors.grey }]}>&larr; Previous 3 Months</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={mt.monthNavBtn} onPress={() => setMonthOffset(o => o + 3)}>
+                <Text style={[mt.monthNavText, { color: colors.grey }]}>Next 3 Months &rarr;</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Body: calendar + list */}
+        <View style={mt.body}>
+          {/* Calendar panel */}
+          <View style={[mt.calPanel, { borderColor: colors.border }]}>
+            <Text style={[mt.calPanelTitle, { color: colors.grey }]}>AVAILABILITY AT A GLANCE</Text>
+            <View style={mt.calLegend}>
+              <View style={mt.calLegendItem}>
+                <View style={[mt.calDot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.orange }]} />
+                <Text style={[mt.calLegendText, { color: colors.grey }]}>Free</Text>
+              </View>
+              <View style={mt.calLegendItem}>
+                <View style={[mt.calDot, { backgroundColor: '#22c55e' }]} />
+                <Text style={[mt.calLegendText, { color: colors.grey }]}>Booked</Text>
+              </View>
+              <View style={mt.calLegendItem}>
+                <View style={[mt.calDot, { backgroundColor: '#e0e0e0' }]} />
+                <Text style={[mt.calLegendText, { color: colors.grey }]}>Away</Text>
+              </View>
+            </View>
+            {(() => {
+              const calMonths: { year: number; month: number }[] = [];
+              const cur = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
+              const end = new Date(windowEnd.getFullYear(), windowEnd.getMonth(), 1);
+              while (cur <= end) {
+                calMonths.push({ year: cur.getFullYear(), month: cur.getMonth() });
+                cur.setMonth(cur.getMonth() + 1);
+              }
+              return calMonths.map(({ year, month }) => (
+                <MusicianCalendarMonth
+                  key={`${year}-${month}`}
+                  entries={allEntries.map(e => e.entry)}
+                  month={month} year={year} today={today}
+                  windowStart={windowStart} windowEnd={windowEnd}
+                  colors={colors}
+                />
+              ));
+            })()}
+          </View>
+
+          {/* List area */}
+          <View style={mt.listArea}>
+            {monthGroups.length === 0 ? (
+              <Text style={[mt.emptyText, { color: colors.grey }]}>
+                {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
+              </Text>
+            ) : (
+              monthGroups.map(group => {
+                const freeCount = group.items.filter(i => (i.entry.type || 'gig') === 'free').length;
+                return (
+                  <View key={`${group.year}-${group.month}`} style={mt.monthGroup}>
+                    <View style={mt.monthHeader}>
+                      <Text style={[mt.monthLabel, { color: colors.black }]}>
+                        {LONG_MO[group.month].toUpperCase()} {group.year}
+                      </Text>
+                      {freeCount > 0 && (
+                        <Text style={mt.monthFreeCount}>{freeCount} free</Text>
+                      )}
+                    </View>
+                    {group.items.map(({ date, dateISO, entry }, i) => (
+                      <MusEntryRow
+                        key={`${dateISO}-${i}`}
+                        entry={entry} date={date}
+                        isOwn={isOwn} musicianId={musicianId} musicianName={musicianName}
+                      />
+                    ))}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </View>
       </View>
     );
   }
 
+  // ── Native ──
   return (
-    <View style={styles.tabContent}>
-      <View style={styles.section}>
-        <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
-          <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
-          <Text style={[styles.gigColDraw, styles.gigTableHdr, { color: colors.greyLight }]}>DATE</Text>
+    <View>
+      <View style={[nmt.filterRow, { borderBottomColor: colors.border }]}>
+        <View style={[nmt.filterControl, { borderColor: colors.border }]}>
+          {(['free', 'all', 'gigs'] as const).map((tab, i, arr) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                nmt.filterBtn,
+                filterTab === tab && nmt.filterBtnActive,
+                i < arr.length - 1 && { borderRightWidth: 1, borderRightColor: colors.border },
+              ]}
+              onPress={() => setFilterTab(tab)}
+            >
+              <Text style={[nmt.filterText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
+                {tab === 'free' ? 'Free' : tab === 'all' ? 'All' : 'Gigs'}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-        {upcoming.map((gig, i) => (
-          <View key={i} style={[styles.gigTableRow, { borderBottomColor: colors.borderFaint }]}>
-            <Text style={[styles.gigColVenue, styles.gigCellText, { color: colors.black }]} numberOfLines={1}>
-              {gig.venue || '—'}
-            </Text>
-            <Text style={[styles.gigColSuburb, styles.gigCellText, { color: colors.grey }]} numberOfLines={1}>
-              {gig.suburb || '—'}
-            </Text>
-            <Text style={[styles.gigColDraw, styles.gigCellText, { color: colors.black }]}>
-              {gig.date || '—'}
-            </Text>
-          </View>
-        ))}
       </View>
+      <View style={[nmt.countNav, { borderBottomColor: colors.border }]}>
+        <View style={nmt.countRow}>
+          <Text style={[nmt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
+          <Text style={[nmt.dateRange, { color: colors.grey }]}>{rangeLabel}</Text>
+        </View>
+        <View style={nmt.navBtns}>
+          {monthOffset > 0 && (
+            <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o - 3)}>
+              <Text style={[nmt.navBtnText, { color: colors.grey }]}>← Prev 3 months</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o + 3)}>
+            <Text style={[nmt.navBtnText, { color: colors.grey }]}>Next 3 months →</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={nmt.legend}>
+          {[
+            { label: 'Free',   bg: 'transparent' as const, border: Colors.orange },
+            { label: 'Booked', bg: '#22c55e',     border: '#22c55e'     },
+            { label: 'Away',   bg: '#e0e0e0',     border: '#e0e0e0'     },
+          ].map(({ label, bg, border }) => (
+            <View key={label} style={nmt.legendItem}>
+              <View style={[nmt.legendDot, { backgroundColor: bg, borderWidth: 1, borderColor: border }]} />
+              <Text style={[nmt.legendText, { color: colors.grey }]}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+      {monthGroups.length === 0 ? (
+        <Text style={[nmt.emptyText, { color: colors.grey }]}>
+          {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
+        </Text>
+      ) : (
+        monthGroups.map(group => (
+          <View key={`${group.year}-${group.month}`} style={nmt.monthGroup}>
+            <Text style={[nmt.monthLabel, { color: colors.grey }]}>
+              {LONG_MO[group.month].toUpperCase()} {group.year}
+            </Text>
+            <View style={{ paddingHorizontal: 16, gap: 10 }}>
+              {group.items.map(({ date, dateISO, entry }, i) => (
+                <NativeMusEntryCard
+                  key={`${dateISO}-${i}`}
+                  entry={entry} date={date}
+                  isOwn={isOwn} musicianId={musicianId} musicianName={musicianName}
+                />
+              ))}
+            </View>
+          </View>
+        ))
+      )}
+      <View style={{ height: 20 }} />
     </View>
   );
 }
@@ -667,7 +1041,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {/* Tab content */}
         {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} />}
         {activeTab === 'music'      && <MusicTab m={musician} />}
-        {activeTab === 'timetable'  && <TimetableTab m={musician} />}
+        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} />}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -838,4 +1212,96 @@ const styles = StyleSheet.create({
   igHandle:     { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   igSub:        { fontSize: 13 },
   igArrow:      { fontSize: 20, fontWeight: '300' },
+});
+
+// ── Musician timetable styles (web) ──────────────────────────────
+const mt = StyleSheet.create({
+  tabBody:       { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28, paddingBottom: 40 },
+  filterRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  filterTabs:    { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  filterTab:     { paddingHorizontal: 18, paddingVertical: 9 },
+  filterTabActive: { backgroundColor: Colors.orange },
+  filterTabText: { fontSize: 13, fontWeight: '600' },
+  countRow:      { gap: 8 },
+  countLabel:    { fontSize: 13, fontWeight: '500' },
+  monthNavRow:   { flexDirection: 'row', gap: 10 },
+  monthNavBtn:   { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#e0e0e0' },
+  monthNavText:  { fontSize: 13, fontWeight: '600' },
+  body:          { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },
+  // Calendar panel
+  calPanel:      { width: 210, borderWidth: 1, borderRadius: 12, padding: 16 },
+  calPanelTitle: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  calLegend:     { gap: 6, marginBottom: 20 },
+  calLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  calLegendText: { fontSize: 11 },
+  calDot:        { width: 8, height: 8, borderRadius: 4 },
+  calMonth:      { marginBottom: 18 },
+  calMonthLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  calDowRow:     { flexDirection: 'row', marginBottom: 2 },
+  calDow:        { flex: 1, textAlign: 'center' as const, fontSize: 9, fontWeight: '700' },
+  calGrid:       { flexDirection: 'row', flexWrap: 'wrap' },
+  calCell:       { width: '14.28%' as any, alignItems: 'center', paddingVertical: 2 },
+  calDayCircle:  { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  calDayCircleToday: { backgroundColor: Colors.orange },
+  calDayNum:     { fontSize: 10, fontWeight: '600' },
+  calDots:       { flexDirection: 'row', gap: 1, minHeight: 6, marginTop: 1, justifyContent: 'center' },
+  // List area
+  listArea:      { flex: 1 },
+  emptyText:     { fontSize: 15, paddingVertical: 40, textAlign: 'center' as const },
+  monthGroup:    { marginBottom: 24 },
+  monthHeader:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  monthLabel:    { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+  monthFreeCount:{ fontSize: 11, color: Colors.orange, fontWeight: '600' },
+  // Entry row
+  entryRow:      { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderLeftWidth: 4, borderRadius: 8, marginBottom: 8, paddingVertical: 14, paddingHorizontal: 16, gap: 14 },
+  dateBox:       { width: 36, alignItems: 'center', flexShrink: 0 },
+  dateNum:       { fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  dateMonth:     { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
+  dayAbbrev:     { width: 28, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: 0.5, flexShrink: 0 },
+  entryMain:     { fontSize: 15, fontWeight: '700' },
+  entrySub:      { fontSize: 13, marginTop: 2 },
+  statusBadge:   { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, flexShrink: 0 },
+  statusBadgeText: { fontSize: 12, fontWeight: '600' },
+  linkBtn:       { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, flexShrink: 0 },
+  linkBtnText:   { fontSize: 12, fontWeight: '600' },
+  ticketBtn:     { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, flexShrink: 0 },
+  ticketBtnText: { fontSize: 12, fontWeight: '700', color: '#111111' },
+  messageBtn:    { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
+  messageBtnText:{ fontSize: 13, fontWeight: '700', color: '#111111' },
+});
+
+// ── Musician timetable styles (native) ───────────────────────────
+const nmt = StyleSheet.create({
+  filterRow:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  filterControl: { flexDirection: 'row', borderWidth: 1, borderRadius: 10, overflow: 'hidden', alignSelf: 'flex-start' },
+  filterBtn:     { paddingHorizontal: 16, paddingVertical: 10 },
+  filterBtnActive: { backgroundColor: Colors.orange },
+  filterText:    { fontSize: 13, fontWeight: '700' },
+  countNav:      { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, gap: 8 },
+  countRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 4 },
+  countLabel:    { fontSize: 13, fontWeight: '500' },
+  dateRange:     { fontSize: 12, fontWeight: '400' },
+  navBtns:       { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as const },
+  navBtn:        { paddingVertical: 6, alignSelf: 'flex-start' as const },
+  navBtnText:    { fontSize: 13, fontWeight: '600' },
+  legend:        { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 12, marginTop: 4 },
+  legendItem:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot:     { width: 9, height: 9, borderRadius: 5 },
+  legendText:    { fontSize: 12 },
+  emptyText:     { textAlign: 'center' as const, fontSize: 14, fontStyle: 'italic', paddingVertical: 32, paddingHorizontal: 20 },
+  monthGroup:    { marginBottom: 20 },
+  monthLabel:    { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, paddingHorizontal: 16, paddingBottom: 10, paddingTop: 14, textTransform: 'uppercase' as const },
+  // Native entry card
+  card:          { flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderLeftWidth: 4, borderRadius: 12, padding: 14, gap: 12 },
+  dateBox:       { width: 36, alignItems: 'center', flexShrink: 0, paddingTop: 2 },
+  dateNum:       { fontSize: 18, fontWeight: '800', lineHeight: 20 },
+  dateMonth:     { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  main:          { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  sub:           { fontSize: 13, marginBottom: 2 },
+  notes:         { fontSize: 13, fontStyle: 'italic', marginTop: 2 },
+  linkText:      { fontSize: 13, color: Colors.orange, fontWeight: '600', marginRight: 4 },
+  msgBtn:        { marginTop: 10, backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, alignSelf: 'flex-start' as const },
+  msgBtnText:    { fontSize: 13, fontWeight: '700', color: '#111111' },
+  badge:         { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 },
+  badgeText:     { fontSize: 11, fontWeight: '600' },
 });

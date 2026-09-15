@@ -28,7 +28,7 @@ const PLATFORMS = [
 const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
 
 type Song    = { title: string; url: string; notes: string };
-type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string; _isNew?: boolean };
+type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; location: string;
@@ -302,7 +302,7 @@ export default function EditProfileScreen() {
   function setUpcoming(i: number, field: keyof Gig, val: string) {
     setProfile(prev => ({ ...prev, upcomingGigs: prev.upcomingGigs.map((g, idx) => idx === i ? { ...g, [field]: val } : g) }));
   }
-  function addUpcoming() { setProfile(prev => ({ ...prev, upcomingGigs: [...prev.upcomingGigs, { venue: '', suburb: '', date: '', notes: '', _isNew: true }] })); }
+  function addUpcoming() { setProfile(prev => ({ ...prev, upcomingGigs: [...prev.upcomingGigs, { venue: '', suburb: '', date: '', notes: '', socialPostUrl: '', ticketUrl: '', type: 'gig' as const, _isNew: true }] })); }
   function removeUpcoming(i: number) { setProfile(prev => ({ ...prev, upcomingGigs: prev.upcomingGigs.filter((_, idx) => idx !== i) })); }
 
   // ── Photo upload ──
@@ -376,7 +376,7 @@ export default function EditProfileScreen() {
       errors.push('Music');
     if (profile.gigHistory.some(g => !g.venue?.trim() || !g.suburb?.trim() || !g.date?.trim()))
       errors.push('Past Gigs');
-    if (profile.upcomingGigs.some(g => !g.venue?.trim() || !g.suburb?.trim() || !g.date?.trim()))
+    if (profile.upcomingGigs.some(g => !g.date?.trim() || ((g.type || 'gig') === 'gig' && (!g.venue?.trim() || !g.suburb?.trim()))))
       errors.push('Timetable');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
@@ -856,13 +856,26 @@ export default function EditProfileScreen() {
             <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
             <Text style={s.hint}>Let venues know where you're already booked. It shows you're active and in demand — and helps them spot scheduling conflicts early.</Text>
             {profile.upcomingGigs.map((gig, i) => {
-              const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
+              const entryType = gig.type || 'gig';
+              const hasError = showErrors && (!gig.date?.trim() || (entryType === 'gig' && (!gig.venue?.trim() || !gig.suburb?.trim())));
               return (
                 <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setUpcoming(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
-                    <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
-                  </View>
+                  <Field label="Type">
+                    <Pills
+                      options={['Gig', 'Away', 'Free']}
+                      value={entryType === 'gig' ? 'Gig' : entryType === 'away' ? 'Away' : 'Free'}
+                      onSelect={(v: string) => setUpcoming(i, 'type', v.toLowerCase() as 'gig' | 'away' | 'free')}
+                    />
+                  </Field>
+                  {entryType === 'gig' && (
+                    <>
+                      <View style={{ height: 10 }} />
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setUpcoming(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
+                        <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
+                      </View>
+                    </>
+                  )}
                   <View style={{ height: 8 }} />
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
@@ -870,12 +883,20 @@ export default function EditProfileScreen() {
                     </View>
                     <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
                   </View>
+                  {entryType === 'gig' && (
+                    <>
+                      <View style={{ height: 8 }} />
+                      <TextInput style={s.input} value={gig.socialPostUrl || ''} onChangeText={v => setUpcoming(i, 'socialPostUrl', v)} placeholder="Social post link (Instagram, Facebook, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" />
+                      <View style={{ height: 8 }} />
+                      <TextInput style={s.input} value={gig.ticketUrl || ''} onChangeText={v => setUpcoming(i, 'ticketUrl', v)} placeholder="Ticket link (Moshtix, Eventbrite, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" />
+                    </>
+                  )}
                   <View style={s.itemBtnRow}>
                     <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeUpcoming(i)}>
-                      <Text style={s.removeBtnText}>Remove Gig</Text>
+                      <Text style={s.removeBtnText}>Remove</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
-                      <Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add Gig' : 'Save'}</Text>
+                      <Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add' : 'Save'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
