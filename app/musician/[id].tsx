@@ -471,18 +471,16 @@ function MusicianCalendarMonth({ entries, month, year, today, windowStart, windo
           const outOfRange = dateN < wsN || dateN > weN;
           const isToday = dateN.getTime() === todayN.getTime();
           const dayEntries = byDate.get(iso) || [];
-          const hasFree = dayEntries.some(e => (e.type || 'gig') === 'free');
           const hasGig  = dayEntries.some(e => (e.type || 'gig') === 'gig');
           const hasAway = dayEntries.some(e => (e.type || 'gig') === 'away');
+          const numColor = isToday ? '#ffffff' : outOfRange ? colors.greyLight : hasAway ? colors.greyLight : colors.black;
           return (
             <View key={`${year}-${month}-${dayNum}`} style={mt.calCell}>
-              <View style={[mt.calDayCircle, isToday && mt.calDayCircleToday]}>
-                <Text style={[mt.calDayNum, { color: isToday ? '#ffffff' : outOfRange ? colors.greyLight : colors.black }]}>{dayNum}</Text>
+              <View style={[mt.calDayCircle, isToday && !hasAway && mt.calDayCircleToday]}>
+                <Text style={[mt.calDayNum, { color: numColor }, !outOfRange && hasAway && { textDecorationLine: 'line-through' as const }]}>{dayNum}</Text>
               </View>
               <View style={mt.calDots}>
-                {!outOfRange && hasFree && <View style={[mt.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} />}
-                {!outOfRange && hasGig  && <View style={[mt.calDot, { backgroundColor: '#22c55e' }]} />}
-                {!outOfRange && hasAway && <View style={[mt.calDot, { backgroundColor: '#e0e0e0' }]} />}
+                {!outOfRange && hasGig && <View style={[mt.calDot, { backgroundColor: '#22c55e' }]} />}
               </View>
             </View>
           );
@@ -614,7 +612,7 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
 function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
   const { colors } = useTheme();
   const today = new Date();
-  const [filterTab, setFilterTab]   = useState<'free' | 'all' | 'gigs'>('all');
+  const [filterTab, setFilterTab]   = useState<'all' | 'gigs' | 'away'>('all');
   const [monthOffset, setMonthOffset] = useState(0);
 
   const allEntries: EntryItem[] = (m.upcomingGigs || [])
@@ -632,16 +630,16 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
   const windowEntries = allEntries.filter(({ date }) => date >= windowStart && date <= windowEnd);
   const filtered = windowEntries.filter(({ entry }) => {
     const t = entry.type || 'gig';
-    if (filterTab === 'free')  return t === 'free';
-    if (filterTab === 'gigs')  return t === 'gig';
+    if (filterTab === 'gigs') return t === 'gig';
+    if (filterTab === 'away') return t === 'away';
     return true;
   });
   const monthGroups = groupByMonth(filtered);
 
-  const countLabel = filterTab === 'free'
-    ? `${filtered.length} free date${filtered.length !== 1 ? 's' : ''}`
-    : filterTab === 'gigs'
-      ? `${filtered.length} gig${filtered.length !== 1 ? 's' : ''}`
+  const countLabel = filterTab === 'gigs'
+    ? `${filtered.length} gig${filtered.length !== 1 ? 's' : ''}`
+    : filterTab === 'away'
+      ? `${filtered.length} away date${filtered.length !== 1 ? 's' : ''}`
       : `${filtered.length} entr${filtered.length !== 1 ? 'ies' : 'y'}`;
 
   const rangeLabel = `(${LONG_MO[windowStart.getMonth()]} – ${LONG_MO[windowEnd.getMonth()]} ${windowEnd.getFullYear()})`;
@@ -654,14 +652,14 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
         {/* Filter row */}
         <View style={mt.filterRow}>
           <View style={[mt.filterTabs, { borderColor: colors.border }]}>
-            {(['free', 'all', 'gigs'] as const).map(tab => (
+            {(['all', 'gigs', 'away'] as const).map(tab => (
               <TouchableOpacity
                 key={tab}
                 style={[mt.filterTab, filterTab === tab && mt.filterTabActive]}
                 onPress={() => setFilterTab(tab)}
               >
                 <Text style={[mt.filterTabText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
-                  {tab === 'free' ? 'Free' : tab === 'all' ? 'All' : 'Gigs'}
+                  {tab === 'all' ? 'All' : tab === 'gigs' ? 'Gigs' : 'Away'}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -691,15 +689,11 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
             <Text style={[mt.calPanelTitle, { color: colors.grey }]}>AVAILABILITY AT A GLANCE</Text>
             <View style={mt.calLegend}>
               <View style={mt.calLegendItem}>
-                <View style={[mt.calDot, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.orange }]} />
-                <Text style={[mt.calLegendText, { color: colors.grey }]}>Free</Text>
-              </View>
-              <View style={mt.calLegendItem}>
                 <View style={[mt.calDot, { backgroundColor: '#22c55e' }]} />
                 <Text style={[mt.calLegendText, { color: colors.grey }]}>Booked</Text>
               </View>
               <View style={mt.calLegendItem}>
-                <View style={[mt.calDot, { backgroundColor: '#e0e0e0' }]} />
+                <Text style={[mt.calLegendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', fontSize: 13, marginRight: 2 }]}>15</Text>
                 <Text style={[mt.calLegendText, { color: colors.grey }]}>Away</Text>
               </View>
             </View>
@@ -731,16 +725,12 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
               </Text>
             ) : (
               monthGroups.map(group => {
-                const freeCount = group.items.filter(i => (i.entry.type || 'gig') === 'free').length;
                 return (
                   <View key={`${group.year}-${group.month}`} style={mt.monthGroup}>
                     <View style={mt.monthHeader}>
                       <Text style={[mt.monthLabel, { color: colors.black }]}>
                         {LONG_MO[group.month].toUpperCase()} {group.year}
                       </Text>
-                      {freeCount > 0 && (
-                        <Text style={mt.monthFreeCount}>{freeCount} free</Text>
-                      )}
                     </View>
                     {group.items.map(({ date, dateISO, entry }, i) => (
                       <MusEntryRow
@@ -764,7 +754,7 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
     <View>
       <View style={[nmt.filterRow, { borderBottomColor: colors.border }]}>
         <View style={[nmt.filterControl, { borderColor: colors.border }]}>
-          {(['free', 'all', 'gigs'] as const).map((tab, i, arr) => (
+          {(['all', 'gigs', 'away'] as const).map((tab, i, arr) => (
             <TouchableOpacity
               key={tab}
               style={[
@@ -775,7 +765,7 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
               onPress={() => setFilterTab(tab)}
             >
               <Text style={[nmt.filterText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
-                {tab === 'free' ? 'Free' : tab === 'all' ? 'All' : 'Gigs'}
+                {tab === 'all' ? 'All' : tab === 'gigs' ? 'Gigs' : 'Away'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -797,16 +787,14 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
           </TouchableOpacity>
         </View>
         <View style={nmt.legend}>
-          {[
-            { label: 'Free',   bg: 'transparent' as const, border: Colors.orange },
-            { label: 'Booked', bg: '#22c55e',     border: '#22c55e'     },
-            { label: 'Away',   bg: '#e0e0e0',     border: '#e0e0e0'     },
-          ].map(({ label, bg, border }) => (
-            <View key={label} style={nmt.legendItem}>
-              <View style={[nmt.legendDot, { backgroundColor: bg, borderWidth: 1, borderColor: border }]} />
-              <Text style={[nmt.legendText, { color: colors.grey }]}>{label}</Text>
-            </View>
-          ))}
+          <View style={nmt.legendItem}>
+            <View style={[nmt.legendDot, { backgroundColor: '#22c55e' }]} />
+            <Text style={[nmt.legendText, { color: colors.grey }]}>Booked</Text>
+          </View>
+          <View style={nmt.legendItem}>
+            <Text style={[nmt.legendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
+            <Text style={[nmt.legendText, { color: colors.grey }]}>Away</Text>
+          </View>
         </View>
       </View>
       {monthGroups.length === 0 ? (

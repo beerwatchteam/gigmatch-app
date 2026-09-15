@@ -862,9 +862,9 @@ export default function EditProfileScreen() {
                 <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <Field label="Type">
                     <Pills
-                      options={['Gig', 'Away', 'Free']}
-                      value={entryType === 'gig' ? 'Gig' : entryType === 'away' ? 'Away' : 'Free'}
-                      onSelect={(v: string) => setUpcoming(i, 'type', v.toLowerCase() as 'gig' | 'away' | 'free')}
+                      options={['Gig', 'Away']}
+                      value={entryType === 'away' ? 'Away' : 'Gig'}
+                      onSelect={(v: string) => setUpcoming(i, 'type', v.toLowerCase() as 'gig' | 'away')}
                     />
                   </Field>
                   {entryType === 'gig' && (
