@@ -272,8 +272,8 @@ export default function HomeScreen() {
               <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/(tabs)/venues')}>
                 <Text style={s.ctaFilledText}>Browse Venues</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.ctaOutline} onPress={() => router.push('/login?mode=signup&tab=artist')}>
-                <Text style={s.ctaOutlineText}>Sign Up</Text>
+              <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist')}>
+                <Text style={s.ctaFilledText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
 

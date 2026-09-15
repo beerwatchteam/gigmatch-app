@@ -259,7 +259,7 @@ export function Hero() {
             </a>
             <a
               href="/login?mode=signup&tab=artist"
-              className="lp-btn lp-btn-ghost"
+              className="lp-btn lp-btn-primary"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -269,13 +269,13 @@ export function Hero() {
                 height: 52,
                 padding: '0 32px',
                 borderRadius: 8,
-                backgroundColor: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.85)',
-                border: '1px solid rgba(255,255,255,0.15)',
+                backgroundColor: '#fa830c',
+                color: '#ffffff',
                 textDecoration: 'none',
                 cursor: 'pointer',
+                border: 'none',
                 minHeight: 44,
-                transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                transition: 'background 0.15s',
               }}
             >
               Sign Up
