@@ -939,7 +939,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
             <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
             <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
           </View>
-          <View style={nt.navBtns}>
+          <View style={[nt.navBtns, { justifyContent: 'flex-end' }]}>
             {nativeMonthOffset > 0 && (
               <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o - 3)}>
                 <Text style={[nt.navBtnText, { color: colors.grey }]}>← Prev</Text>
