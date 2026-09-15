@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, Image, ActivityIndicator, Animated,
+  Platform, Image, ActivityIndicator, Animated, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
@@ -110,6 +110,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const { profile, user } = useAuth();
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
+  const isWide = isWeb && width >= 780;
   const [heroImageUrl, setHeroImageUrl]   = useState<string | null>(null);
   const [heroUploading, setHeroUploading] = useState(false);
   const [testVenue, setTestVenue]         = useState<PreviewVenue | null>(null);
@@ -239,14 +241,15 @@ export default function HomeScreen() {
             <Text style={s.eyebrow}>The Problem</Text>
             <Text style={[s.sectionTitle, { color: colors.black }]}>{PROBLEM_SECTION_HEADING}</Text>
           </View>
-          <View style={[s.problemGrid, isWeb && s.problemGridWeb]}>
+          <View style={[s.problemGrid, isWide && s.problemGridWeb]}>
             {PROBLEMS.map(({ title, bullets }, i) => (
               <View
                 key={title}
                 style={[
                   s.problemCard,
                   { backgroundColor: colors.bg, borderColor: colors.border },
-                  isWeb && s.problemCardWeb,
+                  isWide && s.problemCardWeb,
+                  !isWide && { flex: undefined },
                 ]}
               >
                 <View style={s.problemIndex}>
@@ -268,10 +271,10 @@ export default function HomeScreen() {
 
         {/* ── Audience split ───────────────────────────────────── */}
         <View style={[s.audienceSection, { backgroundColor: colors.bg }]}>
-          <View style={[s.audienceGrid, isWeb && s.audienceGridWeb]}>
+          <View style={[s.audienceGrid, isWide && s.audienceGridWeb]}>
 
             {/* Artists — dark card */}
-            <View style={[s.audienceCard, s.audienceCardDark]}>
+            <View style={[s.audienceCard, s.audienceCardDark, !isWide && { flex: undefined }]}>
               <Text style={s.audienceTagDark}>For Artists</Text>
               <Text style={s.audienceHeadingDark}>Find stages worth playing.</Text>
               {[
@@ -290,7 +293,7 @@ export default function HomeScreen() {
             </View>
 
             {/* Venues — dark card */}
-            <View style={[s.audienceCard, s.audienceCardDark]}>
+            <View style={[s.audienceCard, s.audienceCardDark, !isWide && { flex: undefined }]}>
               <Text style={s.audienceTagDark}>For Venues</Text>
               <Text style={s.audienceHeadingDark}>Fill your calendar, not your inbox.</Text>
               {[
