@@ -44,6 +44,7 @@ type Room = {
   monitoring?: string;
   power?: string;
   notes?: string;
+  documents?: { url: string; name: string }[];
 };
 
 type TechSpecs = {
@@ -1587,6 +1588,16 @@ function RoomsTab({ venue }: { venue: Venue }) {
                   <View style={[rt.notesBox, { backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1, marginTop: 8 }]}>
                     <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 4 }]}>NOTES FOR ACTS</Text>
                     <Text style={[rt.notesText, { color: colors.black }]}>{room.notes}</Text>
+                  </View>
+                ) : null}
+                {room.documents && room.documents.length > 0 ? (
+                  <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
+                    <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>TECH SPEC DOCUMENTS</Text>
+                    {room.documents.map((doc, di) => (
+                      <TouchableOpacity key={di} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
+                        <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 ) : null}
               </View>

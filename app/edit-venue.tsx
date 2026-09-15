@@ -22,7 +22,7 @@ const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop',
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const SLOT_TYPES     = ['Headline','Other'];
 
-type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; backline: string; monitoring: string; power: string; notes: string; _isNew?: boolean };
+type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; backline: string; monitoring: string; power: string; notes: string; documents: { url: string; name: string }[]; _isNew?: boolean };
 type Night = {
   day: string; startTime: string; duration: number; slotType: string;
   startDate: string; endDate: string; continuous: boolean;
@@ -494,6 +494,7 @@ export default function EditVenueScreen() {
   const [expandedNight, setExpandedNight] = useState<number | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
+  const [roomDocUploading, setRoomDocUploading] = useState<number | null>(null);
   const [stageDocUploading, setStageDocUploading] = useState(false);
   const [invoiceDocUploading, setInvoiceDocUploading] = useState(false);
   const [videoUploading, setVideoUploading] = useState(false);
@@ -533,7 +534,7 @@ export default function EditVenueScreen() {
   }
   function addRoom() {
     setData(prev => {
-      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '', backline: '', monitoring: '', power: '', notes: '', _isNew: true }];
+      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '', backline: '', monitoring: '', power: '', notes: '', documents: [], _isNew: true }];
       setExpandedRoom(rooms.length - 1);
       return { ...prev, rooms };
     });
@@ -606,6 +607,31 @@ export default function EditVenueScreen() {
       Alert.alert('Upload failed', String(e));
     } finally {
       setDocUploading(false);
+    }
+  }
+
+  async function pickRoomDocument(roomIndex: number) {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setRoomDocUploading(roomIndex);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `rooms/${venueId}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      setData(prev => ({
+        ...prev,
+        rooms: prev.rooms.map((r, idx) =>
+          idx === roomIndex ? { ...r, documents: [...(r.documents || []), { url, name: asset.name }] } : r
+        ),
+      }));
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setRoomDocUploading(null);
     }
   }
 
@@ -1207,6 +1233,22 @@ export default function EditVenueScreen() {
                       </Field>
                       <Field label="Notes for Acts">
                         <Input value={room.notes} onChangeText={(v: string) => setRoom(i, 'notes', v)} placeholder="Anything acts should know about this room" multiline />
+                      </Field>
+                      <Field label="Tech Spec Documents">
+                        {(room.documents || []).map((doc, idx) => (
+                          <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name || doc.url}</Text>
+                            <TouchableOpacity
+                              style={s.removeBtn}
+                              onPress={() => setRoom(i, 'documents', (room.documents || []).filter((_: any, di: number) => di !== idx))}
+                            >
+                              <Text style={s.removeBtnText}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                        <TouchableOpacity style={s.addBtn} onPress={() => pickRoomDocument(i)} disabled={roomDocUploading === i}>
+                          <Text style={s.addBtnText}>{roomDocUploading === i ? 'Uploading…' : '+ Add Document'}</Text>
+                        </TouchableOpacity>
                       </Field>
                       <View style={s.itemBtnRow}>
                         <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeRoom(i)}>
