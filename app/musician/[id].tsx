@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  View, StyleSheet, ScrollView, TouchableOpacity,
+  View, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Image, Linking, Platform, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
@@ -8,7 +8,7 @@ import { SpotifyEmbed } from '@/components/SpotifyEmbed';
 import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -842,6 +842,165 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
   );
 }
 
+// ── Pending Agent Claims (shown on own profile) ───────────────────
+
+type ClaimForMusician = {
+  id: string;
+  agentUid: string;
+  agentName: string;
+  agentUsername?: string;
+  verificationCode: string;
+  status: string;
+};
+
+function PendingAgentClaims({ musicianId }: { musicianId: string }) {
+  const { colors } = useTheme();
+  const [claims, setClaims]           = useState<ClaimForMusician[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [codeInputs, setCodeInputs]   = useState<Record<string, string>>({});
+  const [codeErrors, setCodeErrors]   = useState<Record<string, string>>({});
+  const [processing, setProcessing]   = useState<Record<string, boolean>>({});
+  const [dismissed, setDismissed]     = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    getDocs(
+      query(collection(db, 'agentClaims'),
+        where('artistUid', '==', musicianId),
+        where('status', '==', 'pending'))
+    ).then(snap => {
+      setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as ClaimForMusician)));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [musicianId]);
+
+  async function handleApprove(claim: ClaimForMusician) {
+    const entered = (codeInputs[claim.id] ?? '').trim();
+    if (entered.length !== 6) {
+      setCodeErrors(p => ({ ...p, [claim.id]: 'Enter the 6-digit code from your email.' }));
+      return;
+    }
+    if (entered !== claim.verificationCode) {
+      setCodeErrors(p => ({ ...p, [claim.id]: 'Incorrect code. Please check and try again.' }));
+      return;
+    }
+    setProcessing(p => ({ ...p, [claim.id]: true }));
+    try {
+      await updateDoc(doc(db, 'agentClaims', claim.id), {
+        status: 'approved',
+        respondedAt: new Date().toISOString(),
+      });
+      setClaims(prev => prev.filter(c => c.id !== claim.id));
+    } catch {
+      setCodeErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
+    } finally {
+      setProcessing(p => ({ ...p, [claim.id]: false }));
+    }
+  }
+
+  async function handleDecline(claim: ClaimForMusician) {
+    setProcessing(p => ({ ...p, [claim.id]: true }));
+    try {
+      await updateDoc(doc(db, 'agentClaims', claim.id), {
+        status: 'declined',
+        respondedAt: new Date().toISOString(),
+      });
+      setClaims(prev => prev.filter(c => c.id !== claim.id));
+    } catch {
+      setCodeErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
+    } finally {
+      setProcessing(p => ({ ...p, [claim.id]: false }));
+    }
+  }
+
+  const visible = claims.filter(c => !dismissed.has(c.id));
+  if (loading || visible.length === 0) return null;
+
+  return (
+    <View style={[pac.wrap, { borderColor: colors.border }]}>
+      <Text style={[pac.heading, { color: colors.black }]}>Representation Requests</Text>
+      {visible.map(claim => (
+        <View key={claim.id} style={[pac.card, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          <View style={pac.cardTop}>
+            <View style={pac.agentInfo}>
+              <Text style={[pac.agentName, { color: colors.black }]}>{claim.agentName}</Text>
+              {claim.agentUsername
+                ? <Text style={[pac.agentHandle, { color: colors.grey }]}>@{claim.agentUsername}</Text>
+                : null}
+            </View>
+            <View style={[pac.badge, { borderColor: '#f5a623' }]}>
+              <Text style={[pac.badgeText, { color: '#f5a623' }]}>Pending</Text>
+            </View>
+          </View>
+          <Text style={[pac.bodyText, { color: colors.grey }]}>
+            This agent wants to represent you on GigMatch. To approve, enter the 6-digit code sent to your registered email address.
+          </Text>
+          <TextInput
+            style={[pac.codeInput, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bg }]}
+            value={codeInputs[claim.id] ?? ''}
+            onChangeText={v => {
+              setCodeInputs(p => ({ ...p, [claim.id]: v.replace(/\D/g, '').slice(0, 6) }));
+              setCodeErrors(p => ({ ...p, [claim.id]: '' }));
+            }}
+            placeholder="6-digit code"
+            placeholderTextColor={colors.greyLight}
+            keyboardType="number-pad"
+            maxLength={6}
+          />
+          {codeErrors[claim.id] ? <Text style={pac.codeError}>{codeErrors[claim.id]}</Text> : null}
+          <View style={pac.actions}>
+            <TouchableOpacity
+              style={[pac.approveBtn, processing[claim.id] && pac.btnDim]}
+              onPress={() => handleApprove(claim)}
+              disabled={!!processing[claim.id]}
+              activeOpacity={0.85}
+            >
+              {processing[claim.id]
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={pac.approveBtnText}>Approve</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[pac.declineBtn, { borderColor: colors.border }, processing[claim.id] && pac.btnDim]}
+              onPress={() => handleDecline(claim)}
+              disabled={!!processing[claim.id]}
+              activeOpacity={0.75}
+            >
+              <Text style={[pac.declineBtnText, { color: colors.grey }]}>Decline</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const pac = StyleSheet.create({
+  wrap: {
+    borderTopWidth: 1, borderBottomWidth: 1,
+    paddingHorizontal: isWeb ? 40 : 20, paddingVertical: 20,
+    marginBottom: 4,
+  },
+  heading:    { fontSize: 13, fontWeight: '700', letterSpacing: 0.8, color: Colors.orange, marginBottom: 12, textTransform: 'uppercase' },
+  card:       { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 10, gap: 10 },
+  cardTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  agentInfo:  {},
+  agentName:  { fontSize: 15, fontWeight: '700' },
+  agentHandle:{ fontSize: 12, marginTop: 2 },
+  badge:      { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText:  { fontSize: 12, fontWeight: '700' },
+  bodyText:   { fontSize: 13, lineHeight: 20 },
+  codeInput:  {
+    borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 20, fontWeight: '700', letterSpacing: 6, textAlign: 'center',
+    width: 160,
+  },
+  codeError:  { fontSize: 12, color: Colors.danger },
+  actions:    { flexDirection: 'row', gap: 10, marginTop: 4 },
+  approveBtn: { flex: 1, backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
+  btnDim:     { opacity: 0.45 },
+  approveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  declineBtn: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 11, alignItems: 'center' },
+  declineBtnText: { fontSize: 14, fontWeight: '600' },
+});
+
 // ── Main Screen ───────────────────────────────────────────────────
 
 export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
@@ -1001,6 +1160,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             </View>
           )}
         </View>
+
+        {/* Pending agent claim requests (own profile only) */}
+        {isOwn && <PendingAgentClaims musicianId={id} />}
 
         {/* Stats row */}
         {statsItems.length > 0 && (

@@ -73,6 +73,32 @@ service cloud.firestore {
       allow delete: if isOwner(uid) || isAdmin();
     }
 
+    // ── Agent profiles ───────────────────────────────────────────────────────
+    match /agentProfiles/{uid} {
+      allow read:   if true;
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Agent claims ─────────────────────────────────────────────────────────
+    // Agent can create and read their own claims.
+    // Musician (artistUid) can read and update (approve/decline) claims for them.
+    match /agentClaims/{claimId} {
+      allow read: if isSignedIn() && (
+        resource.data.agentUid == request.auth.uid ||
+        resource.data.artistUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        request.resource.data.agentUid == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.artistUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
     // ── Inquiries ────────────────────────────────────────────────────────────
     match /inquiries/{inquiryId} {
 

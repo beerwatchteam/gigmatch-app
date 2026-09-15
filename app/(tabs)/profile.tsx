@@ -18,8 +18,13 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
+  orderBy,
+  query,
   serverTimestamp,
+  Timestamp,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
@@ -247,6 +252,365 @@ function VenuePendingScreen() {
   );
 }
 
+// ── Agent screen ─────────────────────────────────────────────────────────────
+
+type AgentClaim = {
+  id: string;
+  agentUid: string;
+  agentName: string;
+  agentUsername: string;
+  artistUid: string;
+  artistName: string;
+  artistEmail: string;
+  verificationCode: string;
+  status: 'pending' | 'approved' | 'declined';
+  createdAt: any;
+};
+
+type BandResult = { id: string; name: string; username?: string; email?: string };
+
+function generateCode(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function AgentScreen() {
+  const { user, profile } = useAuth();
+  const { colors } = useTheme();
+  const router = useRouter();
+
+  const [claims, setClaims]               = useState<AgentClaim[]>([]);
+  const [claimsLoading, setClaimsLoading] = useState(true);
+
+  // Search flow
+  const [showSearch, setShowSearch]         = useState(false);
+  const [searchQuery, setSearchQuery]       = useState('');
+  const [searchResults, setSearchResults]   = useState<BandResult[]>([]);
+  const [searchLoading, setSearchLoading]   = useState(false);
+  const [selectedArtist, setSelectedArtist] = useState<BandResult | null>(null);
+  const [claimLoading, setClaimLoading]     = useState(false);
+  const [claimError, setClaimError]         = useState('');
+  const [claimSent, setClaimSent]           = useState<AgentClaim | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    getDocs(
+      query(collection(db, 'agentClaims'), where('agentUid', '==', user.uid), orderBy('createdAt', 'desc'))
+    ).then(snap => {
+      setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as AgentClaim)));
+    }).catch(() => {}).finally(() => setClaimsLoading(false));
+  }, [user?.uid, claimSent]);
+
+  async function handleSearch(val: string) {
+    setSearchQuery(val);
+    setSelectedArtist(null);
+    if (val.trim().length < 2) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    try {
+      const [nameSnap, userSnap] = await Promise.all([
+        getDocs(query(collection(db, 'bandProfiles'), where('name', '>=', val), where('name', '<=', val + '\uf8ff'))),
+        getDocs(query(collection(db, 'bandProfiles'), where('username', '>=', val.toLowerCase()), where('username', '<=', val.toLowerCase() + '\uf8ff'))),
+      ]);
+      const seen = new Set<string>();
+      const results: BandResult[] = [];
+      [...nameSnap.docs, ...userSnap.docs].forEach(d => {
+        if (seen.has(d.id)) return;
+        seen.add(d.id);
+        const data = d.data();
+        results.push({ id: d.id, name: data.name, username: data.username, email: data.email });
+      });
+      setSearchResults(results.slice(0, 6));
+    } catch {}
+    finally { setSearchLoading(false); }
+  }
+
+  async function handleClaim() {
+    if (!user || !selectedArtist) return;
+    setClaimLoading(true); setClaimError('');
+    try {
+      // Check no active claim already exists
+      const existingSnap = await getDocs(
+        query(collection(db, 'agentClaims'),
+          where('agentUid', '==', user.uid),
+          where('artistUid', '==', selectedArtist.id),
+          where('status', '==', 'pending'))
+      );
+      if (!existingSnap.empty) {
+        setClaimError('You already have a pending claim for this musician.');
+        setClaimLoading(false); return;
+      }
+
+      const code = generateCode();
+      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+      const ref = await addDoc(collection(db, 'agentClaims'), {
+        agentUid: user.uid,
+        agentName: profile?.displayName ?? '',
+        agentUsername: profile?.username ?? '',
+        artistUid: selectedArtist.id,
+        artistName: selectedArtist.name,
+        artistEmail: selectedArtist.email ?? '',
+        verificationCode: code,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        expiresAt,
+      });
+      const newClaim: AgentClaim = {
+        id: ref.id,
+        agentUid: user.uid,
+        agentName: profile?.displayName ?? '',
+        agentUsername: profile?.username ?? '',
+        artistUid: selectedArtist.id,
+        artistName: selectedArtist.name,
+        artistEmail: selectedArtist.email ?? '',
+        verificationCode: code,
+        status: 'pending',
+        createdAt: null,
+      };
+      setClaimSent(newClaim);
+      setShowSearch(false);
+      setSearchQuery(''); setSearchResults([]); setSelectedArtist(null);
+    } catch (err: any) { setClaimError(err.message || 'Failed to submit claim.'); }
+    finally { setClaimLoading(false); }
+  }
+
+  const pending  = claims.filter(c => c.status === 'pending');
+  const approved = claims.filter(c => c.status === 'approved');
+
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+      <ScrollView contentContainerStyle={agentStyles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Header */}
+        <View style={agentStyles.header}>
+          <View>
+            <Text style={[agentStyles.headerName, { color: colors.black }]}>{profile?.displayName ?? 'Agent'}</Text>
+            {profile?.username ? <Text style={[agentStyles.headerHandle, { color: colors.grey }]}>@{profile.username}</Text> : null}
+          </View>
+          <TouchableOpacity
+            style={[agentStyles.logoutBtn, { borderColor: colors.border }]}
+            onPress={async () => { await signOut(auth); router.replace('/'); }}
+            activeOpacity={0.75}
+          >
+            <Text style={[agentStyles.logoutBtnText, { color: colors.grey }]}>Log out</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Claim sent confirmation */}
+        {claimSent && (
+          <View style={[agentStyles.confirmBox, { borderColor: colors.border }]}>
+            <Text style={[agentStyles.confirmTitle, { color: colors.black }]}>Claim submitted</Text>
+            <Text style={[agentStyles.confirmBody, { color: colors.grey }]}>
+              A verification email has been sent to{' '}
+              <Text style={{ fontWeight: '700', color: colors.black }}>{claimSent.artistEmail}</Text>.
+              {'\n'}
+              {claimSent.artistName} will need to enter the code to approve your representation request.
+            </Text>
+            <Text style={[agentStyles.confirmHint, { color: colors.greyLight }]}>
+              The claim expires in 7 days if not approved.
+            </Text>
+            <TouchableOpacity onPress={() => setClaimSent(null)} activeOpacity={0.7}>
+              <Text style={{ color: Colors.orange, fontWeight: '600', fontSize: 13 }}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Roster section */}
+        <View style={agentStyles.section}>
+          <View style={agentStyles.sectionHeader}>
+            <Text style={[agentStyles.sectionTitle, { color: colors.black }]}>Your Roster</Text>
+            <TouchableOpacity
+              style={agentStyles.addBtn}
+              onPress={() => { setShowSearch(true); setClaimSent(null); setClaimError(''); }}
+              activeOpacity={0.8}
+            >
+              <Text style={agentStyles.addBtnText}>+ Claim Musician</Text>
+            </TouchableOpacity>
+          </View>
+
+          {claimsLoading ? (
+            <ActivityIndicator color={Colors.orange} style={{ marginTop: 16 }} />
+          ) : approved.length === 0 ? (
+            <Text style={[agentStyles.empty, { color: colors.greyLight }]}>
+              No musicians in your roster yet. Claim a musician to get started.
+            </Text>
+          ) : (
+            approved.map(c => (
+              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                <View>
+                  <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.artistName}</Text>
+                  {c.artistEmail ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>{c.artistEmail}</Text> : null}
+                </View>
+                <View style={agentStyles.statusBadge}>
+                  <Text style={[agentStyles.statusText, { color: '#16a34a' }]}>Represented</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Pending claims section */}
+        {pending.length > 0 && (
+          <View style={agentStyles.section}>
+            <Text style={[agentStyles.sectionTitle, { color: colors.black }]}>Pending Claims</Text>
+            {pending.map(c => (
+              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                <View>
+                  <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.artistName}</Text>
+                  <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Waiting for musician to verify</Text>
+                </View>
+                <View style={[agentStyles.statusBadge, { borderColor: '#f5a623' }]}>
+                  <Text style={[agentStyles.statusText, { color: '#f5a623' }]}>Pending</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Search / claim flow */}
+        {showSearch && (
+          <View style={[agentStyles.searchBox, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+            <Text style={[agentStyles.searchTitle, { color: colors.black }]}>Find a Musician to Claim</Text>
+            <Text style={[agentStyles.searchHint, { color: colors.grey }]}>
+              Search by name or username. The musician must already have a GigMatch account.
+            </Text>
+            <TextInput
+              style={[agentStyles.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+              placeholder="Name or username..."
+              placeholderTextColor={colors.greyLight}
+              value={searchQuery}
+              onChangeText={handleSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchLoading && <ActivityIndicator color={Colors.orange} style={{ marginBottom: 8 }} />}
+            {searchResults.length > 0 && !selectedArtist && (
+              <View style={[agentStyles.resultList, { borderColor: colors.border }]}>
+                {searchResults.map(r => (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[agentStyles.resultItem, { borderColor: colors.border }]}
+                    onPress={() => { setSelectedArtist(r); setSearchResults([]); }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[agentStyles.resultName, { color: colors.black }]}>{r.name}</Text>
+                    {r.username ? <Text style={[agentStyles.resultHandle, { color: colors.grey }]}>@{r.username}</Text> : null}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {selectedArtist && (
+              <View style={[agentStyles.selectedCard, { borderColor: Colors.orange }]}>
+                <View>
+                  <Text style={[agentStyles.claimName, { color: colors.black }]}>{selectedArtist.name}</Text>
+                  {selectedArtist.email
+                    ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Verification sent to: {selectedArtist.email}</Text>
+                    : <Text style={[agentStyles.claimEmail, { color: Colors.danger }]}>No email on file for this musician.</Text>}
+                </View>
+                <TouchableOpacity onPress={() => setSelectedArtist(null)} activeOpacity={0.7}>
+                  <Text style={{ color: colors.greyLight, fontSize: 13 }}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {claimError ? <Text style={agentStyles.claimError}>{claimError}</Text> : null}
+            <View style={agentStyles.searchActions}>
+              <TouchableOpacity
+                style={[agentStyles.claimBtn, (!selectedArtist || !selectedArtist.email || claimLoading) && agentStyles.claimBtnDim]}
+                onPress={handleClaim}
+                disabled={!selectedArtist || !selectedArtist.email || claimLoading}
+                activeOpacity={0.85}
+              >
+                {claimLoading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={agentStyles.claimBtnText}>Send Claim Request</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[agentStyles.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); setSelectedArtist(null); setClaimError(''); }}
+                activeOpacity={0.75}
+              >
+                <Text style={[agentStyles.cancelBtnText, { color: colors.grey }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[agentStyles.supportRow]}
+          onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.pendingHint, { color: colors.greyLight }]}>
+            Questions? <Text style={{ color: Colors.orange, fontWeight: '600' }}>{SUPPORT_EMAIL}</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const agentStyles = StyleSheet.create({
+  content: { padding: 20, paddingBottom: 48 },
+  header: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    justifyContent: 'space-between', marginBottom: 28,
+  },
+  headerName:   { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  headerHandle: { fontSize: 13, marginTop: 2 },
+  logoutBtn:    { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  logoutBtnText:{ fontSize: 13, fontWeight: '600' },
+
+  section:       { marginBottom: 28 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  sectionTitle:  { fontSize: 17, fontWeight: '700' },
+  empty:         { fontSize: 14, lineHeight: 22 },
+
+  addBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  addBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+
+  claimCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 10,
+  },
+  claimName:  { fontSize: 15, fontWeight: '700' },
+  claimEmail: { fontSize: 12, marginTop: 2 },
+
+  statusBadge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderColor: '#22c55e' },
+  statusText:  { fontSize: 12, fontWeight: '700' },
+
+  confirmBox: {
+    borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 24, gap: 8,
+    backgroundColor: '#f0fdf4',
+  },
+  confirmTitle: { fontSize: 15, fontWeight: '700' },
+  confirmBody:  { fontSize: 13, lineHeight: 20 },
+  confirmHint:  { fontSize: 12 },
+
+  searchBox: {
+    borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 24, gap: 10,
+  },
+  searchTitle: { fontSize: 15, fontWeight: '700' },
+  searchHint:  { fontSize: 13, lineHeight: 20 },
+  input: {
+    borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11,
+    fontSize: 15,
+  },
+  resultList:  { borderWidth: 1, borderRadius: 8, overflow: 'hidden', marginTop: -4 },
+  resultItem:  { padding: 12, borderBottomWidth: 1 },
+  resultName:  { fontSize: 14, fontWeight: '700' },
+  resultHandle:{ fontSize: 12, marginTop: 2 },
+  selectedCard:{
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1.5, borderRadius: 8, padding: 12,
+  },
+  claimError: { fontSize: 13, color: Colors.danger },
+  searchActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  claimBtn:    { flex: 1, backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+  claimBtnDim: { opacity: 0.45 },
+  claimBtnText:{ fontSize: 14, fontWeight: '700', color: '#fff' },
+  cancelBtn:   { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center' },
+  cancelBtnText:{ fontSize: 14, fontWeight: '600' },
+  supportRow:  { alignItems: 'center', marginTop: 8 },
+});
+
 // ── Admin screen ─────────────────────────────────────────────────────────────
 
 function AdminScreen() {
@@ -309,6 +673,10 @@ export default function ProfileTab() {
   // Venue user still waiting for approval / code entry
   if (profile?.type === 'venue' && !profile?.venueId) {
     return <VenuePendingScreen />;
+  }
+
+  if (profile?.type === 'agent') {
+    return <AgentScreen />;
   }
 
   return <MusicianScreen _overrideId={user.uid} />;

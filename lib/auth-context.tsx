@@ -4,7 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 
 export type UserProfile = {
-  type: 'venue' | 'artist' | 'admin';
+  type: 'venue' | 'artist' | 'admin' | 'agent';
   displayName: string;
   venueId?: string;
   username?: string;

@@ -41,11 +41,12 @@ async function resolveUsernameToEmail(username: string): Promise<string | null> 
 }
 
 async function isUsernameTaken(username: string): Promise<boolean> {
-  const [bpSnap, uSnap] = await Promise.all([
-    getDocs(query(collection(db, 'bandProfiles'), where('username', '==', username))),
-    getDocs(query(collection(db, 'users'),        where('username', '==', username))),
+  const [bpSnap, uSnap, apSnap] = await Promise.all([
+    getDocs(query(collection(db, 'bandProfiles'),  where('username', '==', username))),
+    getDocs(query(collection(db, 'users'),         where('username', '==', username))),
+    getDocs(query(collection(db, 'agentProfiles'), where('username', '==', username))),
   ]);
-  return !bpSnap.empty || !uSnap.empty;
+  return !bpSnap.empty || !uSnap.empty || !apSnap.empty;
 }
 
 export default function LoginScreen() {
@@ -53,7 +54,9 @@ export default function LoginScreen() {
   const { colors } = useTheme();
   const { mode: initialMode, tab: initialTab } = useLocalSearchParams<{ mode?: string; tab?: string }>();
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode === 'signup' ? 'signup' : 'login');
-  const [signupTab, setSignupTab] = useState<'artist' | 'venue'>(initialTab === 'venue' ? 'venue' : 'artist');
+  const [signupTab, setSignupTab] = useState<'artist' | 'venue' | 'agent'>(
+    initialTab === 'venue' ? 'venue' : initialTab === 'agent' ? 'agent' : 'artist'
+  );
 
   // ── Login ──────────────────────────────────────────────────────────────
   const [siEmail, setSiEmail]         = useState('');
@@ -98,6 +101,24 @@ export default function LoginScreen() {
   const [vAlreadyClaimed, setVAlreadyClaimed]   = useState(false);
   const [vCurrentOwnerId, setVCurrentOwnerId]   = useState('');
   const vUserRef = useRef<any>(null);
+
+  // ── Agent signup ────────────────────────────────────────────────────────
+  const [aAgencyName, setAAgencyName]         = useState('');
+  const [aFullName, setAFullName]             = useState('');
+  const [aUsername, setAUsername]             = useState('');
+  const [aEmail, setAEmail]                   = useState('');
+  const [aPassword, setAPassword]             = useState('');
+  const [aConfirm, setAConfirm]               = useState('');
+  const [aTerms, setATerms]                   = useState(false);
+  const [aLoading, setALoading]               = useState(false);
+  const [aError, setAError]                   = useState('');
+  const [aFieldErrors, setAFieldErrors]       = useState<Record<string, string>>({});
+  const [aUsernameTouched, setAUsernameTouched] = useState(false);
+  const [aVerifyPending, setAVerifyPending]   = useState(false);
+  const [aVerifyEmail, setAVerifyEmail]       = useState('');
+  const [aResendLoading, setAResendLoading]   = useState(false);
+  const [aResendSent, setAResendSent]         = useState(false);
+  const aUserRef = useRef<any>(null);
 
   // Venue name search
   const [allVenues, setAllVenues]             = useState<any[]>([]);
@@ -310,6 +331,74 @@ export default function LoginScreen() {
     setVAlreadyClaimed(false); setVCurrentOwnerId('');
   }
 
+  function validateAgent() {
+    const e: Record<string, string> = {};
+    if (!aAgencyName.trim()) e.agencyName = 'Agency or business name is required';
+    if (!aFullName.trim())   e.fullName   = 'Your full name is required';
+    if (!aUsername.trim())   e.username   = 'Username is required';
+    if (/\s/.test(aUsername)) e.username  = 'Username cannot contain spaces';
+    if (!aEmail.trim())      e.email      = 'Email is required';
+    if (!aPassword)          e.password   = 'Password is required';
+    if (aPassword.length < 6) e.password  = 'At least 6 characters';
+    if (aPassword !== aConfirm) e.confirm = "Passwords don't match";
+    if (!aTerms)             e.terms      = 'You must accept the Terms & Conditions';
+    setAFieldErrors(e); return Object.keys(e).length === 0;
+  }
+
+  async function handleAgentSignUp() {
+    if (!validateAgent()) return;
+    setALoading(true); setAError('');
+    try {
+      if (await isUsernameTaken(aUsername.trim().toLowerCase())) {
+        setAFieldErrors(p => ({ ...p, username: 'Username already taken.' }));
+        setALoading(false); return;
+      }
+      const { user } = await createUserWithEmailAndPassword(auth, aEmail.trim(), aPassword);
+      await updateProfile(user, { displayName: aAgencyName.trim() });
+      await setDoc(doc(db, 'users', user.uid), {
+        type: 'agent',
+        displayName: aAgencyName.trim(),
+        username: aUsername.trim().toLowerCase(),
+        email: aEmail.trim(),
+        venueId: null,
+        createdAt: new Date().toISOString(),
+      });
+      await setDoc(doc(db, 'agentProfiles', user.uid), {
+        agencyName: aAgencyName.trim(),
+        contactName: aFullName.trim(),
+        username: aUsername.trim().toLowerCase(),
+        email: aEmail.trim(),
+        phone: '',
+        website: '',
+        instagram: '',
+        about: '',
+        artists: [],
+        settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false },
+        createdAt: new Date().toISOString(),
+      });
+      await sendEmailVerification(user);
+      aUserRef.current = user;
+      setAVerifyEmail(aEmail.trim());
+      setAVerifyPending(true);
+    } catch (err: any) { setAError(err.message || 'Failed to create account.'); }
+    finally { setALoading(false); }
+  }
+
+  async function handleAgentResend() {
+    if (!aUserRef.current) return;
+    setAResendLoading(true);
+    try { await sendEmailVerification(aUserRef.current); setAResendSent(true); setTimeout(() => setAResendSent(false), 3000); } catch {}
+    finally { setAResendLoading(false); }
+  }
+
+  async function handleAgentStartOver() {
+    await signOut(auth); setAVerifyPending(false);
+    setAAgencyName(''); setAFullName(''); setAUsername(''); setAEmail('');
+    setAPassword(''); setAConfirm(''); setATerms(false);
+    setAError(''); setAFieldErrors({}); setAUsernameTouched(false);
+    aUserRef.current = null;
+  }
+
   // ── Form content (shared between modal card and native scroll) ──────
   const formContent = (
     <>
@@ -361,15 +450,15 @@ export default function LoginScreen() {
       {mode === 'signup' && (
         <>
           {/* Sub-tabs — hidden on pending screens */}
-          {!(signupTab === 'artist' && mVerifyPending) && !(signupTab === 'venue' && vSignUpState !== 'form') && (
+          {!(signupTab === 'artist' && mVerifyPending) && !(signupTab === 'venue' && vSignUpState !== 'form') && !(signupTab === 'agent' && aVerifyPending) && (
             <View style={s.subTabRow}>
-              {(['artist', 'venue'] as const).map(t => (
+              {(['artist', 'venue', 'agent'] as const).map(t => (
                 <TouchableOpacity key={t}
                   style={[s.subTab, signupTab === t && s.subTabActive]}
-                  onPress={() => { setSignupTab(t); setMFieldErrors({}); setVFieldErrors({}); setMError(''); setVError(''); }}
+                  onPress={() => { setSignupTab(t); setMFieldErrors({}); setVFieldErrors({}); setAFieldErrors({}); setMError(''); setVError(''); setAError(''); }}
                 >
                   <Text style={[s.subTabText, signupTab === t && s.subTabTextActive]}>
-                    {t === 'artist' ? 'Artist' : 'Venue'}
+                    {t === 'artist' ? 'Artist' : t === 'venue' ? 'Venue' : 'Agent'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -568,6 +657,73 @@ export default function LoginScreen() {
                 <Text style={s.switchText}>Already approved? <Text style={s.switchLink}>Log in →</Text></Text>
               </TouchableOpacity>
             </>
+          )}
+
+          {/* AGENT FORM */}
+          {signupTab === 'agent' && !aVerifyPending && (
+            <>
+              <TextInput style={s.input} placeholder="Agency or business name" placeholderTextColor="#999"
+                value={aAgencyName} onChangeText={v => { setAAgencyName(v); if (!aUsernameTouched) setAUsername(slugify(v)); }} autoCapitalize="words" />
+              {aFieldErrors.agencyName ? <Text style={s.fieldError}>{aFieldErrors.agencyName}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Your full name" placeholderTextColor="#999"
+                value={aFullName} onChangeText={setAFullName} autoCapitalize="words" />
+              {aFieldErrors.fullName ? <Text style={s.fieldError}>{aFieldErrors.fullName}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Email address" placeholderTextColor="#999"
+                value={aEmail} onChangeText={setAEmail} autoCapitalize="none" keyboardType="email-address" />
+              {aFieldErrors.email ? <Text style={s.fieldError}>{aFieldErrors.email}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Password" placeholderTextColor="#999"
+                value={aPassword} onChangeText={setAPassword} secureTextEntry />
+              {aFieldErrors.password ? <Text style={s.fieldError}>{aFieldErrors.password}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Confirm password" placeholderTextColor="#999"
+                value={aConfirm} onChangeText={setAConfirm} secureTextEntry />
+              {aFieldErrors.confirm ? <Text style={s.fieldError}>{aFieldErrors.confirm}</Text> : null}
+
+              <TextInput style={s.input} placeholder="Username (e.g. smithmusicagency)" placeholderTextColor="#999"
+                value={aUsername}
+                onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setAUsername(val); setAUsernameTouched(val.length > 0); }}
+                autoCapitalize="none" />
+              <Text style={s.hint}>Used to identify your agency on GigMatch</Text>
+              {aFieldErrors.username ? <Text style={s.fieldError}>{aFieldErrors.username}</Text> : null}
+
+              <TouchableOpacity style={s.termsRow} onPress={() => setATerms(v => !v)}>
+                <View style={[s.checkbox, aTerms && s.checkboxOn]}>
+                  {aTerms && <Text style={s.checkboxTick}>✓</Text>}
+                </View>
+                <Text style={s.termsText}>I accept the <Text style={{ color: Colors.orange }}>Terms & Conditions</Text></Text>
+              </TouchableOpacity>
+              {aFieldErrors.terms ? <Text style={s.fieldError}>{aFieldErrors.terms}</Text> : null}
+
+              {aError ? <Text style={s.errorText}>{aError}</Text> : null}
+              <TouchableOpacity style={[s.submitBtn, aLoading && s.submitBtnDim]} onPress={handleAgentSignUp} disabled={aLoading}>
+                {aLoading ? <ActivityIndicator color="#fff" /> : <Text style={s.submitBtnText}>Create Account</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity style={s.switchRow} onPress={() => setMode('login')}>
+                <Text style={s.switchText}>Already have an account? <Text style={s.switchLink}>Log in →</Text></Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* AGENT VERIFY PENDING */}
+          {signupTab === 'agent' && aVerifyPending && (
+            <View style={s.verifyWrap}>
+              <Text style={s.verifyIcon}>✉️</Text>
+              <Text style={s.verifyTitle}>Verify your email to get started</Text>
+              <Text style={s.verifySub}>
+                We've sent a link to <Text style={{ fontWeight: '700', color: '#111' }}>{aVerifyEmail}.</Text> Click it to confirm your account.
+              </Text>
+              <Text style={s.verifyHint}>Check your spam if you don't see it within a minute.</Text>
+              {aResendSent
+                ? <Text style={s.resendSent}>Sent!</Text>
+                : <TouchableOpacity onPress={handleAgentResend} disabled={aResendLoading}><Text style={s.resendBtn}>{aResendLoading ? 'Sending...' : 'Resend email'}</Text></TouchableOpacity>
+              }
+              <TouchableOpacity onPress={handleAgentStartOver} style={{ marginTop: 8 }}>
+                <Text style={s.startOver}>Wrong email? Start over</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {/* VENUE CLAIM SUBMITTED */}
