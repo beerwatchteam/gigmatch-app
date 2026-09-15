@@ -619,10 +619,11 @@ export default function EditProfileScreen() {
                         }
                         const cu = auth.currentUser;
                         if (cu) await deleteUser(cu);
-                        await signOut(auth);
-                        router.replace('/');
                       } catch (e: any) {
                         Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
+                      } finally {
+                        await signOut(auth).catch(() => {});
+                        router.replace('/');
                       }
                     },
                     true,
