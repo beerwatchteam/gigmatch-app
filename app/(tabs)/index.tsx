@@ -1,16 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, Image, ActivityIndicator, Animated, useWindowDimensions,
+  Platform, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import * as ImagePicker from 'expo-image-picker';
-import { db, storage } from '@/lib/firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
-import { HERO_HEADLINE, HERO_HEADLINE_LINE2, HERO_SUBHEAD, HERO_STATS, PROBLEMS, PROBLEM_SECTION_HEADING } from '@/constants/copy';
+import { PROBLEMS, PROBLEM_SECTION_HEADING } from '@/constants/copy';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 
@@ -19,220 +17,244 @@ const isWeb = Platform.OS === 'web';
 
 // ── Types ──────────────────────────────────────────────────────────
 
-type PreviewSlot = { id?: string; time: string; status: string; room?: string };
-type PreviewVenue = { name: string; slots: Record<string, PreviewSlot[]> };
-type PreviewOccurrence = { date: Date; day: string; slot: PreviewSlot };
-
-const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const DOW_TO_DAY: Record<number, string> = {
-  0:'Sunday',1:'Monday',2:'Tuesday',3:'Wednesday',4:'Thursday',5:'Friday',6:'Saturday',
+type Slot = { id?: string; time: string; status: string; room?: string; date?: string };
+type VenueData = {
+  id: string; name: string; suburb?: string; capacity?: number;
+  slots?: Record<string, Slot[]>;
+  settings?: { listed?: boolean };
 };
+type OpenSlotItem = { venue: VenueData; date: Date; day: string; slot: Slot };
 
-// ── Timetable preview helpers ──────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────
 
-function getPreviewSlots(slots: Record<string, PreviewSlot[]>, max: number): PreviewOccurrence[] {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const end = new Date(today); end.setMonth(end.getMonth() + 3);
-  const results: PreviewOccurrence[] = [];
+const DOW_TO_DAY: Record<number, string> = {
+  0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday',
+  4: 'Thursday', 5: 'Friday', 6: 'Saturday',
+};
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+function computeOpenSlots(venues: VenueData[], days: number): OpenSlotItem[] {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = new Date(today); end.setDate(end.getDate() + days);
+  const results: OpenSlotItem[] = [];
   const cur = new Date(today);
-  while (cur <= end && results.length < max) {
-    const day = DOW_TO_DAY[cur.getDay()];
-    const dateISO = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-    const recurOpen = (slots?.[day] || []).filter(s => !(s as any).date && s.status === 'open');
-    const overrideTimes = new Set(
-      (slots?.[day] || [])
-        .filter(s => (s as any).date === dateISO && (s.status === 'booked' || s.status === 'pending'))
-        .map(s => s.time.toLowerCase().trim())
-    );
-    recurOpen.forEach(slot => {
-      if (results.length < max && !overrideTimes.has(slot.time.toLowerCase().trim())) {
-        results.push({ date: new Date(cur), day, slot });
+  while (cur <= end) {
+    const dayName = DOW_TO_DAY[cur.getDay()];
+    const dateISO = cur.toISOString().slice(0, 10);
+    for (const venue of venues) {
+      const daySlots = venue.slots?.[dayName] ?? [];
+      const overrideTimes = new Set(
+        daySlots
+          .filter(s => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'))
+          .map(s => s.time.toLowerCase().trim())
+      );
+      const openSlots = daySlots.filter(
+        s => !s.date && s.status === 'open' && !overrideTimes.has(s.time.toLowerCase().trim())
+      );
+      for (const slot of openSlots) {
+        results.push({ venue, date: new Date(cur), day: dayName, slot });
       }
-    });
+    }
     cur.setDate(cur.getDate() + 1);
   }
   return results;
 }
 
-// ── TimetablePreviewRow ────────────────────────────────────────────
+// ── FortnightSlotRow ───────────────────────────────────────────────
 
-function TimetablePreviewRow({ date, day, slot, onEnquire, colors }: {
-  date: Date; day: string; slot: PreviewSlot; onEnquire: () => void; colors: any;
-}) {
-  const dayAbbr = day.slice(0, 3).toUpperCase();
-  const meta = [slot.time, slot.room].filter(Boolean).join(' · ');
+function FortnightSlotRow({
+  item, onEnquire, colors,
+}: { item: OpenSlotItem; onEnquire: () => void; colors: any }) {
+  const { venue, date, day, slot } = item;
+  const dayAbbr   = day.slice(0, 3).toUpperCase();
+  const monthAbbr = SHORT_MONTHS[date.getMonth()].toUpperCase();
+  const meta      = [slot.time, slot.room].filter(Boolean).join(' · ');
+  const venueLine = [
+    venue.name,
+    venue.suburb,
+    venue.capacity ? `${venue.capacity} cap` : null,
+  ].filter(Boolean).join(' · ');
+
   return (
-    <View style={[ps.row, { borderColor: colors.border, backgroundColor: colors.bg }]}>
-      <View style={ps.dateBox}>
-        <Text style={[ps.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
-        <Text style={[ps.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
+    <View style={[fsr.row, { borderTopColor: '#e2dbd0' }]}>
+      <View style={fsr.dateBracket}>
+        <Text style={[fsr.dateNum, { color: '#111111' }]}>{date.getDate()}</Text>
+        <Text style={[fsr.dateSub, { color: '#888888' }]}>{dayAbbr} {monthAbbr}</Text>
       </View>
-      <Text style={[ps.dayAbbr, { color: colors.grey }]}>{dayAbbr}</Text>
-      <Text style={[ps.meta, { color: colors.black, flex: 1 }]}>{meta}</Text>
-      <View style={ps.actions}>
-        <View style={ps.openBadge}>
-          <Text style={ps.openBadgeText}>Open</Text>
-        </View>
-        <TouchableOpacity style={ps.enquireBtn} onPress={onEnquire}>
-          <Text style={ps.enquireBtnText}>Enquire</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        <Text style={[fsr.meta, { color: '#111111' }]} numberOfLines={1}>{meta}</Text>
+        <Text style={[fsr.venueLine, { color: '#888888' }]} numberOfLines={1}>{venueLine}</Text>
       </View>
+      <TouchableOpacity style={fsr.enquireBtn} onPress={onEnquire}>
+        <Text style={[fsr.enquireBtnText, { color: Colors.orange }]}>Enquire</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
-const ps = StyleSheet.create({
+const fsr = StyleSheet.create({
   row: {
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderLeftWidth: 4, borderLeftColor: Colors.orange,
-    borderRadius: 8, marginBottom: 8,
-    paddingVertical: 14, paddingHorizontal: 16, gap: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderTopWidth: 1,
   },
-  dateBox:    { width: 34, alignItems: 'center', flexShrink: 0 },
-  dateNum:    { fontSize: 20, fontWeight: '800', lineHeight: 22 },
-  dateMonth:  { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
-  dayAbbr:    { width: 28, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0 },
-  meta:       { fontSize: 15, fontWeight: '600' },
-  actions:    { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  openBadge:  { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
-  openBadgeText: { fontSize: 12, fontWeight: '600', color: Colors.orange },
-  enquireBtn: { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
-  enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  dateBracket: {
+    width: 54,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.orange,
+    paddingLeft: 10,
+    flexShrink: 0,
+  },
+  dateNum:   { fontSize: 22, fontWeight: '800', lineHeight: 24 },
+  dateSub:   { fontSize: 10, fontWeight: '700', letterSpacing: 0.3, marginTop: 1 },
+  meta:      { fontSize: 14, fontWeight: '700', lineHeight: 18 },
+  venueLine: { fontSize: 12, fontWeight: '400', marginTop: 2 },
+  enquireBtn: {
+    borderWidth: 1,
+    borderColor: Colors.orange,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    flexShrink: 0,
+  },
+  enquireBtnText: { fontSize: 13, fontWeight: '600' },
 });
-
-// ── Problem cards ──────────────────────────────────────────────────
-
-// Copy imported from constants/copy.ts
 
 // ── HomeScreen ─────────────────────────────────────────────────────
 
 export default function HomeScreen() {
-  const router = useRouter();
-  const { profile, user } = useAuth();
+  const router     = useRouter();
+  const { user }   = useAuth();
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  const isWide = isWeb && width >= 780;
-  const [heroImageUrl, setHeroImageUrl]   = useState<string | null>(null);
-  const [heroUploading, setHeroUploading] = useState(false);
-  const [testVenue, setTestVenue]         = useState<PreviewVenue | null>(null);
+  const { width }  = useWindowDimensions();
+  const isWide     = isWeb && width >= 960;
 
-  const isAdmin  = user?.email === ADMIN_EMAIL;
-  const isArtist = profile?.type === 'artist';
-
-  // Scroll-driven hero fade on web
-  const scrollY    = useRef(new Animated.Value(0)).current;
-  const heroHeight = isWeb ? 640 : 420;
-  const heroOpacity  = scrollY.interpolate({ inputRange: [0, heroHeight * 0.65], outputRange: [1, 0], extrapolate: 'clamp' });
-  const heroTranslateY = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [0, -26], extrapolate: 'clamp' });
-  const glowOpacity  = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.4], extrapolate: 'clamp' });
-
-  useEffect(() => {
-    return onSnapshot(doc(db, 'settings', 'homepage'), snap => {
-      setHeroImageUrl(snap.data()?.heroImageUrl ?? null);
-    });
-  }, []);
-
-  useEffect(() => {
-    return onSnapshot(doc(db, 'venues', 'test-venue'), snap => {
-      if (snap.exists()) setTestVenue(snap.data() as PreviewVenue);
-    });
-  }, []);
-
-  async function pickHeroImage() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'], allowsEditing: true, quality: 0.85,
-    });
-    if (result.canceled) return;
-    setHeroUploading(true);
-    try {
-      const uri  = result.assets[0].uri;
-      const blob = await (await fetch(uri)).blob();
-      const storageRef = ref(storage, 'settings/hero-cover');
-      await uploadBytes(storageRef, blob);
-      const url = await getDownloadURL(storageRef);
-      await setDoc(doc(db, 'settings', 'homepage'), { heroImageUrl: url }, { merge: true });
-    } catch (e) {
-      console.error('Hero upload failed', e);
-    } finally {
-      setHeroUploading(false);
-    }
-  }
-
-  const previewSlots = testVenue ? getPreviewSlots(testVenue.slots || {}, 6) : [];
+  const isAdmin    = user?.email === ADMIN_EMAIL;
   const isLoggedIn = !!user;
+
+  const [venues, setVenues] = useState<VenueData[]>([]);
+
+  useEffect(() => {
+    getDocs(collection(db, 'venues')).then(snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() })) as VenueData[];
+      setVenues(all.filter(v => v.settings?.listed !== false));
+    }).catch(console.error);
+  }, []);
+
+  const { fortnightSlots, openSlotsCount6wk } = useMemo(() => ({
+    fortnightSlots:    computeOpenSlots(venues, 14),
+    openSlotsCount6wk: computeOpenSlots(venues, 42).length,
+  }), [venues]);
+
+  const venueCount = venues.length;
+  const endDate    = new Date(); endDate.setDate(endDate.getDate() + 14);
+  const endLabel   = `${endDate.getDate()} ${SHORT_MONTHS[endDate.getMonth()]}`;
 
   return (
     <View style={[s.root, { backgroundColor: colors.bg }]}>
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
-      >
+      <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* ── Hero ────────────────────────────────────────────────── */}
-        <View style={[s.hero, { minHeight: heroHeight }]}>
-          {/* Background image (admin-set) */}
-          {heroImageUrl && (
-            <>
-              <Image source={{ uri: heroImageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-              <View style={[StyleSheet.absoluteFill, s.heroOverlay]} />
-            </>
-          )}
+        {/* ── Hero ──────────────────────────────────────────────── */}
+        <View style={[s.hero, { borderBottomColor: colors.border }]}>
+          <View style={[s.heroInner, isWide && s.heroInnerWide]}>
 
-          {/* Stage glow — always behind content */}
-          <Animated.View style={[s.heroGlow, { opacity: glowOpacity }]} />
+            {/* Left column */}
+            <View style={[s.heroLeft, isWide && s.heroLeftWide]}>
 
-          {/* Hero content fades + rises on scroll */}
-          <Animated.View style={[s.heroContent, { opacity: heroOpacity, transform: [{ translateY: heroTranslateY }] }]}>
+              {/* Live badge */}
+              <View style={s.liveBadge}>
+                <View style={s.liveDot} />
+                <Text style={[s.liveBadgeText, { color: colors.grey }]}>LIVE IN MELBOURNE</Text>
+              </View>
 
-            {/* Live badge */}
-            <View style={s.badge}>
-              <View style={s.badgeDot} />
-              <Text style={s.badgeText}>Demo, Live in Melbourne</Text>
-            </View>
+              {/* Headline */}
+              <Text style={[s.headline, { color: colors.black }]}>
+                Every open slot in town, on one timetable.
+              </Text>
 
-            {/* Headline */}
-            <Text style={s.headline}>{HERO_HEADLINE}{'\n'}{HERO_HEADLINE_LINE2}</Text>
+              {/* Subhead */}
+              <Text style={[s.subhead, { color: colors.grey }]}>
+                GigMatch shows artists which venues actually have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
+              </Text>
 
-            {/* Subhead */}
-            <Text style={s.heroSub}>{HERO_SUBHEAD}</Text>
-
-            {/* CTAs */}
-            <View style={s.heroCtas}>
-              <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/(tabs)/venues')}>
-                <Text style={s.ctaFilledText}>Browse Venues</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist')}>
-                <Text style={s.ctaFilledText}>Sign Up</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Stats */}
-            <View style={s.statsRow}>
-              {[
-                ...HERO_STATS,
-              ].map(({ num, label }, i) => (
-                <View key={num + i} style={[s.statTile, i > 0 && s.statTileBordered]}>
-                  <Text style={s.statNum}>{num}</Text>
-                  <Text style={s.statLabel}>{label}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Admin controls */}
-            {isAdmin && (
-              <View style={s.adminRow}>
-                <TouchableOpacity style={s.adminBtn} onPress={pickHeroImage} disabled={heroUploading}>
-                  {heroUploading
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={s.adminBtnText}>Edit Cover</Text>}
+              {/* CTAs */}
+              <View style={s.heroCtaRow}>
+                <TouchableOpacity
+                  style={s.ctaFilled}
+                  onPress={() => router.push('/login?mode=signup&tab=artist' as any)}
+                >
+                  <Text style={s.ctaFilledText}>Sign up as an artist</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.adminBtn, s.adminBtnAccent]} onPress={() => router.push('/(tabs)/profile')}>
-                  <Text style={s.adminBtnText}>Admin Panel</Text>
+                <TouchableOpacity
+                  style={[s.ctaOutline, { borderColor: colors.black }]}
+                  onPress={() => router.push('/login?mode=signup&tab=venue' as any)}
+                >
+                  <Text style={[s.ctaOutlineText, { color: colors.black }]}>List your venue</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Stats */}
+              <View style={[s.statsDivider, { backgroundColor: colors.border }]} />
+              <View style={s.statsRow}>
+                <View style={s.statItem}>
+                  <Text style={[s.statNum, { color: colors.black }]}>
+                    {venueCount > 0 ? venueCount : '\u2014'}
+                  </Text>
+                  <Text style={[s.statLabel, { color: colors.grey }]}>VENUES LISTED</Text>
+                </View>
+                <View style={s.statItem}>
+                  <Text style={[s.statNum, { color: Colors.orange }]}>
+                    {openSlotsCount6wk > 0 ? openSlotsCount6wk : '\u2014'}
+                  </Text>
+                  <Text style={[s.statLabel, { color: colors.grey }]}>OPEN SLOTS · 6 WKS</Text>
+                </View>
+                <View style={s.statItem}>
+                  <Text style={[s.statNum, { color: colors.black }]}>~3 hrs</Text>
+                  <Text style={[s.statLabel, { color: colors.grey }]}>MEDIAN REPLY</Text>
+                </View>
+              </View>
+
+              {isAdmin && (
+                <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)}>
+                  <Text style={s.adminLink}>Admin Panel →</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Right: Open this fortnight panel */}
+            {fortnightSlots.length > 0 && (
+              <View style={[s.fortnightPanel, isWide && s.fortnightPanelWide]}>
+                <View style={s.panelHeader}>
+                  <Text style={s.panelHeaderLabel}>OPEN THIS FORTNIGHT</Text>
+                  <TouchableOpacity onPress={() => router.push('/(tabs)/venues')}>
+                    <Text style={s.panelHeaderLink}>All venues →</Text>
+                  </TouchableOpacity>
+                </View>
+                {fortnightSlots.slice(0, 3).map((item, i) => (
+                  <FortnightSlotRow
+                    key={`${item.date.toISOString()}-${i}`}
+                    item={item}
+                    colors={colors}
+                    onEnquire={() => isLoggedIn
+                      ? router.push(`/venue/${item.venue.id}` as any)
+                      : router.push('/login?mode=signup&tab=artist' as any)
+                    }
+                  />
+                ))}
+                {fortnightSlots.length > 3 && (
+                  <Text style={s.moreSlots}>
+                    +{fortnightSlots.length - 3} more open slots before {endLabel}
+                  </Text>
+                )}
+              </View>
             )}
-          </Animated.View>
+
+          </View>
         </View>
 
         {/* ── Problem section ──────────────────────────────────── */}
@@ -273,7 +295,6 @@ export default function HomeScreen() {
         <View style={[s.audienceSection, { backgroundColor: colors.bg }]}>
           <View style={[s.audienceGrid, isWide && s.audienceGridWeb]}>
 
-            {/* Artists — dark card */}
             <View style={[s.audienceCard, s.audienceCardDark, !isWide && { flex: undefined }]}>
               <Text style={s.audienceTagDark}>For Artists</Text>
               <Text style={s.audienceHeadingDark}>Find stages worth playing.</Text>
@@ -292,7 +313,6 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Venues — dark card */}
             <View style={[s.audienceCard, s.audienceCardDark, !isWide && { flex: undefined }]}>
               <Text style={s.audienceTagDark}>For Venues</Text>
               <Text style={s.audienceHeadingDark}>Fill your calendar, not your inbox.</Text>
@@ -306,7 +326,7 @@ export default function HomeScreen() {
                   <Text style={s.featureTextDark}>{f}</Text>
                 </View>
               ))}
-              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/login?mode=signup&tab=venue')}>
+              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
                 <Text style={s.cardCtaDarkText}>List Your Venue</Text>
               </TouchableOpacity>
             </View>
@@ -314,44 +334,13 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── Live Timetable Preview ───────────────────────────── */}
-        {previewSlots.length > 0 && (
-          <View style={[s.featuredSection, { borderBottomColor: colors.border }]}>
-            <View style={s.sectionHeader}>
-              <Text style={s.eyebrow}>Live timetable</Text>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>
-                {testVenue?.name ?? 'Open slots'}
-              </Text>
-            </View>
-            <View style={s.timetableList}>
-              {previewSlots.map(({ date, day, slot }, i) => (
-                <TimetablePreviewRow
-                  key={`${date.toISOString()}-${slot.id || i}`}
-                  date={date} day={day} slot={slot}
-                  colors={colors}
-                  onEnquire={() => isLoggedIn
-                    ? router.push('/venue/test-venue' as any)
-                    : router.push('/login?mode=signup&tab=artist' as any)
-                  }
-                />
-              ))}
-            </View>
-            <TouchableOpacity
-              style={s.viewAllBtn}
-              onPress={() => router.push('/venue/test-venue' as any)}
-            >
-              <Text style={[s.viewAllText, { color: Colors.orange }]}>View full timetable →</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* ── Footer ──────────────────────────────────────────── */}
         <View style={s.footer}>
           <Text style={s.footerLogo}>GigMatch</Text>
           <Text style={s.footerCopy}>&copy; {new Date().getFullYear()} GigMatch. All rights reserved.</Text>
         </View>
 
-      </Animated.ScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -362,145 +351,119 @@ const s = StyleSheet.create({
   root: { flex: 1 },
 
   // ── Hero ──────────────────────────────────────────────────────────
-  hero: {
-    backgroundColor: '#171310',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  heroOverlay: { backgroundColor: 'rgba(0,0,0,0.45)' },
-  heroGlow: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: '80%',
-    // Simulated radial glow from bottom-center
-    backgroundColor: 'transparent',
-    // on web this layers a gradient; native shows a subtle orange tint
-  },
-  heroContent: {
+  hero: { borderBottomWidth: 1, paddingBottom: isWeb ? 56 : 40 },
+  heroInner: {
     paddingHorizontal: isWeb ? 40 : 24,
-    paddingTop:    isWeb ? 96 : 60,
-    paddingBottom: isWeb ? 80 : 56,
-    alignItems: 'center',
-    maxWidth: isWeb ? 800 : undefined,
-    alignSelf: isWeb ? 'center' : undefined,
-    width: '100%',
+    paddingTop: isWeb ? 56 : 40,
+    gap: 32,
   },
-
-  badge: {
+  heroInnerWide: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(250,131,12,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(250,131,12,0.28)',
-    borderRadius: 100,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    marginBottom: 24,
+    alignItems: 'flex-start',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%',
+    gap: 48,
   },
-  badgeDot: {
-    width: 7, height: 7,
-    backgroundColor: Colors.orange,
-    borderRadius: 4,
-  },
-  badgeText: {
-    fontSize: 11, fontWeight: '700',
-    color: Colors.orange,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
+  heroLeft:     { gap: 20 },
+  heroLeftWide: { flex: 1, maxWidth: 480, paddingTop: 16 },
+
+  liveBadge:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  liveDot:       { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.orange },
+  liveBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' },
 
   headline: {
-    fontSize: isWeb ? 64 : 36,
+    fontSize: isWeb ? 54 : 34,
     fontWeight: '900',
-    color: '#ffffff',
-    lineHeight: isWeb ? 68 : 42,
-    letterSpacing: isWeb ? -2 : -0.8,
-    textAlign: 'center',
-    marginBottom: 20,
+    letterSpacing: isWeb ? -2 : -0.5,
+    lineHeight: isWeb ? 58 : 38,
   },
-  heroSub: {
-    fontSize: isWeb ? 18 : 15,
-    color: '#ffffff',
-    textAlign: 'center',
-    lineHeight: isWeb ? 30 : 24,
-    maxWidth: isWeb ? 540 : 320,
-    marginBottom: 36,
+  subhead: {
+    fontSize: isWeb ? 16 : 15,
+    lineHeight: isWeb ? 27 : 24,
+    maxWidth: isWeb ? 400 : undefined,
   },
-  heroCtas: {
-    flexDirection: isWeb ? 'row' : 'column',
+
+  heroCtaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap' as const,
     gap: 12,
-    justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    marginBottom: 48,
   },
   ctaFilled: {
     backgroundColor: Colors.orange,
     borderRadius: 10,
     paddingVertical: 14,
-    paddingHorizontal: 32,
-    alignItems: 'center',
+    paddingHorizontal: 24,
     minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   ctaFilledText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
   ctaOutline: {
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.2)',
     borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 24,
     minHeight: 44,
-  },
-  ctaOutlineText: { fontSize: 15, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
-
-  statsRow: {
-    flexDirection: 'row',
-    paddingTop: 28,
-    width: '100%',
-    maxWidth: 560,
-  },
-  statTile: {
-    flex: 1,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
+    justifyContent: 'center',
   },
-  statTileBordered: {
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(255,255,255,0.08)',
-  },
+  ctaOutlineText: { fontSize: 15, fontWeight: '700' },
+
+  statsDivider: { height: 1, marginTop: 4 },
+  statsRow:     { flexDirection: 'row', gap: 32 },
+  statItem:     { gap: 4 },
   statNum: {
-    fontSize: isWeb ? 36 : 28,
-    fontWeight: '900',
-    color: Colors.orange,
-    letterSpacing: -1,
-    lineHeight: isWeb ? 40 : 32,
+    fontSize: isWeb ? 28 : 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   statLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#ffffff',
-    textAlign: 'center',
-    lineHeight: 15,
-    letterSpacing: 0.2,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
+  adminLink: { fontSize: 13, fontWeight: '600', color: Colors.orange, marginTop: 4 },
 
-  adminRow: { flexDirection: 'row', gap: 8, marginTop: 28 },
-  adminBtn: {
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)',
-    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8,
-    minWidth: 44, alignItems: 'center',
+  // ── Fortnight panel ───────────────────────────────────────────────
+  fortnightPanel: {
+    backgroundColor: '#f2ede4',
+    borderRadius: 14,
+    overflow: 'hidden',
   },
-  adminBtnAccent: { backgroundColor: 'rgba(250,131,12,0.75)', borderColor: 'transparent' },
-  adminBtnText: { fontSize: 13, fontWeight: '600', color: '#ffffff' },
+  fortnightPanelWide: {
+    flex: 1,
+    maxWidth: 440,
+    alignSelf: 'flex-start',
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  panelHeaderLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: '#888888',
+  },
+  panelHeaderLink: { fontSize: 13, fontWeight: '600', color: Colors.orange },
+  moreSlots: {
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '400',
+    color: '#888888',
+    paddingVertical: 14,
+  },
 
   // ── Problem section ───────────────────────────────────────────────
-  problemSection: {
-    borderBottomWidth: 1,
-    paddingBottom: 64,
-  },
+  problemSection: { borderBottomWidth: 1, paddingBottom: 64 },
   sectionHeader: {
     paddingHorizontal: isWeb ? 40 : 24,
     paddingTop: 64,
@@ -510,7 +473,8 @@ const s = StyleSheet.create({
     width: '100%',
   },
   eyebrow: {
-    fontSize: 11, fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '700',
     color: Colors.orange,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
@@ -530,9 +494,7 @@ const s = StyleSheet.create({
     alignSelf: isWeb ? 'center' : undefined,
     width: '100%',
   },
-  problemGridWeb: {
-    flexDirection: 'row',
-  },
+  problemGridWeb: { flexDirection: 'row' },
   problemCard: {
     flex: isWeb ? 1 : undefined,
     borderRadius: 14,
@@ -548,11 +510,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  problemIndexText: {
-    fontSize: 12, fontWeight: '700',
-    color: Colors.orange,
-    letterSpacing: 0.5,
-  },
+  problemIndexText: { fontSize: 12, fontWeight: '700', color: Colors.orange, letterSpacing: 0.5 },
   problemTitle: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
   problemBody:  { fontSize: 14, lineHeight: 22, letterSpacing: 0.1 },
 
@@ -565,7 +523,7 @@ const s = StyleSheet.create({
     alignSelf: isWeb ? 'center' : undefined,
     width: '100%',
   },
-  audienceGridWeb: { flexDirection: 'row' },
+  audienceGridWeb:  { flexDirection: 'row' },
   audienceCard: {
     flex: isWeb ? 1 : undefined,
     borderRadius: 16,
@@ -573,24 +531,11 @@ const s = StyleSheet.create({
     padding: isWeb ? 44 : 32,
     gap: 16,
   },
-  audienceCardDark: {
-    backgroundColor: '#1e1a14',
-    borderColor: 'transparent',
-  },
-  audienceTag: {
-    fontSize: 11, fontWeight: '700',
-    letterSpacing: 1.2, textTransform: 'uppercase',
-  },
+  audienceCardDark:    { backgroundColor: '#1e1a14', borderColor: 'transparent' },
   audienceTagDark: {
     fontSize: 11, fontWeight: '700',
     color: Colors.orange,
     letterSpacing: 1.2, textTransform: 'uppercase',
-  },
-  audienceHeading: {
-    fontSize: isWeb ? 30 : 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    lineHeight: isWeb ? 36 : 28,
   },
   audienceHeadingDark: {
     fontSize: isWeb ? 30 : 22,
@@ -599,21 +544,9 @@ const s = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: isWeb ? 36 : 28,
   },
-  featureRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  featureArrow: { fontSize: 14, fontWeight: '700', color: Colors.orange, marginTop: 1 },
-  featureText: { fontSize: 14, lineHeight: 22, flex: 1 },
+  featureRow:      { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  featureArrow:    { fontSize: 14, fontWeight: '700', color: Colors.orange, marginTop: 1 },
   featureTextDark: { fontSize: 14, lineHeight: 22, flex: 1, color: 'rgba(255,255,255,0.55)' },
-  cardCta: {
-    alignSelf: 'flex-start',
-    borderWidth: 1.5,
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    marginTop: 4,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  cardCtaText: { fontSize: 14, fontWeight: '600' },
   cardCtaDark: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.orange,
@@ -625,26 +558,6 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   cardCtaDarkText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
-
-  // ── Timetable preview ─────────────────────────────────────────────
-  featuredSection: {
-    paddingTop: 64, paddingBottom: 64,
-    borderBottomWidth: 1,
-  },
-  timetableList: {
-    paddingHorizontal: isWeb ? 40 : 24,
-    maxWidth: isWeb ? 1200 : undefined,
-    alignSelf: isWeb ? 'center' : undefined,
-    width: '100%',
-  },
-  viewAllBtn: {
-    paddingHorizontal: isWeb ? 40 : 24,
-    paddingTop: 16,
-    maxWidth: isWeb ? 1200 : undefined,
-    alignSelf: isWeb ? 'center' : undefined,
-    width: '100%',
-  },
-  viewAllText: { fontSize: 15, fontWeight: '600' },
 
   // ── Footer ────────────────────────────────────────────────────────
   footer: {
