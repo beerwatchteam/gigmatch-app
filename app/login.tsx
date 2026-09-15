@@ -150,7 +150,7 @@ export default function LoginScreen() {
         await setPersistence(auth, inMemoryPersistence);
       }
       await signInWithEmailAndPassword(auth, email, siPassword);
-      router.back();
+      router.canGoBack() ? router.back() : router.replace('/(tabs)');
     } catch { setSiError('Invalid email/username or password.'); }
     finally { setSiLoading(false); }
   }
@@ -196,7 +196,7 @@ export default function LoginScreen() {
         settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
         createdAt: new Date().toISOString(),
       });
-      router.back();
+      router.canGoBack() ? router.back() : router.replace('/(tabs)');
     } catch (err: any) { setMError(err.message || 'Failed to create account.'); }
     finally { setMLoading(false); }
   }
