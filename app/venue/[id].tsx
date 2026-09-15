@@ -482,7 +482,10 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
   const shouldTruncate = desc.length > MAX_DESC;
   const nights = venue.gigNights || venue.nightPreferences || [];
   const openSlots = countOpenSlotsThisMonth(venue);
-  const thisWeek  = getThisWeekSlots(venue);
+  const recurringSchedule = CANONICAL_DAYS.flatMap(day => {
+    const slots = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open');
+    return slots.map(s => ({ day, slot: s }));
+  });
   const genres    = venue.genrePreferences || venue.genre || venue.genres || [];
 
   const StatCard = ({ num, label }: { num: string | number; label: string }) => (
@@ -498,25 +501,14 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
     <View style={!isMobileLayout ? s.overviewSidebar : s.overviewSidebarMobile}>
       {(venue.capacity ?? 0) > 0 && <StatCard num={Number(venue.capacity).toLocaleString()} label="Capacity" />}
       {openSlots > 0 && <StatCard num={openSlots} label="Open slots this month" />}
-      {thisWeek.length > 0 && (
+      {recurringSchedule.length > 0 && (
         <View style={[s.thisWeekCard, { borderColor: colors.border }]}>
-          <Text style={[s.thisWeekTitle, { color: colors.grey }]}>This week</Text>
-          {thisWeek.map(({ day, date, slots }) => (
-            <View key={day} style={s.thisWeekDay}>
-              <Text style={[s.thisWeekDayLabel, { color: colors.black }]}>
-                {day.slice(0,3)} {fmtShort(date)}
-              </Text>
-              {slots.map((slot, i) => (
-                <View key={slot.id || i} style={s.thisWeekSlot}>
-                  <Text style={[s.thisWeekSlotTime, { color: colors.black }]}>{slot.time}</Text>
-                  <Text style={[
-                    s.thisWeekSlotStatus,
-                    slot.status === 'open' ? s.thisWeekOpen : s.thisWeekBooked,
-                  ]}>
-                    {slot.status === 'open' ? 'Open' : slot.bandName || 'Booked'}
-                  </Text>
-                </View>
-              ))}
+          <Text style={[s.thisWeekTitle, { color: colors.grey }]}>Recurring</Text>
+          {recurringSchedule.map(({ day, slot }, i) => (
+            <View key={i} style={s.thisWeekSlot}>
+              <Text style={[s.thisWeekSlotTime, { color: Colors.orange, fontWeight: '700' }]}>{day.slice(0, 3)}</Text>
+              <Text style={[s.thisWeekSlotTime, { color: colors.black }]}>{slot.time}</Text>
+              {slot.room ? <Text style={[s.thisWeekSlotStatus, { color: colors.grey }]}>{slot.room}</Text> : null}
             </View>
           ))}
         </View>
