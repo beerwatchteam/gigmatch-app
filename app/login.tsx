@@ -613,7 +613,7 @@ export default function LoginScreen() {
 
               <View style={s.atWrap}>
                 <Text style={s.atSign}>@</Text>
-                <TextInput style={s.atInput} placeholder="thebluemoon" placeholderTextColor="#999"
+                <TextInput style={s.atInput} placeholder="thetote" placeholderTextColor="#999"
                   value={vUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setVUsername(val); setVUsernameTouched(val.length > 0); }} autoCapitalize="none" autoCorrect={false} />
               </View>
               <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
