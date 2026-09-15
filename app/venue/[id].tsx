@@ -934,19 +934,21 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
             </View>
           ))}
         </View>
-        <View style={nt.countRow}>
-          <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
-          <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
-        </View>
-        <View style={nt.navBtns}>
-          {nativeMonthOffset > 0 && (
-            <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o - 3)}>
-              <Text style={[nt.navBtnText, { color: colors.grey }]}>← Prev</Text>
+        <View style={{ gap: 4 }}>
+          <View style={nt.countRow}>
+            <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
+            <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
+          </View>
+          <View style={nt.navBtns}>
+            {nativeMonthOffset > 0 && (
+              <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o - 3)}>
+                <Text style={[nt.navBtnText, { color: colors.grey }]}>← Prev</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o + 3)}>
+              <Text style={[nt.navBtnText, { color: colors.grey }]}>Next 3 Months →</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o + 3)}>
-            <Text style={[nt.navBtnText, { color: colors.grey }]}>Next 3 Months →</Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
 
