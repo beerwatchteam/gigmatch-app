@@ -46,13 +46,12 @@ export function AudienceSplit() {
         </h2>
 
         <div className="lp-audience-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          {/* Artists card — light */}
+          {/* Artists card — dark */}
           <div
             id="artists"
             className="lp-audience-card"
             style={{
-              backgroundColor: '#ffffff',
-              border: '1px solid #e9e2d3',
+              backgroundColor: '#1e1a14',
               borderRadius: 16,
               padding: '52px 48px',
               display: 'flex',
@@ -60,16 +59,16 @@ export function AudienceSplit() {
               gap: 28,
             }}
           >
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#948c7a' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#fa830c' }}>
               For Artists
             </span>
-            <h3 style={{ fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.025em', color: '#17140e', margin: 0 }}>
+            <h3 style={{ fontSize: 'clamp(24px, 3vw, 36px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.025em', color: '#ffffff', margin: 0 }}>
               Find stages worth playing.
             </h3>
-            <FeatureList features={ARTIST_FEATURES} dark={false} />
+            <FeatureList features={ARTIST_FEATURES} dark={true} />
             <a
               href="#get-started"
-              className="lp-btn lp-btn-outline"
+              className="lp-btn lp-btn-accent"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -79,14 +78,14 @@ export function AudienceSplit() {
                 height: 48,
                 padding: '0 24px',
                 borderRadius: 8,
-                border: '1.5px solid #e9e2d3',
-                backgroundColor: 'transparent',
-                color: '#17140e',
+                backgroundColor: '#fa830c',
+                color: '#ffffff',
                 textDecoration: 'none',
                 cursor: 'pointer',
-                transition: 'border-color 0.15s',
+                transition: 'background 0.15s',
                 alignSelf: 'flex-start',
                 minHeight: 44,
+                border: 'none',
               }}
             >
               Browse Venues

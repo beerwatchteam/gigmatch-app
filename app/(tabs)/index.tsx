@@ -342,10 +342,10 @@ export default function HomeScreen() {
         <View style={[s.audienceSection, { backgroundColor: colors.bg }]}>
           <View style={[s.audienceGrid, isWeb && s.audienceGridWeb]}>
 
-            {/* Artists — light card */}
-            <View style={[s.audienceCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-              <Text style={[s.audienceTag, { color: colors.grey }]}>For Artists</Text>
-              <Text style={[s.audienceHeading, { color: colors.black }]}>Find stages worth playing.</Text>
+            {/* Artists — dark card */}
+            <View style={[s.audienceCard, s.audienceCardDark]}>
+              <Text style={s.audienceTagDark}>For Artists</Text>
+              <Text style={s.audienceHeadingDark}>Find stages worth playing.</Text>
               {[
                 'Browse venues with real open slots on their timetable',
                 'Send a structured enquiry in minutes, not a cold DM',
@@ -353,11 +353,11 @@ export default function HomeScreen() {
               ].map(f => (
                 <View key={f} style={s.featureRow}>
                   <Text style={s.featureArrow}>&#x2192;</Text>
-                  <Text style={[s.featureText, { color: colors.grey }]}>{f}</Text>
+                  <Text style={s.featureTextDark}>{f}</Text>
                 </View>
               ))}
-              <TouchableOpacity style={[s.cardCta, { borderColor: colors.border }]} onPress={() => router.push('/(tabs)/venues')}>
-                <Text style={[s.cardCtaText, { color: colors.black }]}>Browse Venues</Text>
+              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/(tabs)/venues')}>
+                <Text style={s.cardCtaDarkText}>Browse Venues</Text>
               </TouchableOpacity>
             </View>
 
