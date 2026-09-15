@@ -443,6 +443,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             isArtist={isArtist}
             isLoggedIn={!!user}
             userEnquiries={userEnquiries}
+            isMobileLayout={isMobileLayout}
             onEnquire={(slot, day, dateISO) => {
               if (!user) { router.push('/login'); return; }
               router.push({
@@ -653,12 +654,13 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
 // ── Timetable tab ────────────────────────────────────────────────────
 
-function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
+function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, isMobileLayout }: {
   venue: Venue;
   isArtist: boolean;
   isLoggedIn: boolean;
   userEnquiries: Enquiry[];
   onEnquire: (slot: Slot, day: string, dateISO?: string) => void;
+  isMobileLayout: boolean;
 }) {
   const { colors } = useTheme();
   const today = new Date();
@@ -672,7 +674,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire }:
 
   const [monthOffset, setMonthOffset] = useState(0);
 
-  if (isWeb) {
+  if (!isMobileLayout) {
     const allUpcoming = generateAllUpcoming(venue, 3, monthOffset);
 
     const matchEnquiry = (enq: Enquiry, day: string, time: string, dateISO: string) =>
