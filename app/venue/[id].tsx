@@ -525,20 +525,6 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
   const main = (
     <View style={!isMobileLayout ? s.overviewMain : null}>
 
-      {/* Payment */}
-      {(venue.payment?.models || []).length > 0 && (
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Payment</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {(venue.payment!.models!).map((model) => (
-              <View key={model} style={[s.genrePill, { borderColor: colors.border }]}>
-                <Text style={[s.genreText, { color: colors.black }]}>{model}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
       {/* Description */}
       {desc ? (
         <View style={s.section}>
@@ -553,6 +539,20 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
           )}
         </View>
       ) : null}
+
+      {/* Payment */}
+      {(venue.payment?.models || []).length > 0 && (
+        <View style={s.section}>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Payment</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {(venue.payment!.models!).map((model) => (
+              <View key={model} style={[s.genrePill, { borderColor: colors.border }]}>
+                <Text style={[s.genreText, { color: colors.black }]}>{model}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Booking Contact */}
       {venue.bookingContact && (venue.bookingContact.name || venue.bookingContact.email || venue.bookingContact.phone) ? (
@@ -585,22 +585,6 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
         </View>
       ) : null}
 
-      {nights.length > 0 ? (
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Gig Timetable</Text>
-          {nights.map((night, i) => (
-            <View key={i} style={s.nightRow}>
-              <Text style={[s.nightDay, { color: colors.black }]}>{night.day}</Text>
-              {night.startTime ? <Text style={[s.nightMeta, { color: colors.grey }]}>{night.startTime}</Text> : null}
-              {night.duration  ? <Text style={[s.nightMeta, { color: colors.grey }]}>{night.duration} min</Text> : null}
-              {(night.genres || []).length > 0 && (
-                <Text style={s.genreOrangeText}>{(night.genres || []).join(' · ')}</Text>
-              )}
-              {night.notes ? <Text style={s.nightNotes}>{night.notes}</Text> : null}
-            </View>
-          ))}
-        </View>
-      ) : null}
 
       {genres.length > 0 ? (
         <View style={s.section}>
