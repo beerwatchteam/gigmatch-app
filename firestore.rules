@@ -32,8 +32,11 @@ service cloud.firestore {
     }
 
     // ── Users ────────────────────────────────────────────────────────────────
+    // Public read is needed for username uniqueness checks before signup (unauthenticated).
+    // display names, usernames, and user types are not sensitive, and email
+    // is already exposed on the publicly readable bandProfiles/agentProfiles collections.
     match /users/{uid} {
-      allow read:   if isSignedIn();
+      allow read:   if true;
       allow create: if isOwner(uid);
       allow update: if isOwner(uid) || isAdmin();
       allow delete: if isAdmin();
@@ -96,6 +99,26 @@ service cloud.firestore {
         resource.data.artistUid == request.auth.uid ||
         isAdmin()
       );
+      allow delete: if isAdmin();
+    }
+
+    // ── Venue applications ───────────────────────────────────────────────────
+    match /venueApplications/{uid} {
+      allow read:   if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Venue disputes ───────────────────────────────────────────────────────
+    match /venueDisputes/{disputeId} {
+      allow read:   if isSignedIn() && (
+        resource.data.challengerUserId == request.auth.uid ||
+        resource.data.currentOwnerId  == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
