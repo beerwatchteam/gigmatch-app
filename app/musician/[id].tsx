@@ -627,7 +627,7 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
 
 // ── Timetable Tab ─────────────────────────────────────────────────
 
-function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
+function TimetableTab({ m, isOwn, isMobileLayout }: { m: Musician; isOwn: boolean; isMobileLayout: boolean }) {
   const { colors } = useTheme();
   const today = new Date();
   const [filterTab, setFilterTab]   = useState<'all' | 'gigs' | 'away'>('all');
@@ -664,7 +664,7 @@ function TimetableTab({ m, isOwn }: { m: Musician; isOwn: boolean }) {
   const musicianId   = m.id;
   const musicianName = m.name || 'Musician';
 
-  if (isWeb) {
+  if (!isMobileLayout) {
     return (
       <View style={mt.tabBody}>
         {/* Filter row */}
@@ -1209,7 +1209,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {/* Tab content */}
         {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} />}
         {activeTab === 'music'      && <MusicTab m={musician} />}
-        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} />}
+        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} />}
 
         <View style={{ height: 40 }} />
       </ScrollView>
