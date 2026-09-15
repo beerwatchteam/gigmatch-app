@@ -154,8 +154,8 @@ function VenuePendingScreen() {
             <Text style={[styles.pendingHint, { color: colors.greyLight }]}>
               Once approved, we'll send a verification code to{' '}
               {contactType === 'manual'
-                ? 'you via our team'
-                : <Text style={{ fontWeight: '600' }}>{verificationContact}</Text>}.
+                ? 'you via our team.'
+                : <Text style={{ fontWeight: '600' }}>{verificationContact}.</Text>}
             </Text>
           </>
         )}
@@ -167,9 +167,9 @@ function VenuePendingScreen() {
             <Text style={[styles.pendingTitle, { color: colors.black }]}>Enter Your Code</Text>
             <Text style={[styles.pendingBody, { color: colors.grey }]}>
               GigMatch has sent a verification code to{' '}
-              <Text style={{ fontWeight: '700', color: colors.black }}>{verificationContact}</Text>.
+              <Text style={{ fontWeight: '700', color: colors.black }}>{verificationContact}.</Text>
               Enter it below to claim{' '}
-              <Text style={{ fontWeight: '700', color: colors.black }}>{appVenueName}</Text>.
+              <Text style={{ fontWeight: '700', color: colors.black }}>{appVenueName}.</Text>
             </Text>
             <TextInput
               style={styles.codeInput}

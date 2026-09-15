@@ -440,7 +440,7 @@ export default function LoginScreen() {
               <Text style={s.verifyIcon}>✉️</Text>
               <Text style={s.verifyTitle}>Verify your email to get started</Text>
               <Text style={s.verifySub}>
-                We've sent a link to <Text style={{ fontWeight: '700', color: '#111' }}>{mVerifyEmail}</Text>. Click it to confirm your account — you'll be logged in automatically.
+                We've sent a link to <Text style={{ fontWeight: '700', color: '#111' }}>{mVerifyEmail}.</Text> Click it to confirm your account — you'll be logged in automatically.
               </Text>
               <Text style={s.verifyHint}>Check your spam if you don't see it within a minute.</Text>
               {mResendSent

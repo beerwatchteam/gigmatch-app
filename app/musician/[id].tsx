@@ -1134,10 +1134,10 @@ const styles = StyleSheet.create({
   // Two-column layout (web)
   overviewLayout:  {
     flexDirection: 'row', alignItems: 'flex-start',
-    paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28, gap: 40,
+    paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28, gap: 28,
   },
   overviewMain:    { flex: 1, paddingBottom: 28 },
-  overviewSidebar: { width: 240, gap: 0 },
+  overviewSidebar: { width: 310, gap: 0 },
   mobileSidebar:   { gap: 0 },
   mobileContent:   { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 24, paddingBottom: 4 },
   tabContent:      { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28 },
