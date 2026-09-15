@@ -22,7 +22,7 @@ const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop',
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const SLOT_TYPES     = ['Headline','Other'];
 
-type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; _isNew?: boolean };
+type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; backline: string; monitoring: string; power: string; notes: string; _isNew?: boolean };
 type Night = {
   day: string; startTime: string; duration: number; slotType: string;
   startDate: string; endDate: string; continuous: boolean;
@@ -533,7 +533,7 @@ export default function EditVenueScreen() {
   }
   function addRoom() {
     setData(prev => {
-      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '', _isNew: true }];
+      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '', backline: '', monitoring: '', power: '', notes: '', _isNew: true }];
       setExpandedRoom(rooms.length - 1);
       return { ...prev, rooms };
     });
@@ -1196,6 +1196,18 @@ export default function EditVenueScreen() {
                       <Field label="PA System">
                         <Input value={room.pa} onChangeText={(v: string) => setRoom(i, 'pa', v)} placeholder="e.g. d&b audiotechnik J-Series" autoGrow />
                       </Field>
+                      <Field label="Backline">
+                        <Input value={room.backline} onChangeText={(v: string) => setRoom(i, 'backline', v)} placeholder="e.g. house drum kit, 2x guitar amps" autoGrow />
+                      </Field>
+                      <Field label="Monitoring">
+                        <Input value={room.monitoring} onChangeText={(v: string) => setRoom(i, 'monitoring', v)} placeholder="e.g. 4x wedges, 2 mixes" autoGrow />
+                      </Field>
+                      <Field label="Power">
+                        <Input value={room.power} onChangeText={(v: string) => setRoom(i, 'power', v)} placeholder="e.g. 4x 15A outlets on stage" autoGrow />
+                      </Field>
+                      <Field label="Notes for Acts">
+                        <Input value={room.notes} onChangeText={(v: string) => setRoom(i, 'notes', v)} placeholder="Anything acts should know about this room" multiline />
+                      </Field>
                       <View style={s.itemBtnRow}>
                         <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeRoom(i)}>
                           <Text style={s.removeBtnText}>Remove Room</Text>
@@ -1432,27 +1444,16 @@ export default function EditVenueScreen() {
         {activeTab === 'Tech Specs' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Specs</Text>
-            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Venue-wide info that's true regardless of which room an artist plays. PA, lighting, and stage dimensions are entered per room.</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Venue-wide info that applies no matter which room an artist plays. Backline, monitoring, power, and room-specific notes are entered per room in the Rooms tab.</Text>
 
-            <Field label="Documents">
-              {(data.techSpecs?.documents || []).map((doc: { url: string; name: string }, idx: number) => (
-                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name || doc.url}</Text>
-                  <TouchableOpacity style={s.removeBtn} onPress={() => set('techSpecs', { ...data.techSpecs, documents: (data.techSpecs?.documents || []).filter((_: any, i: number) => i !== idx) })}>
-                    <Text style={s.removeBtnText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}>
-                <Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Add Document'}</Text>
-              </TouchableOpacity>
+            <Field label="Load-in">
+              <Input value={data.techSpecs?.loadIn || data.techSpecs?.loadInParking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, loadIn: v, loadInParking: v })} placeholder="e.g. rear loading dock, access via laneway" />
             </Field>
-
-            <Field label="Backline">
-              <Input value={data.techSpecs?.backline || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, backline: v })} placeholder="e.g. house drum kit, 2x guitar amps" />
+            <Field label="Parking">
+              <Input value={data.techSpecs?.parking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, parking: v })} placeholder="e.g. street parking only, 2hr limit after 6pm" />
             </Field>
-            <Field label="Monitoring">
-              <Input value={data.techSpecs?.monitoring || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, monitoring: v })} placeholder="e.g. 4x wedges, 2 mixes" />
+            <Field label="Curfew / Noise Restrictions">
+              <Input value={data.techSpecs?.curfew || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, curfew: v })} placeholder="e.g. 11pm hard curfew, council noise limit" />
             </Field>
 
             <TouchableOpacity
@@ -1469,20 +1470,10 @@ export default function EditVenueScreen() {
                 <Input
                   value={data.techSpecs?.soundEngineerDetails || ''}
                   onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, soundEngineerDetails: v })}
-                  placeholder="e.g. included, or available at cost"
+                  placeholder="e.g. included in the booking, or available at extra cost"
                 />
               </View>
             )}
-
-            <Field label="Power">
-              <Input value={data.techSpecs?.power || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, power: v })} placeholder="e.g. 4x 15A outlets on stage" />
-            </Field>
-            <Field label="Load-in & Parking">
-              <Input value={data.techSpecs?.loadInParking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, loadInParking: v })} placeholder="e.g. rear loading dock, street parking only" />
-            </Field>
-            <Field label="Curfew / Noise Restrictions">
-              <Input value={data.techSpecs?.curfew || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, curfew: v })} placeholder="e.g. 11pm hard curfew, council noise limit" />
-            </Field>
 
             <Field label="Green Room">
               <TouchableOpacity
@@ -1499,12 +1490,13 @@ export default function EditVenueScreen() {
                 <Input
                   value={data.techSpecs?.greenRoomDetails || ''}
                   onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, greenRoomDetails: v })}
-                  placeholder="Any additional info"
+                  placeholder="e.g. shared green room, fridge and couch"
                 />
               )}
             </Field>
-            <Field label="Notes for Acts">
-              <Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Any additional info" multiline />
+
+            <Field label="General Venue Notes">
+              <Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Anything acts should know about the venue in general" multiline />
             </Field>
           </View>
         )}

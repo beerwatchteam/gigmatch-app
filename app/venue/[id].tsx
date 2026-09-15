@@ -40,6 +40,10 @@ type Room = {
   stage?: string;
   lighting?: string;
   pa?: string;
+  backline?: string;
+  monitoring?: string;
+  power?: string;
+  notes?: string;
 };
 
 type TechSpecs = {
@@ -1518,15 +1522,20 @@ function RoomsTab({ venue }: { venue: Venue }) {
   const rooms     = venue.rooms || [];
   const techSpecs = venue.techSpecs;
 
-  const techRows = [
-    { label: 'Backline',          value: techSpecs?.backline },
-    { label: 'Monitoring',        value: techSpecs?.monitoring },
-    { label: 'Power',             value: techSpecs?.power },
-    { label: 'Load-in & Parking', value: techSpecs?.loadInParking || (techSpecs?.loadIn || techSpecs?.parking ? [techSpecs?.loadIn, techSpecs?.parking].filter(Boolean).join(' · ') : undefined) },
-    { label: 'Curfew / Noise',    value: techSpecs?.curfew },
+  // Venue-level rows: load-in, parking, curfew
+  const venueTechRows = [
+    { label: 'Load-in',        value: techSpecs?.loadIn || techSpecs?.loadInParking },
+    { label: 'Parking',        value: techSpecs?.parking },
+    { label: 'Curfew / Noise', value: techSpecs?.curfew },
   ].filter(r => r.value);
 
-  if (rooms.length === 0 && !techSpecs) {
+  const hasVenueTech = venueTechRows.length > 0
+    || typeof techSpecs?.soundEngineer !== 'undefined'
+    || typeof techSpecs?.greenRoom !== 'undefined'
+    || !!techSpecs?.notes
+    || (techSpecs?.documents && techSpecs.documents.length > 0);
+
+  if (rooms.length === 0 && !hasVenueTech) {
     return (
       <View style={[s.tabBody, { alignItems: 'center', paddingTop: 60 }]}>
         <Text style={[s.noSlotsText, { color: colors.grey }]}>Rooms and tech specs haven't been listed yet.</Text>
@@ -1539,59 +1548,68 @@ function RoomsTab({ venue }: { venue: Venue }) {
       {rooms.length > 0 && (
         <View style={s.section}>
           <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Rooms</Text>
-          {rooms.map((room, i) => (
-            <View key={i} style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <View style={rt.roomNameRow}>
-                <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
-                {i === 0 && rooms.length > 1 && (
-                  <View style={rt.primaryBadge}>
-                    <Text style={rt.primaryBadgeText}>PRIMARY ROOM</Text>
-                  </View>
-                )}
-              </View>
-              <View style={rt.specsGrid}>
+          {rooms.map((room, i) => {
+            const roomTechRows = [
+              { label: 'PA System',   value: room.pa },
+              { label: 'Stage',       value: room.stage },
+              { label: 'Lighting',    value: room.lighting },
+              { label: 'Backline',    value: room.backline },
+              { label: 'Monitoring',  value: room.monitoring },
+              { label: 'Power',       value: room.power },
+            ].filter(r => r.value);
+            return (
+              <View key={i} style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                <View style={rt.roomNameRow}>
+                  <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
+                  {i === 0 && rooms.length > 1 && (
+                    <View style={rt.primaryBadge}>
+                      <Text style={rt.primaryBadgeText}>PRIMARY ROOM</Text>
+                    </View>
+                  )}
+                </View>
                 {room.capacity ? (
-                  <View style={rt.specItem}>
+                  <View style={{ marginBottom: roomTechRows.length > 0 || room.notes ? 12 : 0 }}>
                     <Text style={[rt.specLabel, { color: colors.grey }]}>Capacity</Text>
                     <Text style={[rt.specValue, { color: colors.black }]}>{Number(room.capacity).toLocaleString()}</Text>
                   </View>
                 ) : null}
-                {room.stage ? (
-                  <View style={rt.specItem}>
-                    <Text style={[rt.specLabel, { color: colors.grey }]}>Stage</Text>
-                    <Text style={[rt.specValue, { color: colors.black }]}>{room.stage}</Text>
+                {roomTechRows.length > 0 && (
+                  <View style={rt.specsGrid}>
+                    {roomTechRows.map(({ label, value }) => (
+                      <View key={label} style={rt.specItem}>
+                        <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
+                        <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
+                      </View>
+                    ))}
                   </View>
-                ) : null}
-                {room.pa ? (
-                  <View style={rt.specItem}>
-                    <Text style={[rt.specLabel, { color: colors.grey }]}>PA System</Text>
-                    <Text style={[rt.specValue, { color: colors.black }]}>{room.pa}</Text>
-                  </View>
-                ) : null}
-                {room.lighting ? (
-                  <View style={rt.specItem}>
-                    <Text style={[rt.specLabel, { color: colors.grey }]}>Lighting</Text>
-                    <Text style={[rt.specValue, { color: colors.black }]}>{room.lighting}</Text>
+                )}
+                {room.notes ? (
+                  <View style={[rt.notesBox, { backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1, marginTop: 8 }]}>
+                    <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 4 }]}>NOTES FOR ACTS</Text>
+                    <Text style={[rt.notesText, { color: colors.black }]}>{room.notes}</Text>
                   </View>
                 ) : null}
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
 
-      {techSpecs && (
+      {hasVenueTech && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Tech Specs</Text>
+          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Venue Info</Text>
           <View style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, marginBottom: 0 }]}>
-          <View style={rt.specsGrid}>
-            {techRows.map(({ label, value }) => (
-              <View key={label} style={rt.specItem}>
-                <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
-                <Text style={[rt.specValue, { color: Colors.orange }]}>{value}</Text>
+            {venueTechRows.length > 0 && (
+              <View style={rt.specsGrid}>
+                {venueTechRows.map(({ label, value }) => (
+                  <View key={label} style={rt.specItem}>
+                    <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
+                    <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-            {typeof techSpecs.soundEngineer !== 'undefined' && (
+            )}
+            {typeof techSpecs?.soundEngineer !== 'undefined' && (
               <View style={rt.specItem}>
                 <Text style={[rt.specLabel, { color: colors.grey }]}>In-house Engineer</Text>
                 <Text style={[rt.specValue, { color: techSpecs.soundEngineer ? Colors.orange : '#e94560' }]}>
@@ -1601,48 +1619,34 @@ function RoomsTab({ venue }: { venue: Venue }) {
                 </Text>
               </View>
             )}
-          </View>
-          {(techSpecs.stageDocs && techSpecs.stageDocs.length > 0) && (
-            <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
-              <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>STAGE PLOT</Text>
-              {techSpecs.stageDocs.map((doc, i) => (
-                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
-                  <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          {typeof techSpecs.greenRoom !== 'undefined' && (
-            <View style={rt.specItem}>
-              <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
-              {techSpecs.greenRoom ? (
-                <Text style={[rt.specValue, { color: Colors.orange }]}>
-                  ✓ Available{techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}
-                </Text>
-              ) : (
-                <Text style={[rt.specValue, { color: '#e94560' }]}>✕ No green room</Text>
-              )}
-            </View>
-          )}
-          {techSpecs.notes ? (
-            <View style={[rt.notesBox, { backgroundColor: colors.bgFaint }]}>
-              <Text style={[rt.notesText, { color: Colors.orange }]}>{techSpecs.notes}</Text>
-            </View>
-          ) : null}
-          {(techSpecs.documents && techSpecs.documents.length > 0) ? (
-            <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
-              <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>DOCUMENTS</Text>
-              {techSpecs.documents.map((doc, i) => (
-                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
-                  <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : techSpecs.riderUrl ? (
-            <TouchableOpacity onPress={() => Linking.openURL(techSpecs!.riderUrl!)}>
-              <Text style={s.link}>{techSpecs.riderUrl}</Text>
-            </TouchableOpacity>
-          ) : null}
+            {typeof techSpecs?.greenRoom !== 'undefined' && (
+              <View style={rt.specItem}>
+                <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
+                {techSpecs.greenRoom ? (
+                  <Text style={[rt.specValue, { color: Colors.orange }]}>
+                    ✓ Available{techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}
+                  </Text>
+                ) : (
+                  <Text style={[rt.specValue, { color: '#e94560' }]}>✕ No green room</Text>
+                )}
+              </View>
+            )}
+            {techSpecs?.notes ? (
+              <View style={[rt.notesBox, { backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1, marginTop: 8 }]}>
+                <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 4 }]}>VENUE NOTES</Text>
+                <Text style={[rt.notesText, { color: colors.black }]}>{techSpecs.notes}</Text>
+              </View>
+            ) : null}
+            {(techSpecs?.documents && techSpecs.documents.length > 0) ? (
+              <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
+                <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>DOCUMENTS</Text>
+                {techSpecs.documents.map((doc, i) => (
+                  <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
+                    <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
       )}
