@@ -898,7 +898,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
         </View>
       )}
 
-      {/* Filter tabs + nav button */}
+      {/* Filter tabs */}
       <View style={nt.filterRow}>
         <View style={[nt.filterControl, { borderColor: colors.border }]}>
           {(['open', 'all', 'mine'] as const).map((tab, idx) => (
@@ -916,18 +916,9 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
             </>
           ))}
         </View>
-        <View style={{ flex: 1 }} />
-        {nativeMonthOffset > 0 && (
-          <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o - 3)}>
-            <Text style={[nt.navBtnText, { color: colors.grey }]}>← Prev</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o + 3)}>
-          <Text style={[nt.navBtnText, { color: colors.grey }]}>Next 3 Months →</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* Count + legend */}
+      {/* Count + legend + nav */}
       <View style={nt.countNav}>
         {/* Legend */}
         <View style={nt.legend}>
@@ -946,6 +937,16 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
         <View style={nt.countRow}>
           <Text style={[nt.countLabel, { color: colors.grey }]}>{nativeCountLabel}</Text>
           <Text style={[nt.dateRange, { color: colors.grey }]}>{nativeDateRange}</Text>
+        </View>
+        <View style={nt.navBtns}>
+          {nativeMonthOffset > 0 && (
+            <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o - 3)}>
+              <Text style={[nt.navBtnText, { color: colors.grey }]}>← Prev</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={nt.navBtn} onPress={() => setNativeMonthOffset(o => o + 3)}>
+            <Text style={[nt.navBtnText, { color: colors.grey }]}>Next 3 Months →</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
