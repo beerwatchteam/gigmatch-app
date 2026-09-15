@@ -26,6 +26,7 @@ function AppShell() {
         <Stack.Screen name="sub-thread" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade' }} />
         <Stack.Screen name="landing" options={{ headerShown: false }} />
+        <Stack.Screen name="terms" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </View>

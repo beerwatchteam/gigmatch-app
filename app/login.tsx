@@ -507,12 +507,19 @@ export default function LoginScreen() {
                 </>
               )}
 
-              <TouchableOpacity style={s.termsRow} onPress={() => setMTerms(v => !v)}>
-                <View style={[s.checkbox, mTerms && s.checkboxOn]}>
-                  {mTerms && <Text style={s.checkboxTick}>✓</Text>}
-                </View>
-                <Text style={s.termsText}>I accept the <Text style={{ color: Colors.orange }}>Terms & Conditions</Text></Text>
-              </TouchableOpacity>
+              <View style={s.termsRow}>
+                <TouchableOpacity onPress={() => setMTerms(v => !v)}>
+                  <View style={[s.checkbox, mTerms && s.checkboxOn]}>
+                    {mTerms && <Text style={s.checkboxTick}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+                <Text style={s.termsText}>
+                  I accept the{' '}
+                  <Text style={{ color: Colors.orange }} onPress={() => router.push('/terms')} suppressHighlighting>
+                    Terms and Conditions
+                  </Text>
+                </Text>
+              </View>
               {mFieldErrors.terms ? <Text style={s.fieldError}>{mFieldErrors.terms}</Text> : null}
 
               {mError ? <Text style={s.errorText}>{mError}</Text> : null}
@@ -646,12 +653,19 @@ export default function LoginScreen() {
                 </View>
               )}
 
-              <TouchableOpacity style={s.termsRow} onPress={() => setVTerms(v => !v)}>
-                <View style={[s.checkbox, vTerms && s.checkboxOn]}>
-                  {vTerms && <Text style={s.checkboxTick}>✓</Text>}
-                </View>
-                <Text style={s.termsText}>I accept the <Text style={{ color: Colors.orange }}>Terms & Conditions</Text></Text>
-              </TouchableOpacity>
+              <View style={s.termsRow}>
+                <TouchableOpacity onPress={() => setVTerms(v => !v)}>
+                  <View style={[s.checkbox, vTerms && s.checkboxOn]}>
+                    {vTerms && <Text style={s.checkboxTick}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+                <Text style={s.termsText}>
+                  I accept the{' '}
+                  <Text style={{ color: Colors.orange }} onPress={() => router.push('/terms')} suppressHighlighting>
+                    Terms and Conditions
+                  </Text>
+                </Text>
+              </View>
               {vFieldErrors.terms ? <Text style={s.fieldError}>{vFieldErrors.terms}</Text> : null}
 
               {vError ? <Text style={s.errorText}>{vError}</Text> : null}
@@ -697,12 +711,19 @@ export default function LoginScreen() {
               <Text style={s.hint}>Used to identify your agency on GigMatch</Text>
               {aFieldErrors.username ? <Text style={s.fieldError}>{aFieldErrors.username}</Text> : null}
 
-              <TouchableOpacity style={s.termsRow} onPress={() => setATerms(v => !v)}>
-                <View style={[s.checkbox, aTerms && s.checkboxOn]}>
-                  {aTerms && <Text style={s.checkboxTick}>✓</Text>}
-                </View>
-                <Text style={s.termsText}>I accept the <Text style={{ color: Colors.orange }}>Terms & Conditions</Text></Text>
-              </TouchableOpacity>
+              <View style={s.termsRow}>
+                <TouchableOpacity onPress={() => setATerms(v => !v)}>
+                  <View style={[s.checkbox, aTerms && s.checkboxOn]}>
+                    {aTerms && <Text style={s.checkboxTick}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+                <Text style={s.termsText}>
+                  I accept the{' '}
+                  <Text style={{ color: Colors.orange }} onPress={() => router.push('/terms')} suppressHighlighting>
+                    Terms and Conditions
+                  </Text>
+                </Text>
+              </View>
               {aFieldErrors.terms ? <Text style={s.fieldError}>{aFieldErrors.terms}</Text> : null}
 
               {aError ? <Text style={s.errorText}>{aError}</Text> : null}
