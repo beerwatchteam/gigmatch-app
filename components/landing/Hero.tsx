@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { HERO_HEADLINE, HERO_HEADLINE_LINE2, HERO_SUBHEAD, HERO_STATS } from '@/constants/copy';
 
 // Equaliser waveform silhouette — jagged polygon that looks like music eq bars
 const EQ_CLIP_PATH = `polygon(
@@ -11,11 +12,7 @@ const EQ_CLIP_PATH = `polygon(
   96% 20%, 96% 48%, 100% 48%, 100% 100%
 )`;
 
-const STATS = [
-  { num: '1',    label: 'Platform built for Australian live music booking' },
-  { num: '0',    label: 'Cold DMs needed to find an open slot' },
-  { num: '100%', label: 'Venues verified before going live' },
-];
+// Copy imported from constants/copy.ts
 
 export function Hero() {
   const heroRef    = useRef<HTMLElement>(null);
@@ -212,7 +209,7 @@ export function Hero() {
             color: '#ffffff',
             margin: 0,
           }}>
-            Where gigs actually<br />get booked.
+            {HERO_HEADLINE}<br />{HERO_HEADLINE_LINE2}
           </h1>
 
           {/* Subhead */}
@@ -224,8 +221,7 @@ export function Hero() {
             maxWidth: 540,
             margin: 0,
           }}>
-            GigMatch is the only platform where Australian venues publish real, available gig slots.
-            Artists enquire on them directly. No cold DMs required.
+            {HERO_SUBHEAD}
           </p>
 
           {/* CTAs */}
@@ -262,7 +258,7 @@ export function Hero() {
               Get Started
             </a>
             <a
-              href="#how-it-works"
+              href="/login?mode=signup&tab=artist"
               className="lp-btn lp-btn-ghost"
               style={{
                 display: 'inline-flex',
@@ -282,7 +278,7 @@ export function Hero() {
                 transition: 'background 0.15s, color 0.15s, border-color 0.15s',
               }}
             >
-              See How It Works
+              Sign Up
             </a>
           </div>
 
@@ -296,7 +292,7 @@ export function Hero() {
             paddingTop: 32,
             borderTop: '1px solid rgba(255,255,255,0.07)',
           }}>
-            {STATS.map(({ num, label }, i) => (
+            {HERO_STATS.map(({ num, label }, i) => (
               <React.Fragment key={label}>
                 {i > 0 && (
                   <div

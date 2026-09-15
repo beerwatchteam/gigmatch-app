@@ -10,6 +10,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { db, storage } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
+import { HERO_HEADLINE, HERO_HEADLINE_LINE2, HERO_SUBHEAD, HERO_STATS, PROBLEMS, PROBLEM_SECTION_HEADING } from '@/constants/copy';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 
@@ -171,20 +172,7 @@ const cs = StyleSheet.create({
 
 // ── Problem cards ──────────────────────────────────────────────────
 
-const PROBLEMS = [
-  {
-    title: 'No visibility',
-    body: "Artists can't tell if a venue is open to bookings without reaching out blind. There's no way to know what's available before you send a message.",
-  },
-  {
-    title: 'Endless back-and-forth',
-    body: 'Basic details like availability and set times get lost across emails, DMs, and phone calls. Nothing is confirmed and everything takes too long.',
-  },
-  {
-    title: 'Silence instead of answers',
-    body: 'Enquiries go unanswered for weeks, with no way to track where things stand. Artists are left chasing while venues fall behind on requests.',
-  },
-];
+// Copy imported from constants/copy.ts
 
 // ── HomeScreen ─────────────────────────────────────────────────────
 
@@ -274,29 +262,25 @@ export default function HomeScreen() {
             </View>
 
             {/* Headline */}
-            <Text style={s.headline}>Where gigs actually{'\n'}get booked.</Text>
+            <Text style={s.headline}>{HERO_HEADLINE}{'\n'}{HERO_HEADLINE_LINE2}</Text>
 
             {/* Subhead */}
-            <Text style={s.heroSub}>
-              Venues publish open gig slots on a live timetable. Artists enquire in one click, straight off a profile they've already built. No waiting to be discovered, GigMatch puts discovery in the artist's hands, not the algorithm's. It's like a dating site for musicians and venues.
-            </Text>
+            <Text style={s.heroSub}>{HERO_SUBHEAD}</Text>
 
             {/* CTAs */}
             <View style={s.heroCtas}>
               <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/(tabs)/venues')}>
                 <Text style={s.ctaFilledText}>Browse Venues</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.ctaOutline} onPress={() => router.push('/(tabs)/musicians')}>
-                <Text style={s.ctaOutlineText}>See How It Works</Text>
+              <TouchableOpacity style={s.ctaOutline} onPress={() => router.push('/login?mode=signup&tab=artist')}>
+                <Text style={s.ctaOutlineText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
 
             {/* Stats */}
             <View style={s.statsRow}>
               {[
-                { num: 'No. 1', label: 'Platform for\nAustralian live music' },
-                { num: '0',    label: 'Cold DMs needed\nto find a slot' },
-                { num: '100%', label: 'Venues verified\nbefore going live' },
+                ...HERO_STATS,
               ].map(({ num, label }, i) => (
                 <View key={num + i} style={[s.statTile, i > 0 && s.statTileBordered]}>
                   <Text style={s.statNum}>{num}</Text>
@@ -325,12 +309,10 @@ export default function HomeScreen() {
         <View style={[s.problemSection, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
           <View style={s.sectionHeader}>
             <Text style={s.eyebrow}>The Problem</Text>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>
-              Booking live music is still done the old way.
-            </Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>{PROBLEM_SECTION_HEADING}</Text>
           </View>
           <View style={[s.problemGrid, isWeb && s.problemGridWeb]}>
-            {PROBLEMS.map(({ title, body }, i) => (
+            {PROBLEMS.map(({ title, bullets }, i) => (
               <View
                 key={title}
                 style={[
@@ -343,7 +325,14 @@ export default function HomeScreen() {
                   <Text style={s.problemIndexText}>{String(i + 1).padStart(2, '0')}</Text>
                 </View>
                 <Text style={[s.problemTitle, { color: colors.black }]}>{title}</Text>
-                <Text style={[s.problemBody, { color: colors.grey }]}>{body}</Text>
+                <View style={{ gap: 8 }}>
+                  {bullets.map(point => (
+                    <View key={point} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.orange, marginTop: 8, flexShrink: 0 }} />
+                      <Text style={[s.problemBody, { color: colors.grey, flex: 1 }]}>{point}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             ))}
           </View>
@@ -386,7 +375,7 @@ export default function HomeScreen() {
                   <Text style={s.featureTextDark}>{f}</Text>
                 </View>
               ))}
-              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/(tabs)/musicians')}>
+              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/login?mode=signup&tab=venue')}>
                 <Text style={s.cardCtaDarkText}>List Your Venue</Text>
               </TouchableOpacity>
             </View>

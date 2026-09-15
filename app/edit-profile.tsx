@@ -28,7 +28,7 @@ const PLATFORMS = [
 const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
 
 type Song    = { title: string; url: string; notes: string };
-type Gig     = { venue: string; suburb: string; date: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
+type Gig     = { venue: string; suburb: string; date: string; endDate?: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; location: string;
@@ -121,7 +121,7 @@ function crossConfirm(title: string, message: string, onConfirm: () => void, des
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function DatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function DatePicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -176,7 +176,7 @@ function DatePicker({ value, onChange }: { value: string; onChange: (v: string) 
         onPress={handleOpen}
         style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}
       >
-        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{display(value)}</Text>
+        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{value ? display(value) : (placeholder || '--/--/----')}</Text>
         <Text style={{ fontSize: 11, color: Colors.grey }}>📅</Text>
       </TouchableOpacity>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -877,12 +877,27 @@ export default function EditProfileScreen() {
                     </>
                   )}
                   <View style={{ height: 8 }} />
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
-                      <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} />
+                  {entryType === 'away' ? (
+                    <>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
+                          <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} placeholder="From" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <DatePicker value={gig.endDate || ''} onChange={v => setUpcoming(i, 'endDate', v)} placeholder="To (optional)" />
+                        </View>
+                      </View>
+                      <View style={{ height: 8 }} />
+                      <TextInput style={s.input} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
+                    </>
+                  ) : (
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
+                        <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} />
+                      </View>
+                      <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
                     </View>
-                    <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                  </View>
+                  )}
                   {entryType === 'gig' && (
                     <>
                       <View style={{ height: 8 }} />

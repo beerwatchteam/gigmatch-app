@@ -114,7 +114,7 @@ export function AudienceSplit() {
             </h3>
             <FeatureList features={VENUE_FEATURES} dark={true} />
             <a
-              href="#get-started"
+              href="/login?mode=signup&tab=venue"
               className="lp-btn lp-btn-accent"
               style={{
                 display: 'inline-flex',

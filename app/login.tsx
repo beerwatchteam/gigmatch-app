@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { Text } from '@/components/Text';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   signInWithEmailAndPassword,
@@ -51,8 +51,9 @@ async function isUsernameTaken(username: string): Promise<boolean> {
 export default function LoginScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [signupTab, setSignupTab] = useState<'artist' | 'venue'>('artist');
+  const { mode: initialMode, tab: initialTab } = useLocalSearchParams<{ mode?: string; tab?: string }>();
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode === 'signup' ? 'signup' : 'login');
+  const [signupTab, setSignupTab] = useState<'artist' | 'venue'>(initialTab === 'venue' ? 'venue' : 'artist');
 
   // ── Login ──────────────────────────────────────────────────────────────
   const [siEmail, setSiEmail]         = useState('');

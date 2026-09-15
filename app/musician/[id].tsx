@@ -85,7 +85,7 @@ function getInstagramHandle(val: string): string | null {
 
 type CustomLink = { label: string; url: string };
 type Song       = { title?: string; url?: string; duration?: string };
-type GigEntry   = { venue?: string; suburb?: string; date?: string; attendance?: number; notes?: string; socialPostUrl?: string; ticketUrl?: string };
+type GigEntry   = { venue?: string; suburb?: string; date?: string; endDate?: string; attendance?: number; notes?: string; socialPostUrl?: string; ticketUrl?: string; type?: string };
 
 type Musician = {
   id: string;
@@ -448,7 +448,19 @@ function MusicianCalendarMonth({ entries, month, year, today, windowStart, windo
 
   const byDate = new Map<string, GigEntry[]>();
   entries.forEach(e => {
-    if (e.date) { const a = byDate.get(e.date) || []; a.push(e); byDate.set(e.date, a); }
+    if (!e.date) return;
+    const isAwayRange = (e.type || 'gig') === 'away' && e.endDate && e.endDate > e.date;
+    if (isAwayRange) {
+      const cur = new Date(e.date); cur.setHours(0,0,0,0);
+      const end = new Date(e.endDate!); end.setHours(0,0,0,0);
+      while (cur <= end) {
+        const iso = isoDate(cur);
+        const a = byDate.get(iso) || []; a.push(e); byDate.set(iso, a);
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      const a = byDate.get(e.date) || []; a.push(e); byDate.set(e.date, a);
+    }
   });
 
   return (
@@ -517,6 +529,9 @@ function MusEntryRow({ entry, date, isOwn, musicianId, musicianName }: {
         {type === 'gig' && entry.suburb
           ? <Text style={[mt.entrySub, { color: colors.grey }]}>{entry.suburb}</Text>
           : null}
+        {type === 'away' && entry.endDate
+          ? <Text style={[mt.entrySub, { color: colors.grey }]}>Until {new Date(entry.endDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</Text>
+          : null}
       </View>
       <View style={[mt.statusBadge, { borderColor: badgeBorderCol }]}>
         <Text style={[mt.statusBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
@@ -575,6 +590,9 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
         </Text>
         {type === 'gig' && entry.suburb
           ? <Text style={[nmt.sub, { color: colors.grey }]}>{entry.suburb}</Text>
+          : null}
+        {type === 'away' && entry.endDate
+          ? <Text style={[nmt.sub, { color: colors.grey }]}>Until {new Date(entry.endDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}</Text>
           : null}
         {entry.notes ? <Text style={[nmt.notes, { color: colors.grey }]}>{entry.notes}</Text> : null}
         {type === 'gig' && (entry.socialPostUrl || entry.ticketUrl) ? (
