@@ -988,14 +988,19 @@ export default function EditVenueScreen() {
                 onPress={() => {
                   crossConfirm(
                     'Delete Account',
-                    'Are you sure you want to delete your account? This action cannot be undone.',
+                    'This will permanently delete your venue profile and account from the database. This action cannot be undone.',
                     async () => {
                       try {
                         const { venueId, uid } = profile ?? {};
                         if (venueId) await deleteDoc(doc(db, 'venues', venueId));
-                        if (uid)     await deleteDoc(doc(db, 'users', uid));
+                        if (uid) {
+                          await deleteDoc(doc(db, 'users', uid));
+                          await deleteDoc(doc(db, 'venueApplications', uid));
+                        }
                         const cu = auth.currentUser;
                         if (cu) await deleteUser(cu);
+                        await signOut(auth);
+                        router.replace('/');
                       } catch (e: any) {
                         Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
                       }
