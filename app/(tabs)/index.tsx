@@ -1,14 +1,13 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   View, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, useWindowDimensions,
+  Platform, useWindowDimensions, Image,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
-import { PROBLEMS, PROBLEM_SECTION_HEADING } from '@/constants/copy';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 
@@ -20,7 +19,17 @@ const isWeb = Platform.OS === 'web';
 type Slot = { id?: string; time: string; status: string; room?: string; date?: string };
 type VenueData = {
   id: string; name: string; suburb?: string; capacity?: number;
+  genre?: string[]; genres?: string[];
+  photoUrl?: string; photos?: string[];
   slots?: Record<string, Slot[]>;
+  settings?: { listed?: boolean };
+};
+type MusicianData = {
+  id: string; name?: string;
+  artistType?: string | string[];
+  location?: string; genre?: string[];
+  photoUrl?: string;
+  feeMin?: number; feeMax?: number; averageDraw?: number;
   settings?: { listed?: boolean };
 };
 type OpenSlotItem = { venue: VenueData; date: Date; day: string; slot: Slot };
@@ -31,7 +40,8 @@ const DOW_TO_DAY: Record<number, string> = {
   0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday',
   4: 'Thursday', 5: 'Friday', 6: 'Saturday',
 };
-const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const SHORT_MONTHS  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const SHORT_DAYS    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -50,16 +60,66 @@ function computeOpenSlots(venues: VenueData[], days: number): OpenSlotItem[] {
           .filter(s => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'))
           .map(s => s.time.toLowerCase().trim())
       );
-      const openSlots = daySlots.filter(
+      for (const slot of daySlots.filter(
         s => !s.date && s.status === 'open' && !overrideTimes.has(s.time.toLowerCase().trim())
-      );
-      for (const slot of openSlots) {
+      )) {
         results.push({ venue, date: new Date(cur), day: dayName, slot });
       }
     }
     cur.setDate(cur.getDate() + 1);
   }
   return results;
+}
+
+function getVenueSlotDots(venue: VenueData): boolean[] {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = new Date(today); end.setDate(end.getDate() + 42);
+  const dots: boolean[] = [];
+  const cur = new Date(today);
+  while (cur <= end && dots.length < 6) {
+    const dayName = DOW_TO_DAY[cur.getDay()];
+    const dateISO = cur.toISOString().slice(0, 10);
+    const daySlots = venue.slots?.[dayName] ?? [];
+    const recurSlots = daySlots.filter(s => !s.date);
+    if (recurSlots.length > 0) {
+      const overrides = new Set(
+        daySlots
+          .filter(s => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'))
+          .map(s => s.time.toLowerCase().trim())
+      );
+      dots.push(recurSlots.some(s => s.status === 'open' && !overrides.has(s.time.toLowerCase().trim())));
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  while (dots.length < 6) dots.push(false);
+  return dots.slice(0, 6);
+}
+
+function getNextOpenInfo(venue: VenueData): { label: string; count: number } | null {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = new Date(today); end.setDate(end.getDate() + 84);
+  const cur = new Date(today);
+  let firstDate: Date | null = null;
+  let count = 0;
+  while (cur <= end) {
+    const dayName = DOW_TO_DAY[cur.getDay()];
+    const dateISO = cur.toISOString().slice(0, 10);
+    const daySlots = venue.slots?.[dayName] ?? [];
+    const overrides = new Set(
+      daySlots
+        .filter(s => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'))
+        .map(s => s.time.toLowerCase().trim())
+    );
+    const open = daySlots.filter(s => !s.date && s.status === 'open' && !overrides.has(s.time.toLowerCase().trim()));
+    if (open.length > 0) {
+      if (!firstDate) firstDate = new Date(cur);
+      count += open.length;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  if (!firstDate) return null;
+  const label = `${SHORT_DAYS[firstDate.getDay()]} ${firstDate.getDate()} ${SHORT_MONTHS[firstDate.getMonth()]}`;
+  return { label, count };
 }
 
 // ── FortnightSlotRow ───────────────────────────────────────────────
@@ -71,61 +131,199 @@ function FortnightSlotRow({
   const dayAbbr   = day.slice(0, 3).toUpperCase();
   const monthAbbr = SHORT_MONTHS[date.getMonth()].toUpperCase();
   const meta      = [slot.time, slot.room].filter(Boolean).join(' · ');
-  const venueLine = [
-    venue.name,
-    venue.suburb,
-    venue.capacity ? `${venue.capacity} cap` : null,
-  ].filter(Boolean).join(' · ');
+  const venueLine = [venue.name, venue.suburb, venue.capacity ? `${venue.capacity} cap` : null]
+    .filter(Boolean).join(' · ');
 
   return (
     <View style={[fsr.row, { borderTopColor: '#e2dbd0' }]}>
       <View style={fsr.dateBracket}>
-        <Text style={[fsr.dateNum, { color: '#111111' }]}>{date.getDate()}</Text>
-        <Text style={[fsr.dateSub, { color: '#888888' }]}>{dayAbbr} {monthAbbr}</Text>
+        <Text style={fsr.dateNum}>{date.getDate()}</Text>
+        <Text style={fsr.dateSub}>{dayAbbr} {monthAbbr}</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[fsr.meta, { color: '#111111' }]} numberOfLines={1}>{meta}</Text>
-        <Text style={[fsr.venueLine, { color: '#888888' }]} numberOfLines={1}>{venueLine}</Text>
+        <Text style={fsr.meta} numberOfLines={1}>{meta}</Text>
+        <Text style={fsr.venueLine} numberOfLines={1}>{venueLine}</Text>
       </View>
       <TouchableOpacity style={fsr.enquireBtn} onPress={onEnquire}>
-        <Text style={[fsr.enquireBtnText, { color: Colors.orange }]}>Enquire</Text>
+        <Text style={fsr.enquireBtnText}>Enquire</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const fsr = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-    borderTopWidth: 1,
-  },
-  dateBracket: {
-    width: 54,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.orange,
-    paddingLeft: 10,
-    flexShrink: 0,
-  },
-  dateNum:   { fontSize: 22, fontWeight: '800', lineHeight: 24 },
-  dateSub:   { fontSize: 10, fontWeight: '700', letterSpacing: 0.3, marginTop: 1 },
-  meta:      { fontSize: 14, fontWeight: '700', lineHeight: 18 },
-  venueLine: { fontSize: 12, fontWeight: '400', marginTop: 2 },
-  enquireBtn: {
+  row:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, gap: 12, borderTopWidth: 1 },
+  dateBracket: { width: 54, borderLeftWidth: 3, borderLeftColor: Colors.orange, paddingLeft: 10, flexShrink: 0 },
+  dateNum:     { fontSize: 22, fontWeight: '800', lineHeight: 24, color: '#111111' },
+  dateSub:     { fontSize: 10, fontWeight: '700', letterSpacing: 0.3, marginTop: 1, color: '#888888' },
+  meta:        { fontSize: 14, fontWeight: '700', lineHeight: 18, color: '#111111' },
+  venueLine:   { fontSize: 12, fontWeight: '400', marginTop: 2, color: '#888888' },
+  enquireBtn:  { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, flexShrink: 0 },
+  enquireBtnText: { fontSize: 13, fontWeight: '600', color: Colors.orange },
+});
+
+// ── VenueCard (For Artists grid) ───────────────────────────────────
+
+function VenueCard({ venue, onPress }: { venue: VenueData; onPress: () => void }) {
+  const photo  = venue.photoUrl ?? venue.photos?.[0];
+  const genres = (venue.genre ?? venue.genres ?? []).slice(0, 4).join(' · ');
+  const dots   = getVenueSlotDots(venue);
+  const info   = getNextOpenInfo(venue);
+
+  return (
+    <TouchableOpacity style={vc.card} onPress={onPress} activeOpacity={0.85}>
+      {/* Photo */}
+      {photo ? (
+        <Image source={{ uri: photo }} style={vc.photo} resizeMode="cover" />
+      ) : (
+        <View style={vc.photoPlaceholder}>
+          <Text style={vc.photoPlaceholderText}>venue photo</Text>
+        </View>
+      )}
+      {/* Body */}
+      <View style={vc.body}>
+        <View style={vc.nameRow}>
+          <Text style={vc.name} numberOfLines={1}>{venue.name}</Text>
+          {venue.capacity ? <Text style={vc.cap}>{venue.capacity} cap</Text> : null}
+        </View>
+        {genres ? <Text style={vc.genres} numberOfLines={1}>{[venue.suburb, genres].filter(Boolean).join(' · ')}</Text> : null}
+        {/* Slot dots */}
+        <View style={vc.dotsRow}>
+          {dots.map((open, i) => (
+            <View key={i} style={[vc.dot, open && vc.dotOpen]} />
+          ))}
+        </View>
+        {info ? (
+          <Text style={vc.nextOpen}>{info.count} open · next {info.label}</Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const vc = StyleSheet.create({
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.orange,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    flexShrink: 0,
+    borderColor: '#e8e3d9',
+    overflow: 'hidden',
   },
-  enquireBtnText: { fontSize: 13, fontWeight: '600' },
+  photo:              { width: '100%', height: 140 },
+  photoPlaceholder: {
+    width: '100%', height: 140,
+    backgroundColor: '#ede8df',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPlaceholderText: { fontSize: 12, color: '#b0a898', fontWeight: '500' },
+  body:    { padding: 14, gap: 6 },
+  nameRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  name:    { fontSize: 15, fontWeight: '700', color: '#111111', flex: 1 },
+  cap:     { fontSize: 12, fontWeight: '400', color: '#888888', flexShrink: 0 },
+  genres:  { fontSize: 12, fontWeight: '400', color: '#888888' },
+  dotsRow: { flexDirection: 'row', gap: 4, marginTop: 4 },
+  dot: {
+    width: 20, height: 8,
+    borderRadius: 4,
+    backgroundColor: '#e0dbd2',
+  },
+  dotOpen: { backgroundColor: Colors.orange },
+  nextOpen: { fontSize: 12, fontWeight: '600', color: Colors.orange, marginTop: 2 },
+});
+
+// ── ArtistCard (For Venues section) ───────────────────────────────
+
+function ArtistCard({ musician }: { musician: MusicianData }) {
+  const photo   = musician.photoUrl;
+  const actType = Array.isArray(musician.artistType) ? musician.artistType[0] : musician.artistType;
+  const genres  = (musician.genre ?? []).slice(0, 3).join(' · ');
+  const feeLabel = musician.feeMin != null
+    ? musician.feeMax != null
+      ? `$${musician.feeMin}-${musician.feeMax}`
+      : `$${musician.feeMin}+`
+    : null;
+
+  return (
+    <View style={ac.card}>
+      {photo ? (
+        <Image source={{ uri: photo }} style={ac.photo} resizeMode="cover" />
+      ) : (
+        <View style={ac.photoPlaceholder}>
+          <Text style={ac.photoPlaceholderText}>artist photo</Text>
+        </View>
+      )}
+      <View style={ac.body}>
+        <View style={ac.nameRow}>
+          <Text style={ac.name} numberOfLines={1}>{musician.name}</Text>
+          {actType ? (
+            <View style={ac.badge}>
+              <Text style={ac.badgeText}>{actType.toUpperCase()}</Text>
+            </View>
+          ) : null}
+        </View>
+        {(musician.location || genres) ? (
+          <Text style={ac.sub} numberOfLines={1}>
+            {[musician.location, genres].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
+        <View style={ac.divider} />
+        <View style={ac.statsRow}>
+          {musician.averageDraw != null && (
+            <View style={ac.stat}>
+              <Text style={ac.statNum}>{musician.averageDraw}</Text>
+              <Text style={ac.statLabel}>DRAW</Text>
+            </View>
+          )}
+          {feeLabel ? (
+            <View style={ac.stat}>
+              <Text style={ac.statNum}>{feeLabel}</Text>
+              <Text style={ac.statLabel}>FEE</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const ac = StyleSheet.create({
+  card:               { backgroundColor: '#ffffff', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#e0dbd2' },
+  photo:              { width: '100%', height: 130 },
+  photoPlaceholder:   { width: '100%', height: 130, backgroundColor: '#ede8df', alignItems: 'center', justifyContent: 'center' },
+  photoPlaceholderText: { fontSize: 12, color: '#b0a898', fontWeight: '500' },
+  body:    { padding: 14, gap: 6 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  name:    { fontSize: 15, fontWeight: '700', color: '#111111', flex: 1 },
+  badge:   { borderWidth: 1, borderColor: '#d0cbc2', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, flexShrink: 0 },
+  badgeText: { fontSize: 10, fontWeight: '700', color: '#888888', letterSpacing: 0.5 },
+  sub:     { fontSize: 12, color: '#888888' },
+  divider: { height: 1, backgroundColor: '#e8e3d9', marginVertical: 4 },
+  statsRow:{ flexDirection: 'row', gap: 20 },
+  stat:    { gap: 2 },
+  statNum: { fontSize: 16, fontWeight: '800', color: '#111111' },
+  statLabel: { fontSize: 10, fontWeight: '700', color: '#888888', letterSpacing: 0.8, textTransform: 'uppercase' },
 });
 
 // ── HomeScreen ─────────────────────────────────────────────────────
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    num: '01',
+    heading: 'Venues publish a timetable',
+    body: 'Recurring band nights, room by room. Set once, and every free slot is public.',
+  },
+  {
+    num: '02',
+    heading: 'Artists enquire on a real date',
+    body: 'Pick an open night and send a structured enquiry with draw, music, rider and past gigs attached.',
+  },
+  {
+    num: '03',
+    heading: 'One tap to confirm',
+    body: "Accept or decline and both sides get it in the same thread. Nothing lives in a DM you can't find.",
+  },
+];
 
 export default function HomeScreen() {
   const router     = useRouter();
@@ -137,12 +335,21 @@ export default function HomeScreen() {
   const isAdmin    = user?.email === ADMIN_EMAIL;
   const isLoggedIn = !!user;
 
-  const [venues, setVenues] = useState<VenueData[]>([]);
+  const [venues,    setVenues]    = useState<VenueData[]>([]);
+  const [musicians, setMusicians] = useState<MusicianData[]>([]);
 
   useEffect(() => {
     getDocs(collection(db, 'venues')).then(snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() })) as VenueData[];
       setVenues(all.filter(v => v.settings?.listed !== false));
+    }).catch(console.error);
+
+    getDocs(collection(db, 'bandProfiles')).then(snap => {
+      const all = snap.docs
+        .map(d => ({ id: d.id, ...d.data() })) as MusicianData[];
+      setMusicians(
+        all.filter(m => m.settings?.listed !== false && m.name).slice(0, 2)
+      );
     }).catch(console.error);
   }, []);
 
@@ -151,9 +358,20 @@ export default function HomeScreen() {
     openSlotsCount6wk: computeOpenSlots(venues, 42).length,
   }), [venues]);
 
+  const venuesWithSlots = useMemo(
+    () => venues.filter(v => getNextOpenInfo(v) !== null).slice(0, 4),
+    [venues]
+  );
+
   const venueCount = venues.length;
   const endDate    = new Date(); endDate.setDate(endDate.getDate() + 14);
   const endLabel   = `${endDate.getDate()} ${SHORT_MONTHS[endDate.getMonth()]}`;
+
+  // Venue grid: 4 cols wide, 2 cols mid, 1 col narrow
+  const numCols   = isWide ? 4 : (isWeb && width >= 600) ? 2 : 1;
+  const gridGap   = 16;
+  const padH      = isWeb ? 80 : 48;
+  const cardWidth = (width - padH - gridGap * (numCols - 1)) / numCols;
 
   return (
     <View style={[s.root, { backgroundColor: colors.bg }]}>
@@ -163,54 +381,34 @@ export default function HomeScreen() {
         <View style={[s.hero, { borderBottomColor: colors.border }]}>
           <View style={[s.heroInner, isWide && s.heroInnerWide]}>
 
-            {/* Left column */}
+            {/* Left */}
             <View style={[s.heroLeft, isWide && s.heroLeftWide]}>
-
-              {/* Live badge */}
               <View style={s.liveBadge}>
                 <View style={s.liveDot} />
                 <Text style={[s.liveBadgeText, { color: colors.grey }]}>LIVE IN MELBOURNE</Text>
               </View>
-
-              {/* Headline */}
               <Text style={[s.headline, { color: colors.black }]}>
                 Every open slot in town, on one timetable.
               </Text>
-
-              {/* Subhead */}
               <Text style={[s.subhead, { color: colors.grey }]}>
                 GigMatch shows artists which venues actually have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
               </Text>
-
-              {/* CTAs */}
               <View style={s.heroCtaRow}>
-                <TouchableOpacity
-                  style={s.ctaFilled}
-                  onPress={() => router.push('/login?mode=signup&tab=artist' as any)}
-                >
+                <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
                   <Text style={s.ctaFilledText}>Sign up as an artist</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.ctaOutline, { borderColor: colors.black }]}
-                  onPress={() => router.push('/login?mode=signup&tab=venue' as any)}
-                >
+                <TouchableOpacity style={[s.ctaOutline, { borderColor: colors.black }]} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
                   <Text style={[s.ctaOutlineText, { color: colors.black }]}>List your venue</Text>
                 </TouchableOpacity>
               </View>
-
-              {/* Stats */}
               <View style={[s.statsDivider, { backgroundColor: colors.border }]} />
               <View style={s.statsRow}>
                 <View style={s.statItem}>
-                  <Text style={[s.statNum, { color: colors.black }]}>
-                    {venueCount > 0 ? venueCount : '\u2014'}
-                  </Text>
+                  <Text style={[s.statNum, { color: colors.black }]}>{venueCount > 0 ? venueCount : '\u2014'}</Text>
                   <Text style={[s.statLabel, { color: colors.grey }]}>VENUES LISTED</Text>
                 </View>
                 <View style={s.statItem}>
-                  <Text style={[s.statNum, { color: Colors.orange }]}>
-                    {openSlotsCount6wk > 0 ? openSlotsCount6wk : '\u2014'}
-                  </Text>
+                  <Text style={[s.statNum, { color: Colors.orange }]}>{openSlotsCount6wk > 0 ? openSlotsCount6wk : '\u2014'}</Text>
                   <Text style={[s.statLabel, { color: colors.grey }]}>OPEN SLOTS · 6 WKS</Text>
                 </View>
                 <View style={s.statItem}>
@@ -218,7 +416,6 @@ export default function HomeScreen() {
                   <Text style={[s.statLabel, { color: colors.grey }]}>MEDIAN REPLY</Text>
                 </View>
               </View>
-
               {isAdmin && (
                 <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)}>
                   <Text style={s.adminLink}>Admin Panel →</Text>
@@ -226,7 +423,7 @@ export default function HomeScreen() {
               )}
             </View>
 
-            {/* Right: Open this fortnight panel */}
+            {/* Right: fortnight panel */}
             {fortnightSlots.length > 0 && (
               <View style={[s.fortnightPanel, isWide && s.fortnightPanelWide]}>
                 <View style={s.panelHeader}>
@@ -247,97 +444,140 @@ export default function HomeScreen() {
                   />
                 ))}
                 {fortnightSlots.length > 3 && (
-                  <Text style={s.moreSlots}>
-                    +{fortnightSlots.length - 3} more open slots before {endLabel}
-                  </Text>
+                  <Text style={s.moreSlots}>+{fortnightSlots.length - 3} more open slots before {endLabel}</Text>
                 )}
               </View>
             )}
-
           </View>
         </View>
 
-        {/* ── Problem section ──────────────────────────────────── */}
-        <View style={[s.problemSection, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
-          <View style={s.sectionHeader}>
-            <Text style={s.eyebrow}>The Problem</Text>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>{PROBLEM_SECTION_HEADING}</Text>
+        {/* ── How It Works ──────────────────────────────────────── */}
+        <View style={s.hiwSection}>
+          <View style={[s.sectionInner, isWide && s.sectionInnerWide]}>
+            <Text style={s.hiwEyebrow}>HOW IT WORKS</Text>
+            <Text style={s.hiwHeading}>Three steps, and it's in writing.</Text>
+            <View style={s.hiwDivider} />
+            <View style={[s.hiwGrid, isWide && s.hiwGridWide]}>
+              {HOW_IT_WORKS_STEPS.map((step, i) => (
+                <View
+                  key={step.num}
+                  style={[
+                    s.hiwStep,
+                    { borderTopColor: i === 0 ? Colors.orange : 'rgba(255,255,255,0.12)' },
+                    isWide && i < HOW_IT_WORKS_STEPS.length - 1 && s.hiwStepBorder,
+                  ]}
+                >
+                  <Text style={s.hiwNum}>{step.num}</Text>
+                  <Text style={s.hiwStepHeading}>{step.heading}</Text>
+                  <Text style={s.hiwStepBody}>{step.body}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={s.hiwDivider} />
+            <Text style={s.hiwReplaces}>
+              Replaces: Facebook groups, cold email, Instagram DMs, phone tag, and a spreadsheet someone forgot to update.
+            </Text>
           </View>
-          <View style={[s.problemGrid, isWide && s.problemGridWeb]}>
-            {PROBLEMS.map(({ title, bullets }, i) => (
-              <View
-                key={title}
-                style={[
-                  s.problemCard,
-                  { backgroundColor: colors.bg, borderColor: colors.border },
-                  isWide && s.problemCardWeb,
-                  !isWide && { flex: undefined },
-                ]}
-              >
-                <View style={s.problemIndex}>
-                  <Text style={s.problemIndexText}>{String(i + 1).padStart(2, '0')}</Text>
-                </View>
-                <Text style={[s.problemTitle, { color: colors.black }]}>{title}</Text>
-                <View style={{ gap: 8 }}>
-                  {bullets.map(point => (
-                    <View key={point} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.orange, marginTop: 8, flexShrink: 0 }} />
-                      <Text style={[s.problemBody, { color: colors.grey, flex: 1 }]}>{point}</Text>
-                    </View>
-                  ))}
-                </View>
+        </View>
+
+        {/* ── For Artists ───────────────────────────────────────── */}
+        <View style={[s.forArtistsSection, { backgroundColor: colors.bg }]}>
+          <View style={[s.sectionInner, isWide && s.sectionInnerWide]}>
+            {/* Header row */}
+            <View style={s.forArtistsHeader}>
+              <View>
+                <Text style={s.sectionEyebrow}>FOR ARTISTS</Text>
+                <Text style={[s.forArtistsHeading, { color: colors.black }]}>Rooms with a night free.</Text>
               </View>
-            ))}
+              <TouchableOpacity style={[s.browseBtn, { borderColor: colors.border }]} onPress={() => router.push('/(tabs)/venues')}>
+                <Text style={[s.browseBtnText, { color: colors.black }]}>Browse all {venueCount > 0 ? venueCount : ''} venues →</Text>
+              </TouchableOpacity>
+            </View>
+            {/* Venue grid */}
+            <View style={[s.venueGrid, isWide && s.venueGridWide]}>
+              {(venuesWithSlots.length > 0 ? venuesWithSlots : venues.slice(0, 4)).map(venue => (
+                <View key={venue.id} style={{ width: isWeb ? cardWidth : '100%' }}>
+                  <VenueCard
+                    venue={venue}
+                    onPress={() => router.push(`/venue/${venue.id}` as any)}
+                  />
+                </View>
+              ))}
+            </View>
           </View>
         </View>
 
-        {/* ── Audience split ───────────────────────────────────── */}
-        <View style={[s.audienceSection, { backgroundColor: colors.bg }]}>
-          <View style={[s.audienceGrid, isWide && s.audienceGridWeb]}>
-
-            <View style={[s.audienceCard, s.audienceCardDark, !isWide && { flex: undefined }]}>
-              <Text style={s.audienceTagDark}>For Artists</Text>
-              <Text style={s.audienceHeadingDark}>Find stages worth playing.</Text>
-              {[
-                'Browse venues with real open slots on their timetable',
-                'Send a structured enquiry in minutes, not a cold DM',
-                'Track every booking from one inbox',
-              ].map(f => (
-                <View key={f} style={s.featureRow}>
-                  <Text style={s.featureArrow}>&#x2192;</Text>
-                  <Text style={s.featureTextDark}>{f}</Text>
-                </View>
-              ))}
-              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/(tabs)/venues')}>
-                <Text style={s.cardCtaDarkText}>Browse Venues</Text>
+        {/* ── For Venues ────────────────────────────────────────── */}
+        <View style={s.forVenuesSection}>
+          <View style={[s.sectionInner, isWide && s.sectionInnerWide]}>
+            {/* Header row */}
+            <View style={s.forVenuesHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.sectionEyebrow}>FOR VENUES</Text>
+                <Text style={s.forVenuesHeading}>Acts you can actually judge.</Text>
+                <Text style={s.forVenuesSub}>
+                  Every enquiry arrives with draw, fee range, past gigs, socials and a tech rider attached, so you can say yes or no in one pass.
+                </Text>
+              </View>
+              <TouchableOpacity style={s.browseMusicianBtn} onPress={() => router.push('/(tabs)/musicians')}>
+                <Text style={s.browseMusicianText}>Browse musicians →</Text>
               </TouchableOpacity>
             </View>
-
-            <View style={[s.audienceCard, s.audienceCardDark, !isWide && { flex: undefined }]}>
-              <Text style={s.audienceTagDark}>For Venues</Text>
-              <Text style={s.audienceHeadingDark}>Fill your calendar, not your inbox.</Text>
-              {[
-                'Publish your timetable once and receive quality enquiries',
-                'Accept or decline with one tap, artist notified instantly',
-                'All conversations in one thread, no lost messages',
-              ].map(f => (
-                <View key={f} style={s.featureRow}>
-                  <Text style={s.featureArrow}>&#x2192;</Text>
-                  <Text style={s.featureTextDark}>{f}</Text>
+            {/* Cards grid */}
+            <View style={[s.forVenuesGrid, isWide && s.forVenuesGridWide]}>
+              {musicians.map(m => (
+                <View key={m.id} style={[s.forVenuesCardWrap, isWide && { flex: 1 }]}>
+                  <ArtistCard musician={m} />
                 </View>
               ))}
-              <TouchableOpacity style={s.cardCtaDark} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
-                <Text style={s.cardCtaDarkText}>List Your Venue</Text>
-              </TouchableOpacity>
+              {/* Dark CTA card */}
+              <View style={[s.forVenuesCta, isWide && { flex: 1 }]}>
+                <Text style={s.forVenuesCtaHeading}>Publish your timetable once.</Text>
+                <Text style={s.forVenuesCtaBody}>
+                  Set your band nights, and enquiries come to you with everything attached. Free while we're in beta.
+                </Text>
+                <TouchableOpacity style={s.forVenuesCtaBtn} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
+                  <Text style={s.forVenuesCtaBtnText}>List your venue</Text>
+                </TouchableOpacity>
+              </View>
             </View>
+          </View>
+        </View>
 
+        {/* ── Pick a Side ───────────────────────────────────────── */}
+        <View style={[s.pickASideSection, { backgroundColor: colors.bg, borderTopColor: colors.border }]}>
+          <Text style={[s.pickASideEyebrow, { color: colors.grey }]}>MELBOURNE FIRST · MORE CITIES SOON</Text>
+          <Text style={[s.pickASideHeading, { color: colors.black }]}>Pick a side and get started.</Text>
+          <View style={s.pickASideBtns}>
+            <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
+              <Text style={s.ctaFilledText}>I'm an artist</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.ctaOutline, { borderColor: colors.black }]} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
+              <Text style={[s.ctaOutlineText, { color: colors.black }]}>I run a venue</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         {/* ── Footer ──────────────────────────────────────────── */}
-        <View style={s.footer}>
-          <Text style={s.footerLogo}>GigMatch</Text>
-          <Text style={s.footerCopy}>&copy; {new Date().getFullYear()} GigMatch. All rights reserved.</Text>
+        <View style={[s.footer, { borderTopColor: colors.border }]}>
+          <View style={s.footerLeft}>
+            <Text style={[s.footerLogo, { color: colors.black }]}>GigMatch</Text>
+            <Text style={[s.footerMeta, { color: colors.grey }]}>BETA · MELBOURNE</Text>
+          </View>
+          <View style={s.footerNav}>
+            {(['Venues', 'Musicians', 'Discover', 'Contact'] as const).map(label => (
+              <TouchableOpacity
+                key={label}
+                onPress={() => {
+                  if (label === 'Venues')    router.push('/(tabs)/venues');
+                  else if (label === 'Musicians') router.push('/(tabs)/musicians');
+                  else if (label === 'Discover') router.push('/(tabs)/discover');
+                }}
+              >
+                <Text style={[s.footerNavLink, { color: colors.grey }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
       </ScrollView>
@@ -350,225 +590,121 @@ export default function HomeScreen() {
 const s = StyleSheet.create({
   root: { flex: 1 },
 
-  // ── Hero ──────────────────────────────────────────────────────────
-  hero: { borderBottomWidth: 1, paddingBottom: isWeb ? 56 : 40 },
-  heroInner: {
+  // Shared
+  sectionInner: {
     paddingHorizontal: isWeb ? 40 : 24,
-    paddingTop: isWeb ? 56 : 40,
-    gap: 32,
+    width: '100%',
   },
-  heroInnerWide: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  sectionInnerWide: {
     maxWidth: 1200,
     alignSelf: 'center',
-    width: '100%',
-    gap: 48,
   },
+  sectionEyebrow: {
+    fontSize: 11, fontWeight: '700', color: Colors.orange,
+    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10,
+  },
+
+  // ── Hero ──────────────────────────────────────────────────────────
+  hero:         { borderBottomWidth: 1, paddingBottom: isWeb ? 56 : 40 },
+  heroInner:    { paddingHorizontal: isWeb ? 40 : 24, paddingTop: isWeb ? 56 : 40, gap: 32 },
+  heroInnerWide:{ flexDirection: 'row', alignItems: 'flex-start', maxWidth: 1200, alignSelf: 'center', width: '100%', gap: 48 },
   heroLeft:     { gap: 20 },
   heroLeftWide: { flex: 1, maxWidth: 480, paddingTop: 16 },
-
-  liveBadge:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  liveDot:       { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.orange },
-  liveBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' },
-
-  headline: {
-    fontSize: isWeb ? 54 : 34,
-    fontWeight: '900',
-    letterSpacing: isWeb ? -2 : -0.5,
-    lineHeight: isWeb ? 58 : 38,
-  },
-  subhead: {
-    fontSize: isWeb ? 16 : 15,
-    lineHeight: isWeb ? 27 : 24,
-    maxWidth: isWeb ? 400 : undefined,
-  },
-
-  heroCtaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap' as const,
-    gap: 12,
-    alignItems: 'center',
-  },
-  ctaFilled: {
-    backgroundColor: Colors.orange,
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaFilledText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
-  ctaOutline: {
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingVertical: 13,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  liveBadge:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  liveDot:      { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.orange },
+  liveBadgeText:{ fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' },
+  headline:     { fontSize: isWeb ? 54 : 34, fontWeight: '900', letterSpacing: isWeb ? -2 : -0.5, lineHeight: isWeb ? 58 : 38 },
+  subhead:      { fontSize: isWeb ? 16 : 15, lineHeight: isWeb ? 27 : 24, maxWidth: isWeb ? 400 : undefined },
+  heroCtaRow:   { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 12, alignItems: 'center' },
+  ctaFilled:    { backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 24, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  ctaFilledText:{ fontSize: 15, fontWeight: '700', color: '#ffffff' },
+  ctaOutline:   { borderWidth: 1.5, borderRadius: 10, paddingVertical: 13, paddingHorizontal: 24, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   ctaOutlineText: { fontSize: 15, fontWeight: '700' },
-
   statsDivider: { height: 1, marginTop: 4 },
   statsRow:     { flexDirection: 'row', gap: 32 },
   statItem:     { gap: 4 },
-  statNum: {
-    fontSize: isWeb ? 28 : 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  adminLink: { fontSize: 13, fontWeight: '600', color: Colors.orange, marginTop: 4 },
+  statNum:      { fontSize: isWeb ? 28 : 22, fontWeight: '800', letterSpacing: -0.5 },
+  statLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  adminLink:    { fontSize: 13, fontWeight: '600', color: Colors.orange, marginTop: 4 },
 
-  // ── Fortnight panel ───────────────────────────────────────────────
-  fortnightPanel: {
-    backgroundColor: '#f2ede4',
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  fortnightPanelWide: {
-    flex: 1,
-    maxWidth: 440,
-    alignSelf: 'flex-start',
-  },
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Fortnight panel
+  fortnightPanel:      { backgroundColor: '#f2ede4', borderRadius: 14, overflow: 'hidden' },
+  fortnightPanelWide:  { flex: 1, maxWidth: 440, alignSelf: 'flex-start' },
+  panelHeader:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
+  panelHeaderLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: '#888888' },
+  panelHeaderLink:     { fontSize: 13, fontWeight: '600', color: Colors.orange },
+  moreSlots:           { textAlign: 'center', fontSize: 12, fontWeight: '400', color: '#888888', paddingVertical: 14 },
+
+  // ── How It Works ──────────────────────────────────────────────────
+  hiwSection:     { backgroundColor: '#111111', paddingVertical: isWeb ? 72 : 56 },
+  hiwEyebrow:     { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12 },
+  hiwHeading:     { fontSize: isWeb ? 40 : 28, fontWeight: '800', color: '#ffffff', letterSpacing: -0.5, lineHeight: isWeb ? 44 : 34, marginBottom: 40 },
+  hiwDivider:     { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 40 },
+  hiwGrid:        { gap: 32 },
+  hiwGridWide:    { flexDirection: 'row', gap: 0 },
+  hiwStep:        { borderTopWidth: 2, paddingTop: 20, gap: 12 },
+  hiwStepBorder:  { borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.1)', paddingRight: 40, marginRight: 40 },
+  hiwNum:         { fontSize: 12, fontWeight: '700', color: Colors.orange, letterSpacing: 0.5 },
+  hiwStepHeading: { fontSize: isWeb ? 18 : 16, fontWeight: '800', color: '#ffffff', letterSpacing: -0.2, lineHeight: isWeb ? 24 : 22 },
+  hiwStepBody:    { fontSize: 14, lineHeight: 22, color: 'rgba(255,255,255,0.5)' },
+  hiwReplaces:    { fontSize: 13, lineHeight: 20, color: 'rgba(255,255,255,0.35)', marginTop: 0 },
+
+  // ── For Artists ───────────────────────────────────────────────────
+  forArtistsSection: { paddingVertical: isWeb ? 72 : 48 },
+  forArtistsHeader:  {
+    flexDirection: isWeb ? 'row' : 'column',
+    alignItems: isWeb ? 'flex-end' : 'flex-start',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
+    gap: 16,
+    marginBottom: 32,
   },
-  panelHeaderLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: '#888888',
-  },
-  panelHeaderLink: { fontSize: 13, fontWeight: '600', color: Colors.orange },
-  moreSlots: {
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '400',
-    color: '#888888',
-    paddingVertical: 14,
-  },
+  forArtistsHeading: { fontSize: isWeb ? 40 : 28, fontWeight: '800', letterSpacing: -0.5, lineHeight: isWeb ? 44 : 34 },
+  browseBtn:         { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 18, minHeight: 40, justifyContent: 'center', flexShrink: 0 },
+  browseBtnText:     { fontSize: 14, fontWeight: '600' },
+  venueGrid:         { gap: 16 },
+  venueGridWide:     { flexDirection: 'row', flexWrap: 'wrap' as const },
 
-  // ── Problem section ───────────────────────────────────────────────
-  problemSection: { borderBottomWidth: 1, paddingBottom: 64 },
-  sectionHeader: {
-    paddingHorizontal: isWeb ? 40 : 24,
-    paddingTop: 64,
-    paddingBottom: 40,
-    maxWidth: isWeb ? 1200 : undefined,
-    alignSelf: isWeb ? 'center' : undefined,
-    width: '100%',
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.orange,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: isWeb ? 36 : 24,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    lineHeight: isWeb ? 42 : 30,
-    maxWidth: isWeb ? 480 : undefined,
-  },
-  problemGrid: {
-    paddingHorizontal: isWeb ? 40 : 24,
-    gap: 12,
-    maxWidth: isWeb ? 1200 : undefined,
-    alignSelf: isWeb ? 'center' : undefined,
-    width: '100%',
-  },
-  problemGridWeb: { flexDirection: 'row' },
-  problemCard: {
-    flex: isWeb ? 1 : undefined,
+  // ── For Venues ────────────────────────────────────────────────────
+  forVenuesSection:   { backgroundColor: '#ede8df', paddingVertical: isWeb ? 72 : 48 },
+  forVenuesHeader:    { flexDirection: isWeb ? 'row' : 'column', alignItems: isWeb ? 'flex-start' : 'flex-start', gap: 16, marginBottom: 32 },
+  forVenuesHeading:   { fontSize: isWeb ? 40 : 28, fontWeight: '800', color: '#111111', letterSpacing: -0.5, lineHeight: isWeb ? 44 : 34, marginBottom: 8 },
+  forVenuesSub:       { fontSize: 15, lineHeight: 24, color: '#5b5548', maxWidth: isWeb ? 460 : undefined },
+  browseMusicianBtn:  { borderWidth: 1, borderColor: '#c0b9ae', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 18, minHeight: 40, justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-start' },
+  browseMusicianText: { fontSize: 14, fontWeight: '600', color: '#111111' },
+  forVenuesGrid:      { gap: 16 },
+  forVenuesGridWide:  { flexDirection: 'row', alignItems: 'stretch', gap: 16 },
+  forVenuesCardWrap:  {},
+  forVenuesCta:       {
+    backgroundColor: '#1a1614',
     borderRadius: 14,
-    borderWidth: 1,
-    padding: 32,
-    gap: 12,
-  },
-  problemCardWeb: {},
-  problemIndex: {
-    width: 36, height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(250,131,12,0.1)',
-    alignItems: 'center',
+    padding: 24,
+    gap: 14,
     justifyContent: 'center',
   },
-  problemIndexText: { fontSize: 12, fontWeight: '700', color: Colors.orange, letterSpacing: 0.5 },
-  problemTitle: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
-  problemBody:  { fontSize: 14, lineHeight: 22, letterSpacing: 0.1 },
+  forVenuesCtaHeading: { fontSize: 20, fontWeight: '800', color: '#ffffff', letterSpacing: -0.3, lineHeight: 26 },
+  forVenuesCtaBody:    { fontSize: 14, lineHeight: 22, color: 'rgba(255,255,255,0.55)' },
+  forVenuesCtaBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center', minHeight: 44, marginTop: 4 },
+  forVenuesCtaBtnText: { fontSize: 15, fontWeight: '700', color: '#ffffff' },
 
-  // ── Audience split ────────────────────────────────────────────────
-  audienceSection: { paddingVertical: 64 },
-  audienceGrid: {
-    paddingHorizontal: isWeb ? 40 : 24,
-    gap: 16,
-    maxWidth: isWeb ? 1200 : undefined,
-    alignSelf: isWeb ? 'center' : undefined,
-    width: '100%',
-  },
-  audienceGridWeb:  { flexDirection: 'row' },
-  audienceCard: {
-    flex: isWeb ? 1 : undefined,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: isWeb ? 44 : 32,
-    gap: 16,
-  },
-  audienceCardDark:    { backgroundColor: '#1e1a14', borderColor: 'transparent' },
-  audienceTagDark: {
-    fontSize: 11, fontWeight: '700',
-    color: Colors.orange,
-    letterSpacing: 1.2, textTransform: 'uppercase',
-  },
-  audienceHeadingDark: {
-    fontSize: isWeb ? 30 : 22,
-    fontWeight: '800',
-    color: '#ffffff',
-    letterSpacing: -0.5,
-    lineHeight: isWeb ? 36 : 28,
-  },
-  featureRow:      { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  featureArrow:    { fontSize: 14, fontWeight: '700', color: Colors.orange, marginTop: 1 },
-  featureTextDark: { fontSize: 14, lineHeight: 22, flex: 1, color: 'rgba(255,255,255,0.55)' },
-  cardCtaDark: {
-    alignSelf: 'flex-start',
-    backgroundColor: Colors.orange,
-    borderRadius: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    marginTop: 4,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  cardCtaDarkText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  // ── Pick a Side ───────────────────────────────────────────────────
+  pickASideSection: { paddingVertical: isWeb ? 80 : 56, alignItems: 'center', borderTopWidth: 1 },
+  pickASideEyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 16 },
+  pickASideHeading: { fontSize: isWeb ? 48 : 30, fontWeight: '900', letterSpacing: isWeb ? -1.5 : -0.5, lineHeight: isWeb ? 52 : 36, textAlign: 'center', marginBottom: 32, maxWidth: isWeb ? 640 : 300 },
+  pickASideBtns:    { flexDirection: 'row', gap: 12, flexWrap: 'wrap' as const, justifyContent: 'center' },
 
   // ── Footer ────────────────────────────────────────────────────────
   footer: {
-    backgroundColor: '#171310',
+    borderTopWidth: 1,
     paddingHorizontal: isWeb ? 40 : 24,
-    paddingVertical: 40,
+    paddingVertical: 32,
     flexDirection: isWeb ? 'row' : 'column',
     alignItems: isWeb ? 'center' : 'flex-start',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 16,
   },
-  footerLogo: { fontSize: 18, fontWeight: '800', color: '#ffffff', letterSpacing: -0.5 },
-  footerCopy: { fontSize: 13, color: 'rgba(255,255,255,0.35)' },
+  footerLeft:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  footerLogo:    { fontSize: 17, fontWeight: '800', letterSpacing: -0.5 },
+  footerMeta:    { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
+  footerNav:     { flexDirection: 'row', gap: 24, flexWrap: 'wrap' as const },
+  footerNavLink: { fontSize: 14, fontWeight: '500' },
 });
