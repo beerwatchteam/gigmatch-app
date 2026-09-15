@@ -770,7 +770,7 @@ function TimetableTab({ m, isOwn, isMobileLayout }: { m: Musician; isOwn: boolea
   // ── Native ──
   return (
     <View>
-      <View style={[nmt.filterRow, { borderBottomColor: colors.border }]}>
+      <View style={nmt.filterRow}>
         <View style={[nmt.filterControl, { borderColor: colors.border }]}>
           {(['all', 'gigs', 'away'] as const).map((tab, i, arr) => (
             <TouchableOpacity
@@ -788,8 +788,18 @@ function TimetableTab({ m, isOwn, isMobileLayout }: { m: Musician; isOwn: boolea
             </TouchableOpacity>
           ))}
         </View>
+        <View style={[nmt.legend, { marginTop: 10 }]}>
+          <View style={nmt.legendItem}>
+            <View style={[nmt.legendDot, { backgroundColor: '#22c55e' }]} />
+            <Text style={[nmt.legendText, { color: colors.grey }]}>Booked</Text>
+          </View>
+          <View style={nmt.legendItem}>
+            <Text style={[nmt.legendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
+            <Text style={[nmt.legendText, { color: colors.grey }]}>Away</Text>
+          </View>
+        </View>
       </View>
-      <View style={[nmt.countNav, { borderBottomColor: colors.border }]}>
+      <View style={nmt.countNav}>
         <View style={{ gap: 4 }}>
           <View style={nmt.countRow}>
             <Text style={[nmt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
@@ -804,16 +814,6 @@ function TimetableTab({ m, isOwn, isMobileLayout }: { m: Musician; isOwn: boolea
             <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o + 3)}>
               <Text style={[nmt.navBtnText, { color: colors.grey }]}>Next 3 months →</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-        <View style={nmt.legend}>
-          <View style={nmt.legendItem}>
-            <View style={[nmt.legendDot, { backgroundColor: '#22c55e' }]} />
-            <Text style={[nmt.legendText, { color: colors.grey }]}>Booked</Text>
-          </View>
-          <View style={nmt.legendItem}>
-            <Text style={[nmt.legendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
-            <Text style={[nmt.legendText, { color: colors.grey }]}>Away</Text>
           </View>
         </View>
       </View>
@@ -1442,12 +1442,12 @@ const mt = StyleSheet.create({
 
 // ── Musician timetable styles (native) ───────────────────────────
 const nmt = StyleSheet.create({
-  filterRow:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1 },
+  filterRow:     { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },
   filterControl: { flexDirection: 'row', borderWidth: 1, borderRadius: 10, overflow: 'hidden', alignSelf: 'flex-start' },
   filterBtn:     { paddingHorizontal: 16, paddingVertical: 10 },
   filterBtnActive: { backgroundColor: Colors.orange },
   filterText:    { fontSize: 13, fontWeight: '700' },
-  countNav:      { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, borderBottomWidth: 1, gap: 8 },
+  countNav:      { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, gap: 8 },
   countRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 4 },
   countLabel:    { fontSize: 13, fontWeight: '500' },
   dateRange:     { fontSize: 12, fontWeight: '400' },
