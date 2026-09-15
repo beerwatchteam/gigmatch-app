@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import {
-  View, StyleSheet, TouchableOpacity, ScrollView, FlatList,
+  View, StyleSheet, TouchableOpacity, ScrollView,
   Platform, Image, ActivityIndicator, Animated,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, limit, query, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { db, storage } from '@/lib/firebase';
@@ -19,155 +19,85 @@ const isWeb = Platform.OS === 'web';
 
 // ── Types ──────────────────────────────────────────────────────────
 
-type SlotGig = {
-  id: string;
-  title: string;
-  datetime: string;
-  ticketUrl: string | null;
-  imageUrl: string | null;
-  featured: boolean;
+type PreviewSlot = { id?: string; time: string; status: string; room?: string };
+type PreviewVenue = { name: string; slots: Record<string, PreviewSlot[]> };
+type PreviewOccurrence = { date: Date; day: string; slot: PreviewSlot };
+
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOW_TO_DAY: Record<number, string> = {
+  0:'Sunday',1:'Monday',2:'Tuesday',3:'Wednesday',4:'Thursday',5:'Friday',6:'Saturday',
 };
 
-type FeaturedVenue = {
-  venueId: string;
-  venueName: string;
-  address: string;
-  suburb: string;
-  postcode: string;
-  gigs: SlotGig[];
-};
+// ── Timetable preview helpers ──────────────────────────────────────
 
-type VenueDoc = {
-  id: string;
-  name: string;
-  streetAddress?: string;
-  suburb?: string;
-  postcode?: string;
-  genres?: string[];
-  slots?: Record<string, any[]>;
-};
-
-// ── Static fallback venues ─────────────────────────────────────────
-
-const FALLBACK_VENUES: FeaturedVenue[] = [
-  {
-    venueId: 'fallback-1', venueName: 'Brunswick Ballroom',
-    address: '314-316 Sydney Rd', suburb: 'Brunswick', postcode: '3056',
-    gigs: [{ id: 'f1', title: 'Live Music Night', datetime: '2026-08-22T20:00', ticketUrl: null, imageUrl: null, featured: false }],
-  },
-  {
-    venueId: 'fallback-2', venueName: 'The Corner Hotel',
-    address: '57 Swan St', suburb: 'Richmond', postcode: '3121',
-    gigs: [{ id: 'f2', title: 'Open Mic Night', datetime: '2026-08-23T19:30', ticketUrl: null, imageUrl: null, featured: false }],
-  },
-  {
-    venueId: 'fallback-3', venueName: 'Northcote Social Club',
-    address: '301 High St', suburb: 'Northcote', postcode: '3070',
-    gigs: [{ id: 'f3', title: 'Saturday Sessions', datetime: '2026-08-23T21:00', ticketUrl: null, imageUrl: null, featured: false }],
-  },
-  {
-    venueId: 'fallback-4', venueName: 'Old Bar',
-    address: '74-76 Johnston St', suburb: 'Fitzroy', postcode: '3065',
-    gigs: [{ id: 'f4', title: 'Local Showcase', datetime: '2026-08-24T20:30', ticketUrl: null, imageUrl: null, featured: false }],
-  },
-];
-
-// ── Helpers ────────────────────────────────────────────────────────
-
-function timeTo24h(timeStr?: string): string {
-  if (!timeStr) return '20:00';
-  const parts = timeStr.trim().split(' ');
-  const [h, m] = parts[0].split(':').map(Number);
-  const period = (parts[1] || '').toUpperCase();
-  let hours = h;
-  if (period === 'PM' && h !== 12) hours += 12;
-  if (period === 'AM' && h === 12) hours = 0;
-  return `${String(hours).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
-}
-
-function formatDatetime(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleDateString('en-AU', {
-    weekday: 'short', day: 'numeric', month: 'short',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
-}
-
-function buildLiveGigsData(venues: VenueDoc[]): FeaturedVenue[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return venues.map(venue => {
-    const allBooked = Object.entries(venue.slots || {}).flatMap(([day, slots]) =>
-      (slots || []).filter((s: any) => s.status === 'booked' && s.date).map((s: any) => ({ ...s, day }))
+function getPreviewSlots(slots: Record<string, PreviewSlot[]>, max: number): PreviewOccurrence[] {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const end = new Date(today); end.setMonth(end.getMonth() + 3);
+  const results: PreviewOccurrence[] = [];
+  const cur = new Date(today);
+  while (cur <= end && results.length < max) {
+    const day = DOW_TO_DAY[cur.getDay()];
+    const dateISO = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+    const recurOpen = (slots?.[day] || []).filter(s => !(s as any).date && s.status === 'open');
+    const overrideTimes = new Set(
+      (slots?.[day] || [])
+        .filter(s => (s as any).date === dateISO && (s.status === 'booked' || s.status === 'pending'))
+        .map(s => s.time.toLowerCase().trim())
     );
-    const upcoming = allBooked
-      .filter((s: any) => new Date(s.date) >= today)
-      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    if (upcoming.length === 0) return null;
-    const featured = upcoming.filter((s: any) => s.featured);
-    const gigs = (featured.length > 0 ? featured : upcoming.slice(0, 3)).map((s: any) => ({
-      id: s.id || s.date, title: s.bandName || 'TBA',
-      datetime: `${s.date}T${timeTo24h(s.time)}`,
-      ticketUrl: s.ticketUrl || null, imageUrl: s.imageUrl || null, featured: s.featured || false,
-    }));
-    return {
-      venueId: venue.id, venueName: venue.name,
-      address: venue.streetAddress || '', suburb: venue.suburb || '', postcode: venue.postcode || '',
-      gigs,
-    };
-  }).filter((v): v is FeaturedVenue => v !== null);
+    recurOpen.forEach(slot => {
+      if (results.length < max && !overrideTimes.has(slot.time.toLowerCase().trim())) {
+        results.push({ date: new Date(cur), day, slot });
+      }
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return results;
 }
 
-// ── GigCarousel ────────────────────────────────────────────────────
+// ── TimetablePreviewRow ────────────────────────────────────────────
 
-function GigCarousel({ gigs }: { gigs: SlotGig[] }) {
-  const [index, setIndex] = useState(0);
-  if (gigs.length === 0) return <Text style={cs.empty}>No gigs listed yet</Text>;
-  const gig = gigs[index];
+function TimetablePreviewRow({ date, day, slot, onEnquire, colors }: {
+  date: Date; day: string; slot: PreviewSlot; onEnquire: () => void; colors: any;
+}) {
+  const dayAbbr = day.slice(0, 3).toUpperCase();
+  const meta = [slot.time, slot.room].filter(Boolean).join(' · ');
   return (
-    <View style={cs.carousel}>
-      <View style={cs.gigImage}>
-        {gig.imageUrl
-          ? <Image source={{ uri: gig.imageUrl }} style={cs.gigImageImg} />
-          : <View style={cs.gigImagePlaceholder} />}
+    <View style={[ps.row, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+      <View style={ps.dateBox}>
+        <Text style={[ps.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
+        <Text style={[ps.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
       </View>
-      <Text style={cs.gigTitle}>{gig.title}</Text>
-      <Text style={cs.gigDatetime}>{formatDatetime(gig.datetime)}</Text>
-      {gig.ticketUrl
-        ? <TouchableOpacity style={cs.ticketBtn}><Text style={cs.ticketBtnText}>Tickets</Text></TouchableOpacity>
-        : <View style={[cs.ticketBtn, cs.ticketBtnDisabled]}><Text style={cs.ticketBtnTextDisabled}>Tickets TBA</Text></View>}
-      {gigs.length > 1 && (
-        <View style={cs.controls}>
-          <TouchableOpacity style={[cs.arrow, index === 0 && cs.arrowDisabled]} onPress={() => setIndex(i => i - 1)} disabled={index === 0}>
-            <Text style={cs.arrowText}>‹</Text>
-          </TouchableOpacity>
-          <Text style={cs.counter}>{index + 1} / {gigs.length}</Text>
-          <TouchableOpacity style={[cs.arrow, index === gigs.length - 1 && cs.arrowDisabled]} onPress={() => setIndex(i => i + 1)} disabled={index === gigs.length - 1}>
-            <Text style={cs.arrowText}>›</Text>
-          </TouchableOpacity>
+      <Text style={[ps.dayAbbr, { color: colors.grey }]}>{dayAbbr}</Text>
+      <Text style={[ps.meta, { color: colors.black, flex: 1 }]}>{meta}</Text>
+      <View style={ps.actions}>
+        <View style={ps.openBadge}>
+          <Text style={ps.openBadgeText}>Open</Text>
         </View>
-      )}
+        <TouchableOpacity style={ps.enquireBtn} onPress={onEnquire}>
+          <Text style={ps.enquireBtnText}>Enquire</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-const cs = StyleSheet.create({
-  carousel: { gap: 8 },
-  empty: { fontSize: 13, color: '#999999', fontStyle: 'italic' },
-  gigImage: { width: '100%', height: 120, borderRadius: 8, overflow: 'hidden', marginBottom: 4 },
-  gigImageImg: { width: '100%', height: '100%' },
-  gigImagePlaceholder: { width: '100%', height: '100%', backgroundColor: '#1e1a14', borderRadius: 8 },
-  gigTitle: { fontSize: 15, fontWeight: '700', color: '#111111' },
-  gigDatetime: { fontSize: 12, color: '#666666' },
-  ticketBtn: { alignSelf: 'flex-start', backgroundColor: Colors.orange, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5, marginTop: 4 },
-  ticketBtnDisabled: { backgroundColor: '#e5e5e5' },
-  ticketBtnText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
-  ticketBtnTextDisabled: { fontSize: 12, fontWeight: '600', color: '#999999' },
-  controls: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
-  arrow: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#e5e5e5', alignItems: 'center', justifyContent: 'center' },
-  arrowDisabled: { opacity: 0.35 },
-  arrowText: { fontSize: 20, color: '#111111', lineHeight: 26 },
-  counter: { fontSize: 12, color: '#666666' },
+const ps = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderLeftWidth: 4, borderLeftColor: Colors.orange,
+    borderRadius: 8, marginBottom: 8,
+    paddingVertical: 14, paddingHorizontal: 16, gap: 12,
+  },
+  dateBox:    { width: 34, alignItems: 'center', flexShrink: 0 },
+  dateNum:    { fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  dateMonth:  { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
+  dayAbbr:    { width: 28, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0 },
+  meta:       { fontSize: 15, fontWeight: '600' },
+  actions:    { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  openBadge:  { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
+  openBadgeText: { fontSize: 12, fontWeight: '600', color: Colors.orange },
+  enquireBtn: { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 });
 
 // ── Problem cards ──────────────────────────────────────────────────
@@ -180,9 +110,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const { profile, user } = useAuth();
   const { colors } = useTheme();
-  const [displayData, setDisplayData]     = useState<FeaturedVenue[]>([]);
   const [heroImageUrl, setHeroImageUrl]   = useState<string | null>(null);
   const [heroUploading, setHeroUploading] = useState(false);
+  const [testVenue, setTestVenue]         = useState<PreviewVenue | null>(null);
 
   const isAdmin  = user?.email === ADMIN_EMAIL;
   const isArtist = profile?.type === 'artist';
@@ -195,17 +125,14 @@ export default function HomeScreen() {
   const glowOpacity  = scrollY.interpolate({ inputRange: [0, heroHeight], outputRange: [1, 0.4], extrapolate: 'clamp' });
 
   useEffect(() => {
-    getDocs(query(collection(db, 'venues'), limit(8)))
-      .then(snap => {
-        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as VenueDoc[];
-        setDisplayData(buildLiveGigsData(docs));
-      })
-      .catch(() => {});
+    return onSnapshot(doc(db, 'settings', 'homepage'), snap => {
+      setHeroImageUrl(snap.data()?.heroImageUrl ?? null);
+    });
   }, []);
 
   useEffect(() => {
-    return onSnapshot(doc(db, 'settings', 'homepage'), snap => {
-      setHeroImageUrl(snap.data()?.heroImageUrl ?? null);
+    return onSnapshot(doc(db, 'venues', 'test-venue'), snap => {
+      if (snap.exists()) setTestVenue(snap.data() as PreviewVenue);
     });
   }, []);
 
@@ -229,7 +156,8 @@ export default function HomeScreen() {
     }
   }
 
-  const venueData = displayData.length > 0 ? displayData : FALLBACK_VENUES;
+  const previewSlots = testVenue ? getPreviewSlots(testVenue.slots || {}, 6) : [];
+  const isLoggedIn = !!user;
 
   return (
     <View style={[s.root, { backgroundColor: colors.bg }]}>
@@ -383,36 +311,36 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── Featured Venues ──────────────────────────────────── */}
-        <View style={[s.featuredSection, { borderBottomColor: colors.border }]}>
-          <View style={s.sectionHeader}>
-            <Text style={s.eyebrow}>On the lineup</Text>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Featured Venues</Text>
+        {/* ── Live Timetable Preview ───────────────────────────── */}
+        {previewSlots.length > 0 && (
+          <View style={[s.featuredSection, { borderBottomColor: colors.border }]}>
+            <View style={s.sectionHeader}>
+              <Text style={s.eyebrow}>Live timetable</Text>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>
+                {testVenue?.name ?? 'Open slots'}
+              </Text>
+            </View>
+            <View style={s.timetableList}>
+              {previewSlots.map(({ date, day, slot }, i) => (
+                <TimetablePreviewRow
+                  key={`${date.toISOString()}-${slot.id || i}`}
+                  date={date} day={day} slot={slot}
+                  colors={colors}
+                  onEnquire={() => isLoggedIn
+                    ? router.push('/venue/test-venue' as any)
+                    : router.push('/login?mode=signup&tab=artist' as any)
+                  }
+                />
+              ))}
+            </View>
+            <TouchableOpacity
+              style={s.viewAllBtn}
+              onPress={() => router.push('/venue/test-venue' as any)}
+            >
+              <Text style={[s.viewAllText, { color: Colors.orange }]}>View full timetable →</Text>
+            </TouchableOpacity>
           </View>
-          <FlatList
-            horizontal
-            data={venueData}
-            keyExtractor={v => v.venueId}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.venueTrack}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[s.venueCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}
-                onPress={() => !item.venueId.startsWith('fallback') && router.push(`/venue/${item.venueId}`)}
-                activeOpacity={item.venueId.startsWith('fallback') ? 1 : 0.9}
-              >
-                <Text style={[s.venueCardName, { color: colors.black }]}>{item.venueName}</Text>
-                <Text style={[s.venueCardAddr, { color: colors.grey }]}>
-                  {[item.address, item.suburb, item.postcode].filter(Boolean).join(', ')}
-                </Text>
-                <View style={[s.gigSection, { borderTopColor: colors.borderFaint }]}>
-                  <Text style={[s.gigLabel, { color: colors.grey }]}>Upcoming gigs</Text>
-                  <GigCarousel gigs={item.gigs} />
-                </View>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
+        )}
 
         {/* ── Footer ──────────────────────────────────────────── */}
         <View style={s.footer}>
@@ -695,26 +623,25 @@ const s = StyleSheet.create({
   },
   cardCtaDarkText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
-  // ── Featured Venues ───────────────────────────────────────────────
+  // ── Timetable preview ─────────────────────────────────────────────
   featuredSection: {
     paddingTop: 64, paddingBottom: 64,
     borderBottomWidth: 1,
   },
-  venueTrack: {
+  timetableList: {
     paddingHorizontal: isWeb ? 40 : 24,
-    paddingVertical: 8,
-    gap: 20,
+    maxWidth: isWeb ? 1200 : undefined,
+    alignSelf: isWeb ? 'center' : undefined,
+    width: '100%',
   },
-  venueCard: {
-    borderRadius: 14, padding: 24,
-    borderWidth: 1,
-    width: isWeb ? 300 : 260,
-    gap: 4,
+  viewAllBtn: {
+    paddingHorizontal: isWeb ? 40 : 24,
+    paddingTop: 16,
+    maxWidth: isWeb ? 1200 : undefined,
+    alignSelf: isWeb ? 'center' : undefined,
+    width: '100%',
   },
-  venueCardName: { fontSize: 18, fontWeight: '700' },
-  venueCardAddr: { fontSize: 13 },
-  gigSection: { borderTopWidth: 1, paddingTop: 14, marginTop: 10, gap: 8 },
-  gigLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  viewAllText: { fontSize: 15, fontWeight: '600' },
 
   // ── Footer ────────────────────────────────────────────────────────
   footer: {
