@@ -7,6 +7,7 @@ import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { searchSuburbs, AreaResult } from '@/lib/suburbSearch';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -47,7 +48,7 @@ type Payment = {
   additionalNotes: string;
 };
 type VenueData = {
-  id?: string; name: string; streetAddress: string; suburb: string;
+  id?: string; name: string; streetAddress: string; location: string; suburb: string;
   state: string; postcode: string; phone: string; email: string;
   website: string; description: string; photoUrl: string;
   rooms: Room[]; gigNights: Night[];
@@ -68,7 +69,7 @@ const BLANK_PAYMENT: Payment = {
 };
 
 const BLANK: VenueData = {
-  name: '', streetAddress: '', suburb: '', state: '', postcode: '',
+  name: '', streetAddress: '', location: '', suburb: '', state: '', postcode: '',
   phone: '', email: '', website: '', description: '', photoUrl: '',
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
@@ -462,6 +463,72 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
   );
 }
 
+function SuburbSearch({ value, onChange, onAutofill, error }: {
+  value: string;
+  onChange: (v: string) => void;
+  onAutofill?: (suburb: string, state: string, postcode: string) => void;
+  error?: boolean;
+}) {
+  const { colors } = useTheme();
+  const [query, setQuery] = useState(value);
+  const [results, setResults] = useState<AreaResult[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  function handleChange(text: string) {
+    setQuery(text);
+    onChange(text);
+    if (text.length >= 1) {
+      const found = searchSuburbs(text, 7);
+      setResults(found);
+      setOpen(found.length > 0);
+    } else {
+      setResults([]);
+      setOpen(false);
+    }
+  }
+
+  function select(r: AreaResult) {
+    // label format: "Suburb Name, STATE, postcode"
+    const parts = r.label.split(', ');
+    const suburb = parts[0] || r.label;
+    const state = parts[1] || '';
+    const postcode = parts[2] || '';
+    setQuery(suburb);
+    onChange(suburb);
+    if (onAutofill) onAutofill(suburb, state, postcode);
+    setResults([]);
+    setOpen(false);
+  }
+
+  return (
+    <View>
+      <TextInput
+        style={[s.input, { backgroundColor: colors.bgFaint, borderColor: error ? Colors.danger : colors.border, color: colors.black }]}
+        value={query}
+        onChangeText={handleChange}
+        placeholder="Suburb"
+        placeholderTextColor={Colors.greyLight}
+        autoCapitalize="words"
+      />
+      {open && (
+        <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginTop: 4, overflow: 'hidden', zIndex: 999 }}>
+          {results.map((r, i) => (
+            <TouchableOpacity
+              key={i}
+              onPress={() => select(r)}
+              style={{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < results.length - 1 ? 1 : 0, borderBottomColor: colors.borderFaint }}
+            >
+              <Text style={{ fontSize: 14, color: colors.black }}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Cross-platform confirm dialog (Alert.alert is a no-op on web)
 function crossConfirm(title: string, message: string, onConfirm: () => void, destructive = false) {
   if (Platform.OS === 'web') {
@@ -513,6 +580,10 @@ export default function EditVenueScreen() {
         d.videos    = d.videos    || [];
         d.settings  = d.settings  || BLANK.settings;
         d.payment   = d.payment   ? { ...BLANK_PAYMENT, ...d.payment } : { ...BLANK_PAYMENT };
+        // Back-fill location from suburb/state/postcode for existing venues
+        if (!d.location && d.suburb) {
+          d.location = [d.suburb, d.state, d.postcode].filter(Boolean).join(', ');
+        }
         setData(d); setSaved(d);
       }
     }).finally(() => setLoading(false));
@@ -741,8 +812,8 @@ export default function EditVenueScreen() {
   async function handleSave() {
     setShowErrors(true);
     const errors: string[] = [];
-    if (!data.name?.trim() || !data.streetAddress?.trim() || !data.suburb?.trim() ||
-        !data.state?.trim() || !data.postcode?.trim() || !data.email?.trim() || !data.phone?.trim() || !data.website?.trim())
+    if (!data.name?.trim() || !data.streetAddress?.trim() || !data.location?.trim() ||
+        !data.email?.trim() || !data.phone?.trim() || !data.website?.trim())
       errors.push('Basic Info');
     if (data.rooms.some(r => !r.name?.trim() || !r.capacity?.toString().trim()))
       errors.push('Rooms');
@@ -814,8 +885,7 @@ export default function EditVenueScreen() {
       return;
     }
     const hasErrors =
-      !data.name?.trim() || !data.streetAddress?.trim() ||
-      !data.suburb?.trim() || !data.state?.trim() || !data.postcode?.trim() ||
+      !data.name?.trim() || !data.streetAddress?.trim() || !data.location?.trim() ||
       !data.email?.trim() || !data.phone?.trim() || !data.website?.trim();
     if (hasErrors) {
       setShowErrors(true);
@@ -862,8 +932,8 @@ export default function EditVenueScreen() {
             <Text style={[evd.name, { color: colors.black }]} numberOfLines={2}>
               {data.name || 'Your venue'}
             </Text>
-            {data.suburb ? (
-              <Text style={[evd.sub, { color: colors.grey }]}>{data.suburb}{data.state ? `, ${data.state}` : ''}</Text>
+            {data.location ? (
+              <Text style={[evd.sub, { color: colors.grey }]}>{data.location}</Text>
             ) : null}
 
             <View style={[evd.divider, { backgroundColor: colors.border }]} />
@@ -953,11 +1023,7 @@ export default function EditVenueScreen() {
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Venue Details</Text>
                   <Field label="Venue name *" error={showErrors && !data.name?.trim()}><Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} /></Field>
                   <Field label="Street address *" error={showErrors && !data.streetAddress?.trim()}><Input value={data.streetAddress} onChangeText={(v: string) => set('streetAddress', v)} placeholder="123 Main St" error={showErrors && !data.streetAddress?.trim()} /></Field>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <View style={{ flex: 2 }}><Field label="Suburb *" error={showErrors && !data.suburb?.trim()}><Input value={data.suburb} onChangeText={(v: string) => set('suburb', v)} placeholder="Suburb" error={showErrors && !data.suburb?.trim()} /></Field></View>
-                    <View style={{ flex: 1 }}><Field label="Postcode *" error={showErrors && !data.postcode?.trim()}><Input value={data.postcode} onChangeText={(v: string) => set('postcode', v)} placeholder="3000" keyboardType="numeric" error={showErrors && !data.postcode?.trim()} /></Field></View>
-                  </View>
-                  <Field label="State *" error={showErrors && !data.state?.trim()}><Pills options={AU_STATES} value={data.state} onSelect={(v: string) => set('state', v)} /></Field>
+                  <Field label="Location *" error={showErrors && !data.location?.trim()}><SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} /></Field>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
@@ -1373,20 +1439,8 @@ export default function EditVenueScreen() {
               <Field label="Street address *" error={showErrors && !data.streetAddress?.trim()}>
                 <Input value={data.streetAddress} onChangeText={(v: string) => set('streetAddress', v)} placeholder="123 Main St" error={showErrors && !data.streetAddress?.trim()} />
               </Field>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 2 }}>
-                  <Field label="Suburb *" error={showErrors && !data.suburb?.trim()}>
-                    <Input value={data.suburb} onChangeText={(v: string) => set('suburb', v)} placeholder="Suburb" error={showErrors && !data.suburb?.trim()} />
-                  </Field>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Field label="Postcode *" error={showErrors && !data.postcode?.trim()}>
-                    <Input value={data.postcode} onChangeText={(v: string) => set('postcode', v)} placeholder="3000" keyboardType="numeric" error={showErrors && !data.postcode?.trim()} />
-                  </Field>
-                </View>
-              </View>
-              <Field label="State *" error={showErrors && !data.state?.trim()}>
-                <Pills options={AU_STATES} value={data.state} onSelect={(v: string) => set('state', v)} />
+              <Field label="Location *" error={showErrors && !data.location?.trim()}>
+                <SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} />
               </Field>
             </View>
 
