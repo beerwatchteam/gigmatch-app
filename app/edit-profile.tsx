@@ -110,9 +110,9 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
   },
   7: {
     title: 'Tech Rider',
-    body: 'Tell venues what you need on stage. Be specific. Vague requirements can cause problems on the night.',
-    fieldsLabel: 'FIELDS TO COMPLETE',
-    fields: ['Monitoring (wedges, IEM, number of mixes)', 'Backline requirements (amps, drums, keys)', 'Minimum stage size', 'Soundcheck requirements', 'Stage plot (upload file)', 'Input list (upload file)'],
+    body: 'Upload your rider PDF if you have one. It can cover most of the fields. Then fill in the stage setup, hospitality, and logistics details so venues know exactly what to expect.',
+    fieldsLabel: 'SECTIONS TO COMPLETE',
+    fields: ['Rider PDF (upload)', 'Stage plot (upload)', 'Input list and monitoring', 'Backline needed / brought', 'Hospitality (meals, drinks, green room)', 'Technical (set length, soundcheck, PA)', 'Logistics (load-in, merch, accommodation)'],
     nextLabel: 'Next: Payment',
   },
   8: {
@@ -148,6 +148,7 @@ type Profile = {
   songs: Song[]; gigHistory: Gig[]; upcomingGigs: Gig[];
   techRider: Record<string, string>;
   techRiderDocs: { url: string; name: string }[];
+  techRiderBools: Record<string, boolean>;
   photos: string[]; videos: string[];
   payment: ArtistPayment;
   settings: { emailOnEnquiryResponse: boolean; emailOnNewConnection: boolean; listed: boolean };
@@ -158,7 +159,7 @@ const BLANK: Profile = {
   feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
-  techRider: {}, techRiderDocs: [], photos: [], videos: [],
+  techRider: {}, techRiderDocs: [], techRiderBools: {}, photos: [], videos: [],
   payment: { ...BLANK_ARTIST_PAYMENT },
   settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
 };
@@ -419,6 +420,7 @@ export default function EditProfileScreen() {
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
+  const [stagePlotUploading, setStagePlotUploading] = useState(false);
   const [showStickySave, setShowStickySave] = useState(false);
   const titleBarBottomRef = useRef(Infinity);
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -442,6 +444,7 @@ export default function EditProfileScreen() {
       d.photos      = d.photos      || [];
       d.videos      = d.videos      || [];
       d.techRiderDocs = d.techRiderDocs || [];
+      d.techRiderBools = d.techRiderBools || {};
       d.customLinks = d.customLinks || [];
       d.settings    = d.settings    || BLANK.settings;
       d.payment     = d.payment     ? { ...BLANK_ARTIST_PAYMENT, ...d.payment } : { ...BLANK_ARTIST_PAYMENT };
@@ -461,6 +464,11 @@ export default function EditProfileScreen() {
   function setPayment<K extends keyof ArtistPayment>(field: K, value: ArtistPayment[K]) {
     setJustSaved(false);
     setProfile(prev => ({ ...prev, payment: { ...prev.payment, [field]: value } }));
+  }
+
+  function setRiderBool(field: string, value: boolean) {
+    setJustSaved(false);
+    setProfile(prev => ({ ...prev, techRiderBools: { ...prev.techRiderBools, [field]: value } }));
   }
 
   // ── Songs ──
@@ -538,6 +546,26 @@ export default function EditProfileScreen() {
       Alert.alert('Upload failed', String(e));
     } finally {
       setDocUploading(false);
+    }
+  }
+
+  // ── Stage plot image upload ──
+  async function pickStagePlot() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (result.canceled || !result.assets[0]) return;
+    setStagePlotUploading(true);
+    try {
+      const uri  = result.assets[0].uri;
+      const res  = await fetch(uri);
+      const blob = await res.blob();
+      const ref  = sRef(storage, `riders/${uid}/stage-plot-${Date.now()}.jpg`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      set('techRider', { ...profile.techRider, stagePlotUrl: url });
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setStagePlotUploading(false);
     }
   }
 
@@ -928,25 +956,93 @@ export default function EditProfileScreen() {
             {activeTab === 'Tech Rider' && (
               <View style={s.section}>
                 <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
-                <Text style={s.hint}>Your tech rider is basically your "here's what I need to play" sheet: your stage setup, backline, mics/DI boxes, power, and sound requirements.{'\n\n'}Having it on your profile means venues can see straight away whether their space can handle your set (or what they'd need to sort out) before you even message them, so you skip the back-and-forth and only get enquiries from venues that are actually a good fit.</Text>
-                <Field label="Tech Spec / Hospitality Rider Documents">
+                <Text style={s.hint}>Upload your full rider PDF below if you have one. It can cover most of the questions here, so you may not need to fill in every field.{'\n\n'}Having a rider on your profile lets venues see straight away whether their space can handle your act, so you skip the back-and-forth and only hear from venues that are a real fit.</Text>
+
+                {/* ── Rider PDF ── */}
+                <Field label="Rider Document (PDF)">
                   {(profile.techRiderDocs || []).map((doc, idx) => (
                     <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
                       <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
                     </View>
                   ))}
-                  <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}><Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Spec Sheet (PDF)'}</Text></TouchableOpacity>
+                  <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}><Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Rider PDF'}</Text></TouchableOpacity>
                 </Field>
-                {[
-                  { field: 'monitoring',     label: 'Monitoring',       placeholder: 'e.g. 3 separate monitor mixes' },
-                  { field: 'backlineNeeded', label: 'Backline needed',  placeholder: 'e.g. Drum kit only' },
-                  { field: 'stageSize',      label: 'Stage size',       placeholder: 'e.g. Minimum 4m × 3m' },
-                  { field: 'soundcheck',     label: 'Soundcheck time',  placeholder: 'e.g. 45 minutes' },
-                ].map(({ field: f, label, placeholder }) => (
-                  <Field key={f} label={label}><Input value={profile.techRider?.[f] || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, [f]: v })} placeholder={placeholder} /></Field>
-                ))}
-                <Field label="Notes"><Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Any additional notes for the venue's sound team" multiline /></Field>
+
+                {/* ── Stage Plot ── */}
+                <Field label="Stage Plot">
+                  {profile.techRider?.stagePlotUrl ? (
+                    <View>
+                      <Image source={{ uri: profile.techRider.stagePlotUrl }} style={{ width: '100%', height: 180, borderRadius: 6, marginBottom: 8 }} resizeMode="contain" />
+                      <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRider', { ...profile.techRider, stagePlotUrl: '' })}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity style={s.addBtn} onPress={pickStagePlot} disabled={stagePlotUploading}><Text style={s.addBtnText}>{stagePlotUploading ? 'Uploading…' : '+ Upload Stage Plot'}</Text></TouchableOpacity>
+                  )}
+                </Field>
+
+                {/* ── Stage Setup ── */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Setup</Text>
+                  <Field label="Number of performers"><Input value={profile.techRider?.performers || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, performers: v })} placeholder="e.g. 5" keyboardType="numeric" /></Field>
+                  <Field label="Input list"><Input value={profile.techRider?.inputList || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, inputList: v })} placeholder="e.g. Kick, Snare, 2x Guitar amp, Bass DI, 3x Vocal" multiline /></Field>
+                  <Field label="Monitoring"><Input value={profile.techRider?.monitoring || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, monitoring: v })} placeholder="e.g. 3 wedge mixes, no IEM" /></Field>
+                  <Field label="Backline needed from venue"><Input value={profile.techRider?.backlineNeeded || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineNeeded: v })} placeholder="e.g. Drum kit only" /></Field>
+                  <Field label="Backline artist brings"><Input value={profile.techRider?.backlineBrings || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineBrings: v })} placeholder="e.g. Fender Twin, pedalboard, keyboard" /></Field>
+                  <Field label="Minimum stage size"><Input value={profile.techRider?.stageSize || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, stageSize: v })} placeholder="e.g. 4m × 3m" /></Field>
+                </View>
+
+                {/* ── Hospitality ── */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Hospitality</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Meals required</Text>
+                    <Switch value={profile.techRiderBools?.mealsRequired || false} onValueChange={(v: boolean) => setRiderBool('mealsRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  {profile.techRiderBools?.mealsRequired && (
+                    <Field label="Number of people"><Input value={profile.techRider?.mealCount || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, mealCount: v })} placeholder="e.g. 5" keyboardType="numeric" /></Field>
+                  )}
+                  <Field label="Dietary requirements"><Input value={profile.techRider?.dietaryReqs || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, dietaryReqs: v })} placeholder="e.g. 1 vegan, 1 gluten-free" /></Field>
+                  <Field label="Drinks / refreshments"><Input value={profile.techRider?.drinks || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, drinks: v })} placeholder="e.g. Water + 2 beers per band member" /></Field>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Green room / private space required</Text>
+                    <Switch value={profile.techRiderBools?.greenRoom || false} onValueChange={(v: boolean) => setRiderBool('greenRoom', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Parking / loading dock access needed</Text>
+                    <Switch value={profile.techRiderBools?.parking || false} onValueChange={(v: boolean) => setRiderBool('parking', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                </View>
+
+                {/* ── Technical / Production ── */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Technical / Production</Text>
+                  <Field label="Set length"><Input value={profile.techRider?.setLength || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, setLength: v })} placeholder="e.g. 45 minutes" /></Field>
+                  <Field label="Soundcheck time required"><Input value={profile.techRider?.soundcheck || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, soundcheck: v })} placeholder="e.g. 30 minutes" /></Field>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Touring with own PA / sound engineer</Text>
+                    <Switch value={profile.techRiderBools?.ownPA || false} onValueChange={(v: boolean) => setRiderBool('ownPA', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  <Field label="Lighting requirements (optional)"><Input value={profile.techRider?.lighting || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, lighting: v })} placeholder="e.g. Standard stage wash is fine" /></Field>
+                  <Field label="Power requirements"><Input value={profile.techRider?.power || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, power: v })} placeholder="e.g. 4 x 10A power outlets" /></Field>
+                </View>
+
+                {/* ── Logistics ── */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Logistics</Text>
+                  <Field label="Load-in time needed"><Input value={profile.techRider?.loadIn || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, loadIn: v })} placeholder="e.g. 1 hour before doors" /></Field>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Merch table required</Text>
+                    <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Accommodation required</Text>
+                    <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                </View>
+
+                {/* ── Notes ── */}
+                <Field label="Additional notes"><Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Anything else the venue's sound team should know" multiline /></Field>
               </View>
             )}
 
@@ -1636,41 +1732,134 @@ export default function EditProfileScreen() {
           </View>
         )}
 
-        {/* ── TECH SPECS ── */}
+        {/* ── TECH RIDER ── */}
         {activeTab === 'Tech Rider' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
-            <Text style={s.hint}>Your tech rider is basically your "here's what I need to play" sheet: your stage setup, backline, mics/DI boxes, power, and sound requirements.{'\n\n'}Having it on your profile means venues can see straight away whether their space can handle your set (or what they'd need to sort out) before you even message them, so you skip the back-and-forth and only get enquiries from venues that are actually a good fit.</Text>
+            <Text style={s.hint}>Upload your full rider PDF below if you have one. It can cover most of the questions here, so you may not need to fill in every field.{'\n\n'}Having a rider on your profile lets venues see straight away whether their space can handle your act, so you skip the back-and-forth and only hear from venues that are a real fit.</Text>
 
-            <Field label="Tech Spec / Hospitality Rider Documents">
+            {/* ── Rider PDF ── */}
+            <Field label="Rider Document (PDF)">
               {(profile.techRiderDocs || []).map((doc, idx) => (
                 <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
-                  <TouchableOpacity
-                    style={s.removeInlineBtn}
-                    onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}
-                  >
+                  <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}>
                     <Text style={s.removeInlineBtnText}>Remove</Text>
                   </TouchableOpacity>
                 </View>
               ))}
               <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}>
-                <Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Spec Sheet (PDF)'}</Text>
+                <Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Rider PDF'}</Text>
               </TouchableOpacity>
             </Field>
 
-            {[
-              { field: 'monitoring',     label: 'Monitoring',       placeholder: 'e.g. 3 separate monitor mixes' },
-              { field: 'backlineNeeded', label: 'Backline needed',  placeholder: 'e.g. Drum kit only' },
-              { field: 'stageSize',      label: 'Stage size',       placeholder: 'e.g. Minimum 4m × 3m' },
-              { field: 'soundcheck',     label: 'Soundcheck time',  placeholder: 'e.g. 45 minutes' },
-            ].map(({ field: f, label, placeholder }) => (
-              <Field key={f} label={label}>
-                <Input value={profile.techRider?.[f] || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, [f]: v })} placeholder={placeholder} />
+            {/* ── Stage Plot ── */}
+            <Field label="Stage Plot">
+              {profile.techRider?.stagePlotUrl ? (
+                <View>
+                  <Image source={{ uri: profile.techRider.stagePlotUrl }} style={{ width: '100%', height: 200, borderRadius: 6, marginBottom: 8 }} resizeMode="contain" />
+                  <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRider', { ...profile.techRider, stagePlotUrl: '' })}>
+                    <Text style={s.removeInlineBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={s.addBtn} onPress={pickStagePlot} disabled={stagePlotUploading}>
+                  <Text style={s.addBtnText}>{stagePlotUploading ? 'Uploading…' : '+ Upload Stage Plot'}</Text>
+                </TouchableOpacity>
+              )}
+            </Field>
+
+            {/* ── Stage Setup ── */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Setup</Text>
+              <Field label="Number of performers">
+                <Input value={profile.techRider?.performers || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, performers: v })} placeholder="e.g. 5" keyboardType="numeric" />
               </Field>
-            ))}
-            <Field label="Notes">
-              <Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Any additional notes for the venue's sound team" multiline />
+              <Field label="Input list">
+                <Input value={profile.techRider?.inputList || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, inputList: v })} placeholder="e.g. Kick, Snare, 2x Guitar amp, Bass DI, 3x Vocal" multiline />
+              </Field>
+              <Field label="Monitoring">
+                <Input value={profile.techRider?.monitoring || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, monitoring: v })} placeholder="e.g. 3 wedge mixes, no IEM" />
+              </Field>
+              <Field label="Backline needed from venue">
+                <Input value={profile.techRider?.backlineNeeded || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineNeeded: v })} placeholder="e.g. Drum kit only" />
+              </Field>
+              <Field label="Backline artist brings">
+                <Input value={profile.techRider?.backlineBrings || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineBrings: v })} placeholder="e.g. Fender Twin, pedalboard, keyboard" />
+              </Field>
+              <Field label="Minimum stage size">
+                <Input value={profile.techRider?.stageSize || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, stageSize: v })} placeholder="e.g. 4m × 3m" />
+              </Field>
+            </View>
+
+            {/* ── Hospitality ── */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Hospitality</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Meals required</Text>
+                <Switch value={profile.techRiderBools?.mealsRequired || false} onValueChange={(v: boolean) => setRiderBool('mealsRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              {profile.techRiderBools?.mealsRequired && (
+                <Field label="Number of people">
+                  <Input value={profile.techRider?.mealCount || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, mealCount: v })} placeholder="e.g. 5" keyboardType="numeric" />
+                </Field>
+              )}
+              <Field label="Dietary requirements">
+                <Input value={profile.techRider?.dietaryReqs || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, dietaryReqs: v })} placeholder="e.g. 1 vegan, 1 gluten-free" />
+              </Field>
+              <Field label="Drinks / refreshments">
+                <Input value={profile.techRider?.drinks || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, drinks: v })} placeholder="e.g. Water + 2 beers per band member" />
+              </Field>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Green room / private space required</Text>
+                <Switch value={profile.techRiderBools?.greenRoom || false} onValueChange={(v: boolean) => setRiderBool('greenRoom', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Parking / loading dock access needed</Text>
+                <Switch value={profile.techRiderBools?.parking || false} onValueChange={(v: boolean) => setRiderBool('parking', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+            </View>
+
+            {/* ── Technical / Production ── */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Technical / Production</Text>
+              <Field label="Set length">
+                <Input value={profile.techRider?.setLength || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, setLength: v })} placeholder="e.g. 45 minutes" />
+              </Field>
+              <Field label="Soundcheck time required">
+                <Input value={profile.techRider?.soundcheck || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, soundcheck: v })} placeholder="e.g. 30 minutes" />
+              </Field>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Touring with own PA / sound engineer</Text>
+                <Switch value={profile.techRiderBools?.ownPA || false} onValueChange={(v: boolean) => setRiderBool('ownPA', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              <Field label="Lighting requirements (optional)">
+                <Input value={profile.techRider?.lighting || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, lighting: v })} placeholder="e.g. Standard stage wash is fine" />
+              </Field>
+              <Field label="Power requirements">
+                <Input value={profile.techRider?.power || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, power: v })} placeholder="e.g. 4 x 10A power outlets" />
+              </Field>
+            </View>
+
+            {/* ── Logistics ── */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Logistics</Text>
+              <Field label="Load-in time needed">
+                <Input value={profile.techRider?.loadIn || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, loadIn: v })} placeholder="e.g. 1 hour before doors" />
+              </Field>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Merch table required</Text>
+                <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Accommodation required</Text>
+                <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+            </View>
+
+            {/* ── Notes ── */}
+            <Field label="Additional notes">
+              <Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Anything else the venue's sound team should know" multiline />
             </Field>
           </View>
         )}
