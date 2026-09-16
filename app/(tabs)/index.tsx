@@ -439,6 +439,7 @@ export default function HomeScreen() {
                   <Text style={[s.ctaOutlineText, { color: colors.black }]}>Claim your venue</Text>
                 </TouchableOpacity>
               </View>
+              <Text style={s.desktopHint}>For best experience use on desktop</Text>
               {isAdmin && (
                 <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)}>
                   <Text style={s.adminLink}>Admin Panel →</Text>
@@ -649,6 +650,7 @@ const s = StyleSheet.create({
   statNum:      { fontSize: isWeb ? 28 : 22, fontWeight: '800', letterSpacing: -0.5 },
   statLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   adminLink:    { fontSize: 13, fontWeight: '600', color: Colors.orange, marginTop: 4 },
+  desktopHint:  { fontSize: 12, color: '#666666', marginTop: 3, fontStyle: 'italic' },
 
   // Fortnight panel
   fortnightPanel:      { backgroundColor: '#f2ede4', borderRadius: 14, overflow: 'hidden' },
