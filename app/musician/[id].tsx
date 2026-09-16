@@ -126,6 +126,7 @@ type Musician = {
     notes?: string;
   };
   techRiderDocs?: { url: string; name: string }[];
+  instruments?: string[];
 };
 
 // ── Overview Tab ──────────────────────────────────────────────────
@@ -288,6 +289,19 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
               </Text>
             </View>
           ))}
+        </View>
+      )}
+
+      {(m.instruments && m.instruments.length > 0) && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.black }]}>Instruments</Text>
+          <View style={styles.genres}>
+            {m.instruments.map(inst => (
+              <View key={inst} style={[styles.genrePill, { borderColor: colors.border }]}>
+                <Text style={[styles.genreText, { color: colors.black }]}>{inst}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       )}
 
