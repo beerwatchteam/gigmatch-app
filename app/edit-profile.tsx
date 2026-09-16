@@ -18,7 +18,8 @@ import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
-const ACT_TYPES = ['Solo Artist','Duo','Trio','Band','Cover Band','Acoustic Act','DJ','Choir / Vocal Group','Other'];
+const ACT_TYPES   = ['Solo Artist','Duo','Trio','Band','Cover Band','Acoustic Act','DJ','Choir / Vocal Group','Other'];
+const INSTRUMENTS = ['Vocals','Guitar (Acoustic)','Guitar (Electric)','Bass','Drums','Keys / Piano','Violin / Strings','Saxophone','Trumpet / Brass','Trombone','Harmonica','Banjo / Mandolin','Ukulele','Cello','Flute','Synth / Sampler','Turntables / CDJs','Percussion','Other'];
 const PLATFORMS = [
   { key: 'instagram',  label: 'Instagram',   placeholder: 'Profile URL or a post/reel URL to embed' },
   { key: 'tiktok',     label: 'TikTok',      placeholder: 'TikTok profile URL' },
@@ -31,7 +32,7 @@ type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; endDate?: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
-  genre: string[]; otherGenres: string; location: string;
+  genre: string[]; otherGenres: string; instruments: string[]; location: string;
   email: string; phone: string; feeMin: string; feeMax: string; averageDraw: string;
   about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
@@ -44,7 +45,7 @@ type Profile = {
 };
 
 const BLANK: Profile = {
-  name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', location: '', email: '', phone: '',
+  name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', instruments: [], location: '', email: '', phone: '',
   feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
@@ -583,6 +584,7 @@ export default function EditProfileScreen() {
                   {profile.artistType === 'Other' && (<Field label="Describe your act *" error={showErrors && !profile.otherArtistType?.trim()}><Input value={profile.otherArtistType} onChangeText={(v: string) => set('otherArtistType', v)} placeholder="e.g. Acapella Group, String Quartet" error={showErrors && !profile.otherArtistType?.trim()} /></Field>)}
                   <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}><Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi /></Field>
                   {profile.genre?.includes('Other') && (<Field label="Other genres"><Input value={profile.otherGenres} onChangeText={(v: string) => set('otherGenres', v)} placeholder="e.g. Bluegrass, Afrobeat, Cumbia" /></Field>)}
+                  <Field label="Instruments / What You Play"><Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi /></Field>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
@@ -982,6 +984,9 @@ export default function EditProfileScreen() {
                   />
                 </Field>
               )}
+              <Field label="Instruments / What You Play">
+                <Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi />
+              </Field>
             </View>
 
             {/* Contact */}
