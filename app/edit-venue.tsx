@@ -102,6 +102,68 @@ const BLANK: VenueData = {
 
 const TABS = ['Settings','Basic Info','Rooms','Timetable','Tech Specs','Payments','Photos & Videos'];
 
+const VENUE_STEP_TAB: Record<number, string | null> = {
+  1: null, 2: 'Basic Info', 3: 'Rooms', 4: 'Timetable', 5: 'Tech Specs', 6: 'Payments', 7: 'Payments',
+};
+
+type VenueOnboardingStep = {
+  title: string;
+  body: string;
+  body2?: string;
+  fieldsLabel?: string;
+  fields?: string[];
+  footer?: string;
+  nextLabel: string;
+};
+
+const VENUE_ONBOARDING: Record<number, VenueOnboardingStep> = {
+  1: {
+    title: 'Verified',
+    body: "Your venue has been verified. Let's get it set up so artists can find you and book with confidence.",
+    nextLabel: 'Get started',
+  },
+  2: {
+    title: 'Profile',
+    body: 'Fill in your venue details. Artists check these before they enquire, so make it count.',
+    fieldsLabel: 'FIELDS TO COMPLETE',
+    fields: ['Venue name', 'Address and suburb', 'Capacity', 'Genres you book', 'A short description of the vibe', 'Photos (exterior, stage, room)'],
+    nextLabel: 'Next: Rooms',
+  },
+  3: {
+    title: 'Rooms',
+    body: 'Add every performance space in your venue. Artists book a specific room, not just a date, so each space needs its own setup.',
+    body2: "Got a main stage, a front bar, and a courtyard? Add them all. You can manage each room's timetable separately.",
+    nextLabel: 'Next: Timetable',
+  },
+  4: {
+    title: 'Timetable',
+    body: 'Add your band nights. Set recurring weekly slots or specific one-off dates, room by room.',
+    body2: 'Open slots are what artists browse. The more complete your timetable, the more enquiries you\'ll get.',
+    nextLabel: 'Next: Tech Specs',
+  },
+  5: {
+    title: 'Tech Specs',
+    body: "Tell artists what you're working with. This is the information they need before they can say yes to a gig.",
+    fieldsLabel: 'FIELDS TO COMPLETE',
+    fields: ['PA system (brand, size, output)', 'Monitoring (wedges, IEM capability)', 'Backline available (amps, drums, keys)', 'Stage dimensions', 'Load-in access and instructions', 'Soundcheck policy'],
+    nextLabel: 'Next: Payment',
+  },
+  6: {
+    title: 'Payment',
+    body: 'Set your standard payment terms. Artists will see this before they send an enquiry, so be upfront.',
+    fieldsLabel: 'OPTIONS',
+    fields: ['Flat fee (specify range or fixed amount)', 'Door deal (specify percentage split)', 'Percentage of bar', 'No payment (exposure/residency gigs)', 'Negotiable per booking'],
+    footer: 'You can override these per slot on your timetable.',
+    nextLabel: 'Next: Go live',
+  },
+  7: {
+    title: 'Go Live',
+    body: 'Your venue is ready. Artists can now see your open slots and send enquiries directly to your inbox.',
+    body2: 'Keep your timetable up to date and respond to enquiries promptly. Artists notice.',
+    nextLabel: 'Go to my timetable',
+  },
+};
+
 // ── Shared sub-components ────────────────────────────────────────
 
 function Field({ label, error, children }: { label: string; error?: boolean; children: React.ReactNode }) {
@@ -589,6 +651,9 @@ export default function EditVenueScreen() {
   const [videoUploading, setVideoUploading] = useState(false);
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [showStickySave, setShowStickySave] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingVisited, setOnboardingVisited] = useState<string[]>([]);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
   const titleBarBottomRef = useRef(Infinity);
 
   useEffect(() => {
@@ -607,6 +672,9 @@ export default function EditVenueScreen() {
           d.location = [d.suburb, d.state, d.postcode].filter(Boolean).join(', ');
         }
         setData(d); setSaved(d);
+        const isComplete = snap.data().onboardingComplete === true;
+        setOnboardingComplete(isComplete);
+        if (!isComplete) setOnboardingStep(1);
       }
     }).finally(() => setLoading(false));
   }, [venueId]);
@@ -917,6 +985,43 @@ export default function EditVenueScreen() {
     goBack();
   }
 
+  function advanceOnboarding() {
+    if (onboardingStep === 7) { finishOnboarding(); return; }
+    const curTab = VENUE_STEP_TAB[onboardingStep];
+    if (curTab) setOnboardingVisited(prev => prev.includes(curTab) ? prev : [...prev, curTab]);
+    const next = onboardingStep + 1;
+    const nextTab = VENUE_STEP_TAB[next];
+    if (nextTab && nextTab !== activeTab) setActiveTab(nextTab);
+    setOnboardingStep(next);
+  }
+
+  function backOnboarding() {
+    if (onboardingStep <= 1) return;
+    const prev = onboardingStep - 1;
+    const prevTab = VENUE_STEP_TAB[prev];
+    if (prevTab && prevTab !== activeTab) setActiveTab(prevTab);
+    setOnboardingStep(prev);
+  }
+
+  async function skipOnboarding() {
+    setOnboardingStep(0);
+    setOnboardingComplete(true);
+    updateDoc(doc(db, 'venues', venueId), { onboardingComplete: true }).catch(() => {});
+  }
+
+  function finishOnboarding() {
+    setOnboardingStep(0);
+    setOnboardingComplete(true);
+    setActiveTab('Timetable');
+    updateDoc(doc(db, 'venues', venueId), { onboardingComplete: true }).catch(() => {});
+  }
+
+  function replayOnboarding() {
+    setOnboardingVisited([]);
+    setActiveTab('Basic Info');
+    setOnboardingStep(1);
+  }
+
   const isWeb = Platform.OS === 'web';
   const { width } = useWindowDimensions();
   const isMobileLayout = !isWeb || width < 768;
@@ -971,7 +1076,10 @@ export default function EditVenueScreen() {
                   <Text style={[evd.navText, { color: activeTab === tab ? Colors.orange : colors.black }]}>
                     {tab}
                   </Text>
-                  {tabErrors.includes(tab) && <View style={evd.navErrorDot} />}
+                  {onboardingStep > 0 && onboardingVisited.includes(tab)
+                    ? <Text style={evd.navCheck}>✓</Text>
+                    : tabErrors.includes(tab) && <View style={evd.navErrorDot} />
+                  }
                 </View>
               </TouchableOpacity>
             ))}
@@ -1400,7 +1508,105 @@ export default function EditVenueScreen() {
             )}
 
           </ScrollView>
+
+          {/* ── Onboarding side panel (steps 2-6) ── */}
+          {onboardingStep >= 2 && onboardingStep <= 6 && (() => {
+            const step = VENUE_ONBOARDING[onboardingStep];
+            return (
+              <View style={[evd.onboardingPanel, { borderLeftColor: colors.border, backgroundColor: colors.bg }]}>
+                <View style={evd.onboardingPanelInner}>
+                  <View style={evd.onboardingStepRow}>
+                    <Text style={evd.onboardingStepLabel}>STEP {onboardingStep} OF 7</Text>
+                    <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+                  </View>
+                  <View style={evd.onboardingProgress}>
+                    <View style={[evd.onboardingProgressFill, { width: `${(onboardingStep / 7) * 100}%` as any }]} />
+                  </View>
+                  <Text style={[evd.onboardingTitle, { color: colors.black }]}>{step.title}</Text>
+                  <Text style={evd.onboardingBody}>{step.body}</Text>
+                  {step.body2 && <Text style={[evd.onboardingBody, { marginTop: 10 }]}>{step.body2}</Text>}
+                  {step.fieldsLabel && step.fields && (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={evd.onboardingFieldsLabel}>{step.fieldsLabel}</Text>
+                      {step.fields.map((f, i) => (
+                        <View key={i} style={evd.onboardingBulletRow}>
+                          <View style={evd.onboardingBulletDot} />
+                          <Text style={evd.onboardingBulletText}>{f}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {step.footer && <Text style={[evd.onboardingBody, { marginTop: 12, fontStyle: 'italic' }]}>{step.footer}</Text>}
+                  <View style={evd.onboardingBtns}>
+                    <TouchableOpacity style={evd.onboardingNextBtn} onPress={advanceOnboarding}>
+                      <Text style={evd.onboardingNextBtnText}>{step.nextLabel}</Text>
+                    </TouchableOpacity>
+                    {onboardingStep > 1 && (
+                      <TouchableOpacity onPress={backOnboarding} style={{ paddingVertical: 10, paddingHorizontal: 4 }}>
+                        <Text style={evd.onboardingBackText}>Back</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+            );
+          })()}
+
         </View>
+
+        {/* ── Step 1: Verified modal ── */}
+        {onboardingStep === 1 && (
+          <View style={evd.modalOverlay}>
+            <View style={[evd.welcomeCard, { backgroundColor: colors.bg }]}>
+              <View style={evd.onboardingStepRow}>
+                <Text style={evd.onboardingStepLabel}>STEP 1 OF 7</Text>
+                <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+              </View>
+              <View style={[evd.onboardingProgress, { marginBottom: 20 }]}>
+                <View style={[evd.onboardingProgressFill, { width: '14%' as any }]} />
+              </View>
+              <Text style={[evd.onboardingTitle, { color: colors.black, fontSize: 22 }]}>Verified</Text>
+              <Text style={[evd.onboardingBody, { marginBottom: 24 }]}>{VENUE_ONBOARDING[1].body}</Text>
+              <TouchableOpacity style={evd.onboardingNextBtn} onPress={advanceOnboarding}>
+                <Text style={evd.onboardingNextBtnText}>Get started</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* ── Step 7: Go Live card (bottom-left) ── */}
+        {onboardingStep === 7 && (
+          <View style={evd.goLiveCard}>
+            <View style={[evd.goLiveCardInner, { backgroundColor: colors.bg }]}>
+              <View style={evd.onboardingStepRow}>
+                <Text style={evd.onboardingStepLabel}>STEP 7 OF 7</Text>
+                <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+              </View>
+              <View style={[evd.onboardingProgress, { marginBottom: 16 }]}>
+                <View style={[evd.onboardingProgressFill, { width: '100%' as any }]} />
+              </View>
+              <Text style={[evd.onboardingTitle, { color: colors.black }]}>Go Live</Text>
+              <Text style={evd.onboardingBody}>{VENUE_ONBOARDING[7].body}</Text>
+              <Text style={[evd.onboardingBody, { marginTop: 8 }]}>{VENUE_ONBOARDING[7].body2}</Text>
+              <View style={[evd.onboardingBtns, { marginTop: 20 }]}>
+                <TouchableOpacity style={evd.onboardingNextBtn} onPress={finishOnboarding}>
+                  <Text style={evd.onboardingNextBtnText}>Go to my timetable</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={backOnboarding} style={{ paddingVertical: 10, paddingHorizontal: 4 }}>
+                  <Text style={evd.onboardingBackText}>Back</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ── Replay setup tour button ── */}
+        {onboardingStep === 0 && onboardingComplete && (
+          <TouchableOpacity style={evd.replayBtn} onPress={replayOnboarding} activeOpacity={0.8}>
+            <Text style={evd.replayBtnText}>Replay setup tour</Text>
+          </TouchableOpacity>
+        )}
+
       </SafeAreaView>
     );
   }
@@ -2206,6 +2412,53 @@ export default function EditVenueScreen() {
 
         </View>
       </ScrollView>
+
+      {/* ── Mobile onboarding overlay ── */}
+      {onboardingStep >= 1 && onboardingStep <= 7 && (() => {
+        const step = VENUE_ONBOARDING[onboardingStep];
+        const isFirst = onboardingStep === 1;
+        return (
+          <Modal visible transparent animationType="slide">
+            <View style={s.mobileOnboardingOverlay}>
+              <View style={[s.mobileOnboardingCard, { backgroundColor: colors.bg }]}>
+                <View style={evd.onboardingStepRow}>
+                  <Text style={evd.onboardingStepLabel}>STEP {onboardingStep} OF 7</Text>
+                  <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+                </View>
+                <View style={[evd.onboardingProgress, { marginBottom: 16 }]}>
+                  <View style={[evd.onboardingProgressFill, { width: `${(onboardingStep / 7) * 100}%` as any }]} />
+                </View>
+                <Text style={[evd.onboardingTitle, { color: colors.black }]}>{step.title}</Text>
+                <Text style={evd.onboardingBody}>{step.body}</Text>
+                {step.body2 && <Text style={[evd.onboardingBody, { marginTop: 8 }]}>{step.body2}</Text>}
+                {step.fieldsLabel && step.fields && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={evd.onboardingFieldsLabel}>{step.fieldsLabel}</Text>
+                    {step.fields.map((f, i) => (
+                      <View key={i} style={evd.onboardingBulletRow}>
+                        <View style={evd.onboardingBulletDot} />
+                        <Text style={evd.onboardingBulletText}>{f}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {step.footer && <Text style={[evd.onboardingBody, { marginTop: 10, fontStyle: 'italic' }]}>{step.footer}</Text>}
+                <View style={[evd.onboardingBtns, { marginTop: 20 }]}>
+                  <TouchableOpacity style={evd.onboardingNextBtn} onPress={onboardingStep === 7 ? finishOnboarding : advanceOnboarding}>
+                    <Text style={evd.onboardingNextBtnText}>{step.nextLabel}</Text>
+                  </TouchableOpacity>
+                  {!isFirst && (
+                    <TouchableOpacity onPress={backOnboarding} style={{ paddingVertical: 10, paddingHorizontal: 4 }}>
+                      <Text style={evd.onboardingBackText}>Back</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
+
     </SafeAreaView>
   );
 }
@@ -2270,6 +2523,8 @@ const s = StyleSheet.create({
   videoUrl:      { flex: 1, fontSize: 13 },
   center:        { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyText:     { fontSize: 15, color: Colors.grey, textAlign: 'center' },
+  mobileOnboardingOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  mobileOnboardingCard:    { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 28, paddingBottom: 40 },
   // Checkbox row
   checkRow:      { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
   checkbox:      { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
@@ -2304,4 +2559,32 @@ const evd = StyleSheet.create({
   backBtnText:   { fontSize: 13, fontWeight: '600' },
   main:          { flex: 1 },
   mainContent:   { paddingHorizontal: 40, paddingVertical: 32, paddingBottom: 60 },
+  navCheck:             { fontSize: 13, color: Colors.orange, fontWeight: '700' },
+  // Onboarding panel (right column, steps 2-6)
+  onboardingPanel:      { width: 248, borderLeftWidth: 1, paddingTop: 32 },
+  onboardingPanelInner: { paddingHorizontal: 24, paddingBottom: 32 },
+  onboardingStepRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  onboardingStepLabel:  { fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8 },
+  onboardingSkip:       { fontSize: 12, color: Colors.grey },
+  onboardingProgress:   { height: 3, backgroundColor: Colors.border, borderRadius: 2, marginBottom: 20, overflow: 'hidden' },
+  onboardingProgressFill: { height: 3, backgroundColor: Colors.orange, borderRadius: 2 },
+  onboardingTitle:      { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, marginBottom: 10 },
+  onboardingBody:       { fontSize: 13, color: Colors.grey, lineHeight: 19 },
+  onboardingFieldsLabel:{ fontSize: 10, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  onboardingBulletRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
+  onboardingBulletDot:  { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange, flexShrink: 0 },
+  onboardingBulletText: { fontSize: 12, color: Colors.grey, flex: 1 },
+  onboardingBtns:       { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 24 },
+  onboardingNextBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16 },
+  onboardingNextBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  onboardingBackText:   { fontSize: 13, color: Colors.grey, fontWeight: '600' },
+  // Welcome modal overlay (step 1)
+  modalOverlay:         { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  welcomeCard:          { width: 400, borderRadius: 16, padding: 32, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  // Go Live card (step 7, bottom-left)
+  goLiveCard:           { position: 'absolute', bottom: 32, left: 244, zIndex: 100 },
+  goLiveCardInner:      { width: 320, borderRadius: 14, padding: 24, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 4 } },
+  // Replay button (bottom-right)
+  replayBtn:            { position: 'absolute', bottom: 24, right: 24, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, zIndex: 50 },
+  replayBtnText:        { fontSize: 13, fontWeight: '600', color: '#ffffff' },
 });
