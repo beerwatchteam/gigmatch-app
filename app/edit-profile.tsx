@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal,
+  TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -457,8 +457,309 @@ export default function EditProfileScreen() {
   }
 
   const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
+  const { width } = useWindowDimensions();
+  const isMobileLayout = !isWeb || width < 768;
 
   if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
+
+  // ── Web desktop dashboard layout ────────────────────────────────────
+  if (isWeb && !isMobileLayout) {
+    return (
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
+        <View style={epd.row}>
+
+          {/* Sidebar */}
+          <View style={[epd.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
+            <TouchableOpacity onPress={pickBannerPhoto} activeOpacity={0.8} style={epd.photoWrap}>
+              {photoUploading
+                ? <View style={[epd.photo, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]}>
+                    <ActivityIndicator color={Colors.orange} />
+                  </View>
+                : profile.photoUrl
+                  ? <Image source={{ uri: profile.photoUrl }} style={epd.photo} resizeMode="cover" />
+                  : <View style={[epd.photo, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ fontSize: 11, color: colors.grey, textAlign: 'center' }}>Add photo</Text>
+                    </View>}
+            </TouchableOpacity>
+            <Text style={[epd.name, { color: colors.black }]} numberOfLines={2}>
+              {profile.name || 'Your profile'}
+            </Text>
+            {profile.username ? (
+              <Text style={[epd.handle, { color: colors.grey }]}>@{profile.username}</Text>
+            ) : null}
+
+            <View style={[epd.divider, { backgroundColor: colors.border }]} />
+
+            {TABS.map(tab => (
+              <TouchableOpacity
+                key={tab}
+                style={[epd.navItem, activeTab === tab && epd.navItemActive]}
+                onPress={() => setActiveTab(tab)}
+                activeOpacity={0.75}
+              >
+                <View style={epd.navRow}>
+                  <Text style={[epd.navText, { color: activeTab === tab ? Colors.orange : colors.black }]}>
+                    {tab}
+                  </Text>
+                  {tabErrors.includes(tab) && <View style={epd.navErrorDot} />}
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            <View style={[epd.divider, { backgroundColor: colors.border }]} />
+
+            <TouchableOpacity
+              style={[epd.saveBtn, saving && { opacity: 0.6 }, justSaved && { backgroundColor: '#22c55e' }]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              <Text style={epd.saveBtnText}>{saving ? 'Saving...' : justSaved ? 'Saved ✓' : 'Save'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[epd.backBtn, { borderColor: colors.border }]}
+              onPress={handleBack}
+              activeOpacity={0.75}
+            >
+              <Text style={[epd.backBtnText, { color: colors.black }]}>Back</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Main content */}
+          <ScrollView style={epd.main} showsVerticalScrollIndicator={false} contentContainerStyle={epd.mainContent}>
+            {tabErrors.length > 0 && (
+              <View style={[s.tabErrors, { marginBottom: 24, borderRadius: 8 }]}>
+                <Text style={s.tabErrorsLabel}>Please complete: </Text>
+                {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
+              </View>
+            )}
+
+            {activeTab === 'Settings' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Notification Preferences</Text>
+                <TouchableOpacity style={[s.checkRow, { borderBottomColor: colors.borderFaint }]} onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}>
+                  <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnEnquiryResponse && s.checkboxChecked]}>{profile.settings.emailOnEnquiryResponse && <Text style={s.checkmark}>✓</Text>}</View>
+                  <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry is responded to</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.checkRow, { borderBottomColor: colors.borderFaint }]} onPress={() => set('settings', { ...profile.settings, emailOnNewConnection: !profile.settings.emailOnNewConnection })}>
+                  <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>{profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}</View>
+                  <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
+                </TouchableOpacity>
+                <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
+                <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                  <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
+                  <Switch value={isDark} onValueChange={toggleDark} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+                </View>
+                <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={async () => { await signOut(auth); router.replace('/'); }}>
+                  <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
+                </TouchableOpacity>
+                <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
+                  <Text style={s.dangerTitle}>Danger Zone</Text>
+                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all venues browsing GigMatch. This action can be reversed at any time.</Text>
+                  <TouchableOpacity style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]} onPress={() => { const willDeactivate = profile.settings.listed; crossConfirm(willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?', willDeactivate ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.' : 'This will make your profile visible to venues again.', async () => { const uid = user?.uid; if (!uid) return; const newListed = !willDeactivate; await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed }); set('settings', { ...profile.settings, listed: newListed }); }, willDeactivate); }}>
+                    <Text style={s.dangerBtnText}>{profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}</Text>
+                  </TouchableOpacity>
+                  <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>Permanently delete your profile and account. This action cannot be undone.</Text>
+                  <TouchableOpacity style={[s.dangerBtn, s.dangerBtnActive]} onPress={() => { crossConfirm('Delete Account', 'This will permanently delete your profile and account from the database. This action cannot be undone.', async () => { try { const uid = user?.uid; if (uid) { await deleteDoc(doc(db, 'bandProfiles', uid)); await deleteDoc(doc(db, 'users', uid)); } const cu = auth.currentUser; if (cu) await deleteUser(cu); } catch (e: any) { Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.'); } finally { await signOut(auth).catch(() => {}); router.replace('/'); } }, true); }}>
+                    <Text style={s.dangerBtnText}>Delete Account</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {activeTab === 'Basic Info' && (
+              <View style={s.section}>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Details</Text>
+                  <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}><Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} /></Field>
+                  <Field label="Username *" error={showErrors && !profile.username?.trim()}>
+                    <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: showErrors && !profile.username?.trim() ? Colors.danger : colors.border }]}>
+                      <Text style={[s.prefixSymbol, { color: colors.grey }]}>@</Text>
+                      <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.username} onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))} placeholder="username" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
+                    </View>
+                  </Field>
+                  <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}><Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} /></Field>
+                  {profile.artistType === 'Other' && (<Field label="Describe your act *" error={showErrors && !profile.otherArtistType?.trim()}><Input value={profile.otherArtistType} onChangeText={(v: string) => set('otherArtistType', v)} placeholder="e.g. Acapella Group, String Quartet" error={showErrors && !profile.otherArtistType?.trim()} /></Field>)}
+                  <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}><Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi /></Field>
+                  {profile.genre?.includes('Other') && (<Field label="Other genres"><Input value={profile.otherGenres} onChangeText={(v: string) => set('otherGenres', v)} placeholder="e.g. Bluegrass, Afrobeat, Cumbia" /></Field>)}
+                </View>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
+                  <View style={{ marginBottom: 14 }}><Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="Location *" error={showErrors && !profile.location?.trim()} /></View>
+                  <View style={{ marginBottom: 14 }}><Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} /></View>
+                  <View style={{ marginBottom: 14 }}><Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" /></View>
+                </View>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Fee Range</Text>
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                    <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                  </View>
+                </View>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Average Draw Per Show</Text>
+                  <Input value={profile.averageDraw} onChangeText={(v: string) => set('averageDraw', v)} placeholder="Avg. audience size (optional), e.g. 120" keyboardType="numeric" />
+                </View>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Social Links</Text>
+                  {PLATFORMS.map(p => (<Field key={p.key} label={p.label}><Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} /></Field>))}
+                  {profile.customLinks.map((link, i) => (
+                    <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                      <TextInput style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, width: 110 }]} value={link.label} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))} placeholder="Label" placeholderTextColor={Colors.greyLight} />
+                      <TextInput style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, flex: 1 }]} value={link.url} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))} placeholder="URL" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
+                      <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}><Text style={{ fontSize: 18, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text></TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={s.addBtn} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}><Text style={s.addBtnText}>+ Add Link</Text></TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {activeTab === 'About' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>About *</Text>
+                <Text style={s.hint}>Tell venues who you are, what you play, and how many people you draw.</Text>
+                <Input value={profile.about} onChangeText={(v: string) => set('about', v)} placeholder="We're a 4-piece indie rock band from Melbourne's south-east…" multiline error={showErrors && !profile.about?.trim()} />
+              </View>
+            )}
+
+            {activeTab === 'Music' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Music</Text>
+                <Text style={s.hint}>Add links to your tracks so venues can hear what you sound like before booking. Spotify, SoundCloud, YouTube — whatever best represents your sound.</Text>
+                {profile.songs.map((song, i) => {
+                  const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
+                  return (
+                    <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
+                      <Input value={song.title} onChangeText={(v: string) => setSong(i, 'title', v)} placeholder="Song title *" error={showErrors && !song.title?.trim()} />
+                      <View style={{ height: 8 }} />
+                      <Input value={song.url} onChangeText={(v: string) => setSong(i, 'url', v)} placeholder="Spotify / stream URL *" error={showErrors && !song.url?.trim()} />
+                      <View style={{ height: 8 }} />
+                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TextInput style={[s.input, { flex: 1 }]} value={song.notes} onChangeText={v => setSong(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
+                        <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeSong(i)}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+                <TouchableOpacity style={s.addBtn} onPress={addSong}><Text style={s.addBtnText}>+ Add Song</Text></TouchableOpacity>
+              </View>
+            )}
+
+            {activeTab === 'Past Gigs' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Past Gigs</Text>
+                <Text style={s.hint}>Show venues where you've played. A solid track record builds credibility and gives bookers confidence in your professionalism.</Text>
+                {profile.gigHistory.map((gig, i) => {
+                  const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
+                  return (
+                    <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setGig(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
+                        <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setGig(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
+                      </View>
+                      <View style={{ height: 8 }} />
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}><DatePicker value={gig.date} onChange={v => setGig(i, 'date', v)} /></View>
+                        <TextInput style={[s.input, { flex: 1 }]} value={gig.attendance || ''} onChangeText={v => setGig(i, 'attendance', v)} placeholder="Attendance" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                      <View style={{ height: 8 }} />
+                      <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setGig(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
+                      <View style={s.itemBtnRow}>
+                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeGig(i)}><Text style={s.removeBtnText}>Remove Gig</Text></TouchableOpacity>
+                        <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add Gig' : 'Save'}</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+                <TouchableOpacity style={s.addBtn} onPress={addGig}><Text style={s.addBtnText}>+ Add Gig</Text></TouchableOpacity>
+              </View>
+            )}
+
+            {activeTab === 'Timetable' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
+                <Text style={s.hint}>Let venues know where you're already booked. It shows you're active and in demand — and helps them spot scheduling conflicts early.</Text>
+                {profile.upcomingGigs.map((gig, i) => {
+                  const entryType = gig.type || 'gig';
+                  const hasError = showErrors && (!gig.date?.trim() || (entryType === 'gig' && (!gig.venue?.trim() || !gig.suburb?.trim())));
+                  return (
+                    <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
+                      <Field label="Type"><Pills options={['Gig', 'Away']} value={entryType === 'away' ? 'Away' : 'Gig'} onSelect={(v: string) => setUpcoming(i, 'type', v.toLowerCase() as 'gig' | 'away')} /></Field>
+                      {entryType === 'gig' && (<><View style={{ height: 10 }} /><View style={{ flexDirection: 'row', gap: 8 }}><TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setUpcoming(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} /><TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} /></View></>)}
+                      <View style={{ height: 8 }} />
+                      {entryType === 'away' ? (
+                        <><View style={{ flexDirection: 'row', gap: 8 }}><View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}><DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} placeholder="From" /></View><View style={{ flex: 1 }}><DatePicker value={gig.endDate || ''} onChange={v => setUpcoming(i, 'endDate', v)} placeholder="To (optional)" /></View></View><View style={{ height: 8 }} /><TextInput style={s.input} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} /></>
+                      ) : (
+                        <View style={{ flexDirection: 'row', gap: 8 }}><View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}><DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} /></View><TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} /></View>
+                      )}
+                      {entryType === 'gig' && (<><View style={{ height: 8 }} /><TextInput style={s.input} value={gig.socialPostUrl || ''} onChangeText={v => setUpcoming(i, 'socialPostUrl', v)} placeholder="Social post link (Instagram, Facebook, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" /><View style={{ height: 8 }} /><TextInput style={s.input} value={gig.ticketUrl || ''} onChangeText={v => setUpcoming(i, 'ticketUrl', v)} placeholder="Ticket link (Moshtix, Eventbrite, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" /></>)}
+                      <View style={s.itemBtnRow}>
+                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeUpcoming(i)}><Text style={s.removeBtnText}>Remove</Text></TouchableOpacity>
+                        <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add' : 'Save'}</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+                <TouchableOpacity style={s.addBtn} onPress={addUpcoming}><Text style={s.addBtnText}>+ Add Gig</Text></TouchableOpacity>
+              </View>
+            )}
+
+            {activeTab === 'Tech Rider' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
+                <Text style={s.hint}>Your tech rider is basically your "here's what I need to play" sheet: your stage setup, backline, mics/DI boxes, power, and sound requirements.{'\n\n'}Having it on your profile means venues can see straight away whether their space can handle your set (or what they'd need to sort out) before you even message them, so you skip the back-and-forth and only get enquiries from venues that are actually a good fit.</Text>
+                <Field label="Tech Spec / Hospitality Rider Documents">
+                  {(profile.techRiderDocs || []).map((doc, idx) => (
+                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
+                      <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}><Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Spec Sheet (PDF)'}</Text></TouchableOpacity>
+                </Field>
+                {[
+                  { field: 'monitoring',     label: 'Monitoring',       placeholder: 'e.g. 3 separate monitor mixes' },
+                  { field: 'backlineNeeded', label: 'Backline needed',  placeholder: 'e.g. Drum kit only' },
+                  { field: 'stageSize',      label: 'Stage size',       placeholder: 'e.g. Minimum 4m × 3m' },
+                  { field: 'soundcheck',     label: 'Soundcheck time',  placeholder: 'e.g. 45 minutes' },
+                ].map(({ field: f, label, placeholder }) => (
+                  <Field key={f} label={label}><Input value={profile.techRider?.[f] || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, [f]: v })} placeholder={placeholder} /></Field>
+                ))}
+                <Field label="Notes"><Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Any additional notes for the venue's sound team" multiline /></Field>
+              </View>
+            )}
+
+            {activeTab === 'Photos' && (
+              <View style={s.section}>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Profile Photo</Text>
+                <RepositionablePhoto
+                  uri={profile.photoUrl || null}
+                  position={profile.photoPosition ?? { x: 50, y: 50 }}
+                  onPositionChange={pos => set('photoPosition', pos)}
+                  onChangePhoto={pickBannerPhoto}
+                  height={200}
+                  uploading={photoUploading}
+                  placeholderText="Tap to add profile photo"
+                />
+                <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Photo Gallery</Text>
+                <View style={s.photoGrid}>
+                  {profile.photos.map((url, i) => (
+                    <View key={i} style={s.photoItem}>
+                      <Image source={{ uri: url }} style={s.photoImg} />
+                      <TouchableOpacity style={s.photoRemove} onPress={() => set('photos', profile.photos.filter((_, idx) => idx !== i))}><Text style={{ color: '#fff', fontSize: 14 }}>✕</Text></TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+                <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}><Text style={s.addBtnText}>+ Add Photo</Text></TouchableOpacity>
+              </View>
+            )}
+
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
@@ -1066,4 +1367,25 @@ const s = StyleSheet.create({
   dangerBtn:          { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
   dangerBtnActive:    { opacity: 1 },
   dangerBtnText:      { fontSize: 14, fontWeight: '600', color: Colors.danger },
+});
+
+const epd = StyleSheet.create({
+  row:           { flex: 1, flexDirection: 'row' },
+  sidebar:       { width: 224, borderRightWidth: 1, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 24 },
+  photoWrap:     { marginBottom: 14 },
+  photo:         { width: 72, height: 72, borderRadius: 8 },
+  name:          { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, lineHeight: 22, marginBottom: 3 },
+  handle:        { fontSize: 12, marginBottom: 16 },
+  divider:       { height: 1, marginVertical: 18 },
+  navItem:       { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 7, marginBottom: 2 },
+  navItemActive: { backgroundColor: Colors.orange + '18' },
+  navRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  navText:       { fontSize: 14, fontWeight: '600' },
+  navErrorDot:   { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.danger },
+  saveBtn:       { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 11, alignItems: 'center', marginBottom: 8 },
+  saveBtnText:   { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  backBtn:       { borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  backBtnText:   { fontSize: 13, fontWeight: '600' },
+  main:          { flex: 1 },
+  mainContent:   { paddingHorizontal: 40, paddingVertical: 32, paddingBottom: 60 },
 });
