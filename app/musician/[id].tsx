@@ -1535,3 +1535,26 @@ const nmt = StyleSheet.create({
   badge:         { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0, alignSelf: 'flex-start', marginTop: 2 },
   badgeText:     { fontSize: 11, fontWeight: '600' },
 });
+
+// ── Dashboard styles (web desktop, own profile) ────────────────────
+const dash = StyleSheet.create({
+  container:        { flex: 1, flexDirection: 'row' },
+  sidebar:          { width: 224, borderRightWidth: 1, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 24 },
+  photo:            { width: 72, height: 72, borderRadius: 8, marginBottom: 14 },
+  photoPlaceholder: { width: 72, height: 72, borderRadius: 8, marginBottom: 14 },
+  sidebarName:      { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, lineHeight: 22, marginBottom: 3 },
+  sidebarHandle:    { fontSize: 12, marginBottom: 6 },
+  sidebarMeta:      { fontSize: 11, fontWeight: '700', color: Colors.orange, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 16 },
+  viewPublicBtn:    { borderWidth: 1, borderRadius: 8, paddingVertical: 9, alignItems: 'center' },
+  viewPublicText:   { fontSize: 13, fontWeight: '600' },
+  divider:          { height: 1, marginVertical: 18 },
+  navItem:          { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 7, marginBottom: 2 },
+  navItemActive:    { backgroundColor: Colors.orange + '18' },
+  navText:          { fontSize: 14, fontWeight: '600' },
+  editBtn:          { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 11, alignItems: 'center', marginBottom: 8 },
+  editBtnText:      { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  logoutBtn:        { borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  logoutText:       { fontSize: 13, fontWeight: '600' },
+  main:             { flex: 1 },
+  mainContent:      { paddingHorizontal: 40, paddingVertical: 32 },
+});

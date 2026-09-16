@@ -365,6 +365,116 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   const address   = [venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ');
   const photo     = venue.photoUrl || (venue.photos && venue.photos[0]);
   const hasPhotos = (venue.photos || []).length > 0 || (venue.videos || []).length > 0 || isMyVenue;
+  const venueTabs = [
+    { id: 'overview',  label: 'Overview'           },
+    { id: 'timetable', label: 'Timetable'          },
+    { id: 'rooms',     label: 'Rooms & Tech Specs' },
+    ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
+  ] as const;
+
+  // ── Web desktop dashboard (venue owner only) ──────────────────────
+  if (isMyVenue && !isMobileLayout) {
+    const enquireHandler = (slot: Slot, day: string, dateISO: string) => {
+      router.push({
+        pathname: '/enquire',
+        params: {
+          venueId:   venue.id,
+          venueName: venue.name,
+          day,
+          date:      dateISO || '',
+          time:      slot.time,
+          room:      slot.room || '',
+          slotType:  slot.slotType || 'Either',
+          duration:  slot.duration || '',
+          capacity:  venue.capacity ? String(venue.capacity) : '',
+          slotNote:  slot.notes || '',
+        },
+      });
+    };
+
+    return (
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
+        <View style={vd.container}>
+
+          {/* Left sidebar */}
+          <View style={[vd.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
+            {photo ? (
+              <Image source={{ uri: photo }} style={vd.photo} resizeMode="cover" />
+            ) : (
+              <View style={[vd.photoPlaceholder, { backgroundColor: colors.border }]} />
+            )}
+            <Text style={[vd.sidebarName, { color: colors.black }]} numberOfLines={2}>
+              {venue.name}
+            </Text>
+            {venue.suburb ? (
+              <Text style={[vd.sidebarMeta, { color: colors.grey }]}>{venue.suburb}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[vd.viewPublicBtn, { borderColor: colors.border }]}
+              onPress={() => router.push(`/venue/${id}` as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={[vd.viewPublicText, { color: colors.black }]}>View public profile</Text>
+            </TouchableOpacity>
+
+            <View style={[vd.divider, { backgroundColor: colors.border }]} />
+
+            {venueTabs.map(tab => (
+              <TouchableOpacity
+                key={tab.id}
+                style={[vd.navItem, activeTab === (tab.id as any) && vd.navItemActive]}
+                onPress={() => setActiveTab(tab.id as any)}
+                activeOpacity={0.75}
+              >
+                <Text style={[vd.navText, { color: activeTab === (tab.id as any) ? Colors.orange : colors.black }]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={[vd.divider, { backgroundColor: colors.border }]} />
+
+            <TouchableOpacity
+              style={vd.editBtn}
+              onPress={() => router.push('/edit-venue')}
+              activeOpacity={0.85}
+            >
+              <Text style={vd.editBtnText}>Edit Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[vd.logoutBtn, { borderColor: colors.border }]}
+              onPress={async () => { await signOut(auth); router.replace('/'); }}
+              activeOpacity={0.75}
+            >
+              <Text style={[vd.logoutText, { color: colors.grey }]}>Log out</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Main content */}
+          <ScrollView style={vd.main} contentContainerStyle={vd.mainContent}>
+            {activeTab === 'overview' && (
+              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} />
+            )}
+            {activeTab === 'timetable' && (
+              <TimetableTab
+                venue={venue}
+                isArtist={false}
+                isLoggedIn={!!user}
+                userEnquiries={userEnquiries}
+                isMobileLayout={false}
+                onEnquire={enquireHandler}
+              />
+            )}
+            {activeTab === 'rooms'  && <RoomsTab venue={venue} />}
+            {activeTab === 'photos' && <PhotosTab venue={venue} />}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
@@ -1911,4 +2021,26 @@ const rt = StyleSheet.create({
   specValue:  { fontSize: 14, color: '#111111', fontWeight: '500' },
   notesBox:   { borderRadius: 8, backgroundColor: '#f8f8f8', padding: 14, marginTop: 12, marginBottom: 8 },
   notesText:  { fontSize: 13, color: '#555555', lineHeight: 20 },
+});
+
+// ── Venue dashboard styles (web desktop, own venue) ────────────────
+const vd = StyleSheet.create({
+  container:        { flex: 1, flexDirection: 'row' },
+  sidebar:          { width: 224, borderRightWidth: 1, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 24 },
+  photo:            { width: 72, height: 72, borderRadius: 8, marginBottom: 14 },
+  photoPlaceholder: { width: 72, height: 72, borderRadius: 8, marginBottom: 14 },
+  sidebarName:      { fontSize: 16, fontWeight: '800', letterSpacing: -0.3, lineHeight: 22, marginBottom: 4 },
+  sidebarMeta:      { fontSize: 12, marginBottom: 16 },
+  viewPublicBtn:    { borderWidth: 1, borderRadius: 8, paddingVertical: 9, alignItems: 'center' },
+  viewPublicText:   { fontSize: 13, fontWeight: '600' },
+  divider:          { height: 1, marginVertical: 18 },
+  navItem:          { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 7, marginBottom: 2 },
+  navItemActive:    { backgroundColor: Colors.orange + '18' },
+  navText:          { fontSize: 14, fontWeight: '600' },
+  editBtn:          { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 11, alignItems: 'center', marginBottom: 8 },
+  editBtnText:      { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  logoutBtn:        { borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  logoutText:       { fontSize: 13, fontWeight: '600' },
+  main:             { flex: 1 },
+  mainContent:      { paddingHorizontal: 40, paddingVertical: 32 },
 });
