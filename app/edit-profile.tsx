@@ -457,6 +457,7 @@ export default function EditProfileScreen() {
   }
 
   const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
+  const isWeb = Platform.OS === 'web';
   const { width } = useWindowDimensions();
   const isMobileLayout = !isWeb || width < 768;
 
