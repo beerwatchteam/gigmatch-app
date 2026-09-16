@@ -21,17 +21,23 @@ import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const ACT_TYPES   = ['Solo Artist','Duo','Trio','Band','Cover Band','Acoustic Act','DJ','Choir / Vocal Group','Other'];
 const INSTRUMENTS = ['Vocals','Guitar (Acoustic)','Guitar (Electric)','Bass','Drums','Keys / Piano','Violin / Strings','Saxophone','Trumpet / Brass','Trombone','Harmonica','Banjo / Mandolin','Ukulele','Cello','Flute','Synth / Sampler','Turntables / CDJs','Percussion','Other'];
+const PAYMENT_TYPES    = ['Flat fee','Door split','Guarantee + split','Bar tab','Unpaid (exposure)','Negotiable'];
+const PAYMENT_METHODS  = ['Cash','Bank transfer','PayPal','Stripe','Other'];
+const PAYMENT_TIMING   = ['On the night','Within 7 days','Within 14 days','Within 30 days','Other'];
+const BACKLINE_OPTIONS = ['PA system','Stage monitors','Microphones + stands','Drum kit','Bass amp','Guitar amp','Keys / DI','Lighting rig'];
+const INVOICE_DIRECTIONS = ['Artist invoices venue','Venue issues RCTI to artist','Not required'];
+const PUBLIC_LIABILITY_OPTIONS = ['Yes','No','Ask'];
 const PLATFORMS = [
   { key: 'instagram',  label: 'Instagram',   placeholder: 'Profile URL or a post/reel URL to embed' },
   { key: 'tiktok',     label: 'TikTok',      placeholder: 'TikTok profile URL' },
   { key: 'spotify',    label: 'Spotify',     placeholder: 'Artist, track, album or playlist URL' },
   { key: 'appleMusic', label: 'Apple Music', placeholder: 'Apple Music URL' },
 ];
-const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
+const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Payments','Photos'];
 
 const STEP_TAB: Record<number, string | null> = {
   1: null, 2: 'Basic Info', 3: 'About', 4: 'Music',
-  5: 'Past Gigs', 6: 'Timetable', 7: 'Tech Rider', 8: 'Photos', 9: 'Photos',
+  5: 'Past Gigs', 6: 'Timetable', 7: 'Tech Rider', 8: 'Payments', 9: 'Photos', 10: 'Photos',
 };
 
 type OnboardingStepData = {
@@ -85,15 +91,20 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
     body: 'Tell venues what you need on stage. Be specific. Vague requirements can cause problems on the night.',
     fieldsLabel: 'FIELDS TO COMPLETE',
     fields: ['Monitoring (wedges, IEM, number of mixes)', 'Backline requirements (amps, drums, keys)', 'Minimum stage size', 'Soundcheck requirements', 'Stage plot (upload file)', 'Input list (upload file)'],
-    nextLabel: 'Next: Photos',
+    nextLabel: 'Next: Payments',
   },
   8: {
+    title: 'Payments',
+    body: 'Set your fee structure, payment preferences, and invoicing details. The more specific you are, the less back-and-forth before a gig is confirmed.',
+    nextLabel: 'Next: Photos',
+  },
+  9: {
     title: 'Photos',
     body: 'Upload photos of your act. Venues use these for promotional material when they confirm a booking, so give them something worth using.',
     body2: "Live shots perform better than studio portraits. Show them what the room will look like when you're on stage.",
     nextLabel: 'Next: Go live',
   },
-  9: {
+  10: {
     title: 'Go Live',
     body: "Your profile is ready. Hit save and you'll appear in the musicians directory.",
     body2: "Venues browse here when they have open slots to fill. Keep your profile current and your music links working.",
@@ -103,6 +114,27 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
 
 type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; endDate?: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
+type PaymentsData = {
+  paymentTypes: string[];
+  doorSplitRatio: string;
+  splitNotes: string;
+  weekdayFeeMin: string; weekdayFeeMax: string;
+  weekendFeeMin: string; weekendFeeMax: string;
+  backlineNeeds: string[];
+  guestListAllowance: string;
+  mealsExpected: boolean; mealsNotes: string;
+  paymentMethods: string[];
+  paymentTiming: string; paymentTimingOther: string;
+  depositRequired: boolean; depositAmount: string; depositDue: string;
+  abn: string; gstRegistered: boolean;
+  invoiceRequired: boolean; invoiceDirection: string;
+  invoiceDocs: { url: string; name: string }[];
+  cancellationPolicy: string;
+  publicLiability: string;
+  latePaymentContact: string;
+  paymentNotes: string;
+};
+
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; instruments: string[]; location: string;
@@ -113,8 +145,20 @@ type Profile = {
   songs: Song[]; gigHistory: Gig[]; upcomingGigs: Gig[];
   techRider: Record<string, string>;
   techRiderDocs: { url: string; name: string }[];
+  payments: PaymentsData;
   photos: string[]; videos: string[];
   settings: { emailOnEnquiryResponse: boolean; emailOnNewConnection: boolean; listed: boolean };
+};
+
+const BLANK_PAYMENTS: PaymentsData = {
+  paymentTypes: [], doorSplitRatio: '', splitNotes: '',
+  weekdayFeeMin: '', weekdayFeeMax: '', weekendFeeMin: '', weekendFeeMax: '',
+  backlineNeeds: [], guestListAllowance: '', mealsExpected: false, mealsNotes: '',
+  paymentMethods: [], paymentTiming: '', paymentTimingOther: '',
+  depositRequired: false, depositAmount: '', depositDue: '',
+  abn: '', gstRegistered: false, invoiceRequired: false, invoiceDirection: '',
+  invoiceDocs: [], cancellationPolicy: '', publicLiability: '',
+  latePaymentContact: '', paymentNotes: '',
 };
 
 const BLANK: Profile = {
@@ -122,7 +166,7 @@ const BLANK: Profile = {
   feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
-  techRider: {}, techRiderDocs: [], photos: [], videos: [],
+  techRider: {}, techRiderDocs: [], payments: { ...BLANK_PAYMENTS }, photos: [], videos: [],
   settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
 };
 
@@ -407,6 +451,7 @@ export default function EditProfileScreen() {
       d.techRiderDocs = d.techRiderDocs || [];
       d.customLinks = d.customLinks || [];
       d.settings    = d.settings    || BLANK.settings;
+      d.payments    = { ...BLANK_PAYMENTS, ...(d.payments || {}) };
       originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
       const isComplete = raw.onboardingComplete === true;
@@ -474,6 +519,32 @@ export default function EditProfileScreen() {
       set('photos', [...profile.photos, url]);
     } catch (e) {
       Alert.alert('Upload failed', String(e));
+    }
+  }
+
+  // ── Payments helper ──
+  function setPayment<K extends keyof PaymentsData>(field: K, value: PaymentsData[K]) {
+    set('payments', { ...profile.payments, [field]: value });
+  }
+
+  const [invoiceDocUploading, setInvoiceDocUploading] = useState(false);
+  async function pickInvoiceDoc() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setInvoiceDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res  = await fetch(asset.uri);
+      const blob = await res.blob();
+      const ext  = asset.name.split('.').pop() || 'pdf';
+      const ref  = sRef(storage, `payments/${uid}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      setPayment('invoiceDocs', [...(profile.payments.invoiceDocs || []), { url, name: asset.name }]);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setInvoiceDocUploading(false);
     }
   }
 
@@ -592,7 +663,7 @@ export default function EditProfileScreen() {
   }
 
   function advanceOnboarding() {
-    if (onboardingStep === 9) { finishOnboarding(); return; }
+    if (onboardingStep === 10) { finishOnboarding(); return; }
     const curTab = STEP_TAB[onboardingStep];
     if (curTab) setOnboardingVisited(prev => prev.includes(curTab) ? prev : [...prev, curTab]);
     const next = onboardingStep + 1;
@@ -907,6 +978,136 @@ export default function EditProfileScreen() {
               </View>
             )}
 
+            {activeTab === 'Payments' && (
+              <View style={s.section}>
+                {/* Payment Structure */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Structure</Text>
+                  <Field label="Payment Type"><Pills options={PAYMENT_TYPES} value={profile.payments.paymentTypes} onSelect={(v: string[]) => setPayment('paymentTypes', v)} multi /></Field>
+                  {(profile.payments.paymentTypes.includes('Door split') || profile.payments.paymentTypes.includes('Guarantee + split')) && (
+                    <>
+                      <Field label="Door Split Ratio"><Input value={profile.payments.doorSplitRatio} onChangeText={(v: string) => setPayment('doorSplitRatio', v)} placeholder="e.g. 70/30 artist/venue" /></Field>
+                      <Field label="Split Calculation Notes"><Input value={profile.payments.splitNotes} onChangeText={(v: string) => setPayment('splitNotes', v)} placeholder="e.g. Split calculated after $200 door costs deducted" multiline /></Field>
+                    </>
+                  )}
+                  <Field label="Fee Range (AUD)">
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                      <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                    </View>
+                  </Field>
+                  <Field label="Weekday Fee Range (optional)">
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekdayFeeMin} onChangeText={(v: string) => setPayment('weekdayFeeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                      <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekdayFeeMax} onChangeText={(v: string) => setPayment('weekdayFeeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                    </View>
+                  </Field>
+                  <Field label="Weekend / Headline Fee Range (optional)">
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekendFeeMin} onChangeText={(v: string) => setPayment('weekendFeeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                      <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekendFeeMax} onChangeText={(v: string) => setPayment('weekendFeeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                    </View>
+                  </Field>
+                </View>
+
+                {/* What's Included */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>What's Included</Text>
+                  <Text style={s.hint}>Things you expect the venue to provide as part of the booking.</Text>
+                  <Field label="Backline / PA needed from venue"><Pills options={BACKLINE_OPTIONS} value={profile.payments.backlineNeeds} onSelect={(v: string[]) => setPayment('backlineNeeds', v)} multi /></Field>
+                  <Field label="Guest List Allowance"><Input value={profile.payments.guestListAllowance} onChangeText={(v: string) => setPayment('guestListAllowance', v)} placeholder="e.g. 4 comp tickets for band + guests" keyboardType="numeric" /></Field>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={[f.label, { marginBottom: 0 }]}>Meals / Rider Expected</Text>
+                    <Switch value={profile.payments.mealsExpected} onValueChange={(v) => setPayment('mealsExpected', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+                  </View>
+                  {profile.payments.mealsExpected && (
+                    <Field label="Meals / Rider Notes"><Input value={profile.payments.mealsNotes} onChangeText={(v: string) => setPayment('mealsNotes', v)} placeholder="e.g. Meal + soft drinks for 4 people" multiline /></Field>
+                  )}
+                </View>
+
+                {/* Payment Logistics */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Logistics</Text>
+                  <Field label="Preferred Payment Method"><Pills options={PAYMENT_METHODS} value={profile.payments.paymentMethods} onSelect={(v: string[]) => setPayment('paymentMethods', v)} multi /></Field>
+                  <Field label="Payment Timing"><Pills options={PAYMENT_TIMING} value={profile.payments.paymentTiming} onSelect={(v: string) => setPayment('paymentTiming', v)} /></Field>
+                  {profile.payments.paymentTiming === 'Other' && (
+                    <Field label="Payment Timing Details"><Input value={profile.payments.paymentTimingOther} onChangeText={(v: string) => setPayment('paymentTimingOther', v)} placeholder="Describe your payment timing" /></Field>
+                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={[f.label, { marginBottom: 0 }]}>Deposit Required</Text>
+                    <Switch value={profile.payments.depositRequired} onValueChange={(v) => setPayment('depositRequired', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+                  </View>
+                  {profile.payments.depositRequired && (
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <View style={{ flex: 1 }}><Field label="Deposit Amount or %"><Input value={profile.payments.depositAmount} onChangeText={(v: string) => setPayment('depositAmount', v)} placeholder="e.g. $200 or 50%" /></Field></View>
+                      <View style={{ flex: 1 }}><Field label="Deposit Due"><Input value={profile.payments.depositDue} onChangeText={(v: string) => setPayment('depositDue', v)} placeholder="e.g. 7 days before gig" /></Field></View>
+                    </View>
+                  )}
+                  <Field label="Currency"><Input value="AUD" onChangeText={() => {}} placeholder="AUD" /></Field>
+                </View>
+
+                {/* Tax & Invoicing */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Tax and Invoicing</Text>
+                  <Field label="ABN"><Input value={profile.payments.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="Your Australian Business Number" keyboardType="numeric" /></Field>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={[f.label, { marginBottom: 0 }]}>GST Registered</Text>
+                    <Switch value={profile.payments.gstRegistered} onValueChange={(v) => setPayment('gstRegistered', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={[f.label, { marginBottom: 0 }]}>Invoice Required</Text>
+                    <Switch value={profile.payments.invoiceRequired} onValueChange={(v) => setPayment('invoiceRequired', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+                  </View>
+                  {profile.payments.invoiceRequired && (
+                    <>
+                      <Field label="Invoice Direction"><Pills options={INVOICE_DIRECTIONS} value={profile.payments.invoiceDirection} onSelect={(v: string) => setPayment('invoiceDirection', v)} /></Field>
+                      <Field label="Preferred Invoice Template (PDF)">
+                        {(profile.payments.invoiceDocs || []).map((doc, idx) => (
+                          <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
+                            <TouchableOpacity style={s.removeInlineBtn} onPress={() => setPayment('invoiceDocs', (profile.payments.invoiceDocs || []).filter((_, i) => i !== idx))}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
+                          </View>
+                        ))}
+                        <TouchableOpacity style={s.addBtn} onPress={pickInvoiceDoc} disabled={invoiceDocUploading}><Text style={s.addBtnText}>{invoiceDocUploading ? 'Uploading…' : '+ Upload Template (PDF)'}</Text></TouchableOpacity>
+                      </Field>
+                    </>
+                  )}
+                </View>
+
+                {/* Policies */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Cancellation and Policies</Text>
+                  <Field label="Cancellation / No-show Policy"><Input value={profile.payments.cancellationPolicy} onChangeText={(v: string) => setPayment('cancellationPolicy', v)} placeholder="e.g. Deposit forfeited if cancelled within 14 days" multiline /></Field>
+                  <Field label="Public Liability Insurance"><Pills options={PUBLIC_LIABILITY_OPTIONS} value={profile.payments.publicLiability} onSelect={(v: string) => setPayment('publicLiability', v)} /></Field>
+                  <Field label="Late Payment Contact"><Input value={profile.payments.latePaymentContact} onChangeText={(v: string) => setPayment('latePaymentContact', v)} placeholder="Name and contact for payment follow-up (optional)" /></Field>
+                </View>
+
+                {/* Additional Notes */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Additional Notes</Text>
+                  <Input value={profile.payments.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="Any other payment terms or non-standard arrangements" multiline />
+                </View>
+              </View>
+            )}
+
             {activeTab === 'Photos' && (
               <View style={s.section}>
                 <Text style={[s.sectionTitle, { color: colors.black }]}>Profile Photo</Text>
@@ -935,13 +1136,13 @@ export default function EditProfileScreen() {
           </ScrollView>
 
           {/* ── Onboarding side panel (steps 2-8) ── */}
-          {onboardingStep >= 2 && onboardingStep <= 8 && (() => {
+          {onboardingStep >= 2 && onboardingStep <= 9 && (() => {
             const data = ONBOARDING_DATA[onboardingStep];
             return (
               <View style={[epd.onboardingPanel, { borderLeftColor: colors.border, backgroundColor: colors.bg }]}>
                 <View style={epd.onboardingPanelInner}>
                   <View style={epd.onboardingStepRow}>
-                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 10</Text>
                     <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                   </View>
                   <View style={epd.onboardingProgress}>
@@ -983,11 +1184,11 @@ export default function EditProfileScreen() {
           <View style={epd.modalOverlay}>
             <View style={[epd.welcomeCard, { backgroundColor: colors.bg }]}>
               <View style={epd.onboardingStepRow}>
-                <Text style={epd.onboardingStepLabel}>STEP 1 OF 9</Text>
+                <Text style={epd.onboardingStepLabel}>STEP 1 OF 10</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[epd.onboardingProgress, { marginBottom: 20 }]}>
-                <View style={[epd.onboardingProgressFill, { width: '11%' as any }]} />
+                <View style={[epd.onboardingProgressFill, { width: '10%' as any }]} />
               </View>
               <Text style={[epd.onboardingTitle, { color: colors.black, fontSize: 22 }]}>Welcome</Text>
               <Text style={[epd.onboardingBody, { marginBottom: 24 }]}>{ONBOARDING_DATA[1].body}</Text>
@@ -999,11 +1200,11 @@ export default function EditProfileScreen() {
         )}
 
         {/* ── Step 9: Go Live card (bottom-left) ── */}
-        {onboardingStep === 9 && (
+        {onboardingStep === 10 && (
           <View style={epd.goLiveCard}>
             <View style={[epd.goLiveCardInner, { backgroundColor: colors.bg }]}>
               <View style={epd.onboardingStepRow}>
-                <Text style={epd.onboardingStepLabel}>STEP 9 OF 9</Text>
+                <Text style={epd.onboardingStepLabel}>STEP 10 OF 10</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
@@ -1546,6 +1747,107 @@ export default function EditProfileScreen() {
           </View>
         )}
 
+        {/* ── PAYMENTS ── */}
+        {activeTab === 'Payments' && (
+          <View style={s.section}>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Structure</Text>
+              <Field label="Payment Type"><Pills options={PAYMENT_TYPES} value={profile.payments.paymentTypes} onSelect={(v: string[]) => setPayment('paymentTypes', v)} multi /></Field>
+              {(profile.payments.paymentTypes.includes('Door split') || profile.payments.paymentTypes.includes('Guarantee + split')) && (
+                <>
+                  <Field label="Door Split Ratio"><Input value={profile.payments.doorSplitRatio} onChangeText={(v: string) => setPayment('doorSplitRatio', v)} placeholder="e.g. 70/30 artist/venue" /></Field>
+                  <Field label="Split Calculation Notes"><Input value={profile.payments.splitNotes} onChangeText={(v: string) => setPayment('splitNotes', v)} placeholder="e.g. Split calculated after $200 door costs deducted" multiline /></Field>
+                </>
+              )}
+              <Field label="Fee Range (AUD)">
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                  <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                </View>
+              </Field>
+              <Field label="Weekday Fee Range (optional)">
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekdayFeeMin} onChangeText={(v: string) => setPayment('weekdayFeeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                  <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekdayFeeMax} onChangeText={(v: string) => setPayment('weekdayFeeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                </View>
+              </Field>
+              <Field label="Weekend / Headline Fee Range (optional)">
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekendFeeMin} onChangeText={(v: string) => setPayment('weekendFeeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                  <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payments.weekendFeeMax} onChangeText={(v: string) => setPayment('weekendFeeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
+                </View>
+              </Field>
+            </View>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>What's Included</Text>
+              <Text style={s.hint}>Things you expect the venue to provide as part of the booking.</Text>
+              <Field label="Backline / PA needed from venue"><Pills options={BACKLINE_OPTIONS} value={profile.payments.backlineNeeds} onSelect={(v: string[]) => setPayment('backlineNeeds', v)} multi /></Field>
+              <Field label="Guest List Allowance"><Input value={profile.payments.guestListAllowance} onChangeText={(v: string) => setPayment('guestListAllowance', v)} placeholder="e.g. 4 comp tickets for band + guests" /></Field>
+              <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                <Text style={[s.toggleLabel, { color: colors.black }]}>Meals / Rider Expected</Text>
+                <Switch value={profile.payments.mealsExpected} onValueChange={(v) => setPayment('mealsExpected', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+              </View>
+              {profile.payments.mealsExpected && (
+                <Field label="Meals / Rider Notes"><Input value={profile.payments.mealsNotes} onChangeText={(v: string) => setPayment('mealsNotes', v)} placeholder="e.g. Meal + soft drinks for 4 people" multiline /></Field>
+              )}
+            </View>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Logistics</Text>
+              <Field label="Preferred Payment Method"><Pills options={PAYMENT_METHODS} value={profile.payments.paymentMethods} onSelect={(v: string[]) => setPayment('paymentMethods', v)} multi /></Field>
+              <Field label="Payment Timing"><Pills options={PAYMENT_TIMING} value={profile.payments.paymentTiming} onSelect={(v: string) => setPayment('paymentTiming', v)} /></Field>
+              {profile.payments.paymentTiming === 'Other' && (
+                <Field label="Payment Timing Details"><Input value={profile.payments.paymentTimingOther} onChangeText={(v: string) => setPayment('paymentTimingOther', v)} placeholder="Describe your payment timing" /></Field>
+              )}
+              <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                <Text style={[s.toggleLabel, { color: colors.black }]}>Deposit Required</Text>
+                <Switch value={profile.payments.depositRequired} onValueChange={(v) => setPayment('depositRequired', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+              </View>
+              {profile.payments.depositRequired && (
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}><Field label="Deposit Amount or %"><Input value={profile.payments.depositAmount} onChangeText={(v: string) => setPayment('depositAmount', v)} placeholder="e.g. $200 or 50%" /></Field></View>
+                  <View style={{ flex: 1 }}><Field label="Deposit Due"><Input value={profile.payments.depositDue} onChangeText={(v: string) => setPayment('depositDue', v)} placeholder="e.g. 7 days before gig" /></Field></View>
+                </View>
+              )}
+            </View>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Tax and Invoicing</Text>
+              <Field label="ABN"><Input value={profile.payments.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="Your Australian Business Number" keyboardType="numeric" /></Field>
+              <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                <Text style={[s.toggleLabel, { color: colors.black }]}>GST Registered</Text>
+                <Switch value={profile.payments.gstRegistered} onValueChange={(v) => setPayment('gstRegistered', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+              </View>
+              <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
+                <Text style={[s.toggleLabel, { color: colors.black }]}>Invoice Required</Text>
+                <Switch value={profile.payments.invoiceRequired} onValueChange={(v) => setPayment('invoiceRequired', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+              </View>
+              {profile.payments.invoiceRequired && (
+                <>
+                  <Field label="Invoice Direction"><Pills options={INVOICE_DIRECTIONS} value={profile.payments.invoiceDirection} onSelect={(v: string) => setPayment('invoiceDirection', v)} /></Field>
+                  <Field label="Preferred Invoice Template (PDF)">
+                    {(profile.payments.invoiceDocs || []).map((doc, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
+                        <TouchableOpacity style={s.removeInlineBtn} onPress={() => setPayment('invoiceDocs', (profile.payments.invoiceDocs || []).filter((_, i) => i !== idx))}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
+                      </View>
+                    ))}
+                    <TouchableOpacity style={s.addBtn} onPress={pickInvoiceDoc} disabled={invoiceDocUploading}><Text style={s.addBtnText}>{invoiceDocUploading ? 'Uploading…' : '+ Upload Template (PDF)'}</Text></TouchableOpacity>
+                  </Field>
+                </>
+              )}
+            </View>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Cancellation and Policies</Text>
+              <Field label="Cancellation / No-show Policy"><Input value={profile.payments.cancellationPolicy} onChangeText={(v: string) => setPayment('cancellationPolicy', v)} placeholder="e.g. Deposit forfeited if cancelled within 14 days" multiline /></Field>
+              <Field label="Public Liability Insurance"><Pills options={PUBLIC_LIABILITY_OPTIONS} value={profile.payments.publicLiability} onSelect={(v: string) => setPayment('publicLiability', v)} /></Field>
+              <Field label="Late Payment Contact"><Input value={profile.payments.latePaymentContact} onChangeText={(v: string) => setPayment('latePaymentContact', v)} placeholder="Name and contact for payment follow-up (optional)" /></Field>
+            </View>
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Additional Notes</Text>
+              <Input value={profile.payments.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="Any other payment terms or non-standard arrangements" multiline />
+            </View>
+          </View>
+        )}
+
         {/* ── PHOTOS ── */}
         {activeTab === 'Photos' && (
           <View style={s.section}>
@@ -1570,7 +1872,7 @@ export default function EditProfileScreen() {
       </ScrollView>
 
       {/* ── Mobile onboarding overlay ── */}
-      {onboardingStep >= 1 && onboardingStep <= 9 && (() => {
+      {onboardingStep >= 1 && onboardingStep <= 10 && (() => {
         const data = ONBOARDING_DATA[onboardingStep];
         const isFirst = onboardingStep === 1;
         return (
@@ -1578,7 +1880,7 @@ export default function EditProfileScreen() {
             <View style={s.mobileOnboardingOverlay}>
               <View style={[s.mobileOnboardingCard, { backgroundColor: colors.bg }]}>
                 <View style={epd.onboardingStepRow}>
-                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 10</Text>
                   <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                 </View>
                 <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
@@ -1599,7 +1901,7 @@ export default function EditProfileScreen() {
                   </View>
                 )}
                 <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
-                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 9 ? finishOnboarding : advanceOnboarding}>
+                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 10 ? finishOnboarding : advanceOnboarding}>
                     <Text style={epd.onboardingNextBtnText}>{data.nextLabel}</Text>
                   </TouchableOpacity>
                   {!isFirst && (
