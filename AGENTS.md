@@ -12,6 +12,26 @@ Things that still need to be done — check here when asked "what's left to do":
 
 - **Email sending for venue verification codes**: Need to create a Gmail account, enable 2FA, then generate an App Password under Google Account → Security → App Passwords. Store the App Password in `.env` as `GMAIL_APP_PASSWORD` and the Gmail address as `GMAIL_FROM`. Then wire up the email-sending logic in the admin code-generation flow so the code gets emailed automatically when admin clicks "Generate Code". See `.env` for the key names.
 
+- **Onboarding flow**: Build an in-app onboarding experience that appears on first login for both user types. Content is already written — implement as a step-by-step tooltip overlay or modal. Details below:
+
+  **Artist onboarding:**
+  - Step 1 (Account created): "Welcome. Your account is set up. Now let's build your profile so venues can judge you properly."
+  - Point to Profile tab. Explain the 8 tabs: Basic Info, About, Music, Past Gigs, Timetable, Tech Rider, Photos, Settings.
+  - Basic Info: stage name, username, act type, genres, location, contact, fee range, average draw, social links.
+  - About: short bio.
+  - Music: song/track links so venues can listen before responding.
+  - Past Gigs: log previous performances to build credibility.
+  - Timetable: set general availability.
+  - Tech Rider: monitoring, backline, stage size, soundcheck notes, stage plot, input list.
+  - Photos: upload act photos.
+  - Final step: "Hit Save to publish your profile. Venues will find you in the musicians directory."
+
+  **Venue onboarding:**
+  - Step 1 (After verification): "Your venue has been verified. Time to publish your timetable."
+  - Point to Profile tab. Fill in venue details: address, suburb, capacity, genres booked, photos.
+  - Point to Timetable tab. "Add your band nights — room by room. Set recurring weekly slots or specific dates."
+  - Final step: "Once your timetable is live, artists can see your open slots and send enquiries straight to your inbox."
+
 ---
 
 # Expo HAS CHANGED
