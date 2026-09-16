@@ -15,7 +15,7 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import {
-  useArtistEnquiries, useVenueEnquiries, useMessages, useSupportEnquiries,
+  useArtistEnquiries, useVenueEnquiries, useMessages, useSupportEnquiries, useAgentEnquiries,
   useParticipants,
   updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
   bookSlotOnTimetable, cancelAcceptance, markEnquiryRead,
@@ -2721,19 +2721,25 @@ export default function InboxScreen() {
     ? screenHeight - (insets.top + TOP_TAB_H) - (BOTTOM_TAB_H + insets.bottom)
     : undefined;
   const isVenue = profile?.type === 'venue';
+  const isAgent = profile?.type === 'agent';
   const venueId = profile?.venueId ?? null;
 
-  const artistData   = useArtistEnquiries(!isVenue ? (user?.uid ?? null) : null);
-  const supportData  = useSupportEnquiries(!isVenue ? (user?.uid ?? null) : null);
+  const artistData   = useArtistEnquiries(!isVenue && !isAgent ? (user?.uid ?? null) : null);
+  const supportData  = useSupportEnquiries(!isVenue && !isAgent ? (user?.uid ?? null) : null);
   const venueData    = useVenueEnquiries(isVenue ? venueId : null);
-  const rawArtist    = isVenue ? venueData : artistData;
+  const agentData    = useAgentEnquiries(isAgent ? (user?.uid ?? null) : null);
+
   // Merge artist headliner enquiries + support-act invites (deduplicate by id)
   const mergedEnquiries = isVenue
-    ? rawArtist.enquiries
-    : [...artistData.enquiries, ...supportData.enquiries.filter(s => !artistData.enquiries.find(a => a.id === s.id))];
+    ? venueData.enquiries
+    : isAgent
+      ? agentData.enquiries
+      : [...artistData.enquiries, ...supportData.enquiries.filter(s => !artistData.enquiries.find(a => a.id === s.id))];
   const { enquiries, loading } = isVenue
     ? venueData
-    : { enquiries: mergedEnquiries, loading: artistData.loading && supportData.loading };
+    : isAgent
+      ? agentData
+      : { enquiries: mergedEnquiries, loading: artistData.loading && supportData.loading };
 
   const [selected,  setSelected]  = useState<Enquiry | null>(null);
   const [filter,    setFilter]    = useState<FilterKey>('enquired');

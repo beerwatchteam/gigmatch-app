@@ -164,6 +164,40 @@ export function useSupportEnquiries(uid: string | null) {
   return { enquiries, loading };
 }
 
+// ── Agent inbox — listens to enquiries for all represented musicians ────────
+export function useAgentEnquiries(agentUid: string | null) {
+  const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [artistUids, setArtistUids] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (!agentUid) { setLoading(false); return; }
+    getDocs(query(
+      collection(db, 'agentClaims'),
+      where('agentUid', '==', agentUid),
+      where('status', '==', 'approved'),
+    )).then(snap => {
+      setArtistUids(snap.docs.map(d => d.data().artistUid as string));
+    }).catch(() => { setArtistUids([]); });
+  }, [agentUid]);
+
+  useEffect(() => {
+    if (artistUids === null) return;
+    if (artistUids.length === 0) { setLoading(false); return; }
+    const q = query(
+      collection(db, 'inquiries'),
+      where('createdBy', 'in', artistUids),
+    );
+    const unsub = onSnapshot(q, snap => {
+      setEnquiries(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[]);
+      setLoading(false);
+    }, () => { setLoading(false); });
+    return unsub;
+  }, [artistUids?.join(',')]);
+
+  return { enquiries, loading };
+}
+
 // ── Venue inbox — listens to all enquiries for a venueId ───────────────────
 export function useVenueEnquiries(venueId: string | null) {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);

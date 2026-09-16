@@ -4,7 +4,7 @@ import {
   TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal,
 } from 'react-native';
 import { Text } from '@/components/Text';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -238,7 +238,8 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { colors, isDark, toggleDark } = useTheme();
-  const uid = user?.uid ?? '';
+  const { uid: uidParam } = useLocalSearchParams<{ uid?: string }>();
+  const uid = uidParam ?? user?.uid ?? '';
 
   const originalUsername = useRef('');
 

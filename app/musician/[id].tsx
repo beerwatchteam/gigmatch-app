@@ -133,6 +133,20 @@ type Musician = {
 function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boolean }) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
+  const [agentName, setAgentName] = useState<string | null>(null);
+
+  useEffect(() => {
+    getDocs(query(collection(db, 'agentRoster'), where('artistUid', '==', m.id)))
+      .then(async snap => {
+        if (snap.empty) return;
+        const data = snap.docs[0].data();
+        if (data.agentName) { setAgentName(data.agentName); return; }
+        // Fallback: look up agent display name from users collection
+        const userSnap = await getDoc(doc(db, 'users', data.agentUid));
+        setAgentName(userSnap.data()?.displayName ?? null);
+      })
+      .catch(() => {});
+  }, [m.id]);
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
   const gigHistory     = (m.gigHistory || [])
@@ -236,6 +250,9 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
 
   const main = (
     <View style={!isMobileLayout ? styles.overviewMain : undefined}>
+      {agentName ? (
+        <Text style={[styles.managedBy, { color: colors.grey }]}>Managed by {agentName}</Text>
+      ) : null}
       {about ? (
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.black }]}>About</Text>
@@ -1048,6 +1065,90 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     musician.backline            ? { value: musician.backline,            label: 'BACKLINE'     } : null,
   ].filter(Boolean) as { value: string; label: string }[];
 
+  // ── Web desktop dashboard (own profile only) ──────────────────────
+  if (isProfileTab && !isMobileLayout) {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+        <View style={dash.container}>
+
+          {/* Left sidebar */}
+          <View style={[dash.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
+            {musician.photoUrl ? (
+              <Image source={{ uri: musician.photoUrl }} style={dash.photo} resizeMode="cover" />
+            ) : (
+              <View style={[dash.photoPlaceholder, { backgroundColor: colors.border }]} />
+            )}
+            <Text style={[dash.sidebarName, { color: colors.black }]} numberOfLines={2}>
+              {musician.name || 'Unnamed Act'}
+            </Text>
+            {musician.username ? (
+              <Text style={[dash.sidebarHandle, { color: colors.grey }]}>@{musician.username}</Text>
+            ) : null}
+            {breadcrumbParts.length > 0 ? (
+              <Text style={dash.sidebarMeta} numberOfLines={2}>
+                {breadcrumbParts.join(' · ')}
+              </Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[dash.viewPublicBtn, { borderColor: colors.border }]}
+              onPress={() => router.push(`/musician/${id}` as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={[dash.viewPublicText, { color: colors.black }]}>View public profile</Text>
+            </TouchableOpacity>
+
+            <View style={[dash.divider, { backgroundColor: colors.border }]} />
+
+            {([
+              { id: 'overview',  label: 'Overview'       },
+              { id: 'music',     label: 'Music & Social' },
+              { id: 'timetable', label: 'Timetable'      },
+            ] as const).map(tab => (
+              <TouchableOpacity
+                key={tab.id}
+                style={[dash.navItem, activeTab === tab.id && dash.navItemActive]}
+                onPress={() => setActiveTab(tab.id)}
+                activeOpacity={0.75}
+              >
+                <Text style={[dash.navText, { color: activeTab === tab.id ? Colors.orange : colors.black }]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={[dash.divider, { backgroundColor: colors.border }]} />
+
+            <TouchableOpacity
+              style={dash.editBtn}
+              onPress={() => router.push('/edit-profile')}
+              activeOpacity={0.85}
+            >
+              <Text style={dash.editBtnText}>Edit Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[dash.logoutBtn, { borderColor: colors.border }]}
+              onPress={async () => { await signOut(auth); router.replace('/'); }}
+              activeOpacity={0.75}
+            >
+              <Text style={[dash.logoutText, { color: colors.grey }]}>Log out</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Main content */}
+          <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
+            {isOwn && <PendingAgentClaims musicianId={id} />}
+            {activeTab === 'overview'  && <OverviewTab m={musician} isMobileLayout={false} />}
+            {activeTab === 'music'     && <MusicTab m={musician} />}
+            {activeTab === 'timetable' && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} />}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges ?? ['bottom']}>
       <ScrollView>
@@ -1269,6 +1370,7 @@ const styles = StyleSheet.create({
     fontSize: 16, fontWeight: '700',
     letterSpacing: -0.2, marginBottom: 16,
   },
+  managedBy: { fontSize: 12, fontWeight: '600', letterSpacing: 0.3, marginBottom: 16 },
   body:      { fontSize: 15, lineHeight: 22 },
   readMore:  { fontSize: 14, color: Colors.orange, fontWeight: '600', marginTop: 8 },
   emptyState:{ fontSize: 14, fontStyle: 'italic' },

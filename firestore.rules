@@ -46,8 +46,18 @@ service cloud.firestore {
     match /bandProfiles/{uid} {
       allow read:   if true;
       allow create: if isOwner(uid) || isAdmin();
-      allow update: if isOwner(uid) || isAdmin();
+      allow update: if isOwner(uid) || isAdmin() ||
+        (isSignedIn() && exists(/databases/$(database)/documents/agentRoster/$(request.auth.uid + '_' + uid)));
       allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // ── Agent roster ─────────────────────────────────────────────────────────
+    match /agentRoster/{entryId} {
+      allow read:   if isSignedIn();
+      allow create, update: if isSignedIn() &&
+        request.resource.data.agentUid == request.auth.uid;
+      allow delete: if isSignedIn() &&
+        resource.data.agentUid == request.auth.uid || isAdmin();
     }
 
     // ── Venues ───────────────────────────────────────────────────────────────
@@ -100,7 +110,9 @@ service cloud.firestore {
         resource.data.agentUid  == request.auth.uid ||
         isAdmin()
       );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() ||
+        resource.data.agentUid == request.auth.uid ||
+        resource.data.artistUid == request.auth.uid;
     }
 
     // ── Venue applications ───────────────────────────────────────────────────

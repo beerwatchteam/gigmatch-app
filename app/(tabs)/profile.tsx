@@ -16,12 +16,15 @@ import { auth } from '@/lib/firebase';
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
-  orderBy,
+  onSnapshot,
+
   query,
   serverTimestamp,
+  setDoc,
   Timestamp,
   updateDoc,
   where,
@@ -283,6 +286,7 @@ function AgentScreen() {
   const [verifyInputs, setVerifyInputs]   = useState<Record<string, string>>({});
   const [verifyErrors, setVerifyErrors]   = useState<Record<string, string>>({});
   const [verifying, setVerifying]         = useState<Record<string, boolean>>({});
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   // Search flow
   const [showSearch, setShowSearch]         = useState(false);
@@ -296,11 +300,17 @@ function AgentScreen() {
 
   useEffect(() => {
     if (!user) return;
-    getDocs(
-      query(collection(db, 'agentClaims'), where('agentUid', '==', user.uid), orderBy('createdAt', 'desc'))
-    ).then(snap => {
-      setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as AgentClaim)));
-    }).catch(() => {}).finally(() => setClaimsLoading(false));
+    const unsub = onSnapshot(
+      query(collection(db, 'agentClaims'), where('agentUid', '==', user.uid)),
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as AgentClaim));
+        all.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        setClaims(all);
+        setClaimsLoading(false);
+      },
+      () => setClaimsLoading(false),
+    );
+    return unsub;
   }, [user?.uid]);
 
   async function handleSearch(val: string) {
@@ -388,11 +398,21 @@ function AgentScreen() {
     }
     setVerifying(p => ({ ...p, [claim.id]: true }));
     try {
-      await updateDoc(doc(db, 'agentClaims', claim.id), {
-        status: 'approved',
-        respondedAt: new Date().toISOString(),
-      });
+      await Promise.all([
+        updateDoc(doc(db, 'agentClaims', claim.id), {
+          status: 'approved',
+          respondedAt: new Date().toISOString(),
+        }),
+        setDoc(doc(db, 'agentRoster', `${user!.uid}_${claim.artistUid}`), {
+          agentUid: user!.uid,
+          agentName: profile?.displayName ?? '',
+          artistUid: claim.artistUid,
+          artistName: claim.artistName,
+          approvedAt: new Date().toISOString(),
+        }),
+      ]);
       setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: 'approved' } : c));
+      if (claimSent?.id === claim.id) setClaimSent(null);
     } catch {
       setVerifyErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
     } finally {
@@ -461,13 +481,55 @@ function AgentScreen() {
             </Text>
           ) : (
             approved.map(c => (
-              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <View>
-                  <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.artistName}</Text>
-                  {c.artistEmail ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>{c.artistEmail}</Text> : null}
+              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, gap: 12 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.artistName}</Text>
+                    {c.artistEmail ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>{c.artistEmail}</Text> : null}
+                  </View>
+                  {confirmRemoveId === c.id ? (
+                    <View style={agentStyles.confirmRemoveRow}>
+                      <TouchableOpacity onPress={() => setConfirmRemoveId(null)} activeOpacity={0.7}>
+                        <Text style={[agentStyles.removeBtn, { color: colors.grey }]}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          setConfirmRemoveId(null);
+                          await Promise.all([
+                            deleteDoc(doc(db, 'agentClaims', c.id)),
+                            deleteDoc(doc(db, 'agentRoster', `${user!.uid}_${c.artistUid}`)),
+                          ]).catch(() => {});
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[agentStyles.removeBtn, { color: '#e53e3e' }]}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setConfirmRemoveId(c.id)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={[agentStyles.removeBtn, { color: colors.greyLight }]}>Remove</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <View style={agentStyles.statusBadge}>
-                  <Text style={[agentStyles.statusText, { color: '#16a34a' }]}>Represented</Text>
+                <View style={agentStyles.rosterBtns}>
+                  <TouchableOpacity
+                    style={[agentStyles.rosterBtn, { borderColor: colors.border }]}
+                    onPress={() => router.push(`/musician/${c.artistUid}` as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[agentStyles.rosterBtnText, { color: colors.black }]}>View profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[agentStyles.rosterBtn, { borderColor: colors.border }]}
+                    onPress={() => router.push(`/edit-profile?uid=${c.artistUid}` as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[agentStyles.rosterBtnText, { color: colors.black }]}>Edit profile</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             ))
@@ -627,6 +689,11 @@ const agentStyles = StyleSheet.create({
 
   statusBadge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderColor: '#22c55e' },
   statusText:  { fontSize: 12, fontWeight: '700' },
+  removeBtn:        { fontSize: 12, fontWeight: '600' },
+  confirmRemoveRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  rosterBtns:    { flexDirection: 'row', gap: 8 },
+  rosterBtn:     { borderWidth: 1, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center' },
+  rosterBtnText: { fontSize: 13, fontWeight: '600' },
   verifyInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, fontSize: 20, fontWeight: '700', letterSpacing: 6, textAlign: 'center' },
   verifyError: { fontSize: 12, color: '#e53e3e' },
   verifyBtn:   { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
