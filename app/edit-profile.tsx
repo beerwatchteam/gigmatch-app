@@ -7,6 +7,7 @@ import { Text } from '@/components/Text';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { searchSuburbs, AreaResult } from '@/lib/suburbSearch';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -27,6 +28,78 @@ const PLATFORMS = [
   { key: 'appleMusic', label: 'Apple Music', placeholder: 'Apple Music URL' },
 ];
 const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
+
+const STEP_TAB: Record<number, string | null> = {
+  1: null, 2: 'Basic Info', 3: 'About', 4: 'Music',
+  5: 'Past Gigs', 6: 'Timetable', 7: 'Tech Rider', 8: 'Photos', 9: 'Photos',
+};
+
+type OnboardingStepData = {
+  title: string;
+  body: string;
+  body2?: string;
+  fieldsLabel?: string;
+  fields?: string[];
+  nextLabel: string;
+};
+
+const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
+  1: {
+    title: 'Welcome',
+    body: "Your account is set up. Now let's build your profile so venues can find you, listen to you, and book you.",
+    nextLabel: 'Get started',
+  },
+  2: {
+    title: 'Basic Info',
+    body: 'This is what venues see first. Fill it in properly. A half-finished profile gets ignored.',
+    fieldsLabel: 'FIELDS TO COMPLETE',
+    fields: ['Stage name', 'Username', 'Act type (solo, duo, band, DJ, etc.)', 'Genres', 'Location', 'Contact details', 'Fee range', 'Average draw', 'Social links'],
+    nextLabel: 'Next: About',
+  },
+  3: {
+    title: 'About',
+    body: "Write a short bio. Keep it tight. Venues are busy. Tell them who you are, what you sound like, and why they should book you.",
+    body2: 'Two or three sentences is enough. You can always expand it later.',
+    nextLabel: 'Next: Music',
+  },
+  4: {
+    title: 'Music',
+    body: 'Adds links to your music. This is the most important part of your profile. Venues will listen before they respond.',
+    body2: 'Spotify, YouTube, SoundCloud, Bandcamp: anything that lets them hear you immediately. No links means no bookings.',
+    nextLabel: 'Next: Past Gigs',
+  },
+  5: {
+    title: 'Past Gigs',
+    body: "Log your previous performances. Venues want to know where you've played before they take a chance on you.",
+    body2: 'Include the venue name, date, and any relevant notes. A strong gig history builds credibility fast.',
+    nextLabel: 'Next: Timetable',
+  },
+  6: {
+    title: 'Timetable',
+    body: "Set your general availability. Venues use this to know when you're already booked and when you're free.",
+    body2: "You're not locked in to anything here. This is just a guide so venues don't waste your time with dates that don't work.",
+    nextLabel: 'Next: Tech Rider',
+  },
+  7: {
+    title: 'Tech Rider',
+    body: 'Tell venues what you need on stage. Be specific. Vague requirements can cause problems on the night.',
+    fieldsLabel: 'FIELDS TO COMPLETE',
+    fields: ['Monitoring (wedges, IEM, number of mixes)', 'Backline requirements (amps, drums, keys)', 'Minimum stage size', 'Soundcheck requirements', 'Stage plot (upload file)', 'Input list (upload file)'],
+    nextLabel: 'Next: Photos',
+  },
+  8: {
+    title: 'Photos',
+    body: 'Upload photos of your act. Venues use these for promotional material when they confirm a booking, so give them something worth using.',
+    body2: "Live shots perform better than studio portraits. Show them what the room will look like when you're on stage.",
+    nextLabel: 'Next: Go live',
+  },
+  9: {
+    title: 'Go Live',
+    body: "Your profile is ready. Hit save and you'll appear in the musicians directory.",
+    body2: "Venues browse here when they have open slots to fill. Keep your profile current and your music links working.",
+    nextLabel: 'Publish my profile',
+  },
+};
 
 type Song    = { title: string; url: string; notes: string };
 type Gig     = { venue: string; suburb: string; date: string; endDate?: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
@@ -104,6 +177,61 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
           </TouchableOpacity>
         );
       })}
+    </View>
+  );
+}
+
+function SuburbSearch({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: boolean }) {
+  const { colors } = useTheme();
+  const [query, setQuery] = useState(value);
+  const [results, setResults] = useState<AreaResult[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { setQuery(value); }, [value]);
+
+  function handleChange(text: string) {
+    setQuery(text);
+    onChange(text);
+    if (text.length >= 1) {
+      const found = searchSuburbs(text, 7);
+      setResults(found);
+      setOpen(found.length > 0);
+    } else {
+      setResults([]);
+      setOpen(false);
+    }
+  }
+
+  function select(r: AreaResult) {
+    setQuery(r.label);
+    onChange(r.label);
+    setResults([]);
+    setOpen(false);
+  }
+
+  return (
+    <View>
+      <TextInput
+        style={[s.input, { backgroundColor: colors.bgFaint, borderColor: error ? Colors.danger : colors.border, color: colors.black }]}
+        value={query}
+        onChangeText={handleChange}
+        placeholder="Suburb, State, Postcode"
+        placeholderTextColor={Colors.greyLight}
+        autoCapitalize="words"
+      />
+      {open && (
+        <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginTop: 4, overflow: 'hidden', zIndex: 999 }}>
+          {results.map((r, i) => (
+            <TouchableOpacity
+              key={i}
+              onPress={() => select(r)}
+              style={{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < results.length - 1 ? 1 : 0, borderBottomColor: colors.borderFaint }}
+            >
+              <Text style={{ fontSize: 14, color: colors.black }}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -256,6 +384,9 @@ export default function EditProfileScreen() {
   const [docUploading, setDocUploading] = useState(false);
   const [showStickySave, setShowStickySave] = useState(false);
   const titleBarBottomRef = useRef(Infinity);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingVisited, setOnboardingVisited] = useState<string[]>([]);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
@@ -278,6 +409,9 @@ export default function EditProfileScreen() {
       d.settings    = d.settings    || BLANK.settings;
       originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
+      const isComplete = raw.onboardingComplete === true;
+      setOnboardingComplete(isComplete);
+      if (!isComplete) setOnboardingStep(1);
     }).finally(() => setLoading(false));
   }, [uid]);
 
@@ -457,6 +591,43 @@ export default function EditProfileScreen() {
     goBack();
   }
 
+  function advanceOnboarding() {
+    if (onboardingStep === 9) { finishOnboarding(); return; }
+    const curTab = STEP_TAB[onboardingStep];
+    if (curTab) setOnboardingVisited(prev => prev.includes(curTab) ? prev : [...prev, curTab]);
+    const next = onboardingStep + 1;
+    const nextTab = STEP_TAB[next];
+    if (nextTab && nextTab !== activeTab) setActiveTab(nextTab);
+    setOnboardingStep(next);
+  }
+
+  function backOnboarding() {
+    if (onboardingStep <= 1) return;
+    const prev = onboardingStep - 1;
+    const prevTab = STEP_TAB[prev];
+    if (prevTab && prevTab !== activeTab) setActiveTab(prevTab);
+    setOnboardingStep(prev);
+  }
+
+  async function skipOnboarding() {
+    setOnboardingStep(0);
+    setOnboardingComplete(true);
+    updateDoc(doc(db, 'bandProfiles', uid), { onboardingComplete: true }).catch(() => {});
+  }
+
+  function finishOnboarding() {
+    setOnboardingStep(0);
+    setOnboardingComplete(true);
+    updateDoc(doc(db, 'bandProfiles', uid), { onboardingComplete: true }).catch(() => {});
+    handleSave();
+  }
+
+  function replayOnboarding() {
+    setOnboardingVisited([]);
+    setActiveTab('Basic Info');
+    setOnboardingStep(1);
+  }
+
   const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
   const isWeb = Platform.OS === 'web';
   const { width } = useWindowDimensions();
@@ -503,7 +674,10 @@ export default function EditProfileScreen() {
                   <Text style={[epd.navText, { color: activeTab === tab ? Colors.orange : colors.black }]}>
                     {tab}
                   </Text>
-                  {tabErrors.includes(tab) && <View style={epd.navErrorDot} />}
+                  {onboardingStep > 0 && onboardingVisited.includes(tab)
+                    ? <Text style={epd.navCheck}>✓</Text>
+                    : tabErrors.includes(tab) && <View style={epd.navErrorDot} />
+                  }
                 </View>
               </TouchableOpacity>
             ))}
@@ -588,7 +762,7 @@ export default function EditProfileScreen() {
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
-                  <View style={{ marginBottom: 14 }}><Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="Location *" error={showErrors && !profile.location?.trim()} /></View>
+                  <View style={{ marginBottom: 14 }}><SuburbSearch value={profile.location} onChange={(v: string) => set('location', v)} error={showErrors && !profile.location?.trim()} /></View>
                   <View style={{ marginBottom: 14 }}><Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} /></View>
                   <View style={{ marginBottom: 14 }}><Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" /></View>
                 </View>
@@ -759,7 +933,104 @@ export default function EditProfileScreen() {
             )}
 
           </ScrollView>
+
+          {/* ── Onboarding side panel (steps 2-8) ── */}
+          {onboardingStep >= 2 && onboardingStep <= 8 && (() => {
+            const data = ONBOARDING_DATA[onboardingStep];
+            return (
+              <View style={[epd.onboardingPanel, { borderLeftColor: colors.border, backgroundColor: colors.bg }]}>
+                <View style={epd.onboardingPanelInner}>
+                  <View style={epd.onboardingStepRow}>
+                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                    <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+                  </View>
+                  <View style={epd.onboardingProgress}>
+                    <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 9) * 100}%` as any }]} />
+                  </View>
+                  <Text style={[epd.onboardingTitle, { color: colors.black }]}>{data.title}</Text>
+                  <Text style={epd.onboardingBody}>{data.body}</Text>
+                  {data.body2 && <Text style={[epd.onboardingBody, { marginTop: 10 }]}>{data.body2}</Text>}
+                  {data.fieldsLabel && data.fields && (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={epd.onboardingFieldsLabel}>{data.fieldsLabel}</Text>
+                      {data.fields.map((f, i) => (
+                        <View key={i} style={epd.onboardingBulletRow}>
+                          <View style={epd.onboardingBulletDot} />
+                          <Text style={epd.onboardingBulletText}>{f}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View style={epd.onboardingBtns}>
+                    <TouchableOpacity style={epd.onboardingNextBtn} onPress={advanceOnboarding}>
+                      <Text style={epd.onboardingNextBtnText}>{data.nextLabel}</Text>
+                    </TouchableOpacity>
+                    {onboardingStep > 1 && (
+                      <TouchableOpacity onPress={backOnboarding} style={{ paddingVertical: 10, paddingHorizontal: 4 }}>
+                        <Text style={epd.onboardingBackText}>Back</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+            );
+          })()}
+
         </View>
+
+        {/* ── Step 1: Welcome modal ── */}
+        {onboardingStep === 1 && (
+          <View style={epd.modalOverlay}>
+            <View style={[epd.welcomeCard, { backgroundColor: colors.bg }]}>
+              <View style={epd.onboardingStepRow}>
+                <Text style={epd.onboardingStepLabel}>STEP 1 OF 9</Text>
+                <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+              </View>
+              <View style={[epd.onboardingProgress, { marginBottom: 20 }]}>
+                <View style={[epd.onboardingProgressFill, { width: '11%' as any }]} />
+              </View>
+              <Text style={[epd.onboardingTitle, { color: colors.black, fontSize: 22 }]}>Welcome</Text>
+              <Text style={[epd.onboardingBody, { marginBottom: 24 }]}>{ONBOARDING_DATA[1].body}</Text>
+              <TouchableOpacity style={epd.onboardingNextBtn} onPress={advanceOnboarding}>
+                <Text style={epd.onboardingNextBtnText}>Get started</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* ── Step 9: Go Live card (bottom-left) ── */}
+        {onboardingStep === 9 && (
+          <View style={epd.goLiveCard}>
+            <View style={[epd.goLiveCardInner, { backgroundColor: colors.bg }]}>
+              <View style={epd.onboardingStepRow}>
+                <Text style={epd.onboardingStepLabel}>STEP 9 OF 9</Text>
+                <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+              </View>
+              <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
+                <View style={[epd.onboardingProgressFill, { width: '100%' as any }]} />
+              </View>
+              <Text style={[epd.onboardingTitle, { color: colors.black }]}>Go Live</Text>
+              <Text style={epd.onboardingBody}>{ONBOARDING_DATA[9].body}</Text>
+              <Text style={[epd.onboardingBody, { marginTop: 8 }]}>{ONBOARDING_DATA[9].body2}</Text>
+              <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
+                <TouchableOpacity style={epd.onboardingNextBtn} onPress={finishOnboarding}>
+                  <Text style={epd.onboardingNextBtnText}>Publish my profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={backOnboarding} style={{ paddingVertical: 10, paddingHorizontal: 4 }}>
+                  <Text style={epd.onboardingBackText}>Back</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* ── Replay setup tour button ── */}
+        {onboardingStep === 0 && onboardingComplete && (
+          <TouchableOpacity style={epd.replayBtn} onPress={replayOnboarding} activeOpacity={0.8}>
+            <Text style={epd.replayBtnText}>Replay setup tour</Text>
+          </TouchableOpacity>
+        )}
+
       </SafeAreaView>
     );
   }
@@ -993,7 +1264,7 @@ export default function EditProfileScreen() {
             <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
               <View style={{ marginBottom: 14 }}>
-                <Input value={profile.location} onChangeText={(v: string) => set('location', v)} placeholder="Location *" error={showErrors && !profile.location?.trim()} />
+                <SuburbSearch value={profile.location} onChange={(v: string) => set('location', v)} error={showErrors && !profile.location?.trim()} />
               </View>
               <View style={{ marginBottom: 14 }}>
                 <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
@@ -1297,6 +1568,52 @@ export default function EditProfileScreen() {
 
         </View>
       </ScrollView>
+
+      {/* ── Mobile onboarding overlay ── */}
+      {onboardingStep >= 1 && onboardingStep <= 9 && (() => {
+        const data = ONBOARDING_DATA[onboardingStep];
+        const isFirst = onboardingStep === 1;
+        return (
+          <Modal visible transparent animationType="slide">
+            <View style={s.mobileOnboardingOverlay}>
+              <View style={[s.mobileOnboardingCard, { backgroundColor: colors.bg }]}>
+                <View style={epd.onboardingStepRow}>
+                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                  <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
+                </View>
+                <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
+                  <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 9) * 100}%` as any }]} />
+                </View>
+                <Text style={[epd.onboardingTitle, { color: colors.black }]}>{data.title}</Text>
+                <Text style={epd.onboardingBody}>{data.body}</Text>
+                {data.body2 && <Text style={[epd.onboardingBody, { marginTop: 8 }]}>{data.body2}</Text>}
+                {data.fieldsLabel && data.fields && (
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={epd.onboardingFieldsLabel}>{data.fieldsLabel}</Text>
+                    {data.fields.map((f, i) => (
+                      <View key={i} style={epd.onboardingBulletRow}>
+                        <View style={epd.onboardingBulletDot} />
+                        <Text style={epd.onboardingBulletText}>{f}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
+                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 9 ? finishOnboarding : advanceOnboarding}>
+                    <Text style={epd.onboardingNextBtnText}>{data.nextLabel}</Text>
+                  </TouchableOpacity>
+                  {!isFirst && (
+                    <TouchableOpacity onPress={backOnboarding} style={{ paddingVertical: 10, paddingHorizontal: 4 }}>
+                      <Text style={epd.onboardingBackText}>Back</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+          </Modal>
+        );
+      })()}
+
     </SafeAreaView>
   );
 }
@@ -1373,6 +1690,9 @@ const s = StyleSheet.create({
   dangerBtn:          { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
   dangerBtnActive:    { opacity: 1 },
   dangerBtnText:      { fontSize: 14, fontWeight: '600', color: Colors.danger },
+  // Mobile onboarding modal
+  mobileOnboardingOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  mobileOnboardingCard:    { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 28, paddingBottom: 40, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20, shadowOffset: { width: 0, height: -4 } },
 });
 
 const epd = StyleSheet.create({
@@ -1388,10 +1708,38 @@ const epd = StyleSheet.create({
   navRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   navText:       { fontSize: 14, fontWeight: '600' },
   navErrorDot:   { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.danger },
+  navCheck:      { fontSize: 13, color: Colors.orange, fontWeight: '700' },
   saveBtn:       { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 11, alignItems: 'center', marginBottom: 8 },
   saveBtnText:   { fontSize: 14, fontWeight: '700', color: '#ffffff' },
   backBtn:       { borderWidth: 1, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
   backBtnText:   { fontSize: 13, fontWeight: '600' },
   main:          { flex: 1 },
   mainContent:   { paddingHorizontal: 40, paddingVertical: 32, paddingBottom: 60 },
+  // Onboarding panel (right column, steps 2-8)
+  onboardingPanel:      { width: 248, borderLeftWidth: 1, paddingTop: 32 },
+  onboardingPanelInner: { paddingHorizontal: 24, paddingBottom: 32 },
+  onboardingStepRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  onboardingStepLabel:  { fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8 },
+  onboardingSkip:       { fontSize: 12, color: Colors.grey },
+  onboardingProgress:   { height: 3, backgroundColor: Colors.border, borderRadius: 2, marginBottom: 20, overflow: 'hidden' },
+  onboardingProgressFill: { height: 3, backgroundColor: Colors.orange, borderRadius: 2 },
+  onboardingTitle:      { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, marginBottom: 10 },
+  onboardingBody:       { fontSize: 13, color: Colors.grey, lineHeight: 19 },
+  onboardingFieldsLabel:{ fontSize: 10, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  onboardingBulletRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
+  onboardingBulletDot:  { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange, flexShrink: 0 },
+  onboardingBulletText: { fontSize: 12, color: Colors.grey, flex: 1 },
+  onboardingBtns:       { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 24 },
+  onboardingNextBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16 },
+  onboardingNextBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  onboardingBackText:   { fontSize: 13, color: Colors.grey, fontWeight: '600' },
+  // Welcome modal overlay (step 1)
+  modalOverlay:         { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  welcomeCard:          { width: 400, borderRadius: 16, padding: 32, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  // Go Live card (step 9, bottom-left)
+  goLiveCard:           { position: 'absolute', bottom: 32, left: 244, zIndex: 100 },
+  goLiveCardInner:      { width: 320, borderRadius: 14, padding: 24, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 4 } },
+  // Replay button (bottom-right)
+  replayBtn:            { position: 'absolute', bottom: 24, right: 24, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, zIndex: 50 },
+  replayBtnText:        { fontSize: 13, fontWeight: '600', color: '#ffffff' },
 });
