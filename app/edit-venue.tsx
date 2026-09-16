@@ -67,6 +67,7 @@ type VenueData = {
   id?: string; name: string; streetAddress: string; location: string; suburb: string;
   state: string; postcode: string; phone: string; email: string;
   website: string; description: string; photoUrl: string;
+  latitude: string; longitude: string;
   rooms: Room[]; gigNights: Night[];
   techSpecs: Record<string, any>;
   settings: { emailOnNewEnquiry: boolean; emailEnquiryReminders: boolean; listed: boolean };
@@ -93,6 +94,7 @@ const BLANK_PAYMENT: Payment = {
 const BLANK: VenueData = {
   name: '', streetAddress: '', location: '', suburb: '', state: '', postcode: '',
   phone: '', email: '', website: '', description: '', photoUrl: '',
+  latitude: '', longitude: '',
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
   photos: [], videos: [],
@@ -1156,6 +1158,12 @@ export default function EditVenueScreen() {
                   <Field label="Location *" error={showErrors && !data.location?.trim()}><SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} /></Field>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Map Coordinates</Text>
+                  <Text style={{ fontSize: 13, color: colors.grey, marginBottom: 12, lineHeight: 18 }}>Internal only. Not shown publicly. Used for future map features.</Text>
+                  <Field label="Latitude"><Input value={data.latitude} onChangeText={(v: string) => set('latitude', v)} placeholder="e.g. -33.8688" keyboardType="decimal-pad" /></Field>
+                  <Field label="Longitude"><Input value={data.longitude} onChangeText={(v: string) => set('longitude', v)} placeholder="e.g. 151.2093" keyboardType="decimal-pad" /></Field>
+                </View>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
                   <Field label="Email *" error={showErrors && !data.email?.trim()}><Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !data.email?.trim()} /></Field>
                   <Field label="Phone number *" error={showErrors && !data.phone?.trim()}><Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone *" keyboardType="phone-pad" error={showErrors && !data.phone?.trim()} /></Field>
@@ -1805,6 +1813,18 @@ export default function EditVenueScreen() {
               </Field>
               <Field label="Location *" error={showErrors && !data.location?.trim()}>
                 <SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} />
+              </Field>
+            </View>
+
+            {/* Map Coordinates */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Map Coordinates</Text>
+              <Text style={{ fontSize: 13, color: colors.grey, marginBottom: 12, lineHeight: 18 }}>Internal only. Not shown publicly. Used for future map features.</Text>
+              <Field label="Latitude">
+                <Input value={data.latitude} onChangeText={(v: string) => set('latitude', v)} placeholder="e.g. -33.8688" keyboardType="decimal-pad" />
+              </Field>
+              <Field label="Longitude">
+                <Input value={data.longitude} onChangeText={(v: string) => set('longitude', v)} placeholder="e.g. 151.2093" keyboardType="decimal-pad" />
               </Field>
             </View>
 
