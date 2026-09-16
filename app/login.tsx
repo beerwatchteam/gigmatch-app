@@ -23,7 +23,7 @@ import { Colors } from '@/constants/colors';
 import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
-const ARTIST_TYPES = ['Band', 'Solo Artist', 'Duo', 'DJ', 'Other'];
+const ARTIST_TYPES = ['Solo Artist', 'Duo', 'Trio', 'Band', 'Cover Band', 'Acoustic Act', 'DJ', 'Choir / Vocal Group', 'Other'];
 
 function slugify(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');

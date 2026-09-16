@@ -18,7 +18,7 @@ import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
-const ACT_TYPES = ['Band','Solo','Duo','DJ','Other'];
+const ACT_TYPES = ['Solo Artist','Duo','Trio','Band','Cover Band','Acoustic Act','DJ','Choir / Vocal Group','Other'];
 const PLATFORMS = [
   { key: 'instagram',  label: 'Instagram',   placeholder: 'Profile URL or a post/reel URL to embed' },
   { key: 'tiktok',     label: 'TikTok',      placeholder: 'TikTok profile URL' },

@@ -29,7 +29,7 @@ const FEE_RANGES = [
   { key: '1000+',    label: '$1,000+' },
 ];
 
-const ACT_TYPES = ['Band', 'Solo', 'Duo', 'DJ', 'Other'];
+const ACT_TYPES = ['Solo Artist', 'Duo', 'Trio', 'Band', 'Cover Band', 'Acoustic Act', 'DJ', 'Choir / Vocal Group', 'Other'];
 
 type Musician = {
   id: string; name?: string; artistType?: string | string[];
