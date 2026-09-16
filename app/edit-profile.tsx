@@ -27,11 +27,39 @@ const PLATFORMS = [
   { key: 'spotify',    label: 'Spotify',     placeholder: 'Artist, track, album or playlist URL' },
   { key: 'appleMusic', label: 'Apple Music', placeholder: 'Apple Music URL' },
 ];
-const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Photos'];
+const ARTIST_PAY_METHODS = ['Cash', 'Bank transfer', 'PayPal', 'Stripe', 'Other'];
+const ARTIST_PAY_TIMING  = ['On the night', 'Within 7 days', 'Within 14 days', 'Within 30 days', 'Other'];
+
+type ArtistPayment = {
+  methods: string[];
+  typicalFee: string;
+  minimumFee: string;
+  abn: string;
+  gstRegistered: boolean;
+  canProvideInvoice: boolean;
+  invoicingName: string;
+  bankTransferNote: string;
+  timing: string;
+  timingOther: string;
+  publicLiabilityHeld: boolean;
+  publicLiabilityCoverage: string;
+  insuranceCertAvailable: boolean;
+  paymentNotes: string;
+};
+
+const BLANK_ARTIST_PAYMENT: ArtistPayment = {
+  methods: [], typicalFee: '', minimumFee: '',
+  abn: '', gstRegistered: false, canProvideInvoice: false, invoicingName: '',
+  bankTransferNote: '', timing: '', timingOther: '',
+  publicLiabilityHeld: false, publicLiabilityCoverage: '', insuranceCertAvailable: false,
+  paymentNotes: '',
+};
+
+const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Payment','Photos'];
 
 const STEP_TAB: Record<number, string | null> = {
   1: null, 2: 'Basic Info', 3: 'About', 4: 'Music',
-  5: 'Past Gigs', 6: 'Timetable', 7: 'Tech Rider', 8: 'Photos', 9: 'Photos',
+  5: 'Past Gigs', 6: 'Timetable', 7: 'Tech Rider', 8: 'Payment', 9: 'Photos', 10: 'Photos',
 };
 
 type OnboardingStepData = {
@@ -85,15 +113,22 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
     body: 'Tell venues what you need on stage. Be specific. Vague requirements can cause problems on the night.',
     fieldsLabel: 'FIELDS TO COMPLETE',
     fields: ['Monitoring (wedges, IEM, number of mixes)', 'Backline requirements (amps, drums, keys)', 'Minimum stage size', 'Soundcheck requirements', 'Stage plot (upload file)', 'Input list (upload file)'],
-    nextLabel: 'Next: Photos',
+    nextLabel: 'Next: Payment',
   },
   8: {
+    title: 'Payment',
+    body: 'Let venues know how you prefer to be paid and what to expect upfront. Clear payment terms save back-and-forth later.',
+    fieldsLabel: 'COVERS',
+    fields: ['Preferred payment methods', 'Typical fee and minimum floor', 'ABN and invoicing details', 'Payment timing expectation', 'Public liability insurance'],
+    nextLabel: 'Next: Photos',
+  },
+  9: {
     title: 'Photos',
     body: 'Upload photos of your act. Venues use these for promotional material when they confirm a booking, so give them something worth using.',
     body2: "Live shots perform better than studio portraits. Show them what the room will look like when you're on stage.",
     nextLabel: 'Next: Go live',
   },
-  9: {
+  10: {
     title: 'Go Live',
     body: "Your profile is ready. Hit save and you'll appear in the musicians directory.",
     body2: "Venues browse here when they have open slots to fill. Keep your profile current and your music links working.",
@@ -114,6 +149,7 @@ type Profile = {
   techRider: Record<string, string>;
   techRiderDocs: { url: string; name: string }[];
   photos: string[]; videos: string[];
+  payment: ArtistPayment;
   settings: { emailOnEnquiryResponse: boolean; emailOnNewConnection: boolean; listed: boolean };
 };
 
@@ -123,6 +159,7 @@ const BLANK: Profile = {
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
   techRider: {}, techRiderDocs: [], photos: [], videos: [],
+  payment: { ...BLANK_ARTIST_PAYMENT },
   settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
 };
 
@@ -407,6 +444,7 @@ export default function EditProfileScreen() {
       d.techRiderDocs = d.techRiderDocs || [];
       d.customLinks = d.customLinks || [];
       d.settings    = d.settings    || BLANK.settings;
+      d.payment     = d.payment     ? { ...BLANK_ARTIST_PAYMENT, ...d.payment } : { ...BLANK_ARTIST_PAYMENT };
       originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
       const isComplete = raw.onboardingComplete === true;
@@ -418,6 +456,11 @@ export default function EditProfileScreen() {
   function set<K extends keyof Profile>(field: K, value: Profile[K]) {
     setJustSaved(false);
     setProfile(prev => ({ ...prev, [field]: value }));
+  }
+
+  function setPayment<K extends keyof ArtistPayment>(field: K, value: ArtistPayment[K]) {
+    setJustSaved(false);
+    setProfile(prev => ({ ...prev, payment: { ...prev.payment, [field]: value } }));
   }
 
   // ── Songs ──
@@ -592,7 +635,7 @@ export default function EditProfileScreen() {
   }
 
   function advanceOnboarding() {
-    if (onboardingStep === 9) { finishOnboarding(); return; }
+    if (onboardingStep === 10) { finishOnboarding(); return; }
     const curTab = STEP_TAB[onboardingStep];
     if (curTab) setOnboardingVisited(prev => prev.includes(curTab) ? prev : [...prev, curTab]);
     const next = onboardingStep + 1;
@@ -907,6 +950,92 @@ export default function EditProfileScreen() {
               </View>
             )}
 
+            {activeTab === 'Payment' && (
+              <View style={s.section}>
+
+                {/* Payment Preferences */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Preferences</Text>
+                  <Field label="Preferred Payment Method/s">
+                    <Pills options={ARTIST_PAY_METHODS} value={profile.payment.methods} onSelect={(v: string[]) => setPayment('methods', v)} multi />
+                  </Field>
+                  <Field label="Typical Fee Expectation">
+                    <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
+                  </Field>
+                  <Field label="Minimum Fee (optional)">
+                    <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                      <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.minimumFee} onChangeText={(v: string) => setPayment('minimumFee', v)} placeholder="Floor rate" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                    </View>
+                  </Field>
+                </View>
+
+                {/* Tax & Invoicing */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Tax and Invoicing</Text>
+                  <Field label="ABN">
+                    <Input value={profile.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="e.g. 12 345 678 901" keyboardType="numeric" />
+                  </Field>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>GST Registered</Text>
+                    <Switch value={profile.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Can Provide Invoice</Text>
+                    <Switch value={profile.payment.canProvideInvoice} onValueChange={(v: boolean) => setPayment('canProvideInvoice', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  <Field label="Business / Invoicing Name">
+                    <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="If different from your stage name" />
+                  </Field>
+                </View>
+
+                {/* Payment Logistics */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Logistics</Text>
+                  <Field label="Payment Timing Expectation">
+                    <Pills options={ARTIST_PAY_TIMING} value={profile.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
+                  </Field>
+                  {profile.payment.timing === 'Other' && (
+                    <Field label="Timing Details">
+                      <Input value={profile.payment.timingOther} onChangeText={(v: string) => setPayment('timingOther', v)} placeholder="e.g. invoice within 14 days of performance" />
+                    </Field>
+                  )}
+                  <Field label="Bank Transfer">
+                    <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the GigMatch message thread.</Text>
+                    <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
+                  </Field>
+                </View>
+
+                {/* Legal / Compliance */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Legal and Compliance</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Public Liability Insurance Held</Text>
+                    <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                  {profile.payment.publicLiabilityHeld && (
+                    <Field label="Coverage Amount (optional)">
+                      <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.publicLiabilityCoverage} onChangeText={(v: string) => setPayment('publicLiabilityCoverage', v)} placeholder="e.g. 10,000,000" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                      </View>
+                    </Field>
+                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 14, color: colors.black }}>Certificate of Insurance Available on Request</Text>
+                    <Switch value={profile.payment.insuranceCertAvailable} onValueChange={(v: boolean) => setPayment('insuranceCertAvailable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                  </View>
+                </View>
+
+                {/* Notes */}
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Notes</Text>
+                  <Input value={profile.payment.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="e.g. Happy to discuss door splits for original shows. Invoice required for corporate bookings." multiline />
+                </View>
+
+              </View>
+            )}
+
             {activeTab === 'Photos' && (
               <View style={s.section}>
                 <Text style={[s.sectionTitle, { color: colors.black }]}>Profile Photo</Text>
@@ -935,17 +1064,17 @@ export default function EditProfileScreen() {
           </ScrollView>
 
           {/* ── Onboarding side panel (steps 2-8) ── */}
-          {onboardingStep >= 2 && onboardingStep <= 8 && (() => {
+          {onboardingStep >= 2 && onboardingStep <= 9 && (() => {
             const data = ONBOARDING_DATA[onboardingStep];
             return (
               <View style={[epd.onboardingPanel, { borderLeftColor: colors.border, backgroundColor: colors.bg }]}>
                 <View style={epd.onboardingPanelInner}>
                   <View style={epd.onboardingStepRow}>
-                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 10</Text>
                     <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                   </View>
                   <View style={epd.onboardingProgress}>
-                    <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 9) * 100}%` as any }]} />
+                    <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 10) * 100}%` as any }]} />
                   </View>
                   <Text style={[epd.onboardingTitle, { color: colors.black }]}>{data.title}</Text>
                   <Text style={epd.onboardingBody}>{data.body}</Text>
@@ -983,11 +1112,11 @@ export default function EditProfileScreen() {
           <View style={epd.modalOverlay}>
             <View style={[epd.welcomeCard, { backgroundColor: colors.bg }]}>
               <View style={epd.onboardingStepRow}>
-                <Text style={epd.onboardingStepLabel}>STEP 1 OF 9</Text>
+                <Text style={epd.onboardingStepLabel}>STEP 1 OF 10</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[epd.onboardingProgress, { marginBottom: 20 }]}>
-                <View style={[epd.onboardingProgressFill, { width: '11%' as any }]} />
+                <View style={[epd.onboardingProgressFill, { width: '10%' as any }]} />
               </View>
               <Text style={[epd.onboardingTitle, { color: colors.black, fontSize: 22 }]}>Welcome</Text>
               <Text style={[epd.onboardingBody, { marginBottom: 24 }]}>{ONBOARDING_DATA[1].body}</Text>
@@ -999,11 +1128,11 @@ export default function EditProfileScreen() {
         )}
 
         {/* ── Step 9: Go Live card (bottom-left) ── */}
-        {onboardingStep === 9 && (
+        {onboardingStep === 10 && (
           <View style={epd.goLiveCard}>
             <View style={[epd.goLiveCardInner, { backgroundColor: colors.bg }]}>
               <View style={epd.onboardingStepRow}>
-                <Text style={epd.onboardingStepLabel}>STEP 9 OF 9</Text>
+                <Text style={epd.onboardingStepLabel}>STEP 10 OF 10</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
@@ -1546,6 +1675,93 @@ export default function EditProfileScreen() {
           </View>
         )}
 
+        {/* ── PAYMENT ── */}
+        {activeTab === 'Payment' && (
+          <View style={s.section}>
+
+            {/* Payment Preferences */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Preferences</Text>
+              <Field label="Preferred Payment Method/s">
+                <Pills options={ARTIST_PAY_METHODS} value={profile.payment.methods} onSelect={(v: string[]) => setPayment('methods', v)} multi />
+              </Field>
+              <Field label="Typical Fee Expectation">
+                <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
+              </Field>
+              <Field label="Minimum Fee (optional)">
+                <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                  <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.minimumFee} onChangeText={(v: string) => setPayment('minimumFee', v)} placeholder="Floor rate" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                </View>
+              </Field>
+            </View>
+
+            {/* Tax & Invoicing */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Tax and Invoicing</Text>
+              <Field label="ABN">
+                <Input value={profile.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="e.g. 12 345 678 901" keyboardType="numeric" />
+              </Field>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>GST Registered</Text>
+                <Switch value={profile.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Can Provide Invoice</Text>
+                <Switch value={profile.payment.canProvideInvoice} onValueChange={(v: boolean) => setPayment('canProvideInvoice', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              <Field label="Business / Invoicing Name">
+                <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="If different from your stage name" />
+              </Field>
+            </View>
+
+            {/* Payment Logistics */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Logistics</Text>
+              <Field label="Payment Timing Expectation">
+                <Pills options={ARTIST_PAY_TIMING} value={profile.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
+              </Field>
+              {profile.payment.timing === 'Other' && (
+                <Field label="Timing Details">
+                  <Input value={profile.payment.timingOther} onChangeText={(v: string) => setPayment('timingOther', v)} placeholder="e.g. invoice within 14 days of performance" />
+                </Field>
+              )}
+              <Field label="Bank Transfer">
+                <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the GigMatch message thread.</Text>
+                <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
+              </Field>
+            </View>
+
+            {/* Legal / Compliance */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Legal and Compliance</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Public Liability Insurance Held</Text>
+                <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+              {profile.payment.publicLiabilityHeld && (
+                <Field label="Coverage Amount (optional)">
+                  <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                    <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                    <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.publicLiabilityCoverage} onChangeText={(v: string) => setPayment('publicLiabilityCoverage', v)} placeholder="e.g. 10,000,000" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                  </View>
+                </Field>
+              )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Certificate of Insurance Available on Request</Text>
+                <Switch value={profile.payment.insuranceCertAvailable} onValueChange={(v: boolean) => setPayment('insuranceCertAvailable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+            </View>
+
+            {/* Notes */}
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Notes</Text>
+              <Input value={profile.payment.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="e.g. Happy to discuss door splits for original shows. Invoice required for corporate bookings." multiline />
+            </View>
+
+          </View>
+        )}
+
         {/* ── PHOTOS ── */}
         {activeTab === 'Photos' && (
           <View style={s.section}>
@@ -1570,7 +1786,7 @@ export default function EditProfileScreen() {
       </ScrollView>
 
       {/* ── Mobile onboarding overlay ── */}
-      {onboardingStep >= 1 && onboardingStep <= 9 && (() => {
+      {onboardingStep >= 1 && onboardingStep <= 10 && (() => {
         const data = ONBOARDING_DATA[onboardingStep];
         const isFirst = onboardingStep === 1;
         return (
@@ -1578,11 +1794,11 @@ export default function EditProfileScreen() {
             <View style={s.mobileOnboardingOverlay}>
               <View style={[s.mobileOnboardingCard, { backgroundColor: colors.bg }]}>
                 <View style={epd.onboardingStepRow}>
-                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 10</Text>
                   <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                 </View>
                 <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
-                  <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 9) * 100}%` as any }]} />
+                  <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 10) * 100}%` as any }]} />
                 </View>
                 <Text style={[epd.onboardingTitle, { color: colors.black }]}>{data.title}</Text>
                 <Text style={epd.onboardingBody}>{data.body}</Text>
@@ -1599,7 +1815,7 @@ export default function EditProfileScreen() {
                   </View>
                 )}
                 <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
-                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 9 ? finishOnboarding : advanceOnboarding}>
+                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 10 ? finishOnboarding : advanceOnboarding}>
                     <Text style={epd.onboardingNextBtnText}>{data.nextLabel}</Text>
                   </TouchableOpacity>
                   {!isFirst && (
@@ -1736,7 +1952,7 @@ const epd = StyleSheet.create({
   // Welcome modal overlay (step 1)
   modalOverlay:         { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   welcomeCard:          { width: 400, borderRadius: 16, padding: 32, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
-  // Go Live card (step 9, bottom-left)
+  // Go Live card (step 10, bottom-left)
   goLiveCard:           { position: 'absolute', bottom: 32, left: 244, zIndex: 100 },
   goLiveCardInner:      { width: 320, borderRadius: 14, padding: 24, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 4 } },
   // Replay button (bottom-right)
