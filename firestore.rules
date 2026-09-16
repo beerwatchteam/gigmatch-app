@@ -97,6 +97,7 @@ service cloud.firestore {
         request.resource.data.agentUid == request.auth.uid;
       allow update: if isSignedIn() && (
         resource.data.artistUid == request.auth.uid ||
+        resource.data.agentUid  == request.auth.uid ||
         isAdmin()
       );
       allow delete: if isAdmin();

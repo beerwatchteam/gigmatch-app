@@ -859,8 +859,6 @@ function PendingAgentClaims({ musicianId }: { musicianId: string }) {
   const { colors } = useTheme();
   const [claims, setClaims]           = useState<ClaimForMusician[]>([]);
   const [loading, setLoading]         = useState(true);
-  const [codeInputs, setCodeInputs]   = useState<Record<string, string>>({});
-  const [codeErrors, setCodeErrors]   = useState<Record<string, string>>({});
   const [processing, setProcessing]   = useState<Record<string, boolean>>({});
   const [dismissed, setDismissed]     = useState<Set<string>>(new Set());
 
@@ -874,30 +872,6 @@ function PendingAgentClaims({ musicianId }: { musicianId: string }) {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [musicianId]);
 
-  async function handleApprove(claim: ClaimForMusician) {
-    const entered = (codeInputs[claim.id] ?? '').trim();
-    if (entered.length !== 6) {
-      setCodeErrors(p => ({ ...p, [claim.id]: 'Enter the 6-digit code from your email.' }));
-      return;
-    }
-    if (entered !== claim.verificationCode) {
-      setCodeErrors(p => ({ ...p, [claim.id]: 'Incorrect code. Please check and try again.' }));
-      return;
-    }
-    setProcessing(p => ({ ...p, [claim.id]: true }));
-    try {
-      await updateDoc(doc(db, 'agentClaims', claim.id), {
-        status: 'approved',
-        respondedAt: new Date().toISOString(),
-      });
-      setClaims(prev => prev.filter(c => c.id !== claim.id));
-    } catch {
-      setCodeErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
-    } finally {
-      setProcessing(p => ({ ...p, [claim.id]: false }));
-    }
-  }
-
   async function handleDecline(claim: ClaimForMusician) {
     setProcessing(p => ({ ...p, [claim.id]: true }));
     try {
@@ -906,9 +880,7 @@ function PendingAgentClaims({ musicianId }: { musicianId: string }) {
         respondedAt: new Date().toISOString(),
       });
       setClaims(prev => prev.filter(c => c.id !== claim.id));
-    } catch {
-      setCodeErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
-    } finally {
+    } catch {} finally {
       setProcessing(p => ({ ...p, [claim.id]: false }));
     }
   }
@@ -933,43 +905,22 @@ function PendingAgentClaims({ musicianId }: { musicianId: string }) {
             </View>
           </View>
           <Text style={[pac.bodyText, { color: colors.grey }]}>
-            This agent wants to represent you on GigMatch. To approve, enter the verification code below.
+            This agent wants to represent you on GigMatch. Share the code below with them to approve, or decline if you don't recognise this request.
           </Text>
           <View style={[pac.codeDisplay, { backgroundColor: colors.bg, borderColor: colors.border }]}>
             <Text style={[pac.codeDisplayLabel, { color: colors.grey }]}>YOUR VERIFICATION CODE</Text>
             <Text style={[pac.codeDisplayValue, { color: colors.black }]}>{claim.verificationCode}</Text>
           </View>
-          <TextInput
-            style={[pac.codeInput, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bg }]}
-            value={codeInputs[claim.id] ?? ''}
-            onChangeText={v => {
-              setCodeInputs(p => ({ ...p, [claim.id]: v.replace(/\D/g, '').slice(0, 6) }));
-              setCodeErrors(p => ({ ...p, [claim.id]: '' }));
-            }}
-            placeholder="6-digit code"
-            placeholderTextColor={colors.greyLight}
-            keyboardType="number-pad"
-            maxLength={6}
-          />
-          {codeErrors[claim.id] ? <Text style={pac.codeError}>{codeErrors[claim.id]}</Text> : null}
           <View style={pac.actions}>
-            <TouchableOpacity
-              style={[pac.approveBtn, processing[claim.id] && pac.btnDim]}
-              onPress={() => handleApprove(claim)}
-              disabled={!!processing[claim.id]}
-              activeOpacity={0.85}
-            >
-              {processing[claim.id]
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={pac.approveBtnText}>Approve</Text>}
-            </TouchableOpacity>
             <TouchableOpacity
               style={[pac.declineBtn, { borderColor: colors.border }, processing[claim.id] && pac.btnDim]}
               onPress={() => handleDecline(claim)}
               disabled={!!processing[claim.id]}
               activeOpacity={0.75}
             >
-              <Text style={[pac.declineBtnText, { color: colors.grey }]}>Decline</Text>
+              {processing[claim.id]
+                ? <ActivityIndicator color={colors.grey} size="small" />
+                : <Text style={[pac.declineBtnText, { color: colors.grey }]}>Decline</Text>}
             </TouchableOpacity>
           </View>
         </View>

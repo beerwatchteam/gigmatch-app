@@ -280,6 +280,9 @@ function AgentScreen() {
 
   const [claims, setClaims]               = useState<AgentClaim[]>([]);
   const [claimsLoading, setClaimsLoading] = useState(true);
+  const [verifyInputs, setVerifyInputs]   = useState<Record<string, string>>({});
+  const [verifyErrors, setVerifyErrors]   = useState<Record<string, string>>({});
+  const [verifying, setVerifying]         = useState<Record<string, boolean>>({});
 
   // Search flow
   const [showSearch, setShowSearch]         = useState(false);
@@ -298,7 +301,7 @@ function AgentScreen() {
     ).then(snap => {
       setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as AgentClaim)));
     }).catch(() => {}).finally(() => setClaimsLoading(false));
-  }, [user?.uid, claimSent]);
+  }, [user?.uid]);
 
   async function handleSearch(val: string) {
     setSearchQuery(val);
@@ -365,11 +368,36 @@ function AgentScreen() {
         status: 'pending',
         createdAt: null,
       };
+      setClaims(prev => [newClaim, ...prev]);
       setClaimSent(newClaim);
       setShowSearch(false);
       setSearchQuery(''); setSearchResults([]); setSelectedArtist(null);
     } catch (err: any) { setClaimError(err.message || 'Failed to submit claim.'); }
     finally { setClaimLoading(false); }
+  }
+
+  async function handleVerifyClaim(claim: AgentClaim) {
+    const entered = (verifyInputs[claim.id] ?? '').trim();
+    if (entered.length !== 6) {
+      setVerifyErrors(p => ({ ...p, [claim.id]: 'Enter the 6-digit code.' }));
+      return;
+    }
+    if (entered !== claim.verificationCode) {
+      setVerifyErrors(p => ({ ...p, [claim.id]: 'Incorrect code. Ask the musician to check theirs.' }));
+      return;
+    }
+    setVerifying(p => ({ ...p, [claim.id]: true }));
+    try {
+      await updateDoc(doc(db, 'agentClaims', claim.id), {
+        status: 'approved',
+        respondedAt: new Date().toISOString(),
+      });
+      setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: 'approved' } : c));
+    } catch {
+      setVerifyErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
+    } finally {
+      setVerifying(p => ({ ...p, [claim.id]: false }));
+    }
   }
 
   const pending  = claims.filter(c => c.status === 'pending');
@@ -399,10 +427,9 @@ function AgentScreen() {
           <View style={[agentStyles.confirmBox, { borderColor: colors.border }]}>
             <Text style={[agentStyles.confirmTitle, { color: colors.black }]}>Claim submitted</Text>
             <Text style={[agentStyles.confirmBody, { color: colors.grey }]}>
-              A verification email has been sent to{' '}
-              <Text style={{ fontWeight: '700', color: colors.black }}>{claimSent.artistEmail}</Text>.
-              {'\n'}
-              {claimSent.artistName} will need to enter the code to approve your representation request.
+              Ask{' '}
+              <Text style={{ fontWeight: '700', color: colors.black }}>{claimSent.artistName}</Text>
+              {' '}to open their GigMatch profile. They will see a verification code. Enter it in the Pending Claims section below to confirm representation.
             </Text>
             <Text style={[agentStyles.confirmHint, { color: colors.greyLight }]}>
               The claim expires in 7 days if not approved.
@@ -452,14 +479,39 @@ function AgentScreen() {
           <View style={agentStyles.section}>
             <Text style={[agentStyles.sectionTitle, { color: colors.black }]}>Pending Claims</Text>
             {pending.map(c => (
-              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <View>
-                  <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.artistName}</Text>
-                  <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Waiting for musician to verify</Text>
+              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, gap: 10 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.artistName}</Text>
+                    <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Ask {c.artistName} for their verification code</Text>
+                  </View>
+                  <View style={[agentStyles.statusBadge, { borderColor: '#f5a623' }]}>
+                    <Text style={[agentStyles.statusText, { color: '#f5a623' }]}>Pending</Text>
+                  </View>
                 </View>
-                <View style={[agentStyles.statusBadge, { borderColor: '#f5a623' }]}>
-                  <Text style={[agentStyles.statusText, { color: '#f5a623' }]}>Pending</Text>
-                </View>
+                <TextInput
+                  style={[agentStyles.verifyInput, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bg }]}
+                  value={verifyInputs[c.id] ?? ''}
+                  onChangeText={v => {
+                    setVerifyInputs(p => ({ ...p, [c.id]: v.replace(/\D/g, '').slice(0, 6) }));
+                    setVerifyErrors(p => ({ ...p, [c.id]: '' }));
+                  }}
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.greyLight}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                {verifyErrors[c.id] ? <Text style={agentStyles.verifyError}>{verifyErrors[c.id]}</Text> : null}
+                <TouchableOpacity
+                  style={[agentStyles.verifyBtn, verifying[c.id] && { opacity: 0.45 }]}
+                  onPress={() => handleVerifyClaim(c)}
+                  disabled={!!verifying[c.id]}
+                  activeOpacity={0.85}
+                >
+                  {verifying[c.id]
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={agentStyles.verifyBtnText}>Verify and Confirm</Text>}
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -575,6 +627,10 @@ const agentStyles = StyleSheet.create({
 
   statusBadge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderColor: '#22c55e' },
   statusText:  { fontSize: 12, fontWeight: '700' },
+  verifyInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, fontSize: 20, fontWeight: '700', letterSpacing: 6, textAlign: 'center' },
+  verifyError: { fontSize: 12, color: '#e53e3e' },
+  verifyBtn:   { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 12, alignItems: 'center' },
+  verifyBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   confirmBox: {
     borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 24, gap: 8,
