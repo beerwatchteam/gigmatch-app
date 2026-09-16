@@ -933,8 +933,12 @@ function PendingAgentClaims({ musicianId }: { musicianId: string }) {
             </View>
           </View>
           <Text style={[pac.bodyText, { color: colors.grey }]}>
-            This agent wants to represent you on GigMatch. To approve, enter the 6-digit code sent to your registered email address.
+            This agent wants to represent you on GigMatch. To approve, enter the verification code below.
           </Text>
+          <View style={[pac.codeDisplay, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+            <Text style={[pac.codeDisplayLabel, { color: colors.grey }]}>YOUR VERIFICATION CODE</Text>
+            <Text style={[pac.codeDisplayValue, { color: colors.black }]}>{claim.verificationCode}</Text>
+          </View>
           <TextInput
             style={[pac.codeInput, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bg }]}
             value={codeInputs[claim.id] ?? ''}
@@ -994,6 +998,9 @@ const pac = StyleSheet.create({
     fontSize: 20, fontWeight: '700', letterSpacing: 6, textAlign: 'center',
     width: 160,
   },
+  codeDisplay:      { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', gap: 4 },
+  codeDisplayLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  codeDisplayValue: { fontSize: 28, fontWeight: '800', letterSpacing: 8 },
   codeError:  { fontSize: 12, color: Colors.danger },
   actions:    { flexDirection: 'row', gap: 10, marginTop: 4 },
   approveBtn: { flex: 1, backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 11, alignItems: 'center' },

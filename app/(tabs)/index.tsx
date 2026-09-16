@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
@@ -30,6 +30,7 @@ type MusicianData = {
   location?: string; genre?: string[];
   photoUrl?: string;
   feeMin?: number; feeMax?: number; averageDraw?: number;
+  gigHistory?: { date?: string }[];
   settings?: { listed?: boolean };
 };
 type OpenSlotItem = { venue: VenueData; date: Date; day: string; slot: Slot };
@@ -243,6 +244,8 @@ function ArtistCard({ musician }: { musician: MusicianData }) {
       ? `$${musician.feeMin}-${musician.feeMax}`
       : `$${musician.feeMin}+`
     : null;
+  const year = new Date().getFullYear();
+  const gigsThisYear = (musician.gigHistory ?? []).filter(g => g.date?.includes(String(year))).length;
 
   return (
     <View style={ac.card}>
@@ -281,6 +284,12 @@ function ArtistCard({ musician }: { musician: MusicianData }) {
               <Text style={ac.statLabel}>FEE</Text>
             </View>
           ) : null}
+          {gigsThisYear > 0 && (
+            <View style={ac.stat}>
+              <Text style={ac.statNum}>{gigsThisYear}</Text>
+              <Text style={ac.statLabel}>GIGS {year}</Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -316,12 +325,12 @@ const HOW_IT_WORKS_STEPS = [
   {
     num: '02',
     heading: 'Artists enquire on a real date',
-    body: 'Pick an open night and send a structured enquiry with draw, music, rider and past gigs attached.',
+    body: 'Pick an open night and with the click of a button send a structured enquiry pre-built from your profile, including your draw, music, rider, past gigs and more attached.',
   },
   {
     num: '03',
     heading: 'One tap to confirm',
-    body: "Accept or decline and both sides get it in the same thread. Nothing lives in a DM you can't find.",
+    body: "Accept, discuss or decline and both sides get it in the same thread. Nothing gets lost: every gig has a details section holding all the important info. Everything lives in one place, not scattered across the internet.",
   },
 ];
 
@@ -335,8 +344,17 @@ export default function HomeScreen() {
   const isAdmin    = user?.email === ADMIN_EMAIL;
   const isLoggedIn = !!user;
 
-  const [venues,    setVenues]    = useState<VenueData[]>([]);
-  const [musicians, setMusicians] = useState<MusicianData[]>([]);
+  const [venues,        setVenues]        = useState<VenueData[]>([]);
+  const [musicians,     setMusicians]     = useState<MusicianData[]>([]);
+  const [musicianCount, setMusicianCount] = useState<number>(0);
+  const [heroImageUrl,  setHeroImageUrl]  = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'homepage'), snap => {
+      setHeroImageUrl(snap.data()?.heroImageUrl ?? null);
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     getDocs(collection(db, 'venues')).then(snap => {
@@ -347,16 +365,32 @@ export default function HomeScreen() {
     getDocs(collection(db, 'bandProfiles')).then(snap => {
       const all = snap.docs
         .map(d => ({ id: d.id, ...d.data() })) as MusicianData[];
+      setMusicianCount(all.filter(m => m.settings?.listed !== false && m.name).length);
+      const featured = all.filter(m =>
+        m.name?.toLowerCase().includes('dahlias') ||
+        m.name?.toLowerCase().includes('valenta')
+      );
       setMusicians(
-        all.filter(m => m.settings?.listed !== false && m.name).slice(0, 2)
+        featured.length > 0
+          ? featured.slice(0, 2)
+          : all.filter(m => m.settings?.listed !== false && m.name).slice(0, 2)
       );
     }).catch(console.error);
   }, []);
 
-  const { fortnightSlots, openSlotsCount6wk } = useMemo(() => ({
-    fortnightSlots:    computeOpenSlots(venues, 14),
-    openSlotsCount6wk: computeOpenSlots(venues, 42).length,
-  }), [venues]);
+  const { fortnightSlots, bandNightsTotal } = useMemo(() => {
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    let nightsTotal = 0;
+    for (const venue of venues) {
+      for (const day of days) {
+        nightsTotal += (venue.slots?.[day] ?? []).filter(s => !s.date && s.status === 'open').length;
+      }
+    }
+    return {
+      fortnightSlots:  computeOpenSlots(venues, 14),
+      bandNightsTotal: nightsTotal,
+    };
+  }, [venues]);
 
   const venuesWithSlots = useMemo(
     () => venues.filter(v => getNextOpenInfo(v) !== null).slice(0, 4),
@@ -379,6 +413,10 @@ export default function HomeScreen() {
 
         {/* ── Hero ──────────────────────────────────────────────── */}
         <View style={[s.hero, { borderBottomColor: colors.border }]}>
+          {heroImageUrl && (
+            <Image source={{ uri: heroImageUrl }} style={s.heroBgImage} resizeMode="cover" />
+          )}
+          {heroImageUrl && <View style={s.heroBgOverlay} />}
           <View style={[s.heroInner, isWide && s.heroInnerWide]}>
 
             {/* Left */}
@@ -388,33 +426,18 @@ export default function HomeScreen() {
                 <Text style={[s.liveBadgeText, { color: colors.grey }]}>LIVE IN MELBOURNE</Text>
               </View>
               <Text style={[s.headline, { color: colors.black }]}>
-                Every open slot in town, on one timetable.
+                {`Every open slot,\non one timetable.`}
               </Text>
               <Text style={[s.subhead, { color: colors.grey }]}>
-                GigMatch shows artists which venues actually have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
+                GigMatch shows artists which venues have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
               </Text>
               <View style={s.heroCtaRow}>
                 <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
                   <Text style={s.ctaFilledText}>Sign up as an artist</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.ctaOutline, { borderColor: colors.black }]} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
-                  <Text style={[s.ctaOutlineText, { color: colors.black }]}>List your venue</Text>
+                  <Text style={[s.ctaOutlineText, { color: colors.black }]}>Claim your venue</Text>
                 </TouchableOpacity>
-              </View>
-              <View style={[s.statsDivider, { backgroundColor: colors.border }]} />
-              <View style={s.statsRow}>
-                <View style={s.statItem}>
-                  <Text style={[s.statNum, { color: colors.black }]}>{venueCount > 0 ? venueCount : '\u2014'}</Text>
-                  <Text style={[s.statLabel, { color: colors.grey }]}>VENUES LISTED</Text>
-                </View>
-                <View style={s.statItem}>
-                  <Text style={[s.statNum, { color: Colors.orange }]}>{openSlotsCount6wk > 0 ? openSlotsCount6wk : '\u2014'}</Text>
-                  <Text style={[s.statLabel, { color: colors.grey }]}>OPEN SLOTS · 6 WKS</Text>
-                </View>
-                <View style={s.statItem}>
-                  <Text style={[s.statNum, { color: colors.black }]}>~3 hrs</Text>
-                  <Text style={[s.statLabel, { color: colors.grey }]}>MEDIAN REPLY</Text>
-                </View>
               </View>
               {isAdmin && (
                 <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)}>
@@ -456,15 +479,14 @@ export default function HomeScreen() {
           <View style={[s.sectionInner, isWide && s.sectionInnerWide]}>
             <Text style={s.hiwEyebrow}>HOW IT WORKS</Text>
             <Text style={s.hiwHeading}>Three steps, and it's in writing.</Text>
-            <View style={s.hiwDivider} />
             <View style={[s.hiwGrid, isWide && s.hiwGridWide]}>
               {HOW_IT_WORKS_STEPS.map((step, i) => (
                 <View
                   key={step.num}
                   style={[
                     s.hiwStep,
-                    { borderTopColor: i === 0 ? Colors.orange : 'rgba(255,255,255,0.12)' },
-                    isWide && i < HOW_IT_WORKS_STEPS.length - 1 && s.hiwStepBorder,
+                    { borderTopColor: Colors.orange },
+                    isWide && { flex: 1 },
                   ]}
                 >
                   <Text style={s.hiwNum}>{step.num}</Text>
@@ -473,7 +495,6 @@ export default function HomeScreen() {
                 </View>
               ))}
             </View>
-            <View style={s.hiwDivider} />
             <Text style={s.hiwReplaces}>
               Replaces: Facebook groups, cold email, Instagram DMs, phone tag, and a spreadsheet someone forgot to update.
             </Text>
@@ -537,7 +558,7 @@ export default function HomeScreen() {
                   Set your band nights, and enquiries come to you with everything attached. Free while we're in beta.
                 </Text>
                 <TouchableOpacity style={s.forVenuesCtaBtn} onPress={() => router.push('/login?mode=signup&tab=venue' as any)}>
-                  <Text style={s.forVenuesCtaBtnText}>List your venue</Text>
+                  <Text style={s.forVenuesCtaBtnText}>Claim your venue</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -605,7 +626,9 @@ const s = StyleSheet.create({
   },
 
   // ── Hero ──────────────────────────────────────────────────────────
-  hero:         { borderBottomWidth: 1, paddingBottom: isWeb ? 56 : 40 },
+  hero:         { borderBottomWidth: 1, paddingBottom: isWeb ? 56 : 40, overflow: 'hidden' },
+  heroBgImage:  { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  heroBgOverlay:{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.85)' },
   heroInner:    { paddingHorizontal: isWeb ? 40 : 24, paddingTop: isWeb ? 56 : 40, gap: 32 },
   heroInnerWide:{ flexDirection: 'row', alignItems: 'flex-start', maxWidth: 1200, alignSelf: 'center', width: '100%', gap: 48 },
   heroLeft:     { gap: 20 },
@@ -647,7 +670,7 @@ const s = StyleSheet.create({
   hiwNum:         { fontSize: 12, fontWeight: '700', color: Colors.orange, letterSpacing: 0.5 },
   hiwStepHeading: { fontSize: isWeb ? 18 : 16, fontWeight: '800', color: '#ffffff', letterSpacing: -0.2, lineHeight: isWeb ? 24 : 22 },
   hiwStepBody:    { fontSize: 14, lineHeight: 22, color: 'rgba(255,255,255,0.5)' },
-  hiwReplaces:    { fontSize: 13, lineHeight: 20, color: 'rgba(255,255,255,0.35)', marginTop: 0 },
+  hiwReplaces:    { fontSize: 13, lineHeight: 20, color: 'rgba(255,255,255,0.35)', marginTop: 48 },
 
   // ── For Artists ───────────────────────────────────────────────────
   forArtistsSection: { paddingVertical: isWeb ? 72 : 48 },
