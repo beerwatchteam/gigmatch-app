@@ -1026,19 +1026,21 @@ export default function VenuesScreen() {
               const isPast = day < today;
 
               // My enquiry state for this date at this venue
-              let myStatus: 'confirmed' | 'enquired' | null = null;
+              let myStatus: 'confirmed' | 'enquired' | 'declined' | null = null;
               if (isArtist) {
                 for (const e of myEnquiries) {
                   if (e.venueId !== item.id || e.requestedSlot?.date !== iso) continue;
                   const s = normalizeEnquiryStatus(e.status);
                   if (s === 'confirmed') { myStatus = 'confirmed'; break; }
-                  if (s !== 'declined' && s !== 'cancelled') myStatus = 'enquired';
+                  if (s === 'declined' && myStatus == null) { myStatus = 'declined'; continue; }
+                  if (s !== 'declined' && s !== 'cancelled' && myStatus !== 'confirmed') myStatus = 'enquired';
                 }
               }
 
-              const isInteractive = hasSlot || !!myStatus;
+              const isInteractive = hasSlot || myStatus === 'enquired' || myStatus === 'confirmed';
               const dotStyle = myStatus === 'confirmed' ? st.calStripDotConfirmed
                 : myStatus === 'enquired' ? st.calStripDotEnquired
+                : myStatus === 'declined' ? st.calStripDotDeclined
                 : hasSlot ? st.calStripDotOpen
                 : null;
               const textStyle = myStatus === 'confirmed' ? st.calStripDateLight
@@ -1079,6 +1081,7 @@ export default function VenuesScreen() {
               {(() => {
                 const d = parseLocal(selectedDate);
                 const dayLabel = d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' }).replace(',','');
+                const dateMyStatus = myVenueEnquiryDates[selectedDate!] as 'confirmed' | 'enquired' | 'declined' | undefined;
                 return selectedSlots.map((slot: any, idx: number) => {
                   const parts: string[] = [];
                   if (slot.time) parts.push(slot.time);
@@ -1093,6 +1096,17 @@ export default function VenuesScreen() {
                   const feeStr = slotFeeStr || venueFeeStr;
                   if (feeStr) parts.push(feeStr);
                   const dayName = DAY_NAMES_FULL[parseLocal(selectedDate!).getDay()];
+                  const prefix = idx === 0 ? `${dayLabel} · ` : '+ ';
+
+                  if (dateMyStatus === 'confirmed') {
+                    return <Text key={idx} style={[st.calSlotDetailText, { color: '#22c55e', textDecorationLine: 'none' }]} numberOfLines={1}>{prefix}{parts.join(' · ')} · Booked</Text>;
+                  }
+                  if (dateMyStatus === 'enquired') {
+                    return <Text key={idx} style={[st.calSlotDetailText, { color: '#888888', textDecorationLine: 'none' }]} numberOfLines={1}>{prefix}{parts.join(' · ')} · Enquiry sent</Text>;
+                  }
+                  if (dateMyStatus === 'declined') {
+                    return <Text key={idx} style={[st.calSlotDetailText, { color: '#aaaaaa', textDecorationLine: 'none', fontStyle: 'italic' }]} numberOfLines={1}>{prefix}{parts.join(' · ')} · Declined</Text>;
+                  }
                   return (
                     <TouchableOpacity
                       key={idx}
@@ -1112,9 +1126,7 @@ export default function VenuesScreen() {
                         },
                       })}
                     >
-                      <Text style={st.calSlotDetailText} numberOfLines={1}>
-                        {idx === 0 ? `${dayLabel} · ` : '+ '}{parts.join(' · ')}
-                      </Text>
+                      <Text style={st.calSlotDetailText} numberOfLines={1}>{prefix}{parts.join(' · ')}</Text>
                     </TouchableOpacity>
                   );
                 });
@@ -1199,28 +1211,41 @@ export default function VenuesScreen() {
         {slotInfo ? <Text style={st.calViewSlotInfo}>{slotInfo}</Text> : null}
         {feeStr ? <Text style={st.calViewSlotFee}>{feeStr}</Text> : null}
         <View style={st.calViewActions}>
-          {isArtist ? (
-            <TouchableOpacity
-              style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
-              onPress={() => router.push({
-                pathname: '/enquire',
-                params: {
-                  venueId: slot.venue.id,
-                  venueName: slot.venue.name,
-                  day: slot.day,
-                  date: slot.dateISO,
-                  time: slot.time,
-                  slotType: slot.slotType ?? 'Either',
-                  ...(slot.room ? { room: slot.room } : {}),
-                  duration: slot.duration || '',
-                  capacity: slot.venue.capacity ? String(slot.venue.capacity) : '',
-                },
-              })}
-              activeOpacity={0.85}
-            >
-              <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
-            </TouchableOpacity>
-          ) : null}
+          {isArtist ? (() => {
+            let calMyStatus: 'confirmed' | 'enquired' | 'declined' | null = null;
+            for (const e of myEnquiries) {
+              if (e.venueId !== slot.venue.id || e.requestedSlot?.date !== slot.dateISO) continue;
+              const s = normalizeEnquiryStatus(e.status);
+              if (s === 'confirmed') { calMyStatus = 'confirmed'; break; }
+              if (s === 'declined' && !calMyStatus) { calMyStatus = 'declined'; continue; }
+              if (s !== 'declined' && s !== 'cancelled' && calMyStatus !== 'confirmed') calMyStatus = 'enquired';
+            }
+            if (calMyStatus === 'confirmed') return <Text style={[st.webTimetableBtnText, { color: '#22c55e', fontSize: 12 }]}>Booked</Text>;
+            if (calMyStatus === 'enquired')  return <Text style={[st.webTimetableBtnText, { color: '#888888', fontSize: 12 }]}>Enquiry sent</Text>;
+            if (calMyStatus === 'declined')  return <Text style={[st.webTimetableBtnText, { color: '#aaaaaa', fontSize: 12, fontStyle: 'italic' }]}>Declined</Text>;
+            return (
+              <TouchableOpacity
+                style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
+                onPress={() => router.push({
+                  pathname: '/enquire',
+                  params: {
+                    venueId: slot.venue.id,
+                    venueName: slot.venue.name,
+                    day: slot.day,
+                    date: slot.dateISO,
+                    time: slot.time,
+                    slotType: slot.slotType ?? 'Either',
+                    ...(slot.room ? { room: slot.room } : {}),
+                    duration: slot.duration || '',
+                    capacity: slot.venue.capacity ? String(slot.venue.capacity) : '',
+                  },
+                })}
+                activeOpacity={0.85}
+              >
+                <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
+              </TouchableOpacity>
+            );
+          })() : null}
           <TouchableOpacity
             style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: isArtist ? 6 : 0 }]}
             onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'timetable' } })}
@@ -1897,6 +1922,7 @@ const st = StyleSheet.create({
   calStripDotPast:      { backgroundColor: 'transparent' },
   calStripDotEnquired:  { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#22c55e' },
   calStripDotConfirmed: { backgroundColor: '#22c55e' },
+  calStripDotDeclined:  { backgroundColor: 'transparent' },
   calStripDate:         { fontSize: 9, color: '#111111' },
   calStripDatePast:     { color: '#bbbbbb' },
   calStripDateOpen:     { color: '#111111' },

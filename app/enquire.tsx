@@ -6,11 +6,11 @@ import {
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
-import { addEnquiry } from '@/lib/useEnquiries';
+import { addEnquiry, normalizeEnquiryStatus } from '@/lib/useEnquiries';
 import { useTheme } from '@/lib/theme-context';
 
 const isWeb = Platform.OS === 'web';
@@ -62,6 +62,7 @@ export default function EnquireScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted,  setSubmitted]  = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  const [blockedReason, setBlockedReason] = useState<string | null>(null);
 
   // Redirect non-artist accounts
   useEffect(() => {
@@ -76,6 +77,25 @@ export default function EnquireScreen() {
       if (snap.exists()) setBand(snap.data());
     }).catch(() => {});
   }, [user?.uid]);
+
+  // Block re-enquiry for the same venue+date
+  useEffect(() => {
+    if (!user || !params.venueId || !params.date) return;
+    getDocs(query(
+      collection(db, 'inquiries'),
+      where('createdBy', '==', user.uid),
+      where('venueId', '==', params.venueId),
+    )).then(snap => {
+      for (const d of snap.docs) {
+        const e = d.data();
+        if (e.requestedSlot?.date !== params.date) continue;
+        const s = normalizeEnquiryStatus(e.status as any);
+        if (s === 'confirmed') { setBlockedReason('You already have a confirmed booking for this date.'); return; }
+        if (s === 'declined')  { setBlockedReason('Your previous enquiry for this date was declined.'); return; }
+        if (s !== 'cancelled') { setBlockedReason('You already have an active enquiry for this date.'); return; }
+      }
+    }).catch(() => {});
+  }, [user?.uid, params.venueId, params.date]);
 
   function toggleSection(key: SectionKey) {
     setSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -377,27 +397,35 @@ export default function EnquireScreen() {
 
       {/* ── Footer bar ────────────────────────────────────────────── */}
       <View style={[s.footer, { borderTopColor: colors.border, backgroundColor: colors.bg }]}>
-        <Text style={[s.footerSummary, { color: colors.grey }]} numberOfLines={1}>
-          {setLength} · {slotPref} · {selectedCount} of {SECTIONS.length} sections shared
-        </Text>
-        <View style={s.footerActions}>
-          <TouchableOpacity
-            style={[s.cancelBtn, { borderColor: colors.border }]}
-            onPress={() => router.back()}
-          >
-            <Text style={[s.cancelBtnText, { color: colors.black }]}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.sendBtn, submitting && { opacity: 0.6 }]}
-            onPress={handleSubmit}
-            disabled={submitting}
-          >
-            {submitting
-              ? <ActivityIndicator color="#111111" size="small" />
-              : <Text style={s.sendBtnText}>Send enquiry</Text>
-            }
-          </TouchableOpacity>
-        </View>
+        {blockedReason ? (
+          <View style={s.blockedBanner}>
+            <Text style={s.blockedBannerText}>{blockedReason}</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={[s.footerSummary, { color: colors.grey }]} numberOfLines={1}>
+              {setLength} · {slotPref} · {selectedCount} of {SECTIONS.length} sections shared
+            </Text>
+            <View style={s.footerActions}>
+              <TouchableOpacity
+                style={[s.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => router.back()}
+              >
+                <Text style={[s.cancelBtnText, { color: colors.black }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.sendBtn, submitting && { opacity: 0.6 }]}
+                onPress={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting
+                  ? <ActivityIndicator color="#111111" size="small" />
+                  : <Text style={s.sendBtnText}>Send enquiry</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
     </View>
   );
@@ -613,6 +641,8 @@ const s = StyleSheet.create({
   },
   footerSummary: { fontSize: 12, flex: 1 },
   footerActions: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
+  blockedBanner: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+  blockedBannerText: { fontSize: 13, color: Colors.grey, fontWeight: '600', textAlign: 'center' },
   cancelBtn: {
     borderWidth: 1,
     borderRadius: 8,
