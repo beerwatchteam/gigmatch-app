@@ -2999,22 +2999,22 @@ export default function InboxScreen() {
         {/* Sidebar */}
         <View style={[wb.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
           {/* Agent roster strip */}
-          {isAgent && agentRoster.length > 0 && (
-            <AgentRosterStrip
-              roster={agentRoster}
-              enquiries={enquiries}
-              selectedId={selectedRosterId}
-              onSelect={setSelectedRosterId}
-              onAdd={() => router.push('/profile')}
-              colors={colors}
-            />
-          )}
           {isAgent && (
-            <AgentViewingBanner
-              entry={selectedRosterEntry}
-              onSwitch={() => setSelectedRosterId(null)}
-              colors={colors}
-            />
+            <>
+              <AgentRosterStrip
+                roster={agentRoster}
+                enquiries={enquiries}
+                selectedId={selectedRosterId}
+                onSelect={setSelectedRosterId}
+                onAdd={() => router.push('/profile')}
+                colors={colors}
+              />
+              <AgentViewingBanner
+                entry={selectedRosterEntry}
+                onSwitch={() => setSelectedRosterId(null)}
+                colors={colors}
+              />
+            </>
           )}
 
           {/* Header */}
@@ -3215,22 +3215,22 @@ export default function InboxScreen() {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
       {/* Agent roster strip */}
-      {isAgent && agentRoster.length > 0 && (
-        <AgentRosterStrip
-          roster={agentRoster}
-          enquiries={enquiries}
-          selectedId={selectedRosterId}
-          onSelect={setSelectedRosterId}
-          onAdd={() => router.push('/profile')}
-          colors={colors}
-        />
-      )}
       {isAgent && (
-        <AgentViewingBanner
-          entry={selectedRosterEntry}
-          onSwitch={() => setSelectedRosterId(null)}
-          colors={colors}
-        />
+        <>
+          <AgentRosterStrip
+            roster={agentRoster}
+            enquiries={enquiries}
+            selectedId={selectedRosterId}
+            onSelect={setSelectedRosterId}
+            onAdd={() => router.push('/profile')}
+            colors={colors}
+          />
+          <AgentViewingBanner
+            entry={selectedRosterEntry}
+            onSwitch={() => setSelectedRosterId(null)}
+            colors={colors}
+          />
+        </>
       )}
 
       {/* Page header */}

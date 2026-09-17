@@ -181,12 +181,12 @@ export function useAgentEnquiries(agentUid: string | null) {
   useEffect(() => {
     if (!agentUid) { setLoading(false); setRosterLoaded(true); return; }
     Promise.all([
-      getDocs(query(collection(db, 'agentClaims'),      where('agentUid', '==', agentUid), where('status', '==', 'approved'))),
-      getDocs(query(collection(db, 'agentVenueClaims'), where('agentUid', '==', agentUid), where('status', '==', 'approved'))),
+      getDocs(query(collection(db, 'agentClaims'),      where('agentUid', '==', agentUid))),
+      getDocs(query(collection(db, 'agentVenueClaims'), where('agentUid', '==', agentUid))),
     ]).then(([artistSnap, venueSnap]) => {
       const entries: RosterEntry[] = [
-        ...artistSnap.docs.map(d => ({ type: 'artist' as const, id: d.data().artistUid as string, name: d.data().artistName as string })),
-        ...venueSnap.docs.map(d => ({ type: 'venue'  as const, id: d.data().venueId   as string, name: d.data().venueName   as string })),
+        ...artistSnap.docs.filter(d => d.data().status === 'approved').map(d => ({ type: 'artist' as const, id: d.data().artistUid as string, name: d.data().artistName as string })),
+        ...venueSnap.docs.filter(d => d.data().status === 'approved').map(d => ({ type: 'venue'  as const, id: d.data().venueId   as string, name: d.data().venueName   as string })),
       ];
       setRoster(entries);
     }).catch(() => setRoster([]))
