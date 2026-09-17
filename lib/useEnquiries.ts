@@ -165,37 +165,73 @@ export function useSupportEnquiries(uid: string | null) {
 }
 
 // ── Agent inbox — listens to enquiries for all represented musicians ────────
+export type RosterEntry = {
+  type: 'artist' | 'venue';
+  id: string;
+  name: string;
+};
+
 export function useAgentEnquiries(agentUid: string | null) {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading]     = useState(true);
-  const [artistUids, setArtistUids] = useState<string[] | null>(null);
+  const [roster, setRoster]       = useState<RosterEntry[]>([]);
+  const [rosterLoaded, setRosterLoaded] = useState(false);
 
+  // Load full roster (artists + venues) once
   useEffect(() => {
-    if (!agentUid) { setLoading(false); return; }
-    getDocs(query(
-      collection(db, 'agentClaims'),
-      where('agentUid', '==', agentUid),
-      where('status', '==', 'approved'),
-    )).then(snap => {
-      setArtistUids(snap.docs.map(d => d.data().artistUid as string));
-    }).catch(() => { setArtistUids([]); });
+    if (!agentUid) { setLoading(false); setRosterLoaded(true); return; }
+    Promise.all([
+      getDocs(query(collection(db, 'agentClaims'),      where('agentUid', '==', agentUid), where('status', '==', 'approved'))),
+      getDocs(query(collection(db, 'agentVenueClaims'), where('agentUid', '==', agentUid), where('status', '==', 'approved'))),
+    ]).then(([artistSnap, venueSnap]) => {
+      const entries: RosterEntry[] = [
+        ...artistSnap.docs.map(d => ({ type: 'artist' as const, id: d.data().artistUid as string, name: d.data().artistName as string })),
+        ...venueSnap.docs.map(d => ({ type: 'venue'  as const, id: d.data().venueId   as string, name: d.data().venueName   as string })),
+      ];
+      setRoster(entries);
+    }).catch(() => setRoster([]))
+    .finally(() => setRosterLoaded(true));
   }, [agentUid]);
 
+  // Subscribe to enquiries once roster is known
   useEffect(() => {
-    if (artistUids === null) return;
-    if (artistUids.length === 0) { setLoading(false); return; }
-    const q = query(
-      collection(db, 'inquiries'),
-      where('createdBy', 'in', artistUids),
-    );
-    const unsub = onSnapshot(q, snap => {
-      setEnquiries(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[]);
-      setLoading(false);
-    }, () => { setLoading(false); });
-    return unsub;
-  }, [artistUids?.join(',')]);
+    if (!rosterLoaded) return;
+    const artistUids = roster.filter(r => r.type === 'artist').map(r => r.id);
+    const venueIds   = roster.filter(r => r.type === 'venue').map(r => r.id);
+    if (artistUids.length === 0 && venueIds.length === 0) { setEnquiries([]); setLoading(false); return; }
 
-  return { enquiries, loading };
+    const unsubs: (() => void)[] = [];
+    let artistEnqs: Enquiry[] = [];
+    let venueEnqs:  Enquiry[] = [];
+    let artistDone = artistUids.length === 0;
+    let venueDone  = venueIds.length  === 0;
+
+    function merge() {
+      if (!artistDone || !venueDone) return;
+      const map = new Map<string, Enquiry>();
+      [...artistEnqs, ...venueEnqs].forEach(e => map.set(e.id, e));
+      setEnquiries(Array.from(map.values()));
+      setLoading(false);
+    }
+
+    if (artistUids.length > 0) {
+      unsubs.push(onSnapshot(
+        query(collection(db, 'inquiries'), where('createdBy', 'in', artistUids)),
+        snap => { artistEnqs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[]; artistDone = true; merge(); },
+        () => { artistDone = true; merge(); },
+      ));
+    }
+    if (venueIds.length > 0) {
+      unsubs.push(onSnapshot(
+        query(collection(db, 'inquiries'), where('venueId', 'in', venueIds)),
+        snap => { venueEnqs = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Enquiry[]; venueDone = true; merge(); },
+        () => { venueDone = true; merge(); },
+      ));
+    }
+    return () => unsubs.forEach(u => u());
+  }, [rosterLoaded, roster.map(r => r.id).join(',')]);
+
+  return { enquiries, loading, roster };
 }
 
 // ── Venue inbox — listens to all enquiries for a venueId ───────────────────

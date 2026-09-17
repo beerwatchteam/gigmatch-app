@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import {
   useArtistEnquiries, useVenueEnquiries, useMessages, useSupportEnquiries, useAgentEnquiries,
+  type RosterEntry,
   useParticipants,
   updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
   bookSlotOnTimetable, cancelAcceptance, markEnquiryRead,
@@ -272,6 +273,149 @@ function AvatarStack({
     </View>
   );
 }
+
+// ── Agent roster strip ─────────────────────────────────────────────────────
+
+function AgentRosterStrip({
+  roster,
+  enquiries,
+  selectedId,
+  onSelect,
+  onAdd,
+  colors,
+}: {
+  roster: RosterEntry[];
+  enquiries: Enquiry[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onAdd: () => void;
+  colors: any;
+}) {
+  function countFor(entry: RosterEntry) {
+    return enquiries.filter(e =>
+      entry.type === 'artist' ? e.createdBy === entry.id : e.venueId === entry.id
+    ).filter(e => e.status !== 'declined' && e.status !== 'cancelled').length;
+  }
+  const allCount = enquiries.filter(e => e.status !== 'declined' && e.status !== 'cancelled').length;
+
+  return (
+    <View style={[rs.wrap, { backgroundColor: colors.bgFaint, borderBottomColor: colors.border }]}>
+      <Text style={[rs.label, { color: colors.greyLight }]}>YOUR ROSTER</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={rs.row}>
+        {/* All */}
+        <TouchableOpacity style={rs.circle} onPress={() => onSelect(null)} activeOpacity={0.75}>
+          <View style={[rs.avatar, selectedId === null && rs.avatarSelected, { backgroundColor: '#e8e8e8' }]}>
+            <Text style={[rs.avatarText, { color: selectedId === null ? Colors.orange : '#999999' }]}>All</Text>
+            {allCount > 0 && (
+              <View style={rs.badge}><Text style={rs.badgeText}>{allCount}</Text></View>
+            )}
+          </View>
+          <Text style={[rs.name, selectedId === null && { fontWeight: '700', color: colors.black }]} numberOfLines={1}>All</Text>
+        </TouchableOpacity>
+
+        {/* Roster entries */}
+        {roster.map(entry => {
+          const count = countFor(entry);
+          const isSelected = selectedId === entry.id;
+          return (
+            <TouchableOpacity key={entry.id} style={rs.circle} onPress={() => onSelect(entry.id)} activeOpacity={0.75}>
+              <View style={[rs.avatar, isSelected && rs.avatarSelected, { backgroundColor: '#e8e8e8' }]}>
+                <Text style={[rs.avatarText, { color: isSelected ? Colors.orange : '#999999' }]}>{getInitials(entry.name)}</Text>
+                {count > 0 && (
+                  <View style={rs.badge}><Text style={rs.badgeText}>{count}</Text></View>
+                )}
+              </View>
+              <Text style={[rs.name, isSelected && { fontWeight: '700', color: colors.black }]} numberOfLines={1}>
+                {entry.name.length > 10 ? entry.name.slice(0, 9) + '…' : entry.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+
+        {/* Add button */}
+        <TouchableOpacity style={rs.circle} onPress={onAdd} activeOpacity={0.75}>
+          <View style={[rs.avatar, rs.avatarAdd]}>
+            <Text style={[rs.avatarText, { color: '#bbbbbb', fontSize: 22, fontWeight: '300' }]}>+</Text>
+          </View>
+          <Text style={rs.name}> </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+const rs = StyleSheet.create({
+  wrap:  { paddingTop: 14, paddingBottom: 12, borderBottomWidth: 1 },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10, paddingHorizontal: 16 },
+  row:   { paddingHorizontal: 12, gap: 6 },
+  circle:{ width: 72, alignItems: 'center', gap: 6 },
+  avatar:{
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+  },
+  avatarSelected: { borderWidth: 2.5, borderColor: Colors.orange },
+  avatarAdd:      { borderWidth: 2, borderColor: '#cccccc', borderStyle: 'dashed' as any, backgroundColor: 'transparent' },
+  avatarText: { fontSize: 15, fontWeight: '700' },
+  name: { fontSize: 11, color: '#888888', textAlign: 'center' },
+  badge:{
+    position: 'absolute', top: -2, right: -2,
+    minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4,
+    backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: '#ffffff',
+  },
+  badgeText: { fontSize: 10, fontWeight: '800', color: '#ffffff' },
+});
+
+// ── Agent viewing banner ────────────────────────────────────────────────────
+
+function AgentViewingBanner({
+  entry,
+  onSwitch,
+  colors,
+}: {
+  entry: RosterEntry | null;
+  onSwitch: () => void;
+  colors: any;
+}) {
+  return (
+    <View style={[avb.wrap, { backgroundColor: '#fff7ed', borderBottomColor: '#f5e0c8' }]}>
+      {entry ? (
+        <>
+          <View style={avb.left}>
+            <Text style={avb.eyebrow}>{entry.type === 'venue' ? 'MANAGING' : 'REPLYING AS'}</Text>
+            <View style={avb.nameRow}>
+              <View style={avb.miniAvatar}>
+                <Text style={avb.miniAvatarText}>{getInitials(entry.name)}</Text>
+              </View>
+              <Text style={[avb.name, { color: colors.black }]}>{entry.name}</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={avb.switchBtn} onPress={onSwitch} activeOpacity={0.75}>
+            <Text style={avb.switchBtnText}>Switch</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <View style={avb.left}>
+          <Text style={avb.eyebrow}>VIEWING</Text>
+          <Text style={[avb.name, { color: colors.black }]}>All managed clients</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const avb = StyleSheet.create({
+  wrap:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1 },
+  left:       { gap: 2 },
+  eyebrow:    { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, color: Colors.orange, textTransform: 'uppercase' },
+  nameRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  miniAvatar: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#e8e8e8', alignItems: 'center', justifyContent: 'center' },
+  miniAvatarText: { fontSize: 10, fontWeight: '700', color: '#888888' },
+  name:       { fontSize: 15, fontWeight: '700' },
+  switchBtn:  { borderWidth: 1.5, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6 },
+  switchBtnText: { fontSize: 13, fontWeight: '700', color: Colors.orange },
+});
 
 // ── Deal sheet bar (horizontal) ────────────────────────────────────────────
 
@@ -1246,8 +1390,8 @@ const STATUS_MOVE_OPTIONS: { status: Enquiry['status']; label: string }[] = [
   { status: 'declined',   label: 'Decline'    },
 ];
 
-function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete }: {
-  item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void; onDelete?: () => void;
+function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, rosterLabel }: {
+  item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void; onDelete?: () => void; rosterLabel?: string | null;
 }) {
   const who = isVenue ? item.bandName : item.venueName;
   const venuePhoto  = useVenuePhoto(!isVenue ? item.venueId : null);
@@ -1383,6 +1527,12 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete }: {
               </View>
             )}
             {fee ? <Text style={tt.fee}>{fee}</Text> : null}
+            {rosterLabel ? (
+              <View style={tt.rosterLabel}>
+                <View style={tt.rosterDot} />
+                <Text style={tt.rosterLabelText}>{rosterLabel}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </TouchableOpacity>
@@ -1451,6 +1601,9 @@ const tt = StyleSheet.create({
   menuLabel:      { fontSize: 13, fontWeight: '700' },
   swipeDelete:    { backgroundColor: '#dc2626', justifyContent: 'center', alignItems: 'center', width: 80 },
   swipeDeleteText:{ fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  rosterLabel:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' as any },
+  rosterDot:      { width: 7, height: 7, borderRadius: 3.5, backgroundColor: Colors.orange },
+  rosterLabelText:{ fontSize: 12, fontWeight: '700', color: Colors.orange },
 });
 
 // ── Enquiry details bubble (expandable from header, venue view) ────────────
@@ -2744,6 +2897,7 @@ export default function InboxScreen() {
   const [selected,  setSelected]  = useState<Enquiry | null>(null);
   const [filter,    setFilter]    = useState<FilterKey>('enquired');
   const [inboxTab,  setInboxTabRaw]  = useState<'enquiries' | 'messages'>(_sessionInboxTab);
+  const [selectedRosterId, setSelectedRosterId] = useState<string | null>(null);
 
   function setInboxTab(tab: 'enquiries' | 'messages') { _sessionInboxTab = tab; setInboxTabRaw(tab); }
   const [dmFilter,  setDmFilter]  = useState<'accepted' | 'requests'>('accepted');
@@ -2766,17 +2920,32 @@ export default function InboxScreen() {
     }
   }, [user?.uid, profile?.type, profile?.venueId]);
 
+  // Agent roster selection
+  const agentRoster = agentData.roster ?? [];
+  const selectedRosterEntry = agentRoster.find(r => r.id === selectedRosterId) ?? null;
+  const effectiveIsVenue = isAgent
+    ? (selectedRosterEntry?.type === 'venue')
+    : isVenue;
+  const effectiveVenueId = (isAgent && selectedRosterEntry?.type === 'venue')
+    ? selectedRosterEntry.id
+    : venueId;
+
   const dmConvs     = useDMConversations(user?.uid ?? null);
   const acceptedDMs = dmConvs.filter(c => c.acceptedBy.includes(myUid));
   const requestDMs  = dmConvs.filter(c => !c.acceptedBy.includes(myUid) && c.initiatedBy !== myUid);
   const filteredDMs = dmFilter === 'accepted' ? acceptedDMs : requestDMs;
   const selectedDM  = dmConvs.find(c => c.id === selectedDMId) ?? null;
 
-  const FILTERS = getFilterConfig(isVenue);
-  const sorted   = [...enquiries].filter(e => !(isVenue && e.status === 'declined')).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  // Filter enquiries by selected roster entry (agent only)
+  const rosterFilteredEnquiries = isAgent && selectedRosterId
+    ? enquiries.filter(e => selectedRosterEntry?.type === 'venue' ? e.venueId === selectedRosterId : e.createdBy === selectedRosterId)
+    : enquiries;
+
+  const FILTERS = getFilterConfig(effectiveIsVenue);
+  const sorted   = [...rosterFilteredEnquiries].filter(e => !(effectiveIsVenue && e.status === 'declined')).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
   const filtered = sorted.filter(e => matchesFilter(e, filter));
-  const enquiryNotifCount = !isVenue
-    ? enquiries.filter(e => e.status !== 'declined' && e.status !== 'cancelled').length
+  const enquiryNotifCount = !effectiveIsVenue
+    ? rosterFilteredEnquiries.filter(e => e.status !== 'declined' && e.status !== 'cancelled').length
     : 0;
 
   // Auto-open a specific enquiry when navigated here with openEnquiryId
@@ -2829,6 +2998,25 @@ export default function InboxScreen() {
 
         {/* Sidebar */}
         <View style={[wb.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
+          {/* Agent roster strip */}
+          {isAgent && agentRoster.length > 0 && (
+            <AgentRosterStrip
+              roster={agentRoster}
+              enquiries={enquiries}
+              selectedId={selectedRosterId}
+              onSelect={setSelectedRosterId}
+              onAdd={() => router.push('/profile')}
+              colors={colors}
+            />
+          )}
+          {isAgent && (
+            <AgentViewingBanner
+              entry={selectedRosterEntry}
+              onSwitch={() => setSelectedRosterId(null)}
+              colors={colors}
+            />
+          )}
+
           {/* Header */}
           <View style={[wb.sidebarHead, { borderBottomColor: colors.border }]}>
             <View style={wb.sidebarTitleRow}>
@@ -2839,7 +3027,7 @@ export default function InboxScreen() {
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                       <Text style={[wb.segText, inboxTab === 'enquiries' && wb.segTextActive]}>
-                        {isVenue ? 'Enquiries' : 'My Enquiries'}
+                        {effectiveIsVenue ? 'Enquiries' : 'My Enquiries'}
                       </Text>
                       {enquiryNotifCount > 0 && (
                         <View style={[wb.segBadge, inboxTab === 'enquiries' && wb.segBadgeActive]}>
@@ -2925,17 +3113,23 @@ export default function InboxScreen() {
               </Text>
             ) : (
               <ScrollView style={{ flex: 1 }}>
-                {filtered.map(item => (
-                  <ThreadTile
-                    key={item.id}
-                    item={item}
-                    isVenue={isVenue}
-                    myUid={myUid}
-                    isSelected={selected?.id === item.id}
-                    onPress={() => setSelected(item)}
-                    onDelete={() => archiveEnquiry(item.id, isVenue ? (venueId ?? myUid) : myUid)}
-                  />
-                ))}
+                {filtered.map(item => {
+                  const rosterLabel = (isAgent && !selectedRosterId)
+                    ? (agentRoster.find(r => r.type === 'venue' ? r.id === item.venueId : r.id === item.createdBy)?.name ?? null)
+                    : null;
+                  return (
+                    <ThreadTile
+                      key={item.id}
+                      item={item}
+                      isVenue={effectiveIsVenue}
+                      myUid={myUid}
+                      isSelected={selected?.id === item.id}
+                      onPress={() => setSelected(item)}
+                      onDelete={() => archiveEnquiry(item.id, effectiveIsVenue ? (effectiveVenueId ?? myUid) : myUid)}
+                      rosterLabel={rosterLabel}
+                    />
+                  );
+                })}
               </ScrollView>
             )
           ) : (
@@ -2970,8 +3164,8 @@ export default function InboxScreen() {
             ) : (
               <ThreadPanel
                 enquiry={selected}
-                isVenue={isVenue}
-                venueId={venueId}
+                isVenue={effectiveIsVenue}
+                venueId={effectiveVenueId}
                 onBack={undefined}
               />
             )
@@ -3012,7 +3206,7 @@ export default function InboxScreen() {
         flex: 1,
         backgroundColor: colors.bg,
       }}>
-        <ThreadPanel enquiry={selected} isVenue={isVenue} venueId={venueId} onBack={() => setSelected(null)} />
+        <ThreadPanel enquiry={selected} isVenue={effectiveIsVenue} venueId={effectiveVenueId} onBack={() => setSelected(null)} />
       </View>
     );
   }
@@ -3020,6 +3214,25 @@ export default function InboxScreen() {
   // ── NATIVE: list ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+      {/* Agent roster strip */}
+      {isAgent && agentRoster.length > 0 && (
+        <AgentRosterStrip
+          roster={agentRoster}
+          enquiries={enquiries}
+          selectedId={selectedRosterId}
+          onSelect={setSelectedRosterId}
+          onAdd={() => router.push('/profile')}
+          colors={colors}
+        />
+      )}
+      {isAgent && (
+        <AgentViewingBanner
+          entry={selectedRosterEntry}
+          onSwitch={() => setSelectedRosterId(null)}
+          colors={colors}
+        />
+      )}
+
       {/* Page header */}
       <View style={[s.listHeader, { borderBottomColor: colors.border }, (isWeb && !isWideWeb) && { paddingTop: TOP_TAB_H + 20 }]}>
         <View style={s.listHeaderTop}>
@@ -3030,7 +3243,7 @@ export default function InboxScreen() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <Text style={[s.segText, inboxTab === 'enquiries' && s.segTextActive]}>
-                  {isVenue ? 'Enquiries' : 'My Enquiries'}
+                  {effectiveIsVenue ? 'Enquiries' : 'My Enquiries'}
                 </Text>
                 {enquiryNotifCount > 0 && (
                   <View style={[s.segBadge, inboxTab === 'enquiries' && s.segBadgeActive]}>
@@ -3123,7 +3336,7 @@ export default function InboxScreen() {
             </Text>
             <Text style={s.emptySub}>
               {enquiries.length === 0
-                ? (isVenue
+                ? (effectiveIsVenue
                     ? 'Enquiries from musicians will appear here'
                     : 'Your enquiries to venues will appear here')
                 : 'Try a different filter'}
@@ -3134,9 +3347,22 @@ export default function InboxScreen() {
             data={filtered}
             keyExtractor={item => item.id}
             contentContainerStyle={{ paddingVertical: 8, paddingBottom: 40 }}
-            renderItem={({ item }) => (
-              <ThreadTile item={item} isVenue={isVenue} myUid={myUid} isSelected={false} onPress={() => setSelected(item)} onDelete={() => archiveEnquiry(item.id, isVenue ? (venueId ?? myUid) : myUid)} />
-            )}
+            renderItem={({ item }) => {
+              const rosterLabel = (isAgent && !selectedRosterId)
+                ? (agentRoster.find(r => r.type === 'venue' ? r.id === item.venueId : r.id === item.createdBy)?.name ?? null)
+                : null;
+              return (
+                <ThreadTile
+                  item={item}
+                  isVenue={effectiveIsVenue}
+                  myUid={myUid}
+                  isSelected={false}
+                  onPress={() => setSelected(item)}
+                  onDelete={() => archiveEnquiry(item.id, effectiveIsVenue ? (effectiveVenueId ?? myUid) : myUid)}
+                  rosterLabel={rosterLabel}
+                />
+              );
+            }}
           />
         )
       ) : (
