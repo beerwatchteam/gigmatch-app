@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import SuburbSearch from '@/components/SuburbSearch';
 import { Text } from '@/components/Text';
 import {
   addDoc,
@@ -448,30 +449,16 @@ export default function AdminPanel({ visible, onClose }: Props) {
                     placeholderTextColor={Colors.greyLight}
                   />
 
-                  <View style={s.rowFields}>
-                    <View style={{ flex: 2 }}>
-                      <Text style={s.fieldLabel}>Suburb *</Text>
-                      <TextInput
-                        style={[s.input, addErrors.includes('suburb') && s.inputError]}
-                        value={addForm.suburb}
-                        onChangeText={v => setField('suburb', v)}
-                        placeholder="e.g. Richmond"
-                        placeholderTextColor={Colors.greyLight}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.fieldLabel}>Postcode</Text>
-                      <TextInput
-                        style={s.input}
-                        value={addForm.postcode}
-                        onChangeText={v => setField('postcode', v)}
-                        placeholder="3000"
-                        placeholderTextColor={Colors.greyLight}
-                        keyboardType="number-pad"
-                        maxLength={4}
-                      />
-                    </View>
-                  </View>
+                  <Text style={s.fieldLabel}>Suburb *</Text>
+                  <SuburbSearch
+                    value={addForm.suburb}
+                    onChange={v => setField('suburb', v)}
+                    onAutofill={(suburb, _state, postcode) => {
+                      setAddForm(prev => ({ ...prev, suburb, postcode }));
+                      setAddErrors(prev => prev.filter(e => e !== 'suburb'));
+                    }}
+                    error={addErrors.includes('suburb')}
+                  />
 
                   <Text style={s.fieldLabel}>Phone</Text>
                   <TextInput

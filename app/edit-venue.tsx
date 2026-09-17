@@ -7,7 +7,7 @@ import { Text } from '@/components/Text';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { searchSuburbs, AreaResult } from '@/lib/suburbSearch';
+import SuburbSearch from '@/components/SuburbSearch';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -545,72 +545,6 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
           </TouchableOpacity>
         );
       })}
-    </View>
-  );
-}
-
-function SuburbSearch({ value, onChange, onAutofill, error }: {
-  value: string;
-  onChange: (v: string) => void;
-  onAutofill?: (suburb: string, state: string, postcode: string) => void;
-  error?: boolean;
-}) {
-  const { colors } = useTheme();
-  const [query, setQuery] = useState(value);
-  const [results, setResults] = useState<AreaResult[]>([]);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => { setQuery(value); }, [value]);
-
-  function handleChange(text: string) {
-    setQuery(text);
-    onChange(text);
-    if (text.length >= 1) {
-      const found = searchSuburbs(text, 7);
-      setResults(found);
-      setOpen(found.length > 0);
-    } else {
-      setResults([]);
-      setOpen(false);
-    }
-  }
-
-  function select(r: AreaResult) {
-    // label format: "Suburb Name, STATE, postcode"
-    const parts = r.label.split(', ');
-    const suburb = parts[0] || r.label;
-    const state = parts[1] || '';
-    const postcode = parts[2] || '';
-    setQuery(suburb);
-    onChange(suburb);
-    if (onAutofill) onAutofill(suburb, state, postcode);
-    setResults([]);
-    setOpen(false);
-  }
-
-  return (
-    <View>
-      <TextInput
-        style={[s.input, { backgroundColor: colors.bgFaint, borderColor: error ? Colors.danger : colors.border, color: colors.black }]}
-        value={query}
-        onChangeText={handleChange}
-        placeholder="Suburb"
-        placeholderTextColor={Colors.greyLight}
-        autoCapitalize="words"
-      />
-      {open && (
-        <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, marginTop: 4, overflow: 'hidden', zIndex: 999 }}>
-          {results.map((r, i) => (
-            <TouchableOpacity
-              key={i}
-              onPress={() => select(r)}
-              style={{ paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: i < results.length - 1 ? 1 : 0, borderBottomColor: colors.borderFaint }}
-            >
-              <Text style={{ fontSize: 14, color: colors.black }}>{r.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
     </View>
   );
 }
