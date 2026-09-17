@@ -100,7 +100,15 @@ type SlotDetail = {
   duration?: number;
   day: string;
   dateStr: string | null;
+  name?: string;
   room?: string;
+  notes?: string;
+  feeMin?: number;
+  feeMax?: number;
+  paymentModels?: string[];
+  paymentModel?: string;
+  paymentMethod?: string;
+  minNotice?: string;
   sortMs: number;
 };
 
@@ -124,16 +132,45 @@ function getNextOpenSlotsDetailed(venue: Venue): SlotDetail[] {
       } else {
         const dow = DAY_NAMES.indexOf(day);
         if (dow === -1) continue;
-        d = new Date(today);
+        let fromDate = new Date(today);
+        if (slot.startDate) {
+          const [sy, sm, sd] = slot.startDate.split('-').map(Number);
+          const start = new Date(sy, sm - 1, sd);
+          if (start > today) fromDate = start;
+        }
+        d = new Date(fromDate); d.setHours(0,0,0,0);
         const diff = (dow - d.getDay() + 7) % 7;
-        d.setDate(d.getDate() + (diff === 0 ? 7 : diff));
+        if (diff === 0 && fromDate.getTime() <= today.getTime()) { d.setDate(d.getDate() + 7); }
+        else { d.setDate(d.getDate() + diff); }
+        if (!slot.continuous && slot.endDate) {
+          const [ey, em, ed] = slot.endDate.split('-').map(Number);
+          const endD = new Date(ey, em - 1, ed); endD.setHours(23,59,59);
+          if (d > endD) continue;
+        }
       }
       const dl = d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
-      upcoming.push({ dateLabel: dl, time: slot.time || '', slotType: slot.slotType, duration: slot.duration, day, dateStr, room: slot.room || undefined, sortMs: d.getTime() });
+      upcoming.push({ dateLabel: dl, time: slot.time || '', slotType: slot.slotType, duration: slot.duration, day, dateStr, name: slot.name || undefined, room: slot.room || undefined, notes: slot.notes || undefined, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentModels: slot.paymentModels, paymentModel: slot.paymentModel, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, sortMs: d.getTime() });
     }
   }
   upcoming.sort((a, b) => a.sortMs - b.sortMs);
   return upcoming;
+}
+
+function slotPaymentSummary(slot: { feeMin?: number; feeMax?: number; paymentModels?: string[]; paymentModel?: string; paymentMethod?: string }): string {
+  const models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
+  const parts: string[] = [];
+  if (models.includes('Flat fee') && slot.feeMin != null) {
+    const range = slot.feeMax != null && slot.feeMax !== slot.feeMin ? `$${slot.feeMin}–$${slot.feeMax}` : `$${slot.feeMin}`;
+    parts.push(`${range} flat fee`);
+    const others = models.filter(m => m !== 'Flat fee');
+    if (others.length) parts.push(...others);
+  } else if (models.length) {
+    parts.push(...models);
+  } else if (slot.feeMin != null) {
+    parts.push(slot.feeMax != null && slot.feeMax !== slot.feeMin ? `$${slot.feeMin}–$${slot.feeMax}` : `$${slot.feeMin}`);
+  }
+  if (slot.paymentMethod) parts.push(slot.paymentMethod);
+  return parts.join(' · ');
 }
 
 function getOpenDatesNextThreeWeeks(venue: Venue): Set<string> {
@@ -152,6 +189,8 @@ function getOpenDatesNextThreeWeeks(venue: Venue): Set<string> {
     const hasOpen = daySlots.some(slot => {
       if (slot.status !== 'open') return false;
       if (slot.date) return slot.date === iso;
+      if (slot.startDate && iso < slot.startDate) return false;
+      if (!slot.continuous && slot.endDate && iso > slot.endDate) return false;
       return true;
     });
     if (hasOpen) openDates.add(iso);
@@ -166,7 +205,15 @@ type CalSlot = {
   slotType?: string;
   duration?: number;
   day: string;
+  name?: string;
   room?: string;
+  notes?: string;
+  feeMin?: number;
+  feeMax?: number;
+  paymentModels?: string[];
+  paymentModel?: string;
+  paymentMethod?: string;
+  minNotice?: string;
   sortKey: number;
 };
 
@@ -196,6 +243,10 @@ function getCalendarSlots(venues: Venue[], maxDays: number): CalSlot[] {
       for (const slot of daySlots) {
         if (slot.status !== 'open') continue;
         if (slot.date && slot.date !== iso) continue;
+        if (!slot.date) {
+          if (slot.startDate && iso < slot.startDate) continue;
+          if (!slot.continuous && slot.endDate && iso > slot.endDate) continue;
+        }
         result.push({
           dateISO: iso,
           time: slot.time || '',
@@ -204,6 +255,14 @@ function getCalendarSlots(venues: Venue[], maxDays: number): CalSlot[] {
           duration: slot.duration,
           day: dayName,
           room: slot.room,
+          name: slot.name,
+          notes: slot.notes,
+          feeMin: slot.feeMin,
+          feeMax: slot.feeMax,
+          paymentModels: slot.paymentModels,
+          paymentModel: slot.paymentModel,
+          paymentMethod: slot.paymentMethod,
+          minNotice: slot.minNotice,
           sortKey: d.getTime() + parseTimeToMins(slot.time || '') * 60000,
         });
       }
@@ -860,6 +919,7 @@ export default function VenuesScreen() {
             ) : (
               <>
                 {shown.map((slot, i) => {
+                  const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
                   const enquireParams = {
                     venueId:   item.id,
                     venueName: item.name,
@@ -868,8 +928,15 @@ export default function VenuesScreen() {
                     time:      slot.time,
                     ...(slot.room ? { room: slot.room } : {}),
                     slotType:  slot.slotType ?? 'Either',
-                    duration:  slot.duration || '',
+                    duration:  slot.duration ? String(slot.duration) : '',
                     capacity:  maxCapacity ? String(maxCapacity) : '',
+                    ...(slot.name ? { slotName: slot.name } : {}),
+                    ...(slot.notes ? { slotNote: slot.notes } : {}),
+                    ...(_models.length ? { paymentModels: _models.join(',') } : {}),
+                    ...(slot.feeMin != null ? { feeMin: String(slot.feeMin) } : {}),
+                    ...(slot.feeMax != null ? { feeMax: String(slot.feeMax) } : {}),
+                    ...(slot.paymentMethod ? { paymentMethod: slot.paymentMethod } : {}),
+                    ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
                   };
                   return (
                     <View
@@ -950,6 +1017,8 @@ export default function VenuesScreen() {
     return daySlots.filter(slot => {
       if (slot.status !== 'open') return false;
       if (slot.date) return slot.date === iso;
+      if (slot.startDate && iso < slot.startDate) return false;
+      if (!slot.continuous && slot.endDate && iso > slot.endDate) return false;
       return true;
     });
   }
@@ -957,6 +1026,8 @@ export default function VenuesScreen() {
   function WebVenueRow({ item }: { item: Venue }) {
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const photo = item.photoUrl || item.photos?.[0];
+    // Enquiry status by date for this venue — populated when enquiry data is available in this context
+    const myVenueEnquiryDates: Record<string, 'confirmed' | 'enquired' | 'declined'> = {};
     const venueGenres = (item.genre || item.genres || []).slice(0, 6);
 
     // Build 21-day calendar starting from today
@@ -1033,7 +1104,7 @@ export default function VenuesScreen() {
                   const s = normalizeEnquiryStatus(e.status);
                   if (s === 'confirmed') { myStatus = 'confirmed'; break; }
                   if (s === 'declined' && myStatus == null) { myStatus = 'declined'; continue; }
-                  if (s !== 'declined' && s !== 'cancelled' && myStatus !== 'confirmed') myStatus = 'enquired';
+                  if (s !== 'declined' && s !== 'cancelled') myStatus = 'enquired';
                 }
               }
 
@@ -1111,20 +1182,29 @@ export default function VenuesScreen() {
                     <TouchableOpacity
                       key={idx}
                       activeOpacity={0.7}
-                      onPress={() => router.push({
-                        pathname: '/enquire',
-                        params: {
-                          venueId: item.id,
-                          venueName: item.name,
-                          day: dayName,
-                          date: selectedDate!,
-                          time: slot.time ?? '',
-                          slotType: slot.slotType ?? 'Either',
-                          ...(slot.room ? { room: slot.room } : {}),
-                          duration: slot.duration || '',
-                          capacity: item.capacity ? String(item.capacity) : '',
-                        },
-                      })}
+                      onPress={() => {
+                        const _models = (slot as any).paymentModels?.length ? (slot as any).paymentModels : ((slot as any).paymentModel ? [(slot as any).paymentModel] : []);
+                        router.push({
+                          pathname: '/enquire',
+                          params: {
+                            venueId:   item.id,
+                            venueName: item.name,
+                            day:       dayName,
+                            date:      selectedDate!,
+                            time:      slot.time ?? '',
+                            slotType:  slot.slotType ?? 'Either',
+                            ...(slot.room ? { room: slot.room } : {}),
+                            duration:  slot.duration ? String(slot.duration) : '',
+                            capacity:  item.capacity ? String(item.capacity) : '',
+                            ...(slot.notes ? { slotNote: slot.notes } : {}),
+                            ...(_models.length ? { paymentModels: _models.join(',') } : {}),
+                            ...((slot as any).feeMin != null ? { feeMin: String((slot as any).feeMin) } : {}),
+                            ...((slot as any).feeMax != null ? { feeMax: String((slot as any).feeMax) } : {}),
+                            ...((slot as any).paymentMethod ? { paymentMethod: (slot as any).paymentMethod } : {}),
+                            ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
+                          },
+                        });
+                      }}
                     >
                       <Text style={st.calSlotDetailText} numberOfLines={1}>{prefix}{parts.join(' · ')}</Text>
                     </TouchableOpacity>
@@ -1218,7 +1298,7 @@ export default function VenuesScreen() {
               const s = normalizeEnquiryStatus(e.status);
               if (s === 'confirmed') { calMyStatus = 'confirmed'; break; }
               if (s === 'declined' && !calMyStatus) { calMyStatus = 'declined'; continue; }
-              if (s !== 'declined' && s !== 'cancelled' && calMyStatus !== 'confirmed') calMyStatus = 'enquired';
+              if (s !== 'declined' && s !== 'cancelled') calMyStatus = 'enquired';
             }
             if (calMyStatus === 'confirmed') return <Text style={[st.webTimetableBtnText, { color: '#22c55e', fontSize: 12 }]}>Booked</Text>;
             if (calMyStatus === 'enquired')  return <Text style={[st.webTimetableBtnText, { color: '#888888', fontSize: 12 }]}>Enquiry sent</Text>;
@@ -1226,20 +1306,30 @@ export default function VenuesScreen() {
             return (
               <TouchableOpacity
                 style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
-                onPress={() => router.push({
-                  pathname: '/enquire',
-                  params: {
-                    venueId: slot.venue.id,
-                    venueName: slot.venue.name,
-                    day: slot.day,
-                    date: slot.dateISO,
-                    time: slot.time,
-                    slotType: slot.slotType ?? 'Either',
-                    ...(slot.room ? { room: slot.room } : {}),
-                    duration: slot.duration || '',
-                    capacity: slot.venue.capacity ? String(slot.venue.capacity) : '',
-                  },
-                })}
+                onPress={() => {
+                  const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
+                  router.push({
+                    pathname: '/enquire',
+                    params: {
+                      venueId:   slot.venue.id,
+                      venueName: slot.venue.name,
+                      day:       slot.day,
+                      date:      slot.dateISO,
+                      time:      slot.time,
+                      slotType:  slot.slotType ?? 'Either',
+                      ...(slot.room ? { room: slot.room } : {}),
+                      duration:  slot.duration ? String(slot.duration) : '',
+                      capacity:  slot.venue.capacity ? String(slot.venue.capacity) : '',
+                      ...(slot.name ? { slotName: slot.name } : {}),
+                      ...(slot.notes ? { slotNote: slot.notes } : {}),
+                      ...(_models.length ? { paymentModels: _models.join(',') } : {}),
+                      ...(slot.feeMin != null ? { feeMin: String(slot.feeMin) } : {}),
+                      ...(slot.feeMax != null ? { feeMax: String(slot.feeMax) } : {}),
+                      ...(slot.paymentMethod ? { paymentMethod: slot.paymentMethod } : {}),
+                      ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
+                    },
+                  });
+                }}
                 activeOpacity={0.85}
               >
                 <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>

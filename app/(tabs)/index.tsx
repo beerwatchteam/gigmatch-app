@@ -429,7 +429,7 @@ export default function HomeScreen() {
                 {`Every open slot,\non one timetable.`}
               </Text>
               <Text style={[s.subhead, { color: colors.grey }]}>
-                GigMatch shows artists which venues have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
+                KordUp shows artists which venues have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
               </Text>
               <View style={s.heroCtaRow}>
                 <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
@@ -583,7 +583,7 @@ export default function HomeScreen() {
         {/* ── Footer ──────────────────────────────────────────── */}
         <View style={[s.footer, { borderTopColor: colors.border }]}>
           <View style={s.footerLeft}>
-            <Text style={[s.footerLogo, { color: colors.black }]}>GigMatch</Text>
+            <Text style={[s.footerLogo, { color: colors.black }]}>KordUp</Text>
             <Text style={[s.footerMeta, { color: colors.grey }]}>BETA · MELBOURNE</Text>
           </View>
           <View style={s.footerNav}>

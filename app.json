@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GigMatch",
+    "name": "KordUp",
     "slug": "gigmatch",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -40,8 +40,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "GigMatch accesses your photos to upload profile and venue images.",
-          "cameraPermission": "GigMatch uses your camera to upload images."
+          "photosPermission": "KordUp accesses your photos to upload profile and venue images.",
+          "cameraPermission": "KordUp uses your camera to upload images."
         }
       ],
       "@react-native-community/datetimepicker",

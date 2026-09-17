@@ -19,11 +19,12 @@
 
 const { readFileSync } = require('fs');
 const { resolve } = require('path');
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 // ── Firebase setup ────────────────────────────────────────────────────────────
 
-const keyPath = resolve(__dirname, '../scripts1/serviceAccountKey.json');
+const keyPath = resolve(__dirname, 'scripts1serviceAccountKey.json');
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(readFileSync(keyPath, 'utf8'));
@@ -36,9 +37,8 @@ try {
   process.exit(1);
 }
 
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-const db = admin.firestore();
-const FieldValue = admin.firestore.FieldValue;
+initializeApp({ credential: cert(serviceAccount) });
+const db = getFirestore();
 
 // ── Venue data (sourced from api.lml.live, Melbourne, Sep–Dec 2025) ───────────
 // Manually cleaned: streetAddress is street only, suburb extracted separately.
@@ -187,7 +187,7 @@ async function main() {
       settings: {
         emailOnNewEnquiry: false,
         emailEnquiryReminders: false,
-        listed: false,
+        listed: true,
       },
       photos: [],
       videos: [],

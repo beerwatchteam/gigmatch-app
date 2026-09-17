@@ -16,7 +16,7 @@ import { useTheme } from '@/lib/theme-context';
 const isWeb = Platform.OS === 'web';
 
 const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
-const SLOT_PREFS = ['Headline', 'Other'] as const;
+const SLOT_PREFS = ['Headline', 'Support', 'Open Mic', 'Other'] as const;
 
 type SectionKey = 'about' | 'music' | 'gigHistory' | 'upcomingGigs' | 'socials' | 'techRider' | 'photos' | 'contact';
 
@@ -43,12 +43,15 @@ export default function EnquireScreen() {
   const params = useLocalSearchParams<{
     venueId: string; venueName: string;
     day: string; date?: string; time: string;
-    room?: string; slotType?: string; duration?: string; capacity?: string; slotNote?: string;
+    room?: string; slotType?: string; duration?: string; capacity?: string;
+    slotName?: string; slotNote?: string;
+    paymentModels?: string; feeMin?: string; feeMax?: string; paymentMethod?: string;
+    minNotice?: string;
   }>();
 
   // Locked by venue
   const lockedDuration = params.duration ? `${params.duration} min` : null;
-  const lockedSlotType = (params.slotType === 'Headline' || params.slotType === 'Other') ? params.slotType : null;
+  const lockedSlotType = (['Headline', 'Support', 'Open Mic', 'Other'] as string[]).includes(params.slotType ?? '') ? params.slotType! : null;
 
   const [band, setBand]           = useState<Record<string, any>>({});
   const [setLength, setSetLength] = useState(lockedDuration || '45 min');
@@ -59,6 +62,7 @@ export default function EnquireScreen() {
     about: true, music: true, gigHistory: true, upcomingGigs: true,
     socials: true, techRider: true, photos: true, contact: true,
   });
+  const [availConfirmed, setAvailConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted,  setSubmitted]  = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -188,6 +192,14 @@ export default function EnquireScreen() {
     }
   }
 
+  // ── Payment info (from venue slot) ─────────────────────────────────────────
+  const paymentModels: string[] = params.paymentModels
+    ? params.paymentModels.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+  const feeMin = params.feeMin ? Number(params.feeMin) : null;
+  const feeMax = params.feeMax ? Number(params.feeMax) : null;
+  const hasPayment = paymentModels.length > 0;
+
   const genres: string[] = band.genre ?? [];
   const selectedCount = Object.values(sections).filter(Boolean).length;
 
@@ -241,8 +253,10 @@ export default function EnquireScreen() {
           <View style={{ flex: 1 }}>
             <Text style={s.enquiryLabel}>ENQUIRY</Text>
             <Text style={[s.venueName, { color: colors.black }]}>{params.venueName}</Text>
+            {params.slotName ? (
+              <Text style={[s.slotName, { color: colors.grey }]}>{params.slotName}</Text>
+            ) : null}
             <Text style={s.slotDetail}>{slotParts.join(' · ')}</Text>
-            {params.slotNote ? <Text style={s.slotNote}>{params.slotNote}</Text> : null}
           </View>
           <TouchableOpacity onPress={() => router.back()} style={[s.closeBtn, { borderColor: colors.border }]}>
             <Text style={[s.closeBtnText, { color: colors.black }]}>✕</Text>
@@ -279,86 +293,107 @@ export default function EnquireScreen() {
           </View>
         </View>
 
-        {/* ── Set length ────────────────────────────────────────── */}
-        <View style={s.fieldBlock}>
-          <Text style={[s.fieldLabel, { color: colors.black }]}>Per Set Duration (Min)</Text>
-          {lockedDuration ? (
-            <View style={s.lockedRow}>
-              <Text style={[s.lockedValue, { color: colors.black }]}>{lockedDuration}</Text>
-              <Text style={s.lockedHint}>Set by venue</Text>
-            </View>
-          ) : (
-            <View style={s.pillGroup}>
-              {SET_LENGTHS.map(l => (
-                <TouchableOpacity
-                  key={l}
-                  style={[s.pill, { borderColor: colors.border }, setLength === l && s.pillActive]}
-                  onPress={() => setSetLength(l)}
-                >
-                  <Text style={[s.pillText, { color: colors.grey }, setLength === l && s.pillTextActive]}>{l}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* ── Slot preference ───────────────────────────────────── */}
-        <View style={s.fieldBlock}>
-          <Text style={[s.fieldLabel, { color: colors.black }]}>Slot preference</Text>
-          {lockedSlotType ? (
-            <View style={s.lockedRow}>
-              <Text style={[s.lockedValue, { color: colors.black }]}>{lockedSlotType}</Text>
-              <Text style={s.lockedHint}>Set by venue</Text>
-            </View>
-          ) : (
-            <View style={s.pillGroup}>
-              {SLOT_PREFS.map(p => (
-                <TouchableOpacity
-                  key={p}
-                  style={[s.pill, { borderColor: colors.border }, slotPref === p && s.pillActive]}
-                  onPress={() => setSlotPref(p)}
-                >
-                  <Text style={[s.pillText, { color: colors.grey }, slotPref === p && s.pillTextActive]}>{p}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          {(slotPref === 'Other' || lockedSlotType === 'Other') && (
-            <TextInput
-              style={[s.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border, marginTop: 10 }]}
-              placeholder="Describe the type of slot you're looking for..."
-              placeholderTextColor={colors.greyLight}
-              multiline
-              numberOfLines={2}
-              value={otherNote}
-              onChangeText={setOtherNote}
-              textAlignVertical="top"
-            />
-          )}
-        </View>
-
-        {/* ── Note to the venue ─────────────────────────────────── */}
-        <View style={s.fieldBlock}>
-          <View style={s.noteLabelRow}>
-            <Text style={[s.fieldLabel, { color: colors.black }]}>Note to the venue</Text>
-            <Text style={s.optionalLabel}>Optional</Text>
+        {/* ── Set Details ───────────────────────────────────────── */}
+        <View style={s.setDetailsBlock}>
+          <Text style={[s.setDetailsHeading, { color: colors.grey }]}>SET DETAILS</Text>
+          <View style={s.setDetailRow}>
+            <Text style={[s.setDetailLabel, { color: colors.grey }]}>Per Set Duration (Min)</Text>
+            {lockedDuration ? (
+              <View style={s.lockedRow}>
+                <Text style={[s.lockedValue, { color: colors.black }]}>{lockedDuration}</Text>
+                <Text style={s.lockedHint}>Set by venue</Text>
+              </View>
+            ) : (
+              <View style={s.pillGroup}>
+                {SET_LENGTHS.map(l => (
+                  <TouchableOpacity
+                    key={l}
+                    style={[s.pill, { borderColor: colors.border }, setLength === l && s.pillActive]}
+                    onPress={() => setSetLength(l)}
+                  >
+                    <Text style={[s.pillText, { color: colors.grey }, setLength === l && s.pillTextActive]}>{l}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
-          <TextInput
-            style={[s.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border }]}
-            placeholder="Draw size, PA requirements, similar rooms you've played…"
-            placeholderTextColor={colors.greyLight}
-            multiline
-            numberOfLines={3}
-            value={note}
-            onChangeText={setNote}
-            textAlignVertical="top"
-          />
+          <View style={s.setDetailRow}>
+            <Text style={[s.setDetailLabel, { color: colors.grey }]}>Slot Type</Text>
+            {lockedSlotType ? (
+              <View style={s.lockedRow}>
+                <Text style={[s.lockedValue, { color: colors.black }]}>{lockedSlotType}</Text>
+                <Text style={s.lockedHint}>Set by venue</Text>
+              </View>
+            ) : (
+              <View style={s.pillGroup}>
+                {SLOT_PREFS.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[s.pill, { borderColor: colors.border }, slotPref === p && s.pillActive]}
+                    onPress={() => setSlotPref(p)}
+                  >
+                    <Text style={[s.pillText, { color: colors.grey }, slotPref === p && s.pillTextActive]}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {(slotPref === 'Other' || lockedSlotType === 'Other') && (
+              <TextInput
+                style={[s.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border, marginTop: 10 }]}
+                placeholder="Describe the type of slot you're looking for..."
+                placeholderTextColor={colors.greyLight}
+                multiline
+                numberOfLines={2}
+                value={otherNote}
+                onChangeText={setOtherNote}
+                textAlignVertical="top"
+              />
+            )}
+          </View>
         </View>
 
-        {/* ── Profile sections shared ───────────────────────────── */}
+        {/* ── Slot info rows ────────────────────────────────────── */}
+        {(hasPayment || params.paymentMethod || params.minNotice || params.slotNote) ? (
+          <View style={[s.slotInfoBlock, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+            {paymentModels.map((model, idx) => {
+              const isFirst = idx === 0;
+              let valueText = model;
+              if (model === 'Flat fee' && feeMin != null) {
+                const range = feeMax != null && feeMax !== feeMin ? `$${feeMin}-$${feeMax}` : `$${feeMin}`;
+                valueText = `Flat fee · ${range}`;
+              }
+              return (
+                <View key={model} style={[s.slotInfoRow, !isFirst && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                  <Text style={[s.slotInfoLabel, { color: colors.grey }]}>{isFirst ? 'Payment' : ''}</Text>
+                  <Text style={[s.slotInfoText, { color: colors.black }]}>{valueText}</Text>
+                </View>
+              );
+            })}
+            {params.paymentMethod ? (
+              <View style={[s.slotInfoRow, hasPayment ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
+                <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Via</Text>
+                <Text style={[s.slotInfoText, { color: colors.black }]}>{params.paymentMethod}</Text>
+              </View>
+            ) : null}
+            {params.minNotice ? (
+              <View style={[s.slotInfoRow, (hasPayment || params.paymentMethod) ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
+                <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Min. notice</Text>
+                <Text style={[s.slotInfoText, { color: colors.black }]}>{params.minNotice}</Text>
+              </View>
+            ) : null}
+            {params.slotNote ? (
+              <View style={[s.slotInfoRow, (hasPayment || params.paymentMethod || params.minNotice) ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
+                <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Venue notes</Text>
+                <Text style={[s.slotInfoText, { color: colors.black }]}>{params.slotNote}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ── What you're sending ───────────────────────────────── */}
         <View style={s.sectionsBlock}>
           <View style={s.sectionsHeader}>
-            <Text style={[s.sectionsTitle, { color: colors.grey }]}>PROFILE SECTIONS SHARED</Text>
+            <Text style={[s.sectionsTitle, { color: colors.grey }]}>WHAT YOU'RE SENDING</Text>
             <TouchableOpacity onPress={selectAll}>
               <Text style={s.selectAll}>Select all</Text>
             </TouchableOpacity>
@@ -370,7 +405,7 @@ export default function EnquireScreen() {
               return (
                 <TouchableOpacity
                   key={sec.key}
-                  style={[s.checkCell, { borderColor: colors.border, backgroundColor: checked ? Colors.orange + '0d' : colors.bg }]}
+                  style={[s.checkCell, { borderColor: checked ? Colors.orange : colors.border, backgroundColor: checked ? Colors.orange + '0d' : colors.bg }]}
                   onPress={() => toggleSection(sec.key)}
                   activeOpacity={0.75}
                 >
@@ -389,6 +424,36 @@ export default function EnquireScreen() {
           </View>
         </View>
 
+        {/* ── Note to the venue ─────────────────────────────────── */}
+        <View style={s.fieldBlock}>
+          <View style={s.noteLabelRow}>
+            <Text style={[s.fieldLabel, { color: colors.black }]}>Note to the venue</Text>
+            <Text style={s.optionalLabel}>Optional</Text>
+          </View>
+          <TextInput
+            style={[s.textarea, { backgroundColor: colors.bgFaint, color: colors.black, borderColor: colors.border }]}
+            placeholder="Draw size, PA requirements, similar rooms you've played..."
+            placeholderTextColor={colors.greyLight}
+            multiline
+            numberOfLines={3}
+            value={note}
+            onChangeText={setNote}
+            textAlignVertical="top"
+          />
+        </View>
+
+        {/* ── Availability confirmation ──────────────────────────── */}
+        <TouchableOpacity
+          style={[s.availRow, { borderColor: availConfirmed ? Colors.orange : colors.border, backgroundColor: availConfirmed ? Colors.orange + '0d' : colors.bgFaint }]}
+          onPress={() => setAvailConfirmed(v => !v)}
+          activeOpacity={0.75}
+        >
+          <View style={[s.checkbox, availConfirmed && s.checkboxOn]}>
+            {availConfirmed ? <Text style={s.checkMark}>✓</Text> : null}
+          </View>
+          <Text style={[s.availLabel, { color: colors.black }]}>I confirm I'm available on this date and time.</Text>
+        </TouchableOpacity>
+
         {/* ── Error ─────────────────────────────────────────────── */}
         {error ? <Text style={s.errorText}>{error}</Text> : null}
 
@@ -402,9 +467,10 @@ export default function EnquireScreen() {
             <Text style={s.blockedBannerText}>{blockedReason}</Text>
           </View>
         ) : (
-          <>
-            <Text style={[s.footerSummary, { color: colors.grey }]} numberOfLines={1}>
-              {setLength} · {slotPref} · {selectedCount} of {SECTIONS.length} sections shared
+          <View style={{ width: '100%', gap: 10 }}>
+            <Text style={[s.footerMeta, { color: colors.grey }]}>{selectedCount} of {SECTIONS.length} profile sections included</Text>
+            <Text style={[s.whatsNextText, { color: colors.grey }]}>
+              The venue will review your enquiry and respond in your inbox. You won't be charged or booked until they accept.
             </Text>
             <View style={s.footerActions}>
               <TouchableOpacity
@@ -414,17 +480,17 @@ export default function EnquireScreen() {
                 <Text style={[s.cancelBtnText, { color: colors.black }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.sendBtn, submitting && { opacity: 0.6 }]}
+                style={[s.sendBtn, (submitting || !availConfirmed) && { opacity: 0.5 }]}
                 onPress={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || !availConfirmed}
               >
                 {submitting
-                  ? <ActivityIndicator color="#111111" size="small" />
-                  : <Text style={s.sendBtnText}>Send enquiry</Text>
+                  ? <ActivityIndicator color="#ffffff" size="small" />
+                  : <Text style={s.sendBtnText}>Send Enquiry</Text>
                 }
               </TouchableOpacity>
             </View>
-          </>
+          </View>
         )}
       </View>
     </View>
@@ -514,10 +580,71 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   venueName:  { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  slotName:   { fontSize: 14, fontWeight: '600', marginTop: 2 },
   slotDetail: { fontSize: 13, color: Colors.grey, marginTop: 3 },
   slotNote:   { fontSize: 13, color: Colors.grey, marginTop: 4, fontStyle: 'italic' },
   closeBtn:     { width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginTop: -2 },
   closeBtnText: { fontSize: 14, fontWeight: '600' },
+
+  // ── Slot info block ───────────────────────────────────────────────────────
+  slotInfoBlock: {
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: 'hidden' as any,
+  },
+  slotInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  slotInfoLabel: { fontSize: 12, fontWeight: '600', lineHeight: 20, width: 90 },
+  slotInfoText:  { fontSize: 13, fontWeight: '500', flex: 1, lineHeight: 20 },
+
+  // ── Profile sections ──────────────────────────────────────────────────────
+  sectionsBlock: { gap: 10 },
+  sectionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionsTitle:  { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  selectAll:      { fontSize: 13, fontWeight: '600', color: Colors.orange },
+  checkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  checkCell: {
+    width: '48%' as any,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+  },
+  checkLabel:   { fontSize: 13, fontWeight: '600' },
+  checkPreview: { fontSize: 11, opacity: 0.7 },
+
+  // ── Footer meta ───────────────────────────────────────────────────────────
+  footerMeta: { fontSize: 12, textAlign: 'center' },
+
+  // ── What you're sending ───────────────────────────────────────────────────
+  sendingDesc: { fontSize: 13, lineHeight: 19 },
+
+  // ── Set details block ─────────────────────────────────────────────────────
+  setDetailsBlock: { gap: 12 },
+  setDetailsHeading: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: -4 },
+  setDetailRow: { gap: 8 },
+  setDetailLabel: { fontSize: 13, fontWeight: '600' },
+
+  // ── Availability confirmation ─────────────────────────────────────────────
+  availRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1.5,
+    borderRadius: 8,
+    padding: 12,
+  },
+  availLabel: { fontSize: 14, fontWeight: '500', flex: 1 },
+
+  // ── What happens next ─────────────────────────────────────────────────────
+  whatsNextText: { fontSize: 12, lineHeight: 18, textAlign: 'center' },
 
   // ── Field blocks ─────────────────────────────────────────────────────────
   fieldBlock: { gap: 10 },
@@ -589,26 +716,6 @@ const s = StyleSheet.create({
   bandMeta:    { fontSize: 11 },
   previewLink: { fontSize: 13, fontWeight: '600', color: Colors.orange },
 
-  // ── Profile sections ──────────────────────────────────────────────────────
-  sectionsBlock: { gap: 12 },
-  sectionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionsTitle:  { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  selectAll:      { fontSize: 13, fontWeight: '600', color: Colors.orange },
-
-  checkGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  checkCell: {
-    width: '48%' as any,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-  },
   checkbox: {
     width: 18,
     height: 18,
@@ -618,30 +725,22 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    marginTop: 1,
   },
   checkboxOn: { backgroundColor: Colors.orange, borderColor: Colors.orange },
   checkMark:  { fontSize: 11, color: '#ffffff', fontWeight: '800', lineHeight: 14 },
-  checkLabel: { fontSize: 13, fontWeight: '600' },
-  checkPreview: { fontSize: 11, opacity: 0.7 },
 
   // ── Error ─────────────────────────────────────────────────────────────────
   errorText: { fontSize: 13, color: '#e94560', textAlign: 'center' },
 
   // ── Footer ────────────────────────────────────────────────────────────────
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderTopWidth: 1,
-    gap: 12,
     flexShrink: 0,
   },
-  footerSummary: { fontSize: 12, flex: 1 },
-  footerActions: { flexDirection: 'row', gap: 10, alignItems: 'center', flexShrink: 0 },
-  blockedBanner: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
+  footerActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  blockedBanner: { alignItems: 'center', justifyContent: 'center', paddingVertical: 4 },
   blockedBannerText: { fontSize: 13, color: Colors.grey, fontWeight: '600', textAlign: 'center' },
   cancelBtn: {
     borderWidth: 1,
@@ -653,14 +752,15 @@ const s = StyleSheet.create({
   },
   cancelBtnText: { fontSize: 13, fontWeight: '600' },
   sendBtn: {
+    flex: 1,
     backgroundColor: '#111111',
     borderRadius: 8,
-    paddingVertical: 9,
+    paddingVertical: 11,
     paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  sendBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
   // ── Success ───────────────────────────────────────────────────────────────
   successWrap: {

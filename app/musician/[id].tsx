@@ -936,7 +936,7 @@ function PendingAgentClaims({ musicianId }: { musicianId: string }) {
             </View>
           </View>
           <Text style={[pac.bodyText, { color: colors.grey }]}>
-            This agent wants to represent you on GigMatch. Share the code below with them to approve, or decline if you don't recognise this request.
+            This agent wants to represent you on KordUp. Share the code below with them to approve, or decline if you don't recognise this request.
           </Text>
           <View style={[pac.codeDisplay, { backgroundColor: colors.bg, borderColor: colors.border }]}>
             <Text style={[pac.codeDisplayLabel, { color: colors.grey }]}>YOUR VERIFICATION CODE</Text>

@@ -11,22 +11,23 @@
 
 const { readFileSync } = require('fs');
 const { resolve } = require('path');
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 
-const keyPath = resolve(__dirname, '../scripts1/serviceAccountKey.json');
+const keyPath = resolve(__dirname, 'scripts1serviceAccountKey.json');
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(readFileSync(keyPath, 'utf8'));
 } catch {
   console.error(
     '\nERROR: Service account key not found.\n' +
-    'Save it as: scripts1/serviceAccountKey.json\n',
+    'Save it as: scripts/scripts1serviceAccountKey.json\n',
   );
   process.exit(1);
 }
 
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-const db = admin.firestore();
+initializeApp({ credential: cert(serviceAccount) });
+const db = getFirestore();
 
 const KEEP = ['example venue'];
 

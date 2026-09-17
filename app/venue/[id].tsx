@@ -23,15 +23,24 @@ type Slot = {
   date?: string | null;
   status: 'open' | 'booked' | 'pending';
   bandName?: string;
+  name?: string;
   room?: string;
   slotType?: string;
   feeMin?: number | null;
   feeMax?: number | null;
+  feeBasis?: string;
+  paymentModels?: string[];
+  paymentModel?: string;
+  paymentMethod?: string;
+  minNotice?: string;
   genres?: string[];
   duration?: number;
   notes?: string;
   ticketUrl?: string;
   featured?: boolean;
+  startDate?: string;
+  endDate?: string;
+  continuous?: boolean;
 };
 
 type Room = {
@@ -268,8 +277,13 @@ function mergeSlots(recurringOpen: Slot[], overrides: Slot[]): Slot[] {
 
 function getSlotsForDate(venue: Venue, day: string, dateISO: string): Slot[] {
   const all = venue.slots?.[day] || [];
-  const recurOpen = all.filter(s => !s.date && s.status === 'open');
-  const overrides = all.filter(s => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'));
+  const recurOpen = all.filter((s: Slot) => {
+    if (s.date || s.status !== 'open') return false;
+    if (s.startDate && dateISO < s.startDate) return false;
+    if (s.continuous === false && s.endDate && dateISO > s.endDate) return false;
+    return true;
+  });
+  const overrides = all.filter((s: Slot) => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'));
   return mergeSlots(recurOpen, overrides);
 }
 
@@ -304,6 +318,23 @@ function getThisWeekSlots(venue: Venue) {
 }
 
 // ── Fee formatter ─────────────────────────────────────────────────────
+
+function slotPaymentSummary(slot: Slot): string {
+  const models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
+  const parts: string[] = [];
+  if (models.includes('Flat fee') && slot.feeMin != null) {
+    const range = slot.feeMax != null && slot.feeMax !== slot.feeMin ? `$${slot.feeMin}–$${slot.feeMax}` : `$${slot.feeMin}`;
+    parts.push(`${range} flat fee`);
+    const others = models.filter((m: string) => m !== 'Flat fee');
+    if (others.length) parts.push(...others);
+  } else if (models.length) {
+    parts.push(...models);
+  } else if (slot.feeMin != null) {
+    parts.push(slot.feeMax != null && slot.feeMax !== slot.feeMin ? `$${slot.feeMin}–$${slot.feeMax}` : `$${slot.feeMin}`);
+  }
+  if (slot.paymentMethod) parts.push(slot.paymentMethod);
+  return parts.join(' · ');
+}
 
 function fmtFee(min?: number | null, max?: number | null) {
   if (min != null && max != null) return `$${min}–$${max}`;
@@ -375,19 +406,26 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   // ── Web desktop dashboard (venue owner only) ──────────────────────
   if (isMyVenue && !isMobileLayout) {
     const enquireHandler = (slot: Slot, day: string, dateISO: string) => {
+      const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
       router.push({
         pathname: '/enquire',
         params: {
-          venueId:   venue.id,
-          venueName: venue.name,
+          venueId:        venue.id,
+          venueName:      venue.name,
           day,
-          date:      dateISO || '',
-          time:      slot.time,
-          room:      slot.room || '',
-          slotType:  slot.slotType || 'Either',
-          duration:  slot.duration || '',
-          capacity:  venue.capacity ? String(venue.capacity) : '',
-          slotNote:  slot.notes || '',
+          date:           dateISO || '',
+          ...(slot.name ? { slotName: slot.name } : {}),
+          time:           slot.time,
+          room:           slot.room || '',
+          slotType:       slot.slotType || 'Either',
+          duration:       slot.duration ? String(slot.duration) : '',
+          capacity:       venue.capacity ? String(venue.capacity) : '',
+          slotNote:       slot.notes || '',
+          ...(_models.length ? { paymentModels: _models.join(',') } : {}),
+          ...(slot.feeMin != null ? { feeMin: String(slot.feeMin) } : {}),
+          ...(slot.feeMax != null ? { feeMax: String(slot.feeMax) } : {}),
+          ...(slot.paymentMethod ? { paymentMethod: slot.paymentMethod } : {}),
+          ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
         },
       });
     };
@@ -556,19 +594,26 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             isMobileLayout={isMobileLayout}
             onEnquire={(slot, day, dateISO) => {
               if (!user) { router.push('/login'); return; }
+              const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
               router.push({
                 pathname: '/enquire',
                 params: {
-                  venueId:   venue.id,
-                  venueName: venue.name,
+                  venueId:        venue.id,
+                  venueName:      venue.name,
                   day,
-                  date:      dateISO || '',
-                  time:      slot.time,
-                  room:      slot.room || '',
-                  slotType:  slot.slotType || 'Either',
-                  duration:  slot.duration || '',
-                  capacity:  venue.capacity ? String(venue.capacity) : '',
-                  slotNote:  slot.notes || '',
+                  date:           dateISO || '',
+                  time:           slot.time,
+                  room:           slot.room || '',
+                  slotType:       slot.slotType || 'Either',
+                  duration:       slot.duration ? String(slot.duration) : '',
+                  capacity:       venue.capacity ? String(venue.capacity) : '',
+                  ...(slot.name ? { slotName: slot.name } : {}),
+                  slotNote:       slot.notes || '',
+                  ...(_models.length ? { paymentModels: _models.join(',') } : {}),
+                  ...(slot.feeMin != null ? { feeMin: String(slot.feeMin) } : {}),
+                  ...(slot.feeMax != null ? { feeMax: String(slot.feeMax) } : {}),
+                  ...(slot.paymentMethod ? { paymentMethod: slot.paymentMethod } : {}),
+                  ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
                 },
               });
             }}

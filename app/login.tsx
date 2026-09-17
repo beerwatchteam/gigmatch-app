@@ -403,7 +403,7 @@ export default function LoginScreen() {
     <>
       {/* Logo */}
       <View style={s.logoRow}>
-        <Text style={s.logoText}>GigMatch</Text>
+        <Text style={s.logoText}>KordUp</Text>
         <Text style={s.logoSub}>Connect bands with venues</Text>
       </View>
 
@@ -488,7 +488,7 @@ export default function LoginScreen() {
                 <TextInput style={s.atInput} placeholder="thedahlias" placeholderTextColor="#999"
                   value={mUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setMUsername(val); setMUsernameTouched(val.length > 0); }} autoCapitalize="none" autoCorrect={false} />
               </View>
-              <Text style={s.hint}>Used to identify you on GigMatch</Text>
+              <Text style={s.hint}>Used to identify you on KordUp</Text>
               {mFieldErrors.username ? <Text style={s.fieldError}>{mFieldErrors.username}</Text> : null}
 
               <View style={s.pillRow}>
@@ -586,7 +586,7 @@ export default function LoginScreen() {
                 <View style={s.claimWarningBox}>
                   <Text style={s.claimWarningTitle}>This venue is already claimed</Text>
                   <Text style={s.claimWarningBody}>
-                    Submitting will start a dispute. The current manager has 7 days to respond. GigMatch admin will oversee the process.
+                    Submitting will start a dispute. The current manager has 7 days to respond. KordUp admin will oversee the process.
                   </Text>
                 </View>
               )}
@@ -623,7 +623,7 @@ export default function LoginScreen() {
                 <TextInput style={s.atInput} placeholder="thetote" placeholderTextColor="#999"
                   value={vUsername} onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setVUsername(val); setVUsernameTouched(val.length > 0); }} autoCapitalize="none" autoCorrect={false} />
               </View>
-              <Text style={s.hint}>Used to identify your venue on GigMatch</Text>
+              <Text style={s.hint}>Used to identify your venue on KordUp</Text>
               {vFieldErrors.username ? <Text style={s.fieldError}>{vFieldErrors.username}</Text> : null}
 
               {/* Manual review box — shown when manual review is requested */}
@@ -708,7 +708,7 @@ export default function LoginScreen() {
                   onChangeText={v => { const val = v.toLowerCase().replace(/\s/g, ''); setAUsername(val); setAUsernameTouched(val.length > 0); }}
                   autoCapitalize="none" autoCorrect={false} />
               </View>
-              <Text style={s.hint}>Used to identify your agency on GigMatch</Text>
+              <Text style={s.hint}>Used to identify your agency on KordUp</Text>
               {aFieldErrors.username ? <Text style={s.fieldError}>{aFieldErrors.username}</Text> : null}
 
               <View style={s.termsRow}>

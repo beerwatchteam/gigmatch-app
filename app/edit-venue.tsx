@@ -21,7 +21,7 @@ import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
-const SLOT_TYPES     = ['Headline','Other'];
+const SLOT_TYPES     = ['Headline','Support','Open Mic','Other'];
 const PAYMENT_MODELS = ['Flat fee','Door split','Guarantee + split','Bar tab','Ticket sales split','Unpaid (exposure)','Negotiable'];
 const PAY_METHODS    = ['Cash','Bank transfer','PayPal','Stripe','Other'];
 const PAY_TIMING     = ['Same night','Within 7 days','Within 14 days','Within 30 days','Other'];
@@ -31,13 +31,15 @@ const PL_OPTIONS     = ['Required','Preferred','Not required'];
 
 type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; backline: string; monitoring: string; power: string; notes: string; documents: { url: string; name: string }[]; _isNew?: boolean };
 type Night = {
-  day: string; startTime: string; duration: number; slotType: string;
+  name: string;
+  day: string; days?: string[]; startTime: string; duration: number; slotType: string;
   startDate: string; endDate: string; continuous: boolean;
   feeMin: string; feeMax: string; feeBasis: string; loadIn: string; soundcheck: string;
   room: string; genres: string[]; notes: string; paymentModel: string; paymentModels?: string[];
   doorSplit: string; coverCharge: string;
   barSplit: string;
   ticketSalesSplit: string; ticketingHandledBy: string;
+  paymentMethod: string; minNotice: string;
   _isNew?: boolean;
 };
 type Payment = {
@@ -168,11 +170,12 @@ const VENUE_ONBOARDING: Record<number, VenueOnboardingStep> = {
 
 // ── Shared sub-components ────────────────────────────────────────
 
-function Field({ label, error, children }: { label: string; error?: boolean; children: React.ReactNode }) {
+function Field({ label, error, helper, children }: { label: string; error?: boolean; helper?: string; children: React.ReactNode }) {
   return (
     <View style={field.wrap}>
       <Text style={[field.label, error && { color: Colors.danger }]}>{label}</Text>
       {children}
+      {helper && <Text style={{ fontSize: 12, color: Colors.grey, marginTop: 5, lineHeight: 17 }}>{helper}</Text>}
     </View>
   );
 }
@@ -271,133 +274,131 @@ function Select({ options, value, onSelect }: { options: string[]; value: string
   );
 }
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_NAMES_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW_LABELS_SHORT  = ['S','M','T','W','T','F','S'];
+const DAY_NAMES_DOW: Record<string, number> = { Sunday:0, Monday:1, Tuesday:2, Wednesday:3, Thursday:4, Friday:5, Saturday:6 };
 
-function DatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function DatePicker({ value, onChange, allowedDays, rangeStart }: { value: string; onChange: (v: string) => void; allowedDays?: number[]; rangeStart?: string }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
-  const dayScrollRef   = useRef<ScrollView>(null);
-  const monthScrollRef = useRef<ScrollView>(null);
-  const yearScrollRef  = useRef<ScrollView>(null);
 
-  const START_YEAR = new Date().getFullYear();
-  const years = Array.from({ length: 2099 - START_YEAR + 1 }, (_, i) => START_YEAR + i);
+  const parsedVal = value && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? { y: +value.slice(0,4), m: +value.slice(5,7)-1, d: +value.slice(8,10) }
+    : null;
 
-  const daysInMonth = (m: number, y: number) => new Date(y, m, 0).getDate();
+  const parsedRangeStart = rangeStart && /^\d{4}-\d{2}-\d{2}$/.test(rangeStart)
+    ? { y: +rangeStart.slice(0,4), m: +rangeStart.slice(5,7)-1, d: +rangeStart.slice(8,10) }
+    : null;
 
-  const parse = (v: string) => {
-    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-      const t = new Date();
-      return { day: t.getDate(), month: t.getMonth() + 1, year: t.getFullYear() };
-    }
-    const [y, m, d] = v.split('-').map(Number);
-    return { day: d, month: m, year: y };
-  };
-  const toInternal = (d: number, m: number, y: number) =>
-    `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  const display = (v: string) => {
-    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return '--/--/----';
-    const { day, month, year } = parse(v);
-    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-  };
-
-  const ITEM_H = 20;
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const [viewYear,  setViewYear]  = useState(parsedVal?.y ?? todayD.getFullYear());
+  const [viewMonth, setViewMonth] = useState(parsedVal?.m ?? todayD.getMonth());
 
   function handleOpen() {
-    const today = new Date();
-    const initial = value || toInternal(today.getDate(), today.getMonth() + 1, today.getFullYear());
-    setDraft(initial);
+    if (parsedVal) {
+      setViewYear(parsedVal.y); setViewMonth(parsedVal.m);
+    } else if (parsedRangeStart) {
+      setViewYear(parsedRangeStart.y); setViewMonth(parsedRangeStart.m);
+    } else {
+      setViewYear(todayD.getFullYear()); setViewMonth(todayD.getMonth());
+    }
     setOpen(true);
-    const { day, month, year } = parse(initial);
-    setTimeout(() => {
-      dayScrollRef.current?.scrollTo({ y: (day - 1) * ITEM_H, animated: false });
-      monthScrollRef.current?.scrollTo({ y: (month - 1) * ITEM_H, animated: false });
-      yearScrollRef.current?.scrollTo({ y: Math.max(0, year - START_YEAR) * ITEM_H, animated: false });
-    }, 50);
   }
 
-  const { day, month, year } = parse(draft);
-  const days = Array.from({ length: daysInMonth(month, year) }, (_, i) => i + 1);
+  const display = parsedVal
+    ? `${String(parsedVal.d).padStart(2,'0')}/${String(parsedVal.m+1).padStart(2,'0')}/${parsedVal.y}`
+    : '--/--/----';
+
+  const cells: (number|null)[] = (() => {
+    const first = new Date(viewYear, viewMonth, 1).getDay();
+    const total = new Date(viewYear, viewMonth+1, 0).getDate();
+    const arr: (number|null)[] = Array(first).fill(null);
+    for (let ci = 1; ci <= total; ci++) arr.push(ci);
+    while (arr.length % 7 !== 0) arr.push(null);
+    return arr;
+  })();
+
+  function isAllowed(d: number) {
+    if (!allowedDays?.length) return true;
+    return allowedDays.includes(new Date(viewYear, viewMonth, d).getDay());
+  }
+
+  function pick(d: number) {
+    if (!isAllowed(d)) return;
+    onChange(`${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+    setOpen(false);
+  }
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y-1); }
+    else setViewMonth(m => m-1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y+1); }
+    else setViewMonth(m => m+1);
+  }
 
   return (
     <View>
-      <TouchableOpacity
-        onPress={handleOpen}
-        style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}
-      >
-        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{display(value)}</Text>
+      <TouchableOpacity onPress={handleOpen} style={[s.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: 44 }]}>
+        <Text style={{ fontSize: 14, color: value ? colors.black : Colors.greyLight }}>{display}</Text>
         <Text style={{ fontSize: 11, color: Colors.grey }}>📅</Text>
       </TouchableOpacity>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ backgroundColor: colors.bg, borderRadius: 18, padding: 24, width: 320, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>Select Date</Text>
-            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 20 }}>{display(draft)}</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {/* Day */}
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Day</Text>
-                <ScrollView ref={dayScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
-                  {days.map(d => (
-                    <TouchableOpacity
-                      key={d}
-                      onPress={() => setDraft(toInternal(d, month, year))}
-                      style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: d === day ? Colors.orange : 'transparent', alignItems: 'center' }}
-                    >
-                      <Text style={{ fontSize: 15, color: d === day ? '#fff' : colors.black, fontWeight: d === day ? '700' : '400' }}>{String(d).padStart(2, '0')}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-              {/* Month */}
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Month</Text>
-                <ScrollView ref={monthScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
-                  {MONTHS.map((name, idx) => {
-                    const m = idx + 1;
-                    return (
-                      <TouchableOpacity
-                        key={m}
-                        onPress={() => setDraft(toInternal(Math.min(day, daysInMonth(m, year)), m, year))}
-                        style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: m === month ? Colors.orange : 'transparent', alignItems: 'center' }}
-                      >
-                        <Text style={{ fontSize: 15, color: m === month ? '#fff' : colors.black, fontWeight: m === month ? '700' : '400' }}>{name}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-              {/* Year */}
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginBottom: 8 }}>Year</Text>
-                <ScrollView ref={yearScrollRef} style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
-                  {years.map(y => (
-                    <TouchableOpacity
-                      key={y}
-                      onPress={() => setDraft(toInternal(Math.min(day, daysInMonth(month, y)), month, y))}
-                      style={{ paddingVertical: 9, borderRadius: 8, marginBottom: 2, backgroundColor: y === year ? Colors.orange : 'transparent', alignItems: 'center' }}
-                    >
-                      <Text style={{ fontSize: 15, color: y === year ? '#fff' : colors.black, fontWeight: y === year ? '700' : '400' }}>{y}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-              <TouchableOpacity
-                onPress={() => setOpen(false)}
-                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}
-              >
-                <Text style={{ color: colors.black, fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: colors.bg, borderRadius: 18, padding: 20, width: '100%', maxWidth: 340, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <TouchableOpacity onPress={prevMonth} style={{ padding: 8, minWidth: 40, alignItems: 'center' }}>
+                <Text style={{ fontSize: 22, color: Colors.orange, lineHeight: 26 }}>‹</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { onChange(draft); setOpen(false); }}
-                style={{ flex: 2, backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 13, alignItems: 'center' }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Done</Text>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black }}>{MONTH_NAMES_FULL[viewMonth]} {viewYear}</Text>
+              <TouchableOpacity onPress={nextMonth} style={{ padding: 8, minWidth: 40, alignItems: 'center' }}>
+                <Text style={{ fontSize: 22, color: Colors.orange, lineHeight: 26 }}>›</Text>
               </TouchableOpacity>
             </View>
+            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+              {DOW_LABELS_SHORT.map((lbl, li) => (
+                <View key={li} style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, letterSpacing: 0.5 }}>{lbl}</Text>
+                </View>
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {cells.map((d, idx) => {
+                if (d === null) return <View key={idx} style={{ width: '14.28%' as any }} />;
+                const allowed = isAllowed(d);
+                const sel = parsedVal?.y === viewYear && parsedVal?.m === viewMonth && parsedVal?.d === d;
+                const isTdy = todayD.getFullYear() === viewYear && todayD.getMonth() === viewMonth && todayD.getDate() === d;
+                const isRangeStart = parsedRangeStart?.y === viewYear && parsedRangeStart?.m === viewMonth && parsedRangeStart?.d === d;
+                return (
+                  <TouchableOpacity key={idx} onPress={() => pick(d)} activeOpacity={allowed ? 0.7 : 1} style={{ width: '14.28%' as any, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{
+                      width: 32, height: 32, borderRadius: 16,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: sel ? Colors.orange : 'transparent',
+                      borderWidth: (isTdy && !sel) || (isRangeStart && !sel) ? 1.5 : 0,
+                      borderColor: isRangeStart && !sel ? Colors.grey : Colors.orange,
+                      borderStyle: isRangeStart && !sel && !isTdy ? 'dashed' : 'solid',
+                    }}>
+                      <Text style={{ fontSize: 13, color: !allowed ? colors.border : sel ? '#fff' : isTdy ? Colors.orange : isRangeStart ? Colors.grey : colors.black, fontWeight: sel || isRangeStart ? '700' : '400' }}>{d}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {parsedRangeStart && (
+              <Text style={{ fontSize: 11, color: Colors.grey, textAlign: 'center', marginTop: 10, lineHeight: 16 }}>
+                Start date: {String(parsedRangeStart.d).padStart(2,'0')}/{String(parsedRangeStart.m+1).padStart(2,'0')}/{parsedRangeStart.y}. Same day is allowed for a one-off event.
+              </Text>
+            )}
+            {!parsedRangeStart && (allowedDays?.length ?? 0) > 0 && (
+              <Text style={{ fontSize: 11, color: Colors.grey, textAlign: 'center', marginTop: 10, lineHeight: 16 }}>
+                Only dates matching your selected {allowedDays!.length === 1 ? 'day' : 'days'} are selectable.
+              </Text>
+            )}
+            <TouchableOpacity onPress={() => setOpen(false)} style={{ marginTop: 14, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.grey }}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -579,6 +580,7 @@ export default function EditVenueScreen() {
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);
   const [expandedNight, setExpandedNight] = useState<number | null>(null);
+
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
   const [roomDocUploading, setRoomDocUploading] = useState<number | null>(null);
@@ -598,7 +600,11 @@ export default function EditVenueScreen() {
       if (snap.exists()) {
         const d = { ...BLANK, id: snap.id, ...snap.data() } as VenueData;
         d.rooms     = d.rooms     || [];
-        d.gigNights = d.gigNights || [];
+        d.gigNights = (d.gigNights || []).map((n: any) => ({
+          ...n,
+          name: n.name || '',
+          days: n.days?.length ? n.days : (n.day ? [n.day] : []),
+        }));
         d.photos    = d.photos    || [];
         d.videos    = d.videos    || [];
         d.settings  = d.settings  || BLANK.settings;
@@ -660,11 +666,12 @@ export default function EditVenueScreen() {
     const day = CANONICAL_DAYS.find(d => !usedDays.includes(d)) || 'Monday';
     setData(prev => {
       const nights = [...prev.gigNights, {
-        day, startTime: '', duration: 60, slotType: 'Headline',
+        name: '', day, days: [day], startTime: '', duration: 60, slotType: 'Headline',
         startDate: '', endDate: '', continuous: true,
         feeMin: '', feeMax: '', feeBasis: '', loadIn: '', soundcheck: '',
         room: '', genres: [], notes: '', paymentModel: '', paymentModels: [],
         doorSplit: '', coverCharge: '', barSplit: '', ticketSalesSplit: '', ticketingHandledBy: '',
+        paymentMethod: '', minNotice: '',
         _isNew: true,
       }];
       setExpandedNight(nights.length - 1);
@@ -677,7 +684,27 @@ export default function EditVenueScreen() {
   }
 
   function sortedNights(nights: Night[]) {
-    return [...nights].sort((a, b) => CANONICAL_DAYS.indexOf(a.day) - CANONICAL_DAYS.indexOf(b.day));
+    return [...nights].sort((a, b) => {
+      const da = (a.days?.length ? a.days[0] : a.day) || '';
+      const db = (b.days?.length ? b.days[0] : b.day) || '';
+      return CANONICAL_DAYS.indexOf(da) - CANONICAL_DAYS.indexOf(db);
+    });
+  }
+
+  function nightPaymentSummary(night: Night): string {
+    const models = night.paymentModels?.length ? night.paymentModels : (night.paymentModel ? [night.paymentModel] : []);
+    if (!models.length) return '';
+    const parts: string[] = [];
+    if (models.includes('Flat fee') && night.feeMin) {
+      const range = night.feeMax && night.feeMax !== night.feeMin ? `$${night.feeMin}–$${night.feeMax}` : `$${night.feeMin}`;
+      parts.push(`${range} flat fee`);
+      const others = models.filter(m => m !== 'Flat fee');
+      if (others.length) parts.push(...others);
+    } else {
+      parts.push(...models);
+    }
+    if (night.paymentMethod) parts.push(night.paymentMethod);
+    return parts.join(' · ');
   }
 
   function addVideo() {
@@ -843,7 +870,7 @@ export default function EditVenueScreen() {
       errors.push('Basic Info');
     if (data.rooms.some(r => !r.name?.trim() || !r.capacity?.toString().trim()))
       errors.push('Rooms');
-    if (data.gigNights.some(n => !n.day || !n.startTime || !n.startDate || (!n.continuous && !n.endDate)))
+    if (data.gigNights.some(n => !(n.days?.length || n.day) || !n.startTime || !n.startDate || (!n.continuous && !n.endDate)))
       errors.push('Timetable');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
@@ -857,23 +884,34 @@ export default function EditVenueScreen() {
       const existingSlots = data.slots || {};
       const newSlots: Record<string, any> = {};
       CANONICAL_DAYS.forEach(day => {
-        const keepers    = (existingSlots[day] || []).filter((s: any) => s.date || s.status !== 'open');
-        const nightsForDay = data.gigNights.filter(n => n.day === day && n.startTime);
-        const openSlots  = nightsForDay.map((night, idx) => {
+        const keepers = (existingSlots[day] || []).filter((s: any) => s.date || s.status !== 'open');
+        const nightsForDay = data.gigNights.filter(n => {
+          const allDays = n.days?.length ? n.days : (n.day ? [n.day] : []);
+          return allDays.includes(day) && n.startTime;
+        });
+        const openSlots = nightsForDay.map((night, idx) => {
           const [h, m] = (night.startTime || '00:00').split(':').map(Number);
           const period = h >= 12 ? 'PM' : 'AM';
           const time   = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${period}`;
           return {
             id: `open-${day.toLowerCase()}-${idx}`,
             time, status: 'open',
+            name: night.name || '',
             slotType: night.slotType || 'Headline',
             room: night.room || '',
             feeMin: night.feeMin !== '' ? Number(night.feeMin) : null,
             feeMax: night.feeMax !== '' ? Number(night.feeMax) : null,
+            feeBasis: night.feeBasis || '',
+            paymentModels: night.paymentModels?.length ? night.paymentModels : (night.paymentModel ? [night.paymentModel] : []),
+            paymentMethod: night.paymentMethod || '',
             genres: night.genres || [],
             duration: night.duration || 60,
             loadIn: night.loadIn || '', soundcheck: night.soundcheck || '',
             notes: night.notes || '',
+            startDate: night.startDate || '',
+            endDate: night.endDate || '',
+            continuous: night.continuous !== false,
+            minNotice: night.minNotice || '',
           };
         });
         const combined = [...keepers, ...openSlots];
@@ -1070,7 +1108,7 @@ export default function EditVenueScreen() {
                 </TouchableOpacity>
                 <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
                   <Text style={s.dangerTitle}>Danger Zone</Text>
-                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all bands browsing GigMatch. This action can be reversed at any time.</Text>
+                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all bands browsing KordUp. This action can be reversed at any time.</Text>
                   <TouchableOpacity style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]} onPress={() => { const willDeactivate = data.settings.listed; crossConfirm(willDeactivate ? 'Deactivate Venue Listing?' : 'Reactivate Venue Listing?', willDeactivate ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.' : 'This will make your venue visible to musicians again.', async () => { const { venueId } = profile ?? {}; if (!venueId) return; const newListed = !willDeactivate; await updateDoc(doc(db, 'venues', venueId), { 'settings.listed': newListed }); set('settings', { ...data.settings, listed: newListed }); }, willDeactivate); }}>
                     <Text style={s.dangerBtnText}>{data.settings.listed ? 'Deactivate Venue Listing' : 'Reactivate Venue Listing'}</Text>
                   </TouchableOpacity>
@@ -1162,14 +1200,18 @@ export default function EditVenueScreen() {
             {/* ── TIMETABLE ── */}
             {activeTab === 'Timetable' && (
               <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
-                <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Set the recurring nights you host live music. Artists browse your timetable to find available slots and send booking enquiries.</Text>
+                <Text style={[s.sectionTitle, { color: colors.black }]}>Gig Timetable</Text>
+                <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Add your gig slots and set terms for each one. Artists browse your timetable and send enquiries for slots that suit them.</Text>
                 {sortedNights(data.gigNights).map(night => {
                   const i = data.gigNights.indexOf(night);
                   const isOpen = expandedNight === i;
-                  const hasError = showErrors && (!night.day || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
+                  const nightDays = night.days?.length ? night.days : (night.day ? [night.day] : []);
+                  const nightAllowedDow = nightDays.map(d => DAY_NAMES_DOW[d]).filter((n): n is number => n !== undefined);
+                  const hasError = showErrors && (!(night.days?.length || night.day) || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
                   const fmtTime = (t: string) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
-                  const summaryParts = [night.day || 'New night', night.startTime ? fmtTime(night.startTime) : null, night.room || null, night.duration ? `${night.duration} min` : null].filter(Boolean).join(' · ');
+                  const dayStr = nightDays.join(', ');
+                  const summaryParts = [night.name || dayStr || 'New slot', night.startTime ? fmtTime(night.startTime) : null, night.room || null, night.duration ? `${night.duration} min` : null].filter(Boolean).join(' · ');
+                  const activeModels = night.paymentModels?.length ? night.paymentModels : (night.paymentModel ? [night.paymentModel] : []);
                   return (
                     <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                       <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)}>
@@ -1178,54 +1220,55 @@ export default function EditVenueScreen() {
                       </TouchableOpacity>
                       {isOpen && (
                         <View style={{ paddingTop: 14, gap: 12 }}>
-                          <Field label="Day *"><Pills options={CANONICAL_DAYS} value={night.day} onSelect={(v: string) => setNight(i, 'day', v)} /></Field>
-                          <Field label="Slot Type"><Pills options={SLOT_TYPES} value={night.slotType || 'Headline'} onSelect={(v: string) => setNight(i, 'slotType', v)} /></Field>
-                          {night.slotType === 'Other' && (<Field label="Note for artists"><Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="Describe this slot e.g. support act, acoustic set, residency..." multiline /></Field>)}
-                          {data.rooms.length > 0 && (<Field label="Room"><Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} /></Field>)}
+                          <View style={{ marginBottom: 4 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>{night._isNew ? 'Add a Gig Slot' : 'Edit Gig Slot'}</Text>
+                            <Text style={{ fontSize: 13, color: Colors.grey, lineHeight: 19 }}>Set the day, time, and terms for this slot. Artists will see this exact info when they enquire.</Text>
+                          </View>
+                          <Field label="NAME" helper="Optional. Give this slot a name, like 'Summer Sunday Sessions'. Shown to artists when they enquire."><Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" /></Field>
+                          <Field label="DAY *" error={showErrors && !nightDays.length}><Pills options={CANONICAL_DAYS} value={nightDays} onSelect={(v: string[]) => setNightFields(i, { days: v, day: v[0] || '' })} multi /></Field>
+                          <Field label="SLOT TYPE" helper="Helps artists know what kind of set you're booking for."><Pills options={SLOT_TYPES} value={night.slotType || 'Headline'} onSelect={(v: string) => setNight(i, 'slotType', v)} /></Field>
+                          <Field label="ROOM" helper="Choose 'Any room' if this slot isn't tied to a specific space."><Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} /></Field>
                           <View style={{ flexDirection: 'row', gap: 12 }}>
-                            <View style={{ flex: 2 }}><Field label="Start Time *" error={showErrors && !night.startTime}><TimePicker value={night.startTime} onChange={(v: string) => setNightFields(i, { startTime: v, loadIn: subtractMinutes(v, 150), soundcheck: subtractMinutes(v, 90) })} defaultValue="19:00" /></Field></View>
-                            <View style={{ flex: 1 }}><Field label="Per Set Duration (Min)"><Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" /></Field></View>
+                            <View style={{ flex: 2 }}><Field label="START TIME *" error={showErrors && !night.startTime}><TimePicker value={night.startTime} onChange={(v: string) => setNightFields(i, { startTime: v, loadIn: subtractMinutes(v, 150), soundcheck: subtractMinutes(v, 90) })} defaultValue="19:00" /></Field></View>
+                            <View style={{ flex: 1 }}><Field label="PER SET DURATION (MIN)" helper="How long each artist's set runs."><Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" /></Field></View>
                           </View>
                           <View style={{ flexDirection: 'row', gap: 12 }}>
-                            <View style={{ flex: 1 }}><Field label="Load-in Time"><TimePicker value={night.loadIn} onChange={(v: string) => setNight(i, 'loadIn', v)} /></Field></View>
-                            <View style={{ flex: 1 }}><Field label="Soundcheck"><TimePicker value={night.soundcheck} onChange={(v: string) => setNight(i, 'soundcheck', v)} /></Field></View>
+                            <View style={{ flex: 1 }}><Field label="LOAD-IN TIME"><TimePicker value={night.loadIn} onChange={(v: string) => setNight(i, 'loadIn', v)} /></Field></View>
+                            <View style={{ flex: 1 }}><Field label="SOUNDCHECK"><TimePicker value={night.soundcheck} onChange={(v: string) => setNight(i, 'soundcheck', v)} /></Field></View>
                           </View>
+                          <Text style={{ fontSize: 12, color: Colors.grey, marginTop: -8, marginBottom: 2 }}>Optional — lets artists plan their arrival.</Text>
                           <View style={{ flexDirection: 'row', gap: 12 }}>
                             <View style={{ flex: 1 }}>
-                              <Field label="Start Date *" error={showErrors && !night.startDate}><DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} /></Field>
+                              <Field label="START DATE *" error={showErrors && !night.startDate}><DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} allowedDays={nightAllowedDow} /></Field>
                               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }} onPress={() => { setNight(i, 'continuous', !night.continuous); if (!night.continuous) setNight(i, 'endDate', ''); }}>
                                 <View style={[s.checkbox, { borderColor: colors.border }, night.continuous && s.checkboxChecked]}>{night.continuous && <Text style={s.checkmark}>✓</Text>}</View>
                                 <Text style={[s.checkLabel, { color: colors.black }]}>Continuous (No end date)</Text>
                               </TouchableOpacity>
+                              <Text style={{ fontSize: 12, color: Colors.grey, marginTop: 6 }}>Uncheck to set an end date for a limited run, like a residency.</Text>
                             </View>
-                            {!night.continuous && (<View style={{ flex: 1 }}><Field label="End Date *" error={showErrors && !night.endDate}><DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} /></Field></View>)}
+                            {!night.continuous && (<View style={{ flex: 1 }}><Field label="END DATE *" error={showErrors && !night.endDate}><DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} allowedDays={nightAllowedDow} rangeStart={night.startDate} /></Field></View>)}
                           </View>
-                          {data.payment.models.length > 0 ? (
-                            <Field label="Payment">
-                              <Pills options={data.payment.models} value={night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])} onSelect={(newModels: string[]) => { const current = night.paymentModels || (night.paymentModel ? [night.paymentModel] : []); const added = newModels.find(m => !current.includes(m)); const prefill: Partial<Night> = { paymentModels: newModels, paymentModel: '' }; if (added === 'Flat fee') { prefill.feeMin = data.payment.setFeeMin; prefill.feeMax = data.payment.setFeeMax; prefill.feeBasis = data.payment.feeBasis; } else if (added === 'Door split') { prefill.doorSplit = data.payment.doorSplit; prefill.coverCharge = data.payment.coverCharge; } else if (added === 'Bar tab') { prefill.barSplit = data.payment.barSplit; } else if (added === 'Ticket sales split') { prefill.ticketSalesSplit = data.payment.ticketSalesSplit; prefill.ticketingHandledBy = data.payment.ticketingHandledBy; } setNightFields(i, prefill); }} multi />
-                              {(() => { const activeModels = night.paymentModels || (night.paymentModel ? [night.paymentModel] : []); return activeModels.includes('Flat fee'); })() && (() => { const minVal = parseFloat(night.feeMin); const maxVal = parseFloat(night.feeMax); const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal; return (<View style={{ marginTop: 10, gap: 8 }}><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ width: 100 }}><CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" /></View><View style={{ width: 100 }}><CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxError} /></View><View style={{ flex: 1 }}><Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} /></View></View>{maxError && (<Text style={{ fontSize: 12, color: Colors.danger }}>Max must be higher than min.</Text>)}</View>); })()}
-                              {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Door split') && (<View style={{ marginTop: 10, gap: 8 }}><View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 3 }}><Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" /></View><View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10 }}><Text style={{ fontSize: 14, color: Colors.grey, marginRight: 2 }}>$</Text><TextInput style={{ flex: 1, fontSize: 14, color: colors.black, paddingVertical: 12 }} value={night.coverCharge} onChangeText={(v: string) => setNight(i, 'coverCharge', v)} placeholder="Cover" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View></View></View>)}
-                              {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Bar tab') && (<View style={{ marginTop: 10 }}><Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar sales during set" /></View>)}
-                              {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Ticket sales split') && (<View style={{ marginTop: 10, gap: 8 }}><Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" /><Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={night.ticketingHandledBy} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} /></View>)}
-                            </Field>
-                          ) : (
-                            <View style={{ paddingVertical: 8 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Payment</Text>
-                              <Text style={{ fontSize: 13, color: Colors.grey, fontStyle: 'italic', marginBottom: 8 }}>Set up payment models in Basic Info first.</Text>
-                              <TouchableOpacity onPress={() => setActiveTab('Basic Info')} style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}><Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>+ Add</Text></TouchableOpacity>
-                            </View>
-                          )}
-                          <Field label="Genres"><Pills options={GENRES} value={night.genres || []} onSelect={(v: string[]) => setNight(i, 'genres', v)} multi /></Field>
+                          <Field label="PAYMENT MODEL" helper="Artists will see this before they enquire. Clear terms mean better enquiries.">
+                            <Pills options={PAYMENT_MODELS} value={activeModels} onSelect={(newModels: string[]) => { const added = newModels.find(m => !activeModels.includes(m)); const prefill: Partial<Night> = { paymentModels: newModels, paymentModel: '' }; if (added === 'Flat fee') { prefill.feeMin = data.payment.setFeeMin; prefill.feeMax = data.payment.setFeeMax; prefill.feeBasis = data.payment.feeBasis; } else if (added === 'Door split') { prefill.doorSplit = data.payment.doorSplit; prefill.coverCharge = data.payment.coverCharge; } else if (added === 'Bar tab') { prefill.barSplit = data.payment.barSplit; } else if (added === 'Ticket sales split') { prefill.ticketSalesSplit = data.payment.ticketSalesSplit; prefill.ticketingHandledBy = data.payment.ticketingHandledBy; } setNightFields(i, prefill); }} multi />
+                          </Field>
+                          {activeModels.includes('Flat fee') && (() => { const minVal = parseFloat(night.feeMin); const maxVal = parseFloat(night.feeMax); const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal; return (<Field label="FEE RANGE"><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ width: 90 }}><CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" /></View><View style={{ width: 90 }}><CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxError} /></View><View style={{ flex: 1 }}><Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} /></View></View>{maxError && <Text style={{ fontSize: 12, color: Colors.danger }}>Max must be higher than min.</Text>}</Field>); })()}
+                          {activeModels.includes('Door split') && (<Field label="DOOR SPLIT TERMS"><Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" /></Field>)}
+                          {activeModels.includes('Bar tab') && (<Field label="BAR SPLIT TERMS"><Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar sales during set" /></Field>)}
+                          {activeModels.includes('Ticket sales split') && (<Field label="TICKET SALES SPLIT"><Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" /><View style={{ marginTop: 8 }}><Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={night.ticketingHandledBy} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} /></View></Field>)}
+                          <Field label="PAYMENT METHOD"><Pills options={PAY_METHODS} value={night.paymentMethod || ''} onSelect={(v: string) => setNight(i, 'paymentMethod', v)} /></Field>
+                          <Field label="GENRES" helper="Select the styles that suit this slot. Leave blank to use your venue's default genres."><Pills options={GENRES} value={night.genres || []} onSelect={(v: string[]) => setNight(i, 'genres', v)} multi /></Field>
+                          <Field label="MINIMUM NOTICE" helper="How much lead time you need before this slot's date."><Pills options={['No minimum', '24 hours', '48 hours', '1 week', '2 weeks', '1 month']} value={night.minNotice || 'No minimum'} onSelect={(v: string) => setNight(i, 'minNotice', v === 'No minimum' ? '' : v)} /></Field>
+                          <Field label="NOTES" helper="Add anything artists should know before enquiring — format, dress code, load-in quirks, etc."><Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="e.g. Acoustic only, strict 45 min sets, artists must supply own PA..." multiline /></Field>
                           <View style={s.itemBtnRow}>
-                            <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeNight(i)}><Text style={s.removeBtnText}>Remove Gig</Text></TouchableOpacity>
-                            <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>{night._isNew ? 'Add Gig' : 'Save'}</Text></TouchableOpacity>
+                            <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => crossConfirm('Remove Gig Slot', "This will delete the slot and any pending enquiries tied to it. This can't be undone.", () => removeNight(i), true)}><Text style={s.removeBtnText}>Remove Gig</Text></TouchableOpacity>
+                            <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>Save</Text></TouchableOpacity>
                           </View>
                         </View>
                       )}
                     </View>
                   );
                 })}
-                {data.gigNights.length < 7 && (<TouchableOpacity style={s.addBtn} onPress={addNight}><Text style={s.addBtnText}>+ Add Gig</Text></TouchableOpacity>)}
+                {data.gigNights.length < 7 && (<TouchableOpacity style={s.addBtn} onPress={addNight}><Text style={s.addBtnText}>+ Add Gig Slot</Text></TouchableOpacity>)}
               </View>
             )}
 
@@ -1669,7 +1712,7 @@ export default function EditVenueScreen() {
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>
               <Text style={[s.dangerDesc, { color: colors.black }]}>
-                Deactivating your listing will hide it from all bands browsing GigMatch. This action can be reversed at any time.
+                Deactivating your listing will hide it from all bands browsing KordUp. This action can be reversed at any time.
               </Text>
               <TouchableOpacity
                 style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]}
@@ -1867,23 +1910,27 @@ export default function EditVenueScreen() {
         {/* ── GIG NIGHTS ── */}
         {activeTab === 'Timetable' && (
           <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
-            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Set the recurring nights you host live music. Artists browse your timetable to find available slots and send booking enquiries. You can assign a specific room to each night so artists know where they'll be playing.</Text>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Gig Timetable</Text>
+            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Add your gig slots and set terms for each one. Artists browse your timetable and send enquiries for slots that suit them.</Text>
             {sortedNights(data.gigNights).map(night => {
               const i = data.gigNights.indexOf(night);
               const isOpen = expandedNight === i;
-              const hasError = showErrors && (!night.day || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
+              const nightDays2 = night.days?.length ? night.days : (night.day ? [night.day] : []);
+              const nightAllowedDow2 = nightDays2.map(d => DAY_NAMES_DOW[d]).filter((n): n is number => n !== undefined);
+              const hasError = showErrors && (!(night.days?.length || night.day) || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
               const fmtTime = (t: string) => {
                 if (!t) return '';
                 const [h, m] = t.split(':').map(Number);
                 return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
               };
+              const dayStr2 = nightDays2.join(', ');
               const summaryParts = [
-                night.day || 'New night',
+                night.name || dayStr2 || 'New slot',
                 night.startTime ? fmtTime(night.startTime) : null,
                 night.room || null,
                 night.duration ? `${night.duration} min` : null,
               ].filter(Boolean).join(' · ');
+              const activeModels = night.paymentModels?.length ? night.paymentModels : (night.paymentModel ? [night.paymentModel] : []);
               return (
                 <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
                   <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)}>
@@ -1892,50 +1939,51 @@ export default function EditVenueScreen() {
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={{ paddingTop: 14, gap: 12 }}>
-                      <Field label="Day *">
-                        <Pills options={CANONICAL_DAYS} value={night.day} onSelect={(v: string) => setNight(i, 'day', v)} />
+                      <View style={{ marginBottom: 4 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>{night._isNew ? 'Add a Gig Slot' : 'Edit Gig Slot'}</Text>
+                        <Text style={{ fontSize: 13, color: Colors.grey, lineHeight: 19 }}>Set the day, time, and terms for this slot. Artists will see this exact info when they enquire.</Text>
+                      </View>
+                      <Field label="NAME" helper="Optional. Give this slot a name, like 'Summer Sunday Sessions'. Shown to artists when they enquire.">
+                        <Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" />
                       </Field>
-                      <Field label="Slot Type">
+                      <Field label="DAY *" error={showErrors && !nightDays2.length}>
+                        <Pills options={CANONICAL_DAYS} value={nightDays2} onSelect={(v: string[]) => setNightFields(i, { days: v, day: v[0] || '' })} multi />
+                      </Field>
+                      <Field label="SLOT TYPE" helper="Helps artists know what kind of set you're booking for.">
                         <Pills options={SLOT_TYPES} value={night.slotType || 'Headline'} onSelect={(v: string) => setNight(i, 'slotType', v)} />
                       </Field>
-                      {night.slotType === 'Other' && (
-                        <Field label="Note for artists">
-                          <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="Describe this slot e.g. support act, acoustic set, residency..." multiline />
-                        </Field>
-                      )}
-                      {data.rooms.length > 0 && (
-                        <Field label="Room">
-                          <Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} />
-                        </Field>
-                      )}
+                      <Field label="ROOM" helper="Choose 'Any room' if this slot isn't tied to a specific space.">
+                        <Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} />
+                      </Field>
                       <View style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ flex: 2 }}>
-                          <Field label="Start Time *" error={showErrors && !night.startTime}>
+                          <Field label="START TIME *" error={showErrors && !night.startTime}>
                             <TimePicker value={night.startTime} onChange={(v: string) => setNightFields(i, { startTime: v, loadIn: subtractMinutes(v, 150), soundcheck: subtractMinutes(v, 90) })} defaultValue="19:00" />
                           </Field>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Field label="Per Set Duration (Min)">
+                          <Field label="PER SET DURATION (MIN)" helper="How long each artist's set runs.">
                             <Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" />
                           </Field>
                         </View>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ flex: 1 }}>
-                          <Field label="Load-in Time">
+                          <Field label="LOAD-IN TIME">
                             <TimePicker value={night.loadIn} onChange={(v: string) => setNight(i, 'loadIn', v)} />
                           </Field>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Field label="Soundcheck">
+                          <Field label="SOUNDCHECK">
                             <TimePicker value={night.soundcheck} onChange={(v: string) => setNight(i, 'soundcheck', v)} />
                           </Field>
                         </View>
                       </View>
+                      <Text style={{ fontSize: 12, color: Colors.grey, marginTop: -8, marginBottom: 2 }}>Optional — lets artists plan their arrival.</Text>
                       <View style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ flex: 1 }}>
-                          <Field label="Start Date *" error={showErrors && !night.startDate}>
-                            <DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} />
+                          <Field label="START DATE *" error={showErrors && !night.startDate}>
+                            <DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} allowedDays={nightAllowedDow2} />
                           </Field>
                           <TouchableOpacity
                             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}
@@ -1946,122 +1994,42 @@ export default function EditVenueScreen() {
                             </View>
                             <Text style={[s.checkLabel, { color: colors.black }]}>Continuous (No end date)</Text>
                           </TouchableOpacity>
+                          <Text style={{ fontSize: 12, color: Colors.grey, marginTop: 6 }}>Uncheck to set an end date for a limited run, like a residency.</Text>
                         </View>
                         {!night.continuous && (
                           <View style={{ flex: 1 }}>
-                            <Field label="End Date *" error={showErrors && !night.endDate}>
-                              <DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} />
+                            <Field label="END DATE *" error={showErrors && !night.endDate}>
+                              <DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} allowedDays={nightAllowedDow2} rangeStart={night.startDate} />
                             </Field>
                           </View>
                         )}
                       </View>
-                      {data.payment.models.length > 0 ? (
-                        <Field label="Payment">
-                          <Pills
-                            options={data.payment.models}
-                            value={night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])}
-                            onSelect={(newModels: string[]) => {
-                              const current = night.paymentModels || (night.paymentModel ? [night.paymentModel] : []);
-                              const added = newModels.find(m => !current.includes(m));
-                              const prefill: Partial<Night> = { paymentModels: newModels, paymentModel: '' };
-                              if (added === 'Flat fee') {
-                                prefill.feeMin = data.payment.setFeeMin;
-                                prefill.feeMax = data.payment.setFeeMax;
-                                prefill.feeBasis = data.payment.feeBasis;
-                              } else if (added === 'Door split') {
-                                prefill.doorSplit = data.payment.doorSplit;
-                                prefill.coverCharge = data.payment.coverCharge;
-                              } else if (added === 'Bar tab') {
-                                prefill.barSplit = data.payment.barSplit;
-                              } else if (added === 'Ticket sales split') {
-                                prefill.ticketSalesSplit = data.payment.ticketSalesSplit;
-                                prefill.ticketingHandledBy = data.payment.ticketingHandledBy;
-                              }
-                              setNightFields(i, prefill);
-                            }}
-                            multi
-                          />
-                          {(() => { const activeModels = night.paymentModels || (night.paymentModel ? [night.paymentModel] : []); return activeModels.includes('Flat fee'); })() && (() => {
-                            const minVal = parseFloat(night.feeMin);
-                            const maxVal = parseFloat(night.feeMax);
-                            const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal;
-                            return (
-                              <View style={{ marginTop: 10, gap: 8 }}>
-                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                                  <View style={{ width: 100 }}>
-                                    <CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" />
-                                  </View>
-                                  <View style={{ width: 100 }}>
-                                    <CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxError} />
-                                  </View>
-                                  <View style={{ flex: 1 }}>
-                                    <Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} />
-                                  </View>
-                                </View>
-                                {maxError && (
-                                  <Text style={{ fontSize: 12, color: Colors.danger }}>Max must be higher than min.</Text>
-                                )}
-                              </View>
-                            );
-                          })()}
-                          {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Door split') && (
-                            <View style={{ marginTop: 10, gap: 8 }}>
-                              <View style={{ flexDirection: 'row', gap: 8 }}>
-                                <View style={{ flex: 3 }}>
-                                  <Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" />
-                                </View>
-                                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 10 }}>
-                                  <Text style={{ fontSize: 14, color: Colors.grey, marginRight: 2 }}>$</Text>
-                                  <TextInput
-                                    style={{ flex: 1, fontSize: 14, color: colors.black, paddingVertical: 12 }}
-                                    value={night.coverCharge}
-                                    onChangeText={(v: string) => setNight(i, 'coverCharge', v)}
-                                    placeholder="Cover"
-                                    placeholderTextColor={Colors.greyLight}
-                                    keyboardType="numeric"
-                                  />
-                                </View>
-                              </View>
-                            </View>
-                          )}
-                          {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Bar tab') && (
-                            <View style={{ marginTop: 10 }}>
-                              <Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar sales during set" />
-                            </View>
-                          )}
-                          {(night.paymentModels || (night.paymentModel ? [night.paymentModel] : [])).includes('Ticket sales split') && (
-                            <View style={{ marginTop: 10, gap: 8 }}>
-                              <Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" />
-                              <Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={night.ticketingHandledBy} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} />
-                            </View>
-                          )}
-                        </Field>
-                      ) : (
-                        <View style={{ paddingVertical: 8 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>Payment</Text>
-                          <Text style={{ fontSize: 13, color: Colors.grey, fontStyle: 'italic', marginBottom: 8 }}>Set up payment models in Basic Info first.</Text>
-                          <TouchableOpacity
-                            onPress={() => setActiveTab('Basic Info')}
-                            style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}
-                          >
-                            <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>+ Add</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                      <Field label="Genres">
-                        <Pills
-                          options={GENRES}
-                          value={night.genres || []}
-                          onSelect={(v: string[]) => setNight(i, 'genres', v)}
-                          multi
-                        />
+                      <Field label="PAYMENT MODEL" helper="Artists will see this before they enquire. Clear terms mean better enquiries.">
+                        <Pills options={PAYMENT_MODELS} value={activeModels} onSelect={(newModels: string[]) => { const added = newModels.find(m => !activeModels.includes(m)); const prefill: Partial<Night> = { paymentModels: newModels, paymentModel: '' }; if (added === 'Flat fee') { prefill.feeMin = data.payment.setFeeMin; prefill.feeMax = data.payment.setFeeMax; prefill.feeBasis = data.payment.feeBasis; } else if (added === 'Door split') { prefill.doorSplit = data.payment.doorSplit; prefill.coverCharge = data.payment.coverCharge; } else if (added === 'Bar tab') { prefill.barSplit = data.payment.barSplit; } else if (added === 'Ticket sales split') { prefill.ticketSalesSplit = data.payment.ticketSalesSplit; prefill.ticketingHandledBy = data.payment.ticketingHandledBy; } setNightFields(i, prefill); }} multi />
+                      </Field>
+                      {activeModels.includes('Flat fee') && (() => { const minVal = parseFloat(night.feeMin); const maxVal = parseFloat(night.feeMax); const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal; return (<Field label="FEE RANGE"><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ width: 90 }}><CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" /></View><View style={{ width: 90 }}><CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxError} /></View><View style={{ flex: 1 }}><Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} /></View></View>{maxError && <Text style={{ fontSize: 12, color: Colors.danger }}>Max must be higher than min.</Text>}</Field>); })()}
+                      {activeModels.includes('Door split') && (<Field label="DOOR SPLIT TERMS"><Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" /></Field>)}
+                      {activeModels.includes('Bar tab') && (<Field label="BAR SPLIT TERMS"><Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar sales during set" /></Field>)}
+                      {activeModels.includes('Ticket sales split') && (<Field label="TICKET SALES SPLIT"><Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" /><View style={{ marginTop: 8 }}><Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={night.ticketingHandledBy} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} /></View></Field>)}
+                      <Field label="PAYMENT METHOD"><Pills options={PAY_METHODS} value={night.paymentMethod || ''} onSelect={(v: string) => setNight(i, 'paymentMethod', v)} /></Field>
+                      <Field label="GENRES" helper="Select the styles that suit this slot. Leave blank to use your venue's default genres.">
+                        <Pills options={GENRES} value={night.genres || []} onSelect={(v: string[]) => setNight(i, 'genres', v)} multi />
+                      </Field>
+                      <Field label="MINIMUM NOTICE" helper="How much lead time you need before this slot's date.">
+                        <Pills options={['No minimum', '24 hours', '48 hours', '1 week', '2 weeks', '1 month']} value={night.minNotice || 'No minimum'} onSelect={(v: string) => setNight(i, 'minNotice', v === 'No minimum' ? '' : v)} />
+                      </Field>
+                      <Field label="NOTES" helper="Add anything artists should know before enquiring — format, dress code, load-in quirks, etc.">
+                        <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="e.g. Acoustic only, strict 45 min sets, artists must supply own PA..." multiline />
                       </Field>
                       <View style={s.itemBtnRow}>
-                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeNight(i)}>
+                        <TouchableOpacity
+                          style={[s.removeBtn, { flex: 1, marginTop: 0 }]}
+                          onPress={() => crossConfirm('Remove Gig Slot', "This will delete the slot and any pending enquiries tied to it. This can't be undone.", () => removeNight(i), true)}
+                        >
                           <Text style={s.removeBtnText}>Remove Gig</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
-                          <Text style={s.itemSaveBtnText}>{night._isNew ? 'Add Gig' : 'Save'}</Text>
+                          <Text style={s.itemSaveBtnText}>Save</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -2071,7 +2039,7 @@ export default function EditVenueScreen() {
             })}
             {data.gigNights.length < 7 && (
               <TouchableOpacity style={s.addBtn} onPress={addNight}>
-                <Text style={s.addBtnText}>+ Add Gig</Text>
+                <Text style={s.addBtnText}>+ Add Gig Slot</Text>
               </TouchableOpacity>
             )}
           </View>
