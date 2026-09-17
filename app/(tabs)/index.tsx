@@ -429,7 +429,7 @@ export default function HomeScreen() {
                 {`Connect. Enquire. Book.\nAll in one place.`}
               </Text>
               <Text style={[s.subhead, { color: colors.grey }]}>
-                {`Browse venues with real-time available gig slots. Send a structured enquiry built straight from your profile, and start messaging your way to a confirmed gig, in minutes.\n\nNo Facebook groups, no cold DMs, no chasing replies across five different apps, and no getting lost in endless email chains.`}
+                {`Stay all KordUp (caught up) on your gigs.\nBrowse venues with real-time available gig slots. Send a structured enquiry built straight from your profile, and start messaging your way to a confirmed gig, in minutes.\n\nNo Facebook groups, no cold DMs, no chasing replies across five different apps, and no getting lost in endless email chains.`}
               </Text>
               <View style={s.heroCtaRow}>
                 <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
