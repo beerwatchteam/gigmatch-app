@@ -479,6 +479,128 @@ const cal = StyleSheet.create({
 // Persists the chosen view for the session (survives tab navigation re-mounts)
 let _sessionWebView: 'venue' | 'calendar' = 'venue';
 
+type SlotViewInfo = {
+  venueName: string;
+  venueId: string;
+  day: string;
+  date: string | null;
+  time: string;
+  slotName?: string;
+  room?: string;
+  slotType?: string;
+  duration?: number;
+  paymentModels?: string[];
+  feeMin?: number | null;
+  feeMax?: number | null;
+  paymentMethod?: string;
+  minNotice?: string;
+  slotNote?: string;
+  enquiryId: string;
+  status: 'enquired' | 'confirmed';
+};
+
+function SlotViewModal({ info, colors, onClose, onViewInbox }: {
+  info: SlotViewInfo | null;
+  colors: any;
+  onClose: () => void;
+  onViewInbox: (id: string) => void;
+}) {
+  if (!info) return null;
+
+  const d = info.date ? parseLocal(info.date) : null;
+  const dateLabel = d
+    ? d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' }).replace(',', '')
+    : info.day;
+  const slotParts = [dateLabel, info.time, info.room, info.slotType, info.duration ? `${info.duration} min` : null].filter(Boolean) as string[];
+
+  const models = info.paymentModels || [];
+  const hasInfo = models.length > 0 || info.paymentMethod || info.minNotice || info.slotNote;
+  const statusColor = info.status === 'confirmed' ? '#22c55e' : '#f5a623';
+  const statusLabel = info.status === 'confirmed' ? 'Booked' : 'Enquiry Sent';
+  let rowIndex = 0;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', padding: 20, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 1.2, color: Colors.grey, marginBottom: 4 }}>GIG SLOT</Text>
+              <Text style={{ fontSize: 22, fontWeight: '800', color: colors.black, letterSpacing: -0.3 }}>{info.venueName}</Text>
+              {info.slotName ? <Text style={{ fontSize: 14, fontWeight: '600', color: colors.grey, marginTop: 2 }}>{info.slotName}</Text> : null}
+              <Text style={{ fontSize: 13, color: Colors.grey, marginTop: 3 }}>{slotParts.join(' · ')}</Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: 2, marginLeft: 12 }}>
+              <Text style={{ fontSize: 13, color: colors.black }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
+            <View style={{ alignSelf: 'flex-start', borderWidth: 1.5, borderColor: statusColor, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: statusColor }}>{statusLabel}</Text>
+            </View>
+          </View>
+
+          {hasInfo && (
+            <View style={{ marginHorizontal: 20, marginTop: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.bgFaint, overflow: 'hidden' }}>
+              {models.map((model, idx) => {
+                let val = model;
+                if (model === 'Flat fee' && info.feeMin != null) {
+                  const range = info.feeMax != null && info.feeMax !== info.feeMin ? `$${info.feeMin}–$${info.feeMax}` : `$${info.feeMin}`;
+                  val = `Flat fee · ${range}`;
+                }
+                const r = rowIndex++;
+                return (
+                  <View key={model} style={{ flexDirection: 'row', padding: 12, borderTopWidth: r > 0 ? 1 : 0, borderTopColor: colors.border }}>
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.grey, width: 90 }}>{idx === 0 ? 'Payment' : ''}</Text>
+                    <Text style={{ fontSize: 13, color: colors.black, flex: 1 }}>{val}</Text>
+                  </View>
+                );
+              })}
+              {info.paymentMethod ? (() => { const r = rowIndex++; return (
+                <View style={{ flexDirection: 'row', padding: 12, borderTopWidth: r > 0 ? 1 : 0, borderTopColor: colors.border }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.grey, width: 90 }}>Via</Text>
+                  <Text style={{ fontSize: 13, color: colors.black, flex: 1 }}>{info.paymentMethod}</Text>
+                </View>
+              ); })() : null}
+              {info.minNotice ? (() => { const r = rowIndex++; return (
+                <View style={{ flexDirection: 'row', padding: 12, borderTopWidth: r > 0 ? 1 : 0, borderTopColor: colors.border }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.grey, width: 90 }}>Min. notice</Text>
+                  <Text style={{ fontSize: 13, color: colors.black, flex: 1 }}>{info.minNotice}</Text>
+                </View>
+              ); })() : null}
+              {info.slotNote ? (() => { const r = rowIndex++; return (
+                <View style={{ flexDirection: 'row', padding: 12, borderTopWidth: r > 0 ? 1 : 0, borderTopColor: colors.border }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.grey, width: 90 }}>Venue notes</Text>
+                  <Text style={{ fontSize: 13, color: colors.black, flex: 1, fontStyle: 'italic' }}>{info.slotNote}</Text>
+                </View>
+              ); })() : null}
+            </View>
+          )}
+
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginTop: 20 }}>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: Colors.orange, borderRadius: 12, paddingVertical: 14, alignItems: 'center' }}
+              onPress={() => onViewInbox(info.enquiryId)}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#111111' }}>View in Inbox</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingVertical: 14, alignItems: 'center' }}
+              onPress={onClose}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.black }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function VenuesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -487,6 +609,7 @@ export default function VenuesScreen() {
   const { enquiries: myEnquiries } = useArtistEnquiries(isArtist ? (user?.uid ?? null) : null);
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const [slotViewModal, setSlotViewModal] = useState<SlotViewInfo | null>(null);
   const [venues, setVenues]         = useState<Venue[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -938,6 +1061,17 @@ export default function VenuesScreen() {
                     ...(slot.paymentMethod ? { paymentMethod: slot.paymentMethod } : {}),
                     ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
                   };
+
+                  // Check if artist already has an enquiry for this slot
+                  let slotEnquiry: typeof myEnquiries[0] | undefined;
+                  if (isArtist && slot.dateStr) {
+                    for (const e of myEnquiries) {
+                      if (e.venueId !== item.id || e.requestedSlot?.date !== slot.dateStr) continue;
+                      const s = normalizeEnquiryStatus(e.status);
+                      if (s === 'confirmed' || s === 'enquired') { slotEnquiry = e; break; }
+                    }
+                  }
+
                   return (
                     <View
                       key={i}
@@ -950,14 +1084,24 @@ export default function VenuesScreen() {
                         ) : null}
                       </View>
                       {isArtist ? (
-                        <TouchableOpacity
-                          onPress={() => router.push({ pathname: '/enquire', params: enquireParams })}
-                          activeOpacity={0.7}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
-                        >
-                          <Text style={st.slotEnquireLink}>Enquire</Text>
-                        </TouchableOpacity>
+                        slotEnquiry ? (
+                          <TouchableOpacity
+                            onPress={(e: any) => { if (isWeb) e?.stopPropagation?.(); const s = normalizeEnquiryStatus(slotEnquiry!.status); setSlotViewModal({ venueName: item.name, venueId: item.id, day: slot.day, date: slot.dateStr, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _models, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, enquiryId: slotEnquiry!.id, status: s === 'confirmed' ? 'confirmed' : 'enquired' }); }}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Text style={[st.slotEnquireLink, { color: normalizeEnquiryStatus(slotEnquiry.status) === 'confirmed' ? '#22c55e' : Colors.grey }]}>View</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => router.push({ pathname: '/enquire', params: enquireParams })}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
+                          >
+                            <Text style={st.slotEnquireLink}>Enquire</Text>
+                          </TouchableOpacity>
+                        )
                       ) : null}
                     </View>
                   );
@@ -1300,8 +1444,22 @@ export default function VenuesScreen() {
               if (s === 'declined' && !calMyStatus) { calMyStatus = 'declined'; continue; }
               if (s !== 'declined' && s !== 'cancelled') calMyStatus = 'enquired';
             }
-            if (calMyStatus === 'confirmed') return <Text style={[st.webTimetableBtnText, { color: '#22c55e', fontSize: 12 }]}>Booked</Text>;
-            if (calMyStatus === 'enquired')  return <Text style={[st.webTimetableBtnText, { color: '#888888', fontSize: 12 }]}>Enquiry sent</Text>;
+            if (calMyStatus === 'confirmed' || calMyStatus === 'enquired') {
+              const calEnquiry = myEnquiries.find(e => {
+                if (e.venueId !== slot.venue.id || e.requestedSlot?.date !== slot.dateISO) return false;
+                const s = normalizeEnquiryStatus(e.status);
+                return s === calMyStatus;
+              });
+              return (
+                <TouchableOpacity
+                  style={[st.webTimetableBtn, { borderColor: calMyStatus === 'confirmed' ? '#22c55e' : colors.border, alignSelf: 'stretch' }]}
+                  onPress={() => { if (!calEnquiry) return; const _m = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []); setSlotViewModal({ venueName: slot.venue.name, venueId: slot.venue.id, day: slot.day, date: slot.dateISO, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _m, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, enquiryId: calEnquiry.id, status: calMyStatus }); }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[st.webTimetableBtnText, { color: calMyStatus === 'confirmed' ? '#22c55e' : colors.black, fontSize: 12 }]}>View</Text>
+                </TouchableOpacity>
+              );
+            }
             if (calMyStatus === 'declined')  return <Text style={[st.webTimetableBtnText, { color: '#aaaaaa', fontSize: 12, fontStyle: 'italic' }]}>Declined</Text>;
             return (
               <TouchableOpacity
@@ -1722,6 +1880,12 @@ export default function VenuesScreen() {
             );
           })()}
         </>)}
+      <SlotViewModal
+        info={slotViewModal}
+        colors={colors}
+        onClose={() => setSlotViewModal(null)}
+        onViewInbox={(id) => { setSlotViewModal(null); router.push({ pathname: '/(tabs)/inbox', params: { openEnquiryId: id } } as any); }}
+      />
       </View>
     );
   }
@@ -1759,6 +1923,12 @@ export default function VenuesScreen() {
         </View>
       </ScrollView>
       {FilterPanel}
+      <SlotViewModal
+        info={slotViewModal}
+        colors={colors}
+        onClose={() => setSlotViewModal(null)}
+        onViewInbox={(id) => { setSlotViewModal(null); router.push({ pathname: '/(tabs)/inbox', params: { openEnquiryId: id } } as any); }}
+      />
     </View>
   );
 }

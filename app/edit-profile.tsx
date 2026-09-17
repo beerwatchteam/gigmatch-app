@@ -81,7 +81,7 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
     title: 'Basic Info',
     body: 'This is what venues see first. Fill it in properly. A half-finished profile gets ignored.',
     fieldsLabel: 'FIELDS TO COMPLETE',
-    fields: ['Stage name', 'Username', 'Act type (solo, duo, band, DJ, etc.)', 'Genres', 'Location', 'Contact details', 'Fee range', 'Average draw', 'Social links'],
+    fields: ['Stage name', 'Username', 'Act type (solo, duo, band, DJ, etc.)', 'Genres', 'Instruments / What you play', 'Location', 'Contact details', 'Fee range', 'Average draw', 'Social links'],
     nextLabel: 'Next: About',
   },
   3: {
@@ -1235,8 +1235,8 @@ export default function EditProfileScreen() {
                 <View style={[epd.onboardingProgressFill, { width: '100%' as any }]} />
               </View>
               <Text style={[epd.onboardingTitle, { color: colors.black }]}>Go Live</Text>
-              <Text style={epd.onboardingBody}>{ONBOARDING_DATA[9].body}</Text>
-              <Text style={[epd.onboardingBody, { marginTop: 8 }]}>{ONBOARDING_DATA[9].body2}</Text>
+              <Text style={epd.onboardingBody}>{ONBOARDING_DATA[10].body}</Text>
+              <Text style={[epd.onboardingBody, { marginTop: 8 }]}>{ONBOARDING_DATA[10].body2}</Text>
               <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
                 <TouchableOpacity style={epd.onboardingNextBtn} onPress={finishOnboarding}>
                   <Text style={epd.onboardingNextBtnText}>Publish my profile</Text>

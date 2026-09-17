@@ -107,7 +107,7 @@ const BLANK: VenueData = {
 const TABS = ['Settings','Basic Info','Rooms','Timetable','Tech Specs','Payments','Photos & Videos'];
 
 const VENUE_STEP_TAB: Record<number, string | null> = {
-  1: null, 2: 'Basic Info', 3: 'Rooms', 4: 'Timetable', 5: 'Tech Specs', 6: 'Payments', 7: 'Payments',
+  1: null, 2: 'Basic Info', 3: 'Rooms', 4: 'Timetable', 5: 'Tech Specs', 6: 'Payments', 7: 'Photos & Videos', 8: null,
 };
 
 type VenueOnboardingStep = {
@@ -130,7 +130,7 @@ const VENUE_ONBOARDING: Record<number, VenueOnboardingStep> = {
     title: 'Profile',
     body: 'Fill in your venue details. Artists check these before they enquire, so make it count.',
     fieldsLabel: 'FIELDS TO COMPLETE',
-    fields: ['Venue name', 'Address and suburb', 'Capacity', 'Genres you book', 'A short description of the vibe', 'Photos (exterior, stage, room)'],
+    fields: ['Venue name', 'Address and suburb', 'Capacity', 'Genres you book', 'A short description of the vibe'],
     nextLabel: 'Next: Rooms',
   },
   3: {
@@ -158,9 +158,15 @@ const VENUE_ONBOARDING: Record<number, VenueOnboardingStep> = {
     fieldsLabel: 'OPTIONS',
     fields: ['Flat fee (specify range or fixed amount)', 'Door deal (specify percentage split)', 'Percentage of bar', 'No payment (exposure/residency gigs)', 'Negotiable per booking'],
     footer: 'You can override these per slot on your timetable.',
-    nextLabel: 'Next: Go live',
+    nextLabel: 'Next: Photos',
   },
   7: {
+    title: 'Photos',
+    body: 'Upload photos of your venue. Artists check these before they enquire, so give them something worth looking at.',
+    body2: 'Include exterior shots, the stage, and the room at capacity. Good photos convert browsers into bookings.',
+    nextLabel: 'Next: Go live',
+  },
+  8: {
     title: 'Go Live',
     body: 'Your venue is ready. Artists can now see your open slots and send enquiries directly to your inbox.',
     body2: 'Keep your timetable up to date and respond to enquiries promptly. Artists notice.',
@@ -960,7 +966,7 @@ export default function EditVenueScreen() {
   }
 
   function advanceOnboarding() {
-    if (onboardingStep === 7) { finishOnboarding(); return; }
+    if (onboardingStep === 8) { finishOnboarding(); return; }
     const curTab = VENUE_STEP_TAB[onboardingStep];
     if (curTab) setOnboardingVisited(prev => prev.includes(curTab) ? prev : [...prev, curTab]);
     const next = onboardingStep + 1;
@@ -1494,18 +1500,18 @@ export default function EditVenueScreen() {
 
           </ScrollView>
 
-          {/* ── Onboarding side panel (steps 2-6) ── */}
-          {onboardingStep >= 2 && onboardingStep <= 6 && (() => {
+          {/* ── Onboarding side panel (steps 2-7) ── */}
+          {onboardingStep >= 2 && onboardingStep <= 7 && (() => {
             const step = VENUE_ONBOARDING[onboardingStep];
             return (
               <View style={[evd.onboardingPanel, { borderLeftColor: colors.border, backgroundColor: colors.bg }]}>
                 <View style={evd.onboardingPanelInner}>
                   <View style={evd.onboardingStepRow}>
-                    <Text style={evd.onboardingStepLabel}>STEP {onboardingStep} OF 7</Text>
+                    <Text style={evd.onboardingStepLabel}>STEP {onboardingStep} OF 8</Text>
                     <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                   </View>
                   <View style={evd.onboardingProgress}>
-                    <View style={[evd.onboardingProgressFill, { width: `${(onboardingStep / 7) * 100}%` as any }]} />
+                    <View style={[evd.onboardingProgressFill, { width: `${(onboardingStep / 8) * 100}%` as any }]} />
                   </View>
                   <Text style={[evd.onboardingTitle, { color: colors.black }]}>{step.title}</Text>
                   <Text style={evd.onboardingBody}>{step.body}</Text>
@@ -1544,11 +1550,11 @@ export default function EditVenueScreen() {
           <View style={evd.modalOverlay}>
             <View style={[evd.welcomeCard, { backgroundColor: colors.bg }]}>
               <View style={evd.onboardingStepRow}>
-                <Text style={evd.onboardingStepLabel}>STEP 1 OF 7</Text>
+                <Text style={evd.onboardingStepLabel}>STEP 1 OF 8</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[evd.onboardingProgress, { marginBottom: 20 }]}>
-                <View style={[evd.onboardingProgressFill, { width: '14%' as any }]} />
+                <View style={[evd.onboardingProgressFill, { width: '12.5%' as any }]} />
               </View>
               <Text style={[evd.onboardingTitle, { color: colors.black, fontSize: 22 }]}>Verified</Text>
               <Text style={[evd.onboardingBody, { marginBottom: 24 }]}>{VENUE_ONBOARDING[1].body}</Text>
@@ -1560,19 +1566,19 @@ export default function EditVenueScreen() {
         )}
 
         {/* ── Step 7: Go Live card (bottom-left) ── */}
-        {onboardingStep === 7 && (
+        {onboardingStep === 8 && (
           <View style={evd.goLiveCard}>
             <View style={[evd.goLiveCardInner, { backgroundColor: colors.bg }]}>
               <View style={evd.onboardingStepRow}>
-                <Text style={evd.onboardingStepLabel}>STEP 7 OF 7</Text>
+                <Text style={evd.onboardingStepLabel}>STEP 8 OF 8</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[evd.onboardingProgress, { marginBottom: 16 }]}>
                 <View style={[evd.onboardingProgressFill, { width: '100%' as any }]} />
               </View>
               <Text style={[evd.onboardingTitle, { color: colors.black }]}>Go Live</Text>
-              <Text style={evd.onboardingBody}>{VENUE_ONBOARDING[7].body}</Text>
-              <Text style={[evd.onboardingBody, { marginTop: 8 }]}>{VENUE_ONBOARDING[7].body2}</Text>
+              <Text style={evd.onboardingBody}>{VENUE_ONBOARDING[8].body}</Text>
+              <Text style={[evd.onboardingBody, { marginTop: 8 }]}>{VENUE_ONBOARDING[8].body2}</Text>
               <View style={[evd.onboardingBtns, { marginTop: 20 }]}>
                 <TouchableOpacity style={evd.onboardingNextBtn} onPress={finishOnboarding}>
                   <Text style={evd.onboardingNextBtnText}>Go to my timetable</Text>
@@ -2336,7 +2342,7 @@ export default function EditVenueScreen() {
       </ScrollView>
 
       {/* ── Mobile onboarding overlay ── */}
-      {onboardingStep >= 1 && onboardingStep <= 7 && (() => {
+      {onboardingStep >= 1 && onboardingStep <= 8 && (() => {
         const step = VENUE_ONBOARDING[onboardingStep];
         const isFirst = onboardingStep === 1;
         return (
@@ -2344,11 +2350,11 @@ export default function EditVenueScreen() {
             <View style={s.mobileOnboardingOverlay}>
               <View style={[s.mobileOnboardingCard, { backgroundColor: colors.bg }]}>
                 <View style={evd.onboardingStepRow}>
-                  <Text style={evd.onboardingStepLabel}>STEP {onboardingStep} OF 7</Text>
+                  <Text style={evd.onboardingStepLabel}>STEP {onboardingStep} OF 8</Text>
                   <TouchableOpacity onPress={skipOnboarding}><Text style={evd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                 </View>
                 <View style={[evd.onboardingProgress, { marginBottom: 16 }]}>
-                  <View style={[evd.onboardingProgressFill, { width: `${(onboardingStep / 7) * 100}%` as any }]} />
+                  <View style={[evd.onboardingProgressFill, { width: `${(onboardingStep / 8) * 100}%` as any }]} />
                 </View>
                 <Text style={[evd.onboardingTitle, { color: colors.black }]}>{step.title}</Text>
                 <Text style={evd.onboardingBody}>{step.body}</Text>
@@ -2366,7 +2372,7 @@ export default function EditVenueScreen() {
                 )}
                 {step.footer && <Text style={[evd.onboardingBody, { marginTop: 10, fontStyle: 'italic' }]}>{step.footer}</Text>}
                 <View style={[evd.onboardingBtns, { marginTop: 20 }]}>
-                  <TouchableOpacity style={evd.onboardingNextBtn} onPress={onboardingStep === 7 ? finishOnboarding : advanceOnboarding}>
+                  <TouchableOpacity style={evd.onboardingNextBtn} onPress={onboardingStep === 8 ? finishOnboarding : advanceOnboarding}>
                     <Text style={evd.onboardingNextBtnText}>{step.nextLabel}</Text>
                   </TouchableOpacity>
                   {!isFirst && (

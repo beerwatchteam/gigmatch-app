@@ -426,10 +426,10 @@ export default function HomeScreen() {
                 <Text style={[s.liveBadgeText, { color: colors.grey }]}>LIVE IN MELBOURNE</Text>
               </View>
               <Text style={[s.headline, { color: colors.black }]}>
-                {`Every open slot,\non one timetable.`}
+                {`Connect. Enquire. Book.\nAll in one place.`}
               </Text>
               <Text style={[s.subhead, { color: colors.grey }]}>
-                KordUp shows artists which venues have a night free, and gives venues one place to take enquiries. No Facebook groups, no cold DMs, no chasing.
+                {`Browse venues with real-time available gig slots. Send a structured enquiry built straight from your profile, and start messaging your way to a confirmed gig, in minutes.\n\nNo Facebook groups, no cold DMs, no chasing replies across five different apps, and no getting lost in endless email chains.`}
               </Text>
               <View style={s.heroCtaRow}>
                 <TouchableOpacity style={s.ctaFilled} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
@@ -633,12 +633,12 @@ const s = StyleSheet.create({
   heroInner:    { paddingHorizontal: isWeb ? 40 : 24, paddingTop: isWeb ? 56 : 40, gap: 32 },
   heroInnerWide:{ flexDirection: 'row', alignItems: 'flex-start', maxWidth: 1200, alignSelf: 'center', width: '100%', gap: 48 },
   heroLeft:     { gap: 20 },
-  heroLeftWide: { flex: 1, maxWidth: 480, paddingTop: 16 },
+  heroLeftWide: { flex: 1, maxWidth: 560, paddingTop: 16 },
   liveBadge:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
   liveDot:      { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.orange },
   liveBadgeText:{ fontSize: 11, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' },
-  headline:     { fontSize: isWeb ? 54 : 34, fontWeight: '900', letterSpacing: isWeb ? -2 : -0.5, lineHeight: isWeb ? 58 : 38 },
-  subhead:      { fontSize: isWeb ? 16 : 15, lineHeight: isWeb ? 27 : 24, maxWidth: isWeb ? 400 : undefined },
+  headline:     { fontSize: isWeb ? 46 : 28, fontWeight: '900', letterSpacing: isWeb ? -1.5 : -0.5, lineHeight: isWeb ? 52 : 34 },
+  subhead:      { fontSize: isWeb ? 16 : 15, lineHeight: isWeb ? 27 : 24, maxWidth: isWeb ? 480 : undefined },
   heroCtaRow:   { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 12, alignItems: 'center' },
   ctaFilled:    { backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 24, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   ctaFilledText:{ fontSize: 15, fontWeight: '700', color: '#ffffff' },
