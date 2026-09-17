@@ -4,7 +4,7 @@ import {
   TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import SuburbSearch from '@/components/SuburbSearch';
@@ -574,14 +574,17 @@ export default function EditVenueScreen() {
   const router = useRouter();
   const { profile } = useAuth();
   const { colors, isDark, toggleDark } = useTheme();
-  const venueId = profile?.venueId ?? '';
+  const { agentVenueId } = useLocalSearchParams<{ agentVenueId?: string }>();
+  const isAgentEdit = !!agentVenueId && profile?.type === 'agent';
+  const venueId = (agentVenueId as string) || (profile?.venueId ?? '');
+  const activeTabs = isAgentEdit ? TABS.filter(t => t !== 'Settings') : TABS;
 
   const [data, setData]           = useState<VenueData>(BLANK);
   const [saved, setSaved]         = useState<VenueData>(BLANK);
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState('Settings');
+  const [activeTab, setActiveTab] = useState(isAgentEdit ? 'Basic Info' : 'Settings');
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);
@@ -1045,7 +1048,7 @@ export default function EditVenueScreen() {
 
             <View style={[evd.divider, { backgroundColor: colors.border }]} />
 
-            {TABS.map(tab => (
+            {activeTabs.map(tab => (
               <TouchableOpacity
                 key={tab}
                 style={[evd.navItem, activeTab === tab && evd.navItemActive]}
@@ -1658,7 +1661,7 @@ export default function EditVenueScreen() {
         {/* ── Tab bar (sticky) ── */}
         <View style={{ backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { borderBottomWidth: 0 }]} contentContainerStyle={s.tabBarContent}>
-            {TABS.map(tab => (
+            {activeTabs.map(tab => (
               <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
                 <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
               </TouchableOpacity>

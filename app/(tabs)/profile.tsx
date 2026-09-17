@@ -270,7 +270,21 @@ type AgentClaim = {
   createdAt: any;
 };
 
-type BandResult = { id: string; name: string; username?: string; email?: string };
+type AgentVenueClaim = {
+  id: string;
+  agentUid: string;
+  agentName: string;
+  agentUsername: string;
+  venueId: string;
+  venueName: string;
+  venueEmail: string;
+  verificationCode: string;
+  status: 'pending' | 'approved' | 'declined';
+  createdAt: any;
+};
+
+type BandResult  = { id: string; name: string; username?: string; email?: string };
+type VenueResult = { id: string; name: string; email?: string };
 
 function generateCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -281,6 +295,7 @@ function AgentScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
+  // ── Musician roster state ─────────────────────────────────────────
   const [claims, setClaims]               = useState<AgentClaim[]>([]);
   const [claimsLoading, setClaimsLoading] = useState(true);
   const [verifyInputs, setVerifyInputs]   = useState<Record<string, string>>({});
@@ -288,7 +303,7 @@ function AgentScreen() {
   const [verifying, setVerifying]         = useState<Record<string, boolean>>({});
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
-  // Search flow
+  // Search flow (musicians)
   const [showSearch, setShowSearch]         = useState(false);
   const [searchQuery, setSearchQuery]       = useState('');
   const [searchResults, setSearchResults]   = useState<BandResult[]>([]);
@@ -297,6 +312,24 @@ function AgentScreen() {
   const [claimLoading, setClaimLoading]     = useState(false);
   const [claimError, setClaimError]         = useState('');
   const [claimSent, setClaimSent]           = useState<AgentClaim | null>(null);
+
+  // ── Venue roster state ────────────────────────────────────────────
+  const [venueClaims, setVenueClaims]               = useState<AgentVenueClaim[]>([]);
+  const [venueClaimsLoading, setVenueClaimsLoading] = useState(true);
+  const [vVerifyInputs, setVVerifyInputs]           = useState<Record<string, string>>({});
+  const [vVerifyErrors, setVVerifyErrors]           = useState<Record<string, string>>({});
+  const [vVerifying, setVVerifying]                 = useState<Record<string, boolean>>({});
+  const [vConfirmRemoveId, setVConfirmRemoveId]     = useState<string | null>(null);
+
+  // Search flow (venues)
+  const [vShowSearch, setVShowSearch]           = useState(false);
+  const [vSearchQuery, setVSearchQuery]         = useState('');
+  const [vSearchResults, setVSearchResults]     = useState<VenueResult[]>([]);
+  const [vSearchLoading, setVSearchLoading]     = useState(false);
+  const [vSelectedVenue, setVSelectedVenue]     = useState<VenueResult | null>(null);
+  const [vClaimLoading, setVClaimLoading]       = useState(false);
+  const [vClaimError, setVClaimError]           = useState('');
+  const [vClaimSent, setVClaimSent]             = useState<AgentVenueClaim | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -309,6 +342,21 @@ function AgentScreen() {
         setClaimsLoading(false);
       },
       () => setClaimsLoading(false),
+    );
+    return unsub;
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(
+      query(collection(db, 'agentVenueClaims'), where('agentUid', '==', user.uid)),
+      snap => {
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as AgentVenueClaim));
+        all.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        setVenueClaims(all);
+        setVenueClaimsLoading(false);
+      },
+      () => setVenueClaimsLoading(false),
     );
     return unsub;
   }, [user?.uid]);
@@ -386,6 +434,106 @@ function AgentScreen() {
     finally { setClaimLoading(false); }
   }
 
+  async function handleVenueSearch(val: string) {
+    setVSearchQuery(val);
+    setVSelectedVenue(null);
+    if (val.trim().length < 2) { setVSearchResults([]); return; }
+    setVSearchLoading(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'venues'), where('name', '>=', val), where('name', '<=', val + '\uf8ff'))
+      );
+      const results: VenueResult[] = snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, name: data.name, email: data.email ?? data.bookingContact?.email ?? '' };
+      });
+      setVSearchResults(results.slice(0, 6));
+    } catch {}
+    finally { setVSearchLoading(false); }
+  }
+
+  async function handleVenueClaim() {
+    if (!user || !vSelectedVenue) return;
+    setVClaimLoading(true); setVClaimError('');
+    try {
+      const existingSnap = await getDocs(
+        query(collection(db, 'agentVenueClaims'),
+          where('agentUid', '==', user.uid),
+          where('venueId', '==', vSelectedVenue.id),
+          where('status', '==', 'pending'))
+      );
+      if (!existingSnap.empty) {
+        setVClaimError('You already have a pending claim for this venue.');
+        setVClaimLoading(false); return;
+      }
+      const code = generateCode();
+      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+      const ref = await addDoc(collection(db, 'agentVenueClaims'), {
+        agentUid: user.uid,
+        agentName: profile?.displayName ?? '',
+        agentUsername: profile?.username ?? '',
+        venueId: vSelectedVenue.id,
+        venueName: vSelectedVenue.name,
+        venueEmail: vSelectedVenue.email ?? '',
+        verificationCode: code,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        expiresAt,
+      });
+      const newClaim: AgentVenueClaim = {
+        id: ref.id,
+        agentUid: user.uid,
+        agentName: profile?.displayName ?? '',
+        agentUsername: profile?.username ?? '',
+        venueId: vSelectedVenue.id,
+        venueName: vSelectedVenue.name,
+        venueEmail: vSelectedVenue.email ?? '',
+        verificationCode: code,
+        status: 'pending',
+        createdAt: null,
+      };
+      setVenueClaims(prev => [newClaim, ...prev]);
+      setVClaimSent(newClaim);
+      setVShowSearch(false);
+      setVSearchQuery(''); setVSearchResults([]); setVSelectedVenue(null);
+    } catch (err: any) { setVClaimError(err.message || 'Failed to submit claim.'); }
+    finally { setVClaimLoading(false); }
+  }
+
+  async function handleVerifyVenueClaim(claim: AgentVenueClaim) {
+    const entered = (vVerifyInputs[claim.id] ?? '').trim();
+    if (entered.length !== 6) {
+      setVVerifyErrors(p => ({ ...p, [claim.id]: 'Enter the 6-digit code.' }));
+      return;
+    }
+    if (entered !== claim.verificationCode) {
+      setVVerifyErrors(p => ({ ...p, [claim.id]: 'Incorrect code. Ask the venue to check theirs.' }));
+      return;
+    }
+    setVVerifying(p => ({ ...p, [claim.id]: true }));
+    try {
+      await Promise.all([
+        updateDoc(doc(db, 'agentVenueClaims', claim.id), {
+          status: 'approved',
+          respondedAt: new Date().toISOString(),
+        }),
+        setDoc(doc(db, 'agentVenueRoster', `${user!.uid}_${claim.venueId}`), {
+          agentUid: user!.uid,
+          agentName: profile?.displayName ?? '',
+          venueId: claim.venueId,
+          venueName: claim.venueName,
+          approvedAt: new Date().toISOString(),
+        }),
+      ]);
+      setVenueClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: 'approved' } : c));
+      if (vClaimSent?.id === claim.id) setVClaimSent(null);
+    } catch {
+      setVVerifyErrors(p => ({ ...p, [claim.id]: 'Something went wrong. Please try again.' }));
+    } finally {
+      setVVerifying(p => ({ ...p, [claim.id]: false }));
+    }
+  }
+
   async function handleVerifyClaim(claim: AgentClaim) {
     const entered = (verifyInputs[claim.id] ?? '').trim();
     if (entered.length !== 6) {
@@ -422,6 +570,9 @@ function AgentScreen() {
 
   const pending  = claims.filter(c => c.status === 'pending');
   const approved = claims.filter(c => c.status === 'approved');
+
+  const vPending  = venueClaims.filter(c => c.status === 'pending');
+  const vApproved = venueClaims.filter(c => c.status === 'approved');
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
@@ -639,6 +790,210 @@ function AgentScreen() {
               <TouchableOpacity
                 style={[agentStyles.cancelBtn, { borderColor: colors.border }]}
                 onPress={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); setSelectedArtist(null); setClaimError(''); }}
+                activeOpacity={0.75}
+              >
+                <Text style={[agentStyles.cancelBtnText, { color: colors.grey }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* ── VENUE ROSTER ── */}
+        <View style={[agentStyles.section, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }]}>
+          <View style={agentStyles.sectionHeader}>
+            <Text style={[agentStyles.sectionTitle, { color: colors.black }]}>Venue Roster</Text>
+            <TouchableOpacity
+              style={agentStyles.addBtn}
+              onPress={() => { setVShowSearch(true); setVClaimSent(null); setVClaimError(''); }}
+              activeOpacity={0.8}
+            >
+              <Text style={agentStyles.addBtnText}>+ Claim Venue</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Claim sent confirmation */}
+          {vClaimSent && (
+            <View style={[agentStyles.confirmBox, { borderColor: colors.border }]}>
+              <Text style={[agentStyles.confirmTitle, { color: colors.black }]}>Claim submitted</Text>
+              <Text style={[agentStyles.confirmBody, { color: colors.grey }]}>
+                Ask{' '}
+                <Text style={{ fontWeight: '700', color: colors.black }}>{vClaimSent.venueName}</Text>
+                {' '}to open their KordUp profile. They will see a verification code. Enter it in the Pending Claims section below to confirm representation.
+              </Text>
+              <Text style={[agentStyles.confirmHint, { color: colors.greyLight }]}>
+                The claim expires in 7 days if not approved.
+              </Text>
+              <TouchableOpacity onPress={() => setVClaimSent(null)} activeOpacity={0.7}>
+                <Text style={{ color: Colors.orange, fontWeight: '600', fontSize: 13 }}>Dismiss</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {venueClaimsLoading ? (
+            <ActivityIndicator color={Colors.orange} style={{ marginTop: 16 }} />
+          ) : vApproved.length === 0 ? (
+            <Text style={[agentStyles.empty, { color: colors.greyLight }]}>
+              No venues in your roster yet. Claim a venue to get started.
+            </Text>
+          ) : (
+            vApproved.map(c => (
+              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, gap: 12 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.venueName}</Text>
+                    {c.venueEmail ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>{c.venueEmail}</Text> : null}
+                  </View>
+                  {vConfirmRemoveId === c.id ? (
+                    <View style={agentStyles.confirmRemoveRow}>
+                      <TouchableOpacity onPress={() => setVConfirmRemoveId(null)} activeOpacity={0.7}>
+                        <Text style={[agentStyles.removeBtn, { color: colors.grey }]}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          setVConfirmRemoveId(null);
+                          await Promise.all([
+                            deleteDoc(doc(db, 'agentVenueClaims', c.id)),
+                            deleteDoc(doc(db, 'agentVenueRoster', `${user!.uid}_${c.venueId}`)),
+                          ]).catch(() => {});
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[agentStyles.removeBtn, { color: '#e53e3e' }]}>Confirm</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setVConfirmRemoveId(c.id)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={[agentStyles.removeBtn, { color: colors.greyLight }]}>Remove</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={agentStyles.rosterBtns}>
+                  <TouchableOpacity
+                    style={[agentStyles.rosterBtn, { borderColor: colors.border }]}
+                    onPress={() => router.push(`/venue/${c.venueId}` as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[agentStyles.rosterBtnText, { color: colors.black }]}>View profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[agentStyles.rosterBtn, { borderColor: colors.border }]}
+                    onPress={() => router.push(`/edit-venue?agentVenueId=${c.venueId}` as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[agentStyles.rosterBtnText, { color: colors.black }]}>Edit profile</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Pending venue claims section */}
+        {vPending.length > 0 && (
+          <View style={agentStyles.section}>
+            <Text style={[agentStyles.sectionTitle, { color: colors.black }]}>Pending Venue Claims</Text>
+            {vPending.map(c => (
+              <View key={c.id} style={[agentStyles.claimCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, gap: 10 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={[agentStyles.claimName, { color: colors.black }]}>{c.venueName}</Text>
+                    <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Ask {c.venueName} for their verification code</Text>
+                  </View>
+                  <View style={[agentStyles.statusBadge, { borderColor: '#f5a623' }]}>
+                    <Text style={[agentStyles.statusText, { color: '#f5a623' }]}>Pending</Text>
+                  </View>
+                </View>
+                <TextInput
+                  style={[agentStyles.verifyInput, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bg }]}
+                  value={vVerifyInputs[c.id] ?? ''}
+                  onChangeText={v => {
+                    setVVerifyInputs(p => ({ ...p, [c.id]: v.replace(/\D/g, '').slice(0, 6) }));
+                    setVVerifyErrors(p => ({ ...p, [c.id]: '' }));
+                  }}
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.greyLight}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                {vVerifyErrors[c.id] ? <Text style={agentStyles.verifyError}>{vVerifyErrors[c.id]}</Text> : null}
+                <TouchableOpacity
+                  style={[agentStyles.verifyBtn, vVerifying[c.id] && { opacity: 0.45 }]}
+                  onPress={() => handleVerifyVenueClaim(c)}
+                  disabled={!!vVerifying[c.id]}
+                  activeOpacity={0.85}
+                >
+                  {vVerifying[c.id]
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={agentStyles.verifyBtnText}>Verify and Confirm</Text>}
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Venue search / claim flow */}
+        {vShowSearch && (
+          <View style={[agentStyles.searchBox, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+            <Text style={[agentStyles.searchTitle, { color: colors.black }]}>Find a Venue to Claim</Text>
+            <Text style={[agentStyles.searchHint, { color: colors.grey }]}>
+              Search by venue name. The venue must already have a KordUp listing.
+            </Text>
+            <TextInput
+              style={[agentStyles.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+              placeholder="Venue name..."
+              placeholderTextColor={colors.greyLight}
+              value={vSearchQuery}
+              onChangeText={handleVenueSearch}
+              autoCapitalize="words"
+              autoCorrect={false}
+            />
+            {vSearchLoading && <ActivityIndicator color={Colors.orange} style={{ marginBottom: 8 }} />}
+            {vSearchResults.length > 0 && !vSelectedVenue && (
+              <View style={[agentStyles.resultList, { borderColor: colors.border }]}>
+                {vSearchResults.map(r => (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[agentStyles.resultItem, { borderColor: colors.border }]}
+                    onPress={() => { setVSelectedVenue(r); setVSearchResults([]); }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[agentStyles.resultName, { color: colors.black }]}>{r.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {vSelectedVenue && (
+              <View style={[agentStyles.selectedCard, { borderColor: Colors.orange }]}>
+                <View>
+                  <Text style={[agentStyles.claimName, { color: colors.black }]}>{vSelectedVenue.name}</Text>
+                  {vSelectedVenue.email
+                    ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Venue contact: {vSelectedVenue.email}</Text>
+                    : <Text style={[agentStyles.claimEmail, { color: Colors.danger }]}>No email on file for this venue.</Text>}
+                </View>
+                <TouchableOpacity onPress={() => setVSelectedVenue(null)} activeOpacity={0.7}>
+                  <Text style={{ color: colors.greyLight, fontSize: 13 }}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {vClaimError ? <Text style={agentStyles.claimError}>{vClaimError}</Text> : null}
+            <View style={agentStyles.searchActions}>
+              <TouchableOpacity
+                style={[agentStyles.claimBtn, (!vSelectedVenue || vClaimLoading) && agentStyles.claimBtnDim]}
+                onPress={handleVenueClaim}
+                disabled={!vSelectedVenue || vClaimLoading}
+                activeOpacity={0.85}
+              >
+                {vClaimLoading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={agentStyles.claimBtnText}>Send Claim Request</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[agentStyles.cancelBtn, { borderColor: colors.border }]}
+                onPress={() => { setVShowSearch(false); setVSearchQuery(''); setVSearchResults([]); setVSelectedVenue(null); setVClaimError(''); }}
                 activeOpacity={0.75}
               >
                 <Text style={[agentStyles.cancelBtnText, { color: colors.grey }]}>Cancel</Text>

@@ -7,7 +7,7 @@ import { Text } from '@/components/Text';
 import WebView from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -343,6 +343,110 @@ function fmtFee(min?: number | null, max?: number | null) {
   return null;
 }
 
+// ── Pending agent venue claim requests (shown to venue owner) ────────
+
+type VenueClaimForOwner = {
+  id: string;
+  agentUid: string;
+  agentName: string;
+  agentUsername?: string;
+  verificationCode: string;
+  status: string;
+};
+
+function PendingAgentVenueClaims({ venueId }: { venueId: string }) {
+  const { colors } = useTheme();
+  const [claims, setClaims]         = useState<VenueClaimForOwner[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [processing, setProcessing] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    getDocs(
+      query(collection(db, 'agentVenueClaims'),
+        where('venueId', '==', venueId),
+        where('status', '==', 'pending'))
+    ).then(snap => {
+      setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as VenueClaimForOwner)));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [venueId]);
+
+  async function handleDecline(claim: VenueClaimForOwner) {
+    setProcessing(p => ({ ...p, [claim.id]: true }));
+    try {
+      await updateDoc(doc(db, 'agentVenueClaims', claim.id), {
+        status: 'declined',
+        respondedAt: new Date().toISOString(),
+      });
+      setClaims(prev => prev.filter(c => c.id !== claim.id));
+    } catch {} finally {
+      setProcessing(p => ({ ...p, [claim.id]: false }));
+    }
+  }
+
+  if (loading || claims.length === 0) return null;
+
+  return (
+    <View style={[pvac.wrap, { borderColor: colors.border }]}>
+      <Text style={[pvac.heading]}>Representation Requests</Text>
+      {claims.map(claim => (
+        <View key={claim.id} style={[pvac.card, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          <View style={pvac.cardTop}>
+            <View>
+              <Text style={[pvac.agentName, { color: colors.black }]}>{claim.agentName}</Text>
+              {claim.agentUsername ? <Text style={[pvac.agentHandle, { color: colors.grey }]}>@{claim.agentUsername}</Text> : null}
+            </View>
+            <View style={[pvac.badge, { borderColor: '#f5a623' }]}>
+              <Text style={[pvac.badgeText, { color: '#f5a623' }]}>Pending</Text>
+            </View>
+          </View>
+          <Text style={[pvac.bodyText, { color: colors.grey }]}>
+            This agent wants to represent your venue on KordUp. Share the code below with them to approve, or decline if you don't recognise this request.
+          </Text>
+          <View style={[pvac.codeDisplay, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+            <Text style={[pvac.codeDisplayLabel, { color: colors.grey }]}>YOUR VERIFICATION CODE</Text>
+            <Text style={[pvac.codeDisplayValue, { color: colors.black }]}>{claim.verificationCode}</Text>
+          </View>
+          <View style={pvac.actions}>
+            <TouchableOpacity
+              style={[pvac.declineBtn, { borderColor: colors.border }, processing[claim.id] && pvac.btnDim]}
+              onPress={() => handleDecline(claim)}
+              disabled={!!processing[claim.id]}
+              activeOpacity={0.75}
+            >
+              {processing[claim.id]
+                ? <ActivityIndicator color={colors.grey} size="small" />
+                : <Text style={[pvac.declineBtnText, { color: colors.grey }]}>Decline</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const pvac = StyleSheet.create({
+  wrap: {
+    borderTopWidth: 1, borderBottomWidth: 1,
+    paddingHorizontal: isWeb ? 40 : 20, paddingVertical: 20,
+    marginBottom: 4,
+  },
+  heading:    { fontSize: 13, fontWeight: '700', letterSpacing: 0.8, color: Colors.orange, marginBottom: 12, textTransform: 'uppercase' },
+  card:       { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 10, gap: 10 },
+  cardTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  agentName:  { fontSize: 15, fontWeight: '700' },
+  agentHandle:{ fontSize: 12, marginTop: 2 },
+  badge:      { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText:  { fontSize: 12, fontWeight: '700' },
+  bodyText:   { fontSize: 13, lineHeight: 20 },
+  codeDisplay:      { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center', gap: 4 },
+  codeDisplayLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  codeDisplayValue: { fontSize: 28, fontWeight: '800', letterSpacing: 8 },
+  actions:        { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  declineBtn:     { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center' },
+  declineBtnText: { fontSize: 13, fontWeight: '600' },
+  btnDim:         { opacity: 0.45 },
+});
+
 // ── Main screen ───────────────────────────────────────────────────────
 
 export default function VenueScreen({ _overrideId }: { _overrideId?: string } = {}) {
@@ -358,8 +462,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/venues');
   const { enquiries: userEnquiries } = useArtistEnquiries(isArtist ? (user?.uid ?? null) : null);
 
-  const [venue, setVenue]     = useState<Venue | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [venue, setVenue]               = useState<Venue | null>(null);
+  const [loading, setLoading]           = useState(true);
+  const [isAgentForVenue, setIsAgentForVenue] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'timetable' | 'rooms' | 'photos'>(
     tabParam === 'timetable' ? 'timetable'
     : tabParam === 'rooms'   ? 'rooms'
@@ -373,6 +478,15 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
       setLoading(false);
     }, () => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!user || profile?.type !== 'agent') return;
+    getDocs(
+      query(collection(db, 'agentVenueRoster'),
+        where('agentUid', '==', user.uid),
+        where('venueId', '==', id))
+    ).then(snap => setIsAgentForVenue(!snap.empty)).catch(() => {});
+  }, [user?.uid, id, profile?.type]);
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
@@ -491,6 +605,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
           {/* Main content */}
           <ScrollView style={vd.main} contentContainerStyle={vd.mainContent}>
+            <PendingAgentVenueClaims venueId={id} />
             {activeTab === 'overview' && (
               <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} />
             )}
@@ -547,6 +662,13 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                   <Text style={s.logoutBtnText}>Log out</Text>
                 </TouchableOpacity>
               </View>
+            ) : isAgentForVenue ? (
+              <TouchableOpacity
+                style={[s.editProfileBtn, { marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4 }]}
+                onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}
+              >
+                <Text style={s.editProfileBtnText}>Edit Profile</Text>
+              </TouchableOpacity>
             ) : isArtist ? (
               <TouchableOpacity style={[s.enquireHeaderBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => setActiveTab('timetable')}>
                 <Text style={s.enquireHeaderBtnText}>Enquire about a timeslot</Text>
@@ -580,6 +702,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             ))}
           </ScrollView>
         </View>
+
+        {/* ── Pending agent claims (venue owner only) ── */}
+        {isMyVenue && <PendingAgentVenueClaims venueId={id} />}
 
         {/* ── Tab content ── */}
         {activeTab === 'overview' && (
