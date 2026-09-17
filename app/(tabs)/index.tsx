@@ -836,7 +836,7 @@ const s = StyleSheet.create({
   enqCheckmark:     { fontSize: 12, fontWeight: '700', color: '#fff' },
   enqCheckLabel:    { fontSize: 13, fontWeight: '600', flex: 1 },
   enqCount:         { fontSize: 12, marginTop: 10, textAlign: 'center' as const },
-  enqFadeOverlay:   { height: 48, marginTop: 12, marginHorizontal: -20, background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.0))' as any },
+  enqFadeOverlay:   { height: 48, marginTop: 12, marginHorizontal: -20 },
   enqSendBtn:       { backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginHorizontal: -20, marginBottom: 0 },
   enqSendBtnText:   { fontSize: 15, fontWeight: '700', color: '#111' },
 });
