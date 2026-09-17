@@ -175,27 +175,42 @@ export function useAgentEnquiries(agentUid: string | null) {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading]     = useState(true);
   const [roster, setRoster]       = useState<RosterEntry[]>([]);
-  const [rosterLoaded, setRosterLoaded] = useState(false);
 
-  // Load full roster (artists + venues) once
+  // Live roster: listen to both claims collections in real-time
   useEffect(() => {
-    if (!agentUid) { setLoading(false); setRosterLoaded(true); return; }
-    Promise.all([
-      getDocs(query(collection(db, 'agentClaims'),      where('agentUid', '==', agentUid))),
-      getDocs(query(collection(db, 'agentVenueClaims'), where('agentUid', '==', agentUid))),
-    ]).then(([artistSnap, venueSnap]) => {
-      const entries: RosterEntry[] = [
-        ...artistSnap.docs.filter(d => d.data().status === 'approved').map(d => ({ type: 'artist' as const, id: d.data().artistUid as string, name: d.data().artistName as string })),
-        ...venueSnap.docs.filter(d => d.data().status === 'approved').map(d => ({ type: 'venue'  as const, id: d.data().venueId   as string, name: d.data().venueName   as string })),
-      ];
-      setRoster(entries);
-    }).catch(() => setRoster([]))
-    .finally(() => setRosterLoaded(true));
+    if (!agentUid) { setRoster([]); setLoading(false); return; }
+
+    let artistEntries: RosterEntry[] = [];
+    let venueEntries:  RosterEntry[] = [];
+
+    const unsub1 = onSnapshot(
+      query(collection(db, 'agentClaims'), where('agentUid', '==', agentUid)),
+      snap => {
+        artistEntries = snap.docs
+          .filter(d => d.data().status === 'approved')
+          .map(d => ({ type: 'artist' as const, id: d.data().artistUid as string, name: d.data().artistName as string }));
+        setRoster([...artistEntries, ...venueEntries]);
+      },
+      () => {},
+    );
+
+    const unsub2 = onSnapshot(
+      query(collection(db, 'agentVenueClaims'), where('agentUid', '==', agentUid)),
+      snap => {
+        venueEntries = snap.docs
+          .filter(d => d.data().status === 'approved')
+          .map(d => ({ type: 'venue' as const, id: d.data().venueId as string, name: d.data().venueName as string }));
+        setRoster([...artistEntries, ...venueEntries]);
+      },
+      () => {},
+    );
+
+    return () => { unsub1(); unsub2(); };
   }, [agentUid]);
 
-  // Subscribe to enquiries once roster is known
+  // Subscribe to enquiries whenever roster changes
+  const rosterKey = roster.map(r => r.id).join(',');
   useEffect(() => {
-    if (!rosterLoaded) return;
     const artistUids = roster.filter(r => r.type === 'artist').map(r => r.id);
     const venueIds   = roster.filter(r => r.type === 'venue').map(r => r.id);
     if (artistUids.length === 0 && venueIds.length === 0) { setEnquiries([]); setLoading(false); return; }
@@ -229,7 +244,8 @@ export function useAgentEnquiries(agentUid: string | null) {
       ));
     }
     return () => unsubs.forEach(u => u());
-  }, [rosterLoaded, roster.map(r => r.id).join(',')]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rosterKey]);
 
   return { enquiries, loading, roster };
 }
