@@ -87,7 +87,7 @@ export default function WebHeader() {
           <Text style={styles.themeBtnText}>{isDark ? '☀️' : '🌙'}</Text>
         </TouchableOpacity>
         {user ? (
-          <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.border }]} onPress={() => signOut(auth)}>
+          <TouchableOpacity style={[styles.logoutBtn, { borderColor: colors.border }]} onPress={async () => { await signOut(auth); router.replace('/'); }}>
             <Text style={[styles.logoutText, { color: colors.grey }]}>Log out</Text>
           </TouchableOpacity>
         ) : (
