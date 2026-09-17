@@ -5,6 +5,7 @@ import {
   Modal,
   ScrollView,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -72,12 +73,72 @@ function formatDate(ts?: Timestamp): string {
 
 type Props = { visible: boolean; onClose: () => void };
 
+const BLANK_VENUE_FORM = {
+  name: '', streetAddress: '', suburb: '', postcode: '', phone: '', email: '', website: '',
+};
+
 export default function AdminPanel({ visible, onClose }: Props) {
   const [apps, setApps]       = useState<VenueApplication[]>([]);
   const [disputes, setDisputes] = useState<VenueDispute[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy]       = useState<string | null>(null);
   const [generatedCodes, setGeneratedCodes] = useState<Record<string, string>>({});
+
+  // ── Add Venue form ─────────────────────────────────────────────────────────
+  const [addOpen, setAddOpen]   = useState(false);
+  const [addForm, setAddForm]   = useState({ ...BLANK_VENUE_FORM });
+  const [addBusy, setAddBusy]   = useState(false);
+  const [addErrors, setAddErrors] = useState<string[]>([]);
+
+  function setField(key: keyof typeof BLANK_VENUE_FORM, value: string) {
+    setAddForm(prev => ({ ...prev, [key]: value }));
+    setAddErrors(prev => prev.filter(e => e !== key));
+  }
+
+  async function handleAddVenue() {
+    const errors: string[] = [];
+    if (!addForm.name.trim()) errors.push('name');
+    if (!addForm.suburb.trim()) errors.push('suburb');
+    if (errors.length > 0) { setAddErrors(errors); return; }
+
+    setAddBusy(true);
+    try {
+      const location = [addForm.suburb.trim(), 'VIC', addForm.postcode.trim()].filter(Boolean).join(', ');
+      await addDoc(collection(db, 'venues'), {
+        name: addForm.name.trim(),
+        streetAddress: addForm.streetAddress.trim(),
+        location,
+        suburb: addForm.suburb.trim(),
+        state: 'VIC',
+        postcode: addForm.postcode.trim(),
+        phone: addForm.phone.trim(),
+        email: addForm.email.trim(),
+        website: addForm.website.trim(),
+        description: '',
+        photoUrl: '',
+        latitude: '',
+        longitude: '',
+        rooms: [],
+        gigNights: [],
+        techSpecs: {},
+        settings: { emailOnNewEnquiry: false, emailEnquiryReminders: false, listed: true },
+        photos: [],
+        videos: [],
+        payment: {},
+        photoPosition: { x: 50, y: 50 },
+        onboardingComplete: true,
+        importSource: 'admin',
+        createdAt: serverTimestamp(),
+      });
+      setAddForm({ ...BLANK_VENUE_FORM });
+      setAddOpen(false);
+      Alert.alert('Venue added', `"${addForm.name.trim()}" is now live.`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to add venue.');
+    } finally {
+      setAddBusy(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -360,6 +421,108 @@ export default function AdminPanel({ visible, onClose }: Props) {
               contentContainerStyle={s.scrollContent}
               showsVerticalScrollIndicator={false}
             >
+              {/* Add Venue */}
+              <TouchableOpacity style={s.addVenueToggle} onPress={() => { setAddOpen(o => !o); setAddErrors([]); }}>
+                <Text style={s.addVenueToggleText}>{addOpen ? 'Cancel' : '+ Add Venue'}</Text>
+              </TouchableOpacity>
+
+              {addOpen && (
+                <View style={s.addVenueForm}>
+                  <Text style={s.addVenueFormTitle}>New Venue</Text>
+
+                  <Text style={s.fieldLabel}>Venue name *</Text>
+                  <TextInput
+                    style={[s.input, addErrors.includes('name') && s.inputError]}
+                    value={addForm.name}
+                    onChangeText={v => setField('name', v)}
+                    placeholder="e.g. Corner Hotel"
+                    placeholderTextColor={Colors.greyLight}
+                  />
+
+                  <Text style={s.fieldLabel}>Street address</Text>
+                  <TextInput
+                    style={s.input}
+                    value={addForm.streetAddress}
+                    onChangeText={v => setField('streetAddress', v)}
+                    placeholder="e.g. 57 Swan Street"
+                    placeholderTextColor={Colors.greyLight}
+                  />
+
+                  <View style={s.rowFields}>
+                    <View style={{ flex: 2 }}>
+                      <Text style={s.fieldLabel}>Suburb *</Text>
+                      <TextInput
+                        style={[s.input, addErrors.includes('suburb') && s.inputError]}
+                        value={addForm.suburb}
+                        onChangeText={v => setField('suburb', v)}
+                        placeholder="e.g. Richmond"
+                        placeholderTextColor={Colors.greyLight}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.fieldLabel}>Postcode</Text>
+                      <TextInput
+                        style={s.input}
+                        value={addForm.postcode}
+                        onChangeText={v => setField('postcode', v)}
+                        placeholder="3000"
+                        placeholderTextColor={Colors.greyLight}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={s.fieldLabel}>Phone</Text>
+                  <TextInput
+                    style={s.input}
+                    value={addForm.phone}
+                    onChangeText={v => setField('phone', v)}
+                    placeholder="e.g. 03 9999 0000"
+                    placeholderTextColor={Colors.greyLight}
+                    keyboardType="phone-pad"
+                  />
+
+                  <Text style={s.fieldLabel}>Email</Text>
+                  <TextInput
+                    style={s.input}
+                    value={addForm.email}
+                    onChangeText={v => setField('email', v)}
+                    placeholder="e.g. bookings@venue.com.au"
+                    placeholderTextColor={Colors.greyLight}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
+                  <Text style={s.fieldLabel}>Website</Text>
+                  <TextInput
+                    style={s.input}
+                    value={addForm.website}
+                    onChangeText={v => setField('website', v)}
+                    placeholder="e.g. https://venue.com.au"
+                    placeholderTextColor={Colors.greyLight}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+
+                  {addErrors.length > 0 && (
+                    <Text style={s.errorText}>Please fill in the required fields.</Text>
+                  )}
+
+                  <TouchableOpacity
+                    style={[s.addVenueSubmit, addBusy && s.actionBtnDim]}
+                    onPress={handleAddVenue}
+                    disabled={addBusy}
+                  >
+                    {addBusy
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={s.addVenueSubmitText}>Add Venue</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <View style={s.divider} />
+
               {/* Pending */}
               <Text style={s.sectionTitle}>Pending ({pendingApps.length})</Text>
               {pendingApps.length === 0
@@ -480,4 +643,25 @@ const s = StyleSheet.create({
 
   manualMoveBtn:    { paddingVertical: 10, alignItems: 'center' },
   manualMoveBtnText:{ fontSize: 13, color: Colors.grey, fontWeight: '600' },
+
+  addVenueToggle:     { backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginBottom: 14 },
+  addVenueToggleText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  addVenueForm:      { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 14, gap: 4 },
+  addVenueFormTitle: { fontSize: 16, fontWeight: '700', color: Colors.black, marginBottom: 8 },
+
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: Colors.grey, marginTop: 8, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 },
+  input: {
+    borderWidth: 1, borderColor: Colors.border, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 14, color: Colors.black, backgroundColor: '#fafafa',
+  },
+  inputError:    { borderColor: Colors.danger },
+  rowFields:     { flexDirection: 'row', gap: 10 },
+  errorText:     { fontSize: 13, color: Colors.danger, marginTop: 6 },
+
+  addVenueSubmit:     { backgroundColor: Colors.black, borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginTop: 14 },
+  addVenueSubmitText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  divider: { height: 1, backgroundColor: Colors.border, marginBottom: 20 },
 });
