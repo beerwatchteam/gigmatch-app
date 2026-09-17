@@ -837,8 +837,8 @@ const s = StyleSheet.create({
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 44,
-    width: isWeb ? 460 : undefined,
+    padding: isWeb ? 28 : 44,
+    width: isWeb ? 400 : undefined,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.18,
@@ -856,11 +856,11 @@ const s = StyleSheet.create({
 
   // Shared
   logoRow: { alignItems: 'center', marginBottom: 8 },
-  logoText: { fontSize: 32, fontWeight: '800', color: '#111111', letterSpacing: -1 },
-  logoSub:  { fontSize: 14, color: '#666666', marginTop: 4, marginBottom: 28 },
+  logoText: { fontSize: isWeb ? 26 : 32, fontWeight: '800', color: '#111111', letterSpacing: -1 },
+  logoSub:  { fontSize: 14, color: '#666666', marginTop: 4, marginBottom: isWeb ? 16 : 28 },
 
   tabRow: {
-    flexDirection: 'row', gap: 6, marginBottom: 24,
+    flexDirection: 'row', gap: 6, marginBottom: isWeb ? 16 : 24,
     backgroundColor: '#f0f0f0', borderRadius: 10, padding: 4,
   },
   tabBtn:       { flex: 1, paddingVertical: 9, borderRadius: 7, alignItems: 'center' },
@@ -869,7 +869,7 @@ const s = StyleSheet.create({
   tabTextActive:{ color: '#ffffff' },
 
   subTabRow: {
-    flexDirection: 'row', gap: 8, marginBottom: 20,
+    flexDirection: 'row', gap: 8, marginBottom: isWeb ? 14 : 20,
     backgroundColor: '#f0f0f0', borderRadius: 10, padding: 4,
   },
   subTab:           { flex: 1, paddingVertical: 8, borderRadius: 7, alignItems: 'center' },
@@ -879,21 +879,21 @@ const s = StyleSheet.create({
 
   input: {
     borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8,
-    padding: 12, paddingHorizontal: 16, fontSize: 15, color: '#111111',
-    backgroundColor: '#fafafa', marginBottom: 14,
+    padding: isWeb ? 10 : 12, paddingHorizontal: 16, fontSize: 15, color: '#111111',
+    backgroundColor: '#fafafa', marginBottom: isWeb ? 10 : 14,
   },
   atWrap: {
     flexDirection: 'row', alignItems: 'center',
     borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8,
-    paddingHorizontal: 16, backgroundColor: '#fafafa', marginBottom: 14,
+    paddingHorizontal: 16, backgroundColor: '#fafafa', marginBottom: isWeb ? 10 : 14,
   },
   atSign: { fontSize: 15, color: '#111111', fontWeight: '600' },
-  atInput: { flex: 1, paddingVertical: 12, paddingLeft: 2, fontSize: 15, color: '#111111' },
-  hint:       { fontSize: 12, color: '#888888', marginTop: -10, marginBottom: 12 },
-  fieldError: { fontSize: 12, color: '#e94560', marginTop: -10, marginBottom: 10 },
+  atInput: { flex: 1, paddingVertical: isWeb ? 10 : 12, paddingLeft: 2, fontSize: 15, color: '#111111' },
+  hint:       { fontSize: 12, color: '#888888', marginTop: -10, marginBottom: isWeb ? 8 : 12 },
+  fieldError: { fontSize: 12, color: '#e94560', marginTop: -10, marginBottom: isWeb ? 6 : 10 },
   errorText:  { fontSize: 13, color: '#e94560', textAlign: 'center', marginBottom: 12 },
 
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: isWeb ? 10 : 16 },
   typePill: {
     borderRadius: 20, borderWidth: 1, borderColor: '#e0e0e0',
     paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center',
@@ -911,7 +911,7 @@ const s = StyleSheet.create({
   checkboxTick: { fontSize: 10, color: '#ffffff', fontWeight: '900', textAlign: 'center', includeFontPadding: false, marginTop: -2 } as any,
   termsText:  { fontSize: 13, color: '#555555', flex: 1 },
 
-  submitBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 16, marginBottom: 8 },
+  submitBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: isWeb ? 11 : 14, alignItems: 'center', marginTop: isWeb ? 10 : 16, marginBottom: 8 },
   submitBtnDim:  { backgroundColor: '#cccccc' },
   submitBtnText: { fontSize: 16, fontWeight: '700', color: '#ffffff' },
 
