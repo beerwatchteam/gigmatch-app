@@ -1041,8 +1041,8 @@ export default function VenuesScreen() {
                 : myStatus === 'enquired' ? st.calStripDotEnquired
                 : hasSlot ? st.calStripDotOpen
                 : null;
-              const textStyle = myStatus ? st.calStripDateLight
-                : hasSlot ? st.calStripDateOpen
+              const textStyle = myStatus === 'confirmed' ? st.calStripDateLight
+                : hasSlot || myStatus === 'enquired' ? st.calStripDateOpen
                 : isPast ? st.calStripDatePast
                 : null;
 
@@ -1510,20 +1510,16 @@ export default function VenuesScreen() {
                 </View>
                 {isArtist && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#2563eb' }} />
-                    <Text style={st.legendLabel}>Enquired</Text>
+                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#22c55e' }} />
+                    <Text style={st.legendLabel}>Enquired by me</Text>
                   </View>
                 )}
                 {isArtist && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#16a34a' }} />
-                    <Text style={st.legendLabel}>Booked</Text>
+                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#22c55e' }} />
+                    <Text style={st.legendLabel}>Booked by me</Text>
                   </View>
                 )}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#e0e0e0' }} />
-                  <Text style={st.legendLabel}>No slot</Text>
-                </View>
               </View>
             </View>
             <Text style={[st.webTh, { flex: 1.2, textAlign: 'right' as any }]}>ACTION</Text>
@@ -1899,8 +1895,8 @@ const st = StyleSheet.create({
   calStripDotSelected:  { backgroundColor: '#c96500' },
   calStripDotToday:     { backgroundColor: '#dedede' },
   calStripDotPast:      { backgroundColor: 'transparent' },
-  calStripDotEnquired:  { backgroundColor: '#2563eb' },
-  calStripDotConfirmed: { backgroundColor: '#16a34a' },
+  calStripDotEnquired:  { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#22c55e' },
+  calStripDotConfirmed: { backgroundColor: '#22c55e' },
   calStripDate:         { fontSize: 9, color: '#111111' },
   calStripDatePast:     { color: '#bbbbbb' },
   calStripDateOpen:     { color: '#111111' },
