@@ -51,11 +51,11 @@ export function SiteNav() {
         {/* Logo */}
         <a
           href="/"
-          aria-label="KordUp home"
+          aria-label="GottaGig home"
           style={{ flexShrink: 0, textDecoration: 'none' }}
         >
           <span style={{ fontSize: 20, fontWeight: 800, color: '#ffffff', letterSpacing: '-0.025em' }}>
-            KordUp
+            GottaGig
           </span>
         </a>
 

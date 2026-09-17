@@ -400,7 +400,7 @@ function PendingAgentVenueClaims({ venueId }: { venueId: string }) {
             </View>
           </View>
           <Text style={[pvac.bodyText, { color: colors.grey }]}>
-            This agent wants to represent your venue on KordUp. Share the code below with them to approve, or decline if you don't recognise this request.
+            This agent wants to represent your venue on GottaGig. Share the code below with them to approve, or decline if you don't recognise this request.
           </Text>
           <View style={[pvac.codeDisplay, { backgroundColor: colors.bg, borderColor: colors.border }]}>
             <Text style={[pvac.codeDisplayLabel, { color: colors.grey }]}>YOUR VERIFICATION CODE</Text>

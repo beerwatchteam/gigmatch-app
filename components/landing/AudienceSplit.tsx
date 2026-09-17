@@ -42,7 +42,7 @@ export function AudienceSplit() {
     <section aria-labelledby="audience-heading" style={{ backgroundColor: '#faf7f2' }}>
       <div className="lp-section-inner" style={{ maxWidth: 1200, margin: '0 auto', padding: '96px 32px' }}>
         <h2 id="audience-heading" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)', margin: -1 }}>
-          KordUp for Artists and Venues
+          GottaGig for Artists and Venues
         </h2>
 
         <div className="lp-audience-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>

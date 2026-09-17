@@ -35,7 +35,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
     <View style={[wb.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       {/* Logo */}
       <TouchableOpacity style={wb.logo} onPress={() => router.push('/')} activeOpacity={0.8}>
-        <Text style={[wb.logoText, { color: colors.black }]}>KordUp</Text>
+        <Text style={[wb.logoText, { color: colors.black }]}>GottaGig</Text>
         <View style={wb.betaBadge}><Text style={wb.betaText}>Beta</Text></View>
       </TouchableOpacity>
 
@@ -98,7 +98,7 @@ function TopTabBar(_props: any) {
   return (
     <View style={[tb.bar, { top: insets.top, backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       <TouchableOpacity style={tb.logo} onPress={() => router.push('/')} activeOpacity={0.8}>
-        <Text style={tb.logoText}>KordUp</Text>
+        <Text style={tb.logoText}>GottaGig</Text>
       </TouchableOpacity>
 
       {tabUser ? (

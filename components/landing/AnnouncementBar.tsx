@@ -28,7 +28,7 @@ export function AnnouncementBar() {
         textOverflow: 'ellipsis',
         margin: 0,
       }}>
-        KordUp is now live: Australian venues are publishing real gig slots.{' '}
+        GottaGig is now live: Australian venues are publishing real gig slots.{' '}
         <a href="#get-started" className="lp-bar-link" style={{ color: '#fa830c', fontWeight: 600 }}>
           Find yours
         </a>

@@ -157,7 +157,7 @@ function VenuePendingScreen() {
             <Text style={[styles.pendingBody, { color: colors.grey }]}>
               Your claim for{' '}
               <Text style={{ fontWeight: '700', color: colors.black }}>{appVenueName}</Text>
-              {' '}is being reviewed by KordUp.
+              {' '}is being reviewed by GottaGig.
             </Text>
             <Text style={[styles.pendingHint, { color: colors.greyLight }]}>
               Once approved, we'll send a verification code to{' '}
@@ -174,7 +174,7 @@ function VenuePendingScreen() {
             <Text style={styles.pendingIcon}>🔑</Text>
             <Text style={[styles.pendingTitle, { color: colors.black }]}>Enter Your Code</Text>
             <Text style={[styles.pendingBody, { color: colors.grey }]}>
-              KordUp has sent a verification code to{' '}
+              GottaGig has sent a verification code to{' '}
               <Text style={{ fontWeight: '700', color: colors.black }}>{verificationContact}.</Text>
               Enter it below to claim{' '}
               <Text style={{ fontWeight: '700', color: colors.black }}>{appVenueName}.</Text>
@@ -600,7 +600,7 @@ function AgentScreen() {
             <Text style={[agentStyles.confirmBody, { color: colors.grey }]}>
               Ask{' '}
               <Text style={{ fontWeight: '700', color: colors.black }}>{claimSent.artistName}</Text>
-              {' '}to open their KordUp profile. They will see a verification code. Enter it in the Pending Claims section below to confirm representation.
+              {' '}to open their GottaGig profile. They will see a verification code. Enter it in the Pending Claims section below to confirm representation.
             </Text>
             <Text style={[agentStyles.confirmHint, { color: colors.greyLight }]}>
               The claim expires in 7 days if not approved.
@@ -735,7 +735,7 @@ function AgentScreen() {
           <View style={[agentStyles.searchBox, { borderColor: colors.border, backgroundColor: colors.bg }]}>
             <Text style={[agentStyles.searchTitle, { color: colors.black }]}>Find a Musician to Claim</Text>
             <Text style={[agentStyles.searchHint, { color: colors.grey }]}>
-              Search by name or username. The musician must already have a KordUp account.
+              Search by name or username. The musician must already have a GottaGig account.
             </Text>
             <TextInput
               style={[agentStyles.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
@@ -818,7 +818,7 @@ function AgentScreen() {
               <Text style={[agentStyles.confirmBody, { color: colors.grey }]}>
                 Ask{' '}
                 <Text style={{ fontWeight: '700', color: colors.black }}>{vClaimSent.venueName}</Text>
-                {' '}to open their KordUp profile. They will see a verification code. Enter it in the Pending Claims section below to confirm representation.
+                {' '}to open their GottaGig profile. They will see a verification code. Enter it in the Pending Claims section below to confirm representation.
               </Text>
               <Text style={[agentStyles.confirmHint, { color: colors.greyLight }]}>
                 The claim expires in 7 days if not approved.
@@ -940,7 +940,7 @@ function AgentScreen() {
           <View style={[agentStyles.searchBox, { borderColor: colors.border, backgroundColor: colors.bg }]}>
             <Text style={[agentStyles.searchTitle, { color: colors.black }]}>Find a Venue to Claim</Text>
             <Text style={[agentStyles.searchHint, { color: colors.grey }]}>
-              Search by venue name. The venue must already have a KordUp listing.
+              Search by venue name. The venue must already have a GottaGig listing.
             </Text>
             <TextInput
               style={[agentStyles.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}

@@ -802,7 +802,7 @@ export default function EditProfileScreen() {
                 </TouchableOpacity>
                 <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
                   <Text style={s.dangerTitle}>Danger Zone</Text>
-                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all venues browsing KordUp. This action can be reversed at any time.</Text>
+                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all venues browsing GottaGig. This action can be reversed at any time.</Text>
                   <TouchableOpacity style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]} onPress={() => { const willDeactivate = profile.settings.listed; crossConfirm(willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?', willDeactivate ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.' : 'This will make your profile visible to venues again.', async () => { const uid = user?.uid; if (!uid) return; const newListed = !willDeactivate; await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed }); set('settings', { ...profile.settings, listed: newListed }); }, willDeactivate); }}>
                     <Text style={s.dangerBtnText}>{profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}</Text>
                   </TouchableOpacity>
@@ -1097,7 +1097,7 @@ export default function EditProfileScreen() {
                     </Field>
                   )}
                   <Field label="Bank Transfer">
-                    <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the KordUp message thread.</Text>
+                    <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the GottaGig message thread.</Text>
                     <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
                   </Field>
                 </View>
@@ -1375,7 +1375,7 @@ export default function EditProfileScreen() {
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>
               <Text style={[s.dangerDesc, { color: colors.black }]}>
-                Deactivating your listing will hide it from all venues browsing KordUp. This action can be reversed at any time.
+                Deactivating your listing will hide it from all venues browsing GottaGig. This action can be reversed at any time.
               </Text>
               <TouchableOpacity
                 style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]}
@@ -1916,7 +1916,7 @@ export default function EditProfileScreen() {
                 </Field>
               )}
               <Field label="Bank Transfer">
-                <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the KordUp message thread.</Text>
+                <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the GottaGig message thread.</Text>
                 <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
               </Field>
             </View>
