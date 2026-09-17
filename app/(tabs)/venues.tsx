@@ -13,6 +13,7 @@ import { Colors } from '@/constants/colors';
 import { searchSuburbs, haversineKm, type AreaResult } from '@/lib/suburbSearch';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
+import { useArtistEnquiries, normalizeEnquiryStatus } from '@/lib/useEnquiries';
 import { SlidersHorizontal } from 'phosphor-react-native';
 import { TOP_TAB_H } from './_layout';
 
@@ -422,8 +423,9 @@ let _sessionWebView: 'venue' | 'calendar' = 'venue';
 export default function VenuesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const isArtist = profile?.type === 'artist';
+  const { enquiries: myEnquiries } = useArtistEnquiries(isArtist ? (user?.uid ?? null) : null);
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const [venues, setVenues]         = useState<Venue[]>([]);
@@ -1022,19 +1024,41 @@ export default function VenuesScreen() {
               const isSelected = iso === selectedDate;
               const isToday = iso === todayStr;
               const isPast = day < today;
-              const cell = hasSlot ? (
+
+              // My enquiry state for this date at this venue
+              let myStatus: 'confirmed' | 'enquired' | null = null;
+              if (isArtist) {
+                for (const e of myEnquiries) {
+                  if (e.venueId !== item.id || e.requestedSlot?.date !== iso) continue;
+                  const s = normalizeEnquiryStatus(e.status);
+                  if (s === 'confirmed') { myStatus = 'confirmed'; break; }
+                  if (s !== 'declined' && s !== 'cancelled') myStatus = 'enquired';
+                }
+              }
+
+              const isInteractive = hasSlot || !!myStatus;
+              const dotStyle = myStatus === 'confirmed' ? st.calStripDotConfirmed
+                : myStatus === 'enquired' ? st.calStripDotEnquired
+                : hasSlot ? st.calStripDotOpen
+                : null;
+              const textStyle = myStatus ? st.calStripDateLight
+                : hasSlot ? st.calStripDateOpen
+                : isPast ? st.calStripDatePast
+                : null;
+
+              const cell = isInteractive ? (
                 <TouchableOpacity
                   key={i}
                   style={[
                     st.calStripCell,
-                    st.calStripDotOpen,
-                    isSelected && st.calStripDotSelected,
-                    isSelected && ({ outline: '2px solid #111111', outlineOffset: 2 } as any),
+                    dotStyle,
+                    isSelected && !myStatus && st.calStripDotSelected,
+                    isSelected && !myStatus && ({ outline: '2px solid #111111', outlineOffset: 2 } as any),
                   ]}
                   onPress={() => setSelectedDate(isSelected ? null : iso)}
                   activeOpacity={0.75}
                 >
-                  <Text style={[st.calStripDate, st.calStripDateOpen]}>{day.getDate()}</Text>
+                  <Text style={[st.calStripDate, textStyle]}>{day.getDate()}</Text>
                 </TouchableOpacity>
               ) : (
                 <View key={i} style={[
@@ -1042,10 +1066,7 @@ export default function VenuesScreen() {
                   isToday && st.calStripDotToday,
                   isPast && st.calStripDotPast,
                 ]}>
-                  <Text style={[
-                    st.calStripDate,
-                    isPast && st.calStripDatePast,
-                  ]}>{day.getDate()}</Text>
+                  <Text style={[st.calStripDate, isPast && st.calStripDatePast]}>{day.getDate()}</Text>
                 </View>
               );
               return cell;
@@ -1487,6 +1508,18 @@ export default function VenuesScreen() {
                   <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: Colors.orange }} />
                   <Text style={st.legendLabel}>Open slot</Text>
                 </View>
+                {isArtist && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#2563eb' }} />
+                    <Text style={st.legendLabel}>Enquired</Text>
+                  </View>
+                )}
+                {isArtist && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#16a34a' }} />
+                    <Text style={st.legendLabel}>Booked</Text>
+                  </View>
+                )}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                   <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#e0e0e0' }} />
                   <Text style={st.legendLabel}>No slot</Text>
@@ -1862,13 +1895,16 @@ const st = StyleSheet.create({
   calStripCell:        { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: '#f0f0f0' },
   calStripDayLetter:   { fontSize: 8, fontWeight: '600', color: '#111111' },
   calStripHeaderCell:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  calStripDotOpen:     { backgroundColor: Colors.orange },
-  calStripDotSelected: { backgroundColor: '#c96500' },
-  calStripDotToday:    { backgroundColor: '#dedede' },
-  calStripDotPast:     { backgroundColor: 'transparent' },
-  calStripDate:        { fontSize: 9, color: '#111111' },
-  calStripDatePast:    { color: '#bbbbbb' },
-  calStripDateOpen:    { color: '#111111' },
+  calStripDotOpen:      { backgroundColor: Colors.orange },
+  calStripDotSelected:  { backgroundColor: '#c96500' },
+  calStripDotToday:     { backgroundColor: '#dedede' },
+  calStripDotPast:      { backgroundColor: 'transparent' },
+  calStripDotEnquired:  { backgroundColor: '#2563eb' },
+  calStripDotConfirmed: { backgroundColor: '#16a34a' },
+  calStripDate:         { fontSize: 9, color: '#111111' },
+  calStripDatePast:     { color: '#bbbbbb' },
+  calStripDateOpen:     { color: '#111111' },
+  calStripDateLight:    { color: '#ffffff' },
   calStripSummary:     { fontSize: 11, color: '#888888' },
   legendLabel:         { fontSize: 10, fontWeight: '600', color: '#888888' },
   calSlotDetail:       { marginTop: 6, gap: 2 },
