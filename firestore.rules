@@ -18,6 +18,14 @@ service cloud.firestore {
     function isVenueOwner(venueId) {
       return isSignedIn() && getUserData().venueId == venueId;
     }
+    function isAgentForArtist(artistUid) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/agentRoster/$(request.auth.uid + '_' + artistUid));
+    }
+    function isAgentForVenue(venueId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/agentVenueRoster/$(request.auth.uid + '_' + venueId));
+    }
 
     // Returns true if the current user is allowed to read/write an inquiry,
     // given the inquiry's data object.
@@ -27,6 +35,8 @@ service cloud.firestore {
         isVenueOwner(inqData.venueId) ||
         (inqData.keys().hasAll(['participantUids']) &&
          request.auth.uid in inqData.participantUids) ||
+        isAgentForArtist(inqData.createdBy) ||
+        isAgentForVenue(inqData.venueId) ||
         isAdmin()
       );
     }
@@ -53,6 +63,34 @@ service cloud.firestore {
 
     // ── Agent roster ─────────────────────────────────────────────────────────
     match /agentRoster/{entryId} {
+      allow read:   if isSignedIn();
+      allow create, update: if isSignedIn() &&
+        request.resource.data.agentUid == request.auth.uid;
+      allow delete: if isSignedIn() &&
+        resource.data.agentUid == request.auth.uid || isAdmin();
+    }
+
+    // ── Agent venue claims ───────────────────────────────────────────────────
+    match /agentVenueClaims/{claimId} {
+      allow read: if isSignedIn() && (
+        resource.data.agentUid == request.auth.uid ||
+        resource.data.venueId  == getUserData().venueId ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        request.resource.data.agentUid == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.agentUid == request.auth.uid ||
+        resource.data.venueId  == getUserData().venueId ||
+        isAdmin()
+      );
+      allow delete: if isAdmin() ||
+        resource.data.agentUid == request.auth.uid ||
+        resource.data.venueId  == getUserData().venueId;
+    }
+
+    // ── Agent venue roster ───────────────────────────────────────────────────
+    match /agentVenueRoster/{entryId} {
       allow read:   if isSignedIn();
       allow create, update: if isSignedIn() &&
         request.resource.data.agentUid == request.auth.uid;
