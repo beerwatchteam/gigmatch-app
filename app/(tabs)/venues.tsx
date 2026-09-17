@@ -1054,7 +1054,7 @@ export default function VenuesScreen() {
 
           {/* Detail / summary row */}
           {selectedDate && selectedSlots.length > 0 ? (
-            <View style={st.calSlotDetail}>
+            <View style={[st.calSlotDetail, { borderLeftWidth: 2, borderLeftColor: Colors.orange, paddingLeft: 7 }]}>
               {(() => {
                 const d = parseLocal(selectedDate);
                 const dayLabel = d.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' }).replace(',','');
@@ -1100,12 +1100,17 @@ export default function VenuesScreen() {
               })()}
             </View>
           ) : (
-            <Text style={st.calStripSummary} numberOfLines={1}>
-              {openCount === 0
-                ? 'No open slots'
-                : `${openCount} open slot${openCount !== 1 ? 's' : ''}${nextSlot ? ` · Next: ${nextSlot.dateLabel}` : ''}`
-              }
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+              {openCount > 0 && (
+                <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: Colors.orange, marginRight: 1 }} />
+              )}
+              <Text style={st.calStripSummary} numberOfLines={1}>
+                {openCount === 0
+                  ? 'No open slots'
+                  : <><Text style={{ color: Colors.orange, fontWeight: '700' }}>{openCount}</Text>{` open slot${openCount !== 1 ? 's' : ''}${nextSlot ? ` · Next: ${nextSlot.dateLabel}` : ''}`}</>
+                }
+              </Text>
+            </View>
           )}
         </View>
 
@@ -1475,7 +1480,19 @@ export default function VenuesScreen() {
           <View style={st.webTableHeader}>
             <Text style={[st.webTh, { flex: 3.5 }]}>VENUE</Text>
             <Text style={[st.webTh, { flex: 0.8 }]}>CAPACITY (MAX)</Text>
-            <Text style={[st.webTh, { flex: 3.5 }]}>NEXT 3 WEEKS</Text>
+            <View style={{ flex: 3.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}>
+              <Text style={st.webTh}>NEXT 3 WEEKS</Text>
+              <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: Colors.orange }} />
+                  <Text style={st.legendLabel}>Open slot</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#e0e0e0' }} />
+                  <Text style={st.legendLabel}>No slot</Text>
+                </View>
+              </View>
+            </View>
             <Text style={[st.webTh, { flex: 1.2, textAlign: 'right' as any }]}>ACTION</Text>
           </View>
 
@@ -1852,7 +1869,8 @@ const st = StyleSheet.create({
   calStripDate:        { fontSize: 9, color: '#111111' },
   calStripDatePast:    { color: '#bbbbbb' },
   calStripDateOpen:    { color: '#111111' },
-  calStripSummary:     { fontSize: 11, color: '#888888', marginTop: 6 },
+  calStripSummary:     { fontSize: 11, color: '#888888' },
+  legendLabel:         { fontSize: 10, fontWeight: '600', color: '#888888' },
   calSlotDetail:       { marginTop: 6, gap: 2 },
   calSlotDetailText:   { fontSize: 11, color: '#111111', fontWeight: '600', textDecorationLine: 'underline' as any },
 
