@@ -23,7 +23,7 @@ const admin = require('firebase-admin');
 
 // ── Firebase setup ────────────────────────────────────────────────────────────
 
-const keyPath = resolve(__dirname, 'serviceAccountKey.json');
+const keyPath = resolve(__dirname, '../scripts1/serviceAccountKey.json');
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(readFileSync(keyPath, 'utf8'));
@@ -31,7 +31,7 @@ try {
   console.error(
     '\nERROR: Service account key not found.\n' +
     'Download it from Firebase Console > Project settings > Service accounts\n' +
-    'and save it as: scripts/serviceAccountKey.json\n',
+    'and save it as: scripts1/serviceAccountKey.json\n',
   );
   process.exit(1);
 }

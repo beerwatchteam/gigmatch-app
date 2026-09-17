@@ -13,14 +13,14 @@ const { readFileSync } = require('fs');
 const { resolve } = require('path');
 const admin = require('firebase-admin');
 
-const keyPath = resolve(__dirname, 'serviceAccountKey.json');
+const keyPath = resolve(__dirname, '../scripts1/serviceAccountKey.json');
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(readFileSync(keyPath, 'utf8'));
 } catch {
   console.error(
     '\nERROR: Service account key not found.\n' +
-    'Save it as: scripts/serviceAccountKey.json\n',
+    'Save it as: scripts1/serviceAccountKey.json\n',
   );
   process.exit(1);
 }
