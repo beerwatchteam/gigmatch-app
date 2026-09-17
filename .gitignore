@@ -40,3 +40,4 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+scripts/scripts1serviceAccountKey.json
