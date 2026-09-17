@@ -1083,8 +1083,8 @@ export default function VenuesScreen() {
                           <Text style={[st.slotType, { color: colors.grey, fontSize: 11, fontWeight: '500' }]}>{slot.slotType}</Text>
                         ) : null}
                       </View>
-                      {isArtist ? (
-                        slotEnquiry ? (
+                      {(isArtist || !user) ? (
+                        isArtist && slotEnquiry ? (
                           <TouchableOpacity
                             onPress={(e: any) => { if (isWeb) e?.stopPropagation?.(); const s = normalizeEnquiryStatus(slotEnquiry!.status); setSlotViewModal({ venueName: item.name, venueId: item.id, day: slot.day, date: slot.dateStr, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _models, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, enquiryId: slotEnquiry!.id, status: s === 'confirmed' ? 'confirmed' : 'enquired' }); }}
                             activeOpacity={0.7}
@@ -1094,7 +1094,7 @@ export default function VenuesScreen() {
                           </TouchableOpacity>
                         ) : (
                           <TouchableOpacity
-                            onPress={() => router.push({ pathname: '/enquire', params: enquireParams })}
+                            onPress={() => user ? router.push({ pathname: '/enquire', params: enquireParams }) : router.push('/login' as any)}
                             activeOpacity={0.7}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
@@ -1374,17 +1374,17 @@ export default function VenuesScreen() {
         {/* Col 4: ACTION */}
         <View style={st.webColAction}>
           <View style={{ alignSelf: 'flex-end' }}>
-            {isArtist ? (
+            {(isArtist || !user) ? (
               <TouchableOpacity
                 style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
-                onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
+                onPress={() => user ? router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } }) : router.push('/login' as any)}
                 activeOpacity={0.8}
               >
                 <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
-              style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: isArtist ? 8 : 0 }]}
+              style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: (isArtist || !user) ? 8 : 0 }]}
               onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
               activeOpacity={0.8}
             >
@@ -1435,7 +1435,18 @@ export default function VenuesScreen() {
         {slotInfo ? <Text style={st.calViewSlotInfo}>{slotInfo}</Text> : null}
         {feeStr ? <Text style={st.calViewSlotFee}>{feeStr}</Text> : null}
         <View style={st.calViewActions}>
-          {isArtist ? (() => {
+          {(isArtist || !user) ? (() => {
+          if (!user) {
+            return (
+              <TouchableOpacity
+                style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
+                onPress={() => router.push('/login' as any)}
+                activeOpacity={0.85}
+              >
+                <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
+              </TouchableOpacity>
+            );
+          }
             let calMyStatus: 'confirmed' | 'enquired' | 'declined' | null = null;
             for (const e of myEnquiries) {
               if (e.venueId !== slot.venue.id || e.requestedSlot?.date !== slot.dateISO) continue;
@@ -1495,7 +1506,7 @@ export default function VenuesScreen() {
             );
           })() : null}
           <TouchableOpacity
-            style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: isArtist ? 6 : 0 }]}
+            style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch', marginTop: (isArtist || !user) ? 6 : 0 }]}
             onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'timetable' } })}
             activeOpacity={0.8}
           >

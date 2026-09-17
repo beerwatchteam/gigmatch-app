@@ -502,6 +502,83 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* ── Enquiry Preview ───────────────────────────────────── */}
+        {isWeb && (
+          <View style={[s.enquiryPreviewSection, { backgroundColor: colors.bgFaint, borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+            <View style={[s.sectionInner, isWide && s.sectionInnerWide, isWide && { flexDirection: 'row', alignItems: 'flex-start', gap: 64 }]}>
+              {/* Left: copy */}
+              <View style={isWide ? { flex: 1, paddingTop: 8 } : { marginBottom: 32 }}>
+                <Text style={s.sectionEyebrow}>THE ENQUIRY</Text>
+                <Text style={[s.forArtistsHeading, { color: colors.black, marginBottom: 16 }]}>
+                  One tap. Full profile attached.
+                </Text>
+                <Text style={[s.forVenuesSub, { marginBottom: 16 }]}>
+                  When an artist hits Enquire, the venue gets everything they need to make a decision: bio, draw, past gigs, music, tech rider, and socials. No back-and-forth. No chasing for an EPK.
+                </Text>
+                <Text style={[s.forVenuesSub]}>
+                  The artist chooses what to include. The venue gets it in their inbox, structured and ready to read.
+                </Text>
+              </View>
+              {/* Right: static form preview */}
+              <View style={[s.enquiryCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                {/* Header */}
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={s.enqEyebrow}>ENQUIRY</Text>
+                  <Text style={[s.enqVenueName, { color: colors.black }]}>The Tote Hotel</Text>
+                  <Text style={[s.enqMeta, { color: colors.grey }]}>Friday · 7:00 PM · Band Room</Text>
+                </View>
+                {/* Artist pill */}
+                <View style={[s.enqArtistPill, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                  <View style={s.enqArtistAvatar} />
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={[s.enqArtistName, { color: colors.black }]}>The Dahlias</Text>
+                      <View style={[s.enqBadge, { borderColor: colors.border }]}>
+                        <Text style={[s.enqBadgeText, { color: colors.grey }]}>BAND</Text>
+                      </View>
+                    </View>
+                    <Text style={[s.enqArtistMeta, { color: colors.grey }]}>Indie · Rock · Mount Eliza, VIC</Text>
+                  </View>
+                </View>
+                {/* Set details */}
+                <View style={[s.enqSection, { borderTopColor: colors.border }]}>
+                  <Text style={s.enqSectionLabel}>SET DETAILS</Text>
+                  <View style={{ flexDirection: 'row', gap: 24 }}>
+                    <View>
+                      <Text style={[s.enqDetailKey, { color: colors.black }]}>Duration</Text>
+                      <Text style={[s.enqDetailVal, { color: colors.grey }]}>45 min</Text>
+                    </View>
+                    <View>
+                      <Text style={[s.enqDetailKey, { color: colors.black }]}>Slot Type</Text>
+                      <Text style={[s.enqDetailVal, { color: colors.grey }]}>Headline</Text>
+                    </View>
+                  </View>
+                </View>
+                {/* What you're sending */}
+                <View style={[s.enqSection, { borderTopColor: colors.border }]}>
+                  <Text style={s.enqSectionLabel}>WHAT YOU'RE SENDING</Text>
+                  <View style={s.enqCheckGrid}>
+                    {['About', 'Music', 'Gig history', 'Upcoming gigs', 'Socials', 'Tech rider'].map(item => (
+                      <View key={item} style={[s.enqCheckItem, { borderColor: Colors.orange, backgroundColor: 'rgba(250,131,12,0.07)' }]}>
+                        <View style={s.enqCheckbox}>
+                          <Text style={s.enqCheckmark}>✓</Text>
+                        </View>
+                        <Text style={[s.enqCheckLabel, { color: colors.black }]}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={[s.enqCount, { color: colors.grey }]}>6 of 6 profile sections included</Text>
+                </View>
+                {/* Fade + CTA */}
+                <View style={s.enqFadeOverlay} pointerEvents="none" />
+                <TouchableOpacity style={s.enqSendBtn} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
+                  <Text style={s.enqSendBtnText}>Sign up to send an enquiry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* ── For Artists ───────────────────────────────────────── */}
         <View style={[s.forArtistsSection, { backgroundColor: colors.bg }]}>
           <View style={[s.sectionInner, isWide && s.sectionInnerWide]}>
@@ -732,4 +809,34 @@ const s = StyleSheet.create({
   footerMeta:    { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   footerNav:     { flexDirection: 'row', gap: 24, flexWrap: 'wrap' as const },
   footerNavLink: { fontSize: 14, fontWeight: '500' },
+
+  // ── Enquiry preview ────────────────────────────────────────────
+  enquiryPreviewSection: { borderTopWidth: 1, borderBottomWidth: 1, paddingVertical: 64 },
+  enquiryCard: {
+    borderWidth: 1, borderRadius: 16, overflow: 'hidden',
+    width: isWeb ? 360 : '100%', flexShrink: 0,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 0,
+  },
+  enqEyebrow:       { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 4 },
+  enqVenueName:     { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginBottom: 2 },
+  enqMeta:          { fontSize: 13 },
+  enqArtistPill:    { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 0 },
+  enqArtistAvatar:  { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.greyLight },
+  enqArtistName:    { fontSize: 15, fontWeight: '700' },
+  enqBadge:         { borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  enqBadgeText:     { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  enqArtistMeta:    { fontSize: 12, marginTop: 2 },
+  enqSection:       { borderTopWidth: 1, marginTop: 14, paddingTop: 14 },
+  enqSectionLabel:  { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' as const, color: Colors.grey, marginBottom: 10 },
+  enqDetailKey:     { fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  enqDetailVal:     { fontSize: 13 },
+  enqCheckGrid:     { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 8 },
+  enqCheckItem:     { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, width: '47%' as any },
+  enqCheckbox:      { width: 20, height: 20, borderRadius: 4, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center' },
+  enqCheckmark:     { fontSize: 12, fontWeight: '700', color: '#fff' },
+  enqCheckLabel:    { fontSize: 13, fontWeight: '600', flex: 1 },
+  enqCount:         { fontSize: 12, marginTop: 10, textAlign: 'center' as const },
+  enqFadeOverlay:   { height: 48, marginTop: 12, marginHorizontal: -20, background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.0))' as any },
+  enqSendBtn:       { backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginHorizontal: -20, marginBottom: 0 },
+  enqSendBtnText:   { fontSize: 15, fontWeight: '700', color: '#111' },
 });
