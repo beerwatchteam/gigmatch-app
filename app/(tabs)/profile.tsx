@@ -1139,7 +1139,7 @@ export default function ProfileTab() {
     );
   }
 
-  if (!user) return <Redirect href="/login" />;
+  if (!user) return <Redirect href="/" />;
 
   if (isAdmin) return <AdminScreen />;
 
