@@ -826,9 +826,16 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
         <View style={s.section}>
           <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Payment</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {(venue.payment!.models!).map((model) => (
-              <View key={model} style={[s.genrePill, { borderColor: colors.border }]}>
-                <Text style={[s.genreText, { color: colors.black }]}>{model}</Text>
+            {Array.from(
+              new Map(
+                (venue.payment!.models!).map((model) => {
+                  const label = /^set.?fee$/i.test(model.trim()) ? 'Flat fee' : model;
+                  return [label, model] as [string, string];
+                })
+              ).entries()
+            ).map(([label, key]) => (
+              <View key={key} style={[s.genrePill, { borderColor: colors.border }]}>
+                <Text style={[s.genreText, { color: colors.black }]}>{label}</Text>
               </View>
             ))}
           </View>

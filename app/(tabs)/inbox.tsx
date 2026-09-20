@@ -19,13 +19,15 @@ import {
   type RosterEntry,
   useParticipants,
   updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
-  bookSlotOnTimetable, cancelAcceptance, markEnquiryRead,
+  bookSlotOnTimetable, markEnquiryRead,
   inviteParticipants, leaveGig, removeParticipantFromGig,
-  confirmHeadliner, ensureVenueParticipant,
+  ensureVenueParticipant,
   normalizeEnquiryStatus,
   fetchVenuePastCollaborators, fetchHeadlinerPastCollaborators,
   type Enquiry, type Participant,
 } from '@/lib/useEnquiries';
+import { cancelAcceptance } from '@/lib/useGigs';
+import { type FeeType } from '@/lib/gig-types';
 import {
   useDMConversations, useDMMessages,
   sendDMMessage, acceptDMRequest, deleteDMConv,
@@ -173,6 +175,29 @@ function getStatusCfg(status: string, isVenue: boolean): StatusCfg {
     default:
       return { label: s.toUpperCase(), color: '#888888', bg: 'rgba(0,0,0,0.06)' };
   }
+}
+
+const FEE_TYPE_PILLS: { value: FeeType; label: string }[] = [
+  { value: 'flat',              label: 'Flat fee'         },
+  { value: 'door_split',        label: 'Door split'       },
+  { value: 'guarantee_vs_door', label: 'Guarantee + door' },
+  { value: 'ticket_split',      label: 'Ticket split'     },
+  { value: 'unpaid',            label: 'Unpaid'           },
+  { value: 'other',             label: 'Other'            },
+];
+
+/** Maps payment model strings (legacy and current) to a FeeType value. */
+function parseFeeType(s: string | null | undefined): FeeType | null {
+  if (!s) return null;
+  const v = s.toLowerCase().replace(/[\s_\-+]/g, '');
+  if (v === 'flat' || v === 'flatfee' || v === 'setfee' || v === 'set') return 'flat';
+  if (v === 'doorsplit' || v === 'door')                                  return 'door_split';
+  if (v.startsWith('guarantee') || v === 'guaranteesplit')                return 'guarantee_vs_door';
+  if (v === 'ticketsplit' || v === 'ticketsalessplit' || v.startsWith('ticket')) return 'ticket_split';
+  if (v === 'bartab' || v === 'bar' || v === 'barsplit')                  return 'door_split';
+  if (v.includes('unpaid') || v.includes('exposure') || v === 'free' || v === 'volunteer') return 'unpaid';
+  if (v === 'negotiable' || v === 'other')                                return 'other';
+  return null;
 }
 
 function StatusBadge({ status, isVenue }: { status: string; isVenue: boolean }) {
@@ -488,14 +513,18 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [soundCheckTime,   setSoundCheckTime]   = useState<string>(enquiry.soundCheckTime ?? '');
   const [scheduleEdited,   setScheduleEdited]   = useState(false);
   const [scheduleSaving,   setScheduleSaving]   = useState(false);
+  const [gigEditing,       setGigEditing]       = useState(false);
+  const [editSetLength,    setEditSetLength]     = useState<string>(enquiry.requestedSlot.setLength ?? '');
+  // Snapshots of field values taken when Edit is pressed — used to revert on Cancel
+  const editSnapshot = useRef<{ loadIn: string; soundCheck: string; setLength: string } | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
 
-  const [slotPaymentModel,    setSlotPaymentModel]    = useState<string | null>(null);
-  const [venuePaymentModels,  setVenuePaymentModels]  = useState<string[]>([]);
-  const [paymentFetched,      setPaymentFetched]      = useState(false);
-  const [paymentPickerOpen,   setPaymentPickerOpen]   = useState(false);
-  const [enquiryPaymentModel, setEnquiryPaymentModel] = useState<string | null>((enquiry as any).paymentModel ?? null);
+  const [paymentFetched,       setPaymentFetched]       = useState(false);
+  const [selectedFeeType,      setSelectedFeeType]      = useState<FeeType | null>(
+    parseFeeType((enquiry as any).feeType ?? (enquiry as any).paymentModel)
+  );
+  const [slotSuggestedFeeTypes, setSlotSuggestedFeeTypes] = useState<FeeType[]>([]);
 
   async function fetchPaymentData() {
     if (paymentFetched) return;
@@ -506,11 +535,17 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
         const { day, time } = enquiry.requestedSlot;
         const slots: any[] = venueData.slots?.[day] || [];
         const match = slots.find((s: any) => s.time === time && !s.date);
-        setSlotPaymentModel(match?.paymentModel || null);
-        setVenuePaymentModels(venueData.payment?.models || []);
         // Pre-populate load in / sound check from the slot if the enquiry has no saved value
         if (!enquiry.loadInTime && match?.loadIn) setLoadInTime(match.loadIn);
         if (!enquiry.soundCheckTime && match?.soundcheck) setSoundCheckTime(match.soundcheck);
+        // Build suggested fee types from the slot's paymentModels array (or singular paymentModel)
+        const rawModels: string[] = match?.paymentModels ?? (match?.paymentModel ? [match.paymentModel] : []);
+        const suggested = rawModels.map(parseFeeType).filter((v): v is FeeType => v !== null);
+        setSlotSuggestedFeeTypes(suggested);
+        // Pre-select if nothing already saved on the enquiry
+        if (!selectedFeeType && suggested.length > 0) {
+          setSelectedFeeType(suggested[0]);
+        }
       }
     } catch {}
     setPaymentFetched(true);
@@ -529,13 +564,27 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     });
   }
 
-  async function saveSchedule() {
+  async function saveGigInfo() {
     setScheduleSaving(true);
-    await updateDoc(doc(db, 'inquiries', enquiry.id), {
+    const updates: Record<string, any> = {
       loadInTime: loadInTime.trim(),
       soundCheckTime: soundCheckTime.trim(),
-    });
+    };
+    if (editSetLength.trim()) {
+      updates['requestedSlot.setLength'] = editSetLength.trim();
+    }
+    await updateDoc(doc(db, 'inquiries', enquiry.id), updates);
+    // If gig is confirmed and has a gigId, also update the gig doc
+    const gigId = (enquiry as any).gigId as string | undefined;
+    if (gigId && editSetLength.trim()) {
+      const mins = parseInt(editSetLength.replace(/\D/g, ''), 10);
+      if (!isNaN(mins)) {
+        await updateDoc(doc(db, 'gigs', gigId), { setLengthMinutes: mins }).catch(() => {});
+      }
+    }
     setScheduleEdited(false);
+    setGigEditing(false);
+    editSnapshot.current = null;
     setScheduleSaving(false);
   }
 
@@ -638,58 +687,104 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             <ScrollView contentContainerStyle={eh.drawerContent} showsVerticalScrollIndicator={false}>
 
               {/* Gig info */}
-              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Gig Info</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Text style={[eh.drawerSectionLabel, { color: colors.black, marginBottom: 0 }]}>Gig Info</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (gigEditing) {
+                      // Cancel: revert to the snapshot taken when Edit was pressed
+                      if (editSnapshot.current) {
+                        setLoadInTime(editSnapshot.current.loadIn);
+                        setSoundCheckTime(editSnapshot.current.soundCheck);
+                        setEditSetLength(editSnapshot.current.setLength);
+                        editSnapshot.current = null;
+                      }
+                      setScheduleEdited(false);
+                      setGigEditing(false);
+                    } else {
+                      // Edit: snapshot current values before any changes
+                      editSnapshot.current = {
+                        loadIn:     loadInTime,
+                        soundCheck: soundCheckTime,
+                        setLength:  editSetLength,
+                      };
+                      setGigEditing(true);
+                    }
+                  }}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>
+                    {gigEditing ? 'Cancel' : 'Edit'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                {[
-                  { key: 'Date',     val: dateStrFull },
-                  { key: 'Set Time', val: setStr      },
-                ].map((row, i) => (
-                  <View key={row.key} style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                    <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{row.key}</Text>
-                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{row.val}</Text>
-                  </View>
-                ))}
+                {/* Date — always locked */}
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Date</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{dateStrFull}</Text>
+                </View>
+                {/* Set time — editable in edit mode */}
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Time</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{setStr}</Text>
+                </View>
+                {/* Set length — editable in edit mode */}
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Length</Text>
+                  {gigEditing ? (
+                    <TextInput
+                      style={[eh.drawerInlineInput, { color: colors.black }]}
+                      value={editSetLength}
+                      onChangeText={t => { setEditSetLength(t); setScheduleEdited(true); }}
+                      placeholder="e.g. 45 min"
+                      placeholderTextColor="#aaaaaa"
+                    />
+                  ) : (
+                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{editSetLength || '—'}</Text>
+                  )}
+                </View>
+                {/* Load-in — editable in edit mode */}
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Load In</Text>
-                  <TextInput
-                    style={[eh.drawerInlineInput, { color: colors.black }]}
-                    value={loadInTime}
-                    onChangeText={t => { setLoadInTime(t); setScheduleEdited(true); }}
-                    placeholder="e.g. 4:00 PM"
-                    placeholderTextColor="#aaaaaa"
-                  />
+                  {gigEditing ? (
+                    <TextInput
+                      style={[eh.drawerInlineInput, { color: colors.black }]}
+                      value={loadInTime}
+                      onChangeText={t => { setLoadInTime(t); setScheduleEdited(true); }}
+                      placeholder="e.g. 4:00 PM"
+                      placeholderTextColor="#aaaaaa"
+                    />
+                  ) : (
+                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{loadInTime || '—'}</Text>
+                  )}
                 </View>
+                {/* Soundcheck — editable in edit mode */}
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Sound Check</Text>
-                  <TextInput
-                    style={[eh.drawerInlineInput, { color: colors.black }]}
-                    value={soundCheckTime}
-                    onChangeText={t => { setSoundCheckTime(t); setScheduleEdited(true); }}
-                    placeholder="e.g. 5:00 PM"
-                    placeholderTextColor="#aaaaaa"
-                  />
+                  {gigEditing ? (
+                    <TextInput
+                      style={[eh.drawerInlineInput, { color: colors.black }]}
+                      value={soundCheckTime}
+                      onChangeText={t => { setSoundCheckTime(t); setScheduleEdited(true); }}
+                      placeholder="e.g. 5:00 PM"
+                      placeholderTextColor="#aaaaaa"
+                    />
+                  ) : (
+                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{soundCheckTime || '—'}</Text>
+                  )}
                 </View>
                 <View style={eh.drawerInfoRow}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Slot</Text>
                   <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{billing}</Text>
                 </View>
               </View>
-              {scheduleEdited && (
+              {gigEditing && scheduleEdited && (
                 <View style={eh.drawerNotesBtns}>
-                  <TouchableOpacity
-                    style={eh.drawerCancelBtn}
-                    onPress={() => {
-                      setLoadInTime(enquiry.loadInTime ?? '');
-                      setSoundCheckTime(enquiry.soundCheckTime ?? '');
-                      setScheduleEdited(false);
-                    }}
-                  >
-                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={eh.drawerSaveBtn} onPress={saveSchedule} disabled={scheduleSaving}>
+                  <TouchableOpacity style={eh.drawerSaveBtn} onPress={saveGigInfo} disabled={scheduleSaving}>
                     {scheduleSaving
                       ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
+                      : <Text style={eh.drawerSaveBtnText}>Save changes</Text>
                     }
                   </TouchableOpacity>
                 </View>
@@ -750,43 +845,42 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
               {/* Payment method */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
-              {(() => {
-                const displayModel = slotPaymentModel || enquiryPaymentModel;
-                if (displayModel) {
+              <View style={eh.feeTypeGrid}>
+                {FEE_TYPE_PILLS.map(ft => {
+                  const isSuggested = slotSuggestedFeeTypes.includes(ft.value);
+                  const isSelected  = selectedFeeType === ft.value;
                   return (
-                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                      <View style={eh.drawerInfoRow}>
-                        <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Method</Text>
-                        <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{displayModel}</Text>
-                      </View>
-                    </View>
+                    <TouchableOpacity
+                      key={ft.value}
+                      onPress={async () => {
+                        setSelectedFeeType(ft.value);
+                        await updateDoc(doc(db, 'inquiries', enquiry.id), { feeType: ft.value }).catch(() => {});
+                      }}
+                      style={[
+                        eh.feeTypeChip,
+                        { borderColor: isSelected ? Colors.orange : isSuggested ? Colors.orange + '55' : colors.border },
+                        isSelected && { backgroundColor: Colors.orange + '15' },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[eh.feeTypeChipText, { color: isSelected ? Colors.orange : colors.black }]}>
+                        {ft.label}
+                      </Text>
+                      {isSuggested && !isSelected && <View style={eh.feeTypeDot} />}
+                    </TouchableOpacity>
                   );
-                }
-                if (!isVenue) {
-                  return (
-                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                      <View style={eh.drawerInfoRow}>
-                        <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Method</Text>
-                        <Text style={[eh.drawerInfoVal, { color: colors.grey }]}>Not set</Text>
-                      </View>
-                    </View>
-                  );
-                }
-                return (
-                  <TouchableOpacity
-                    style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, paddingVertical: 14, alignItems: 'center' }]}
-                    onPress={() => setPaymentPickerOpen(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.orange }}>+ Add Payment Method</Text>
-                  </TouchableOpacity>
-                );
-              })()}
+                })}
+              </View>
+              {slotSuggestedFeeTypes.length > 0 && (
+                <Text style={[eh.feeTypeHint, { color: colors.grey }]}>
+                  Dotted border: venue's preferred method for this slot.
+                </Text>
+              )}
               <TextInput
-                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 72, marginTop: 6 }]}
+                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 72, marginTop: 8 }]}
                 value={paymentInfo}
                 onChangeText={t => { setPaymentInfo(t); setPaymentInfoEdited(true); }}
-                placeholder="Add payment details for this gig, e.g. agreed amount, timing, special terms..."
+                placeholder="Agreed amount, payment timing, special terms..."
                 placeholderTextColor="#aaaaaa"
                 multiline
                 textAlignVertical="top"
@@ -928,35 +1022,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
         </TouchableOpacity>
       </Modal>
 
-      <Modal visible={paymentPickerOpen} transparent animationType="fade" onRequestClose={() => setPaymentPickerOpen(false)}>
-        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setPaymentPickerOpen(false)}>
-          <View style={[md.sheet, { backgroundColor: colors.bg }]}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: '#888888', letterSpacing: 0.5, textTransform: 'uppercase', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 4 }}>Select Payment Method</Text>
-            {venuePaymentModels.length === 0 ? (
-              <View style={{ paddingHorizontal: 24, paddingVertical: 16 }}>
-                <Text style={{ fontSize: 14, color: '#888888' }}>No payment methods set up on your venue profile yet.</Text>
-              </View>
-            ) : (
-              venuePaymentModels.map((model) => (
-                <TouchableOpacity
-                  key={model}
-                  style={md.sheetItem}
-                  onPress={async () => {
-                    await updateDoc(doc(db, 'inquiries', enquiry.id), { paymentModel: model });
-                    setEnquiryPaymentModel(model);
-                    setPaymentPickerOpen(false);
-                  }}
-                >
-                  <Text style={[md.sheetText, { color: colors.black }]}>{model}</Text>
-                </TouchableOpacity>
-              ))
-            )}
-            <TouchableOpacity style={[md.sheetItem, md.sheetCancelItem]} onPress={() => setPaymentPickerOpen(false)}>
-              <Text style={[md.sheetText, { color: colors.grey }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </>
   );
 }
@@ -998,6 +1063,12 @@ const eh = StyleSheet.create({
   drawerCancelBtnText: { fontSize: 14, fontWeight: '600', color: '#888888' },
   drawerSaveBtn:     { flex: 1, paddingVertical: 11, borderRadius: 10, backgroundColor: Colors.orange, alignItems: 'center' },
   drawerSaveBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+  // Fee type pills
+  feeTypeGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  feeTypeChip:     { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  feeTypeChipText: { fontSize: 13, fontWeight: '600' },
+  feeTypeDot:      { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange },
+  feeTypeHint:     { fontSize: 11, marginTop: 4 },
 });
 
 // ── Participant strip ───────────────────────────────────────────────────────
@@ -1393,6 +1464,7 @@ const STATUS_MOVE_OPTIONS: { status: Enquiry['status']; label: string }[] = [
 function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, rosterLabel }: {
   item: Enquiry; isVenue: boolean; isSelected: boolean; myUid: string; onPress: () => void; onDelete?: () => void; rosterLabel?: string | null;
 }) {
+  const router = useRouter();
   const who = isVenue ? item.bandName : item.venueName;
   const venuePhoto  = useVenuePhoto(!isVenue ? item.venueId : null);
   const avatarPhoto = isVenue ? (item.photoUrl ?? null) : venuePhoto;
@@ -1463,13 +1535,20 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
 
   async function pickStatus(status: Enquiry['status']) {
     setMenuOpen(false);
+    if (status === 'confirmed') {
+      // Always go through the confirm-gig modal — never set confirmed directly
+      router.push({ pathname: '/confirm-gig', params: { enquiryId: item.id } });
+      return;
+    }
     await updateEnquiryStatus(item.id, status);
   }
 
   const normStatus = normalizeEnquiryStatus(item.status);
   const options = STATUS_MOVE_OPTIONS.filter(o => {
     if (normalizeEnquiryStatus(o.status) === normStatus) return false;
-    if (normStatus === 'discussing') return o.status === 'confirmed' || o.status === 'declined';
+    // From enquired: only Discuss or Decline — Confirm requires discussion first
+    if (normStatus === 'enquired')   return o.status === 'discussing' || o.status === 'declined';
+    if (normStatus === 'discussing') return o.status === 'confirmed'  || o.status === 'declined';
     if (normStatus === 'confirmed')  return o.status === 'discussing' || o.status === 'declined';
     return true;
   });
@@ -1781,10 +1860,8 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   }
 
   const [chatText,      setChatText]      = useState('');
-  const [confirmText,   setConfirmText]   = useState('');
   const [declineReason, setDeclineReason] = useState('');
-  const [expandedForm,  setExpandedForm]  = useState<null | 'decline' | 'confirm'>(null);
-  const [listingChoice, setListingChoice] = useState<'pending' | 'booked'>('pending');
+  const [expandedForm,  setExpandedForm]  = useState<null | 'decline'>(null);
   const [submitting,    setSubmitting]    = useState(false);
   const [inviteOpen,    setInviteOpen]    = useState(false);
   const [toastVisible,  setToastVisible]  = useState(false);
@@ -1841,7 +1918,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
     if (user?.uid) markEnquiryRead(enquiry.id, user.uid).catch(() => {});
   }, [enquiry.id, user?.uid, messages.length]);
 
-  function toggleForm(form: 'decline' | 'confirm') {
+  function toggleForm(form: 'decline') {
     setExpandedForm(prev => prev === form ? null : form);
   }
 
@@ -1862,25 +1939,6 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
     await updateEnquiryStatus(enquiry.id, 'declined', declineReason.trim() || undefined);
     setExpandedForm(null);
     setDeclineReason('');
-    setSubmitting(false);
-  }
-
-  async function handleConfirm() {
-    if (!user) return;
-    setSubmitting(true);
-    if (confirmText.trim()) await sendMessage(enquiry.id, user.uid, confirmText.trim());
-    await updateEnquiryStatus(enquiry.id, 'confirmed');
-    await bookSlotOnTimetable(enquiry, listingChoice === 'booked');
-    // Create participant records for headliner + venue
-    await confirmHeadliner(
-      enquiry.id,
-      enquiry.createdBy,
-      user.uid,
-      venueDisplayName || enquiry.venueName,
-      venuePhotoUrl,
-    ).catch(() => {});
-    setExpandedForm(null);
-    setConfirmText('');
     setSubmitting(false);
   }
 
@@ -2165,58 +2223,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               </View>
             )}
 
-            {/* Confirm booking expanded form */}
-            {expandedForm === 'confirm' && (
-              <View style={vp.form}>
-                <Text style={vp.formLabel}>CONFIRM BOOKING</Text>
-                <View style={{ gap: 6, marginBottom: 4 }}>
-                  {([
-                    { value: 'pending', label: 'Reserve (pending)', sub: 'slot reserved, not publicly listed yet' },
-                    { value: 'booked',  label: 'List as booked now', sub: 'band appears on public timetable' },
-                  ] as const).map(opt => (
-                    <TouchableOpacity key={opt.value} style={vp.radioRow} onPress={() => setListingChoice(opt.value)}>
-                      <View style={[vp.radioCircle, listingChoice === opt.value && vp.radioCircleActive]}>
-                        {listingChoice === opt.value ? <View style={vp.radioDot} /> : null}
-                      </View>
-                      <Text style={vp.radioLabel}>
-                        <Text style={{ fontWeight: '700' }}>{opt.label}</Text>
-                        {' — '}{opt.sub}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <TextInput
-                  style={vp.formTextarea}
-                  placeholder="Optional message to the artist…"
-                  placeholderTextColor="#aaaaaa"
-                  value={confirmText}
-                  onChangeText={setConfirmText}
-                  multiline
-                  numberOfLines={2}
-                  textAlignVertical="top"
-                />
-                <View style={vp.formRow}>
-                  <TouchableOpacity
-                    style={vp.cancelBtn}
-                    onPress={() => { setExpandedForm(null); setConfirmText(''); }}
-                  >
-                    <Text style={vp.cancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[vp.confirmSubmit, submitting && vp.confirmSubmitOff]}
-                    onPress={handleConfirm}
-                    disabled={submitting}
-                  >
-                    {submitting
-                      ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={vp.confirmSubmitText}>Confirm Booking</Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Pending action buttons */}
+            {/* Pending action buttons — Decline and Discuss only at this stage */}
             <View style={vp.pendingActionsRow}>
               <TouchableOpacity
                 style={[vp.pendingBtn, vp.pendingBtnDecline, expandedForm === 'decline' && vp.pendingBtnDeclineActive]}
@@ -2242,12 +2249,6 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
                   ? <ActivityIndicator color="#111111" size="small" />
                   : <Text style={[vp.pendingBtnText, vp.pendingBtnTextDiscuss]}>Discuss</Text>
                 }
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[vp.pendingBtn, vp.pendingBtnConfirm, expandedForm === 'confirm' && vp.pendingBtnConfirmActive]}
-                onPress={() => toggleForm('confirm')}
-              >
-                <Text style={[vp.pendingBtnText, vp.pendingBtnTextConfirm]}>Confirm</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2316,7 +2317,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
               )}
               <TouchableOpacity
                 style={vp.outlineBtn}
-                onPress={async () => { setSubmitting(true); await cancelAcceptance(enquiry); setSubmitting(false); }}
+                onPress={async () => { setSubmitting(true); await cancelAcceptance(enquiry, user?.uid ?? ''); setSubmitting(false); }}
                 disabled={submitting}
               >
                 <Text style={vp.outlineBtnText}>Cancel Acceptance</Text>
@@ -2325,8 +2326,42 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
           </View>
         </SafeAreaView>
 
+      ) : isVenue && enquiry.status === 'discussing' ? (
+        // ── Venue discussing: chat input + confirm booking strip
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
+          <View style={[vp.confirmStrip, { borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+            <Text style={[vp.confirmStripLabel, { color: colors.grey }]}>Ready to lock this in?</Text>
+            <TouchableOpacity
+              style={vp.confirmStripBtn}
+              onPress={() => router.push({ pathname: '/confirm-gig', params: { enquiryId: enquiry.id } })}
+            >
+              <Text style={vp.confirmStripBtnText}>Confirm booking</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+            <TextInput
+              style={[ci.input, { color: colors.black }]}
+              placeholder={`Message ${who}…`}
+              placeholderTextColor={colors.greyLight}
+              value={chatText}
+              onChangeText={setChatText}
+              multiline
+            />
+            <TouchableOpacity
+              style={[ci.send, !chatText.trim() && ci.sendOff]}
+              onPress={handleSendChat}
+              disabled={!chatText.trim() || submitting}
+            >
+              {submitting
+                ? <ActivityIndicator color="#111111" size="small" />
+                : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>↑</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+
       ) : (
-        // ── Default: chat input (discussing, or non-pending states)
+        // ── Default: chat input (artist discussing, or non-pending states)
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
           <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
             <TextInput
@@ -2387,7 +2422,12 @@ const vp = StyleSheet.create({
   declineBtnActive:   { borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.06)' },
   confirmBtn:         { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: Colors.orange, alignItems: 'center' },
   confirmBtnText:     { fontSize: 13, fontWeight: '700', color: '#111111' },
-  // Pending state: three action buttons
+  // Confirm booking strip (shown in discussing state)
+  confirmStrip:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isWeb ? 24 : 16, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, backgroundColor: Colors.orange + '0a' },
+  confirmStripLabel:  { fontSize: 13, fontWeight: '500' },
+  confirmStripBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  confirmStripBtnText:{ fontSize: 13, fontWeight: '700', color: '#111111' },
+  // Pending state: two action buttons
   pendingActionsRow:       { flexDirection: 'row', gap: 10 },
   pendingBtn:              { flex: 1, paddingVertical: 13, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   pendingBtnDecline:       { borderColor: '#e0e0e0', backgroundColor: '#ffffff' },

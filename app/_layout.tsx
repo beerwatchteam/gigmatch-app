@@ -22,6 +22,7 @@ function AppShell() {
         <Stack.Screen name="edit-venue" options={{ headerShown: false }} />
         <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
         <Stack.Screen name="enquire" options={{ headerShown: false, presentation: isWeb ? 'transparentModal' : 'formSheet', animation: isWeb ? 'fade' : 'slide_from_bottom', contentStyle: isWeb ? { backgroundColor: 'transparent' } : undefined }} />
+        <Stack.Screen name="confirm-gig" options={{ headerShown: false, presentation: isWeb ? 'transparentModal' : 'formSheet', animation: isWeb ? 'fade' : 'slide_from_bottom', contentStyle: isWeb ? { backgroundColor: 'transparent' } : undefined }} />
         <Stack.Screen name="messages/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="sub-thread" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade' }} />

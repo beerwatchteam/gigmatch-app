@@ -713,23 +713,4 @@ export function useInboxBadgeCount(uid: string | null, venueId: string | null): 
   }).length;
 }
 
-/** Remove the booked/pending slot override and move enquiry back to discussing. */
-export async function cancelAcceptance(enquiry: Enquiry) {
-  const { day, date, time, room } = enquiry.requestedSlot;
-
-  if (day && time) {
-    const venueSnap = await getDoc(doc(db, 'venues', enquiry.venueId));
-    if (venueSnap.exists()) {
-      const slots: Record<string, any[]> = { ...(venueSnap.data().slots || {}) };
-      const slotDate = date ?? null;
-      slots[day] = (slots[day] || []).filter(s =>
-        !(s.date === slotDate &&
-          normSlot(s.time) === normSlot(time) &&
-          (!room || normSlot(s.room ?? '') === normSlot(room)))
-      );
-      await updateDoc(doc(db, 'venues', enquiry.venueId), { slots });
-    }
-  }
-
-  await updateDoc(doc(db, 'inquiries', enquiry.id), { status: 'discussing', listAsBooked: false });
-}
+// cancelAcceptance has been moved to lib/useGigs.ts (transactional version).
