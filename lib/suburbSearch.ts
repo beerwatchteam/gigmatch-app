@@ -1,5 +1,5 @@
 /**
- * Australian suburb/postcode search — ported from the GottaGig web app.
+ * Australian suburb/postcode search — ported from the Twaylo web app.
  * Data: assets/ausSuburbs.json (~1.5 MB, bundled and cached after first require).
  */
 

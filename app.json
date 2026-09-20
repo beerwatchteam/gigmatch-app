@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GottaGig",
+    "name": "Twaylo",
     "slug": "gigmatch",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -40,8 +40,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "GottaGig accesses your photos to upload profile and venue images.",
-          "cameraPermission": "GottaGig uses your camera to upload images."
+          "photosPermission": "Twaylo accesses your photos to upload profile and venue images.",
+          "cameraPermission": "Twaylo uses your camera to upload images."
         }
       ],
       "@react-native-community/datetimepicker",

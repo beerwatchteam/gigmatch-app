@@ -1117,7 +1117,7 @@ export default function EditVenueScreen() {
                 </TouchableOpacity>
                 <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
                   <Text style={s.dangerTitle}>Danger Zone</Text>
-                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all bands browsing GottaGig. This action can be reversed at any time.</Text>
+                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all bands browsing Twaylo. This action can be reversed at any time.</Text>
                   <TouchableOpacity style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]} onPress={() => { const willDeactivate = data.settings.listed; crossConfirm(willDeactivate ? 'Deactivate Venue Listing?' : 'Reactivate Venue Listing?', willDeactivate ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.' : 'This will make your venue visible to musicians again.', async () => { const { venueId } = profile ?? {}; if (!venueId) return; const newListed = !willDeactivate; await updateDoc(doc(db, 'venues', venueId), { 'settings.listed': newListed }); set('settings', { ...data.settings, listed: newListed }); }, willDeactivate); }}>
                     <Text style={s.dangerBtnText}>{data.settings.listed ? 'Deactivate Venue Listing' : 'Reactivate Venue Listing'}</Text>
                   </TouchableOpacity>
@@ -1721,7 +1721,7 @@ export default function EditVenueScreen() {
             <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
               <Text style={s.dangerTitle}>Danger Zone</Text>
               <Text style={[s.dangerDesc, { color: colors.black }]}>
-                Deactivating your listing will hide it from all bands browsing GottaGig. This action can be reversed at any time.
+                Deactivating your listing will hide it from all bands browsing Twaylo. This action can be reversed at any time.
               </Text>
               <TouchableOpacity
                 style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]}

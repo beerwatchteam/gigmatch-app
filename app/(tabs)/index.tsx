@@ -660,7 +660,7 @@ export default function HomeScreen() {
         {/* ── Footer ──────────────────────────────────────────── */}
         <View style={[s.footer, { borderTopColor: colors.border }]}>
           <View style={s.footerLeft}>
-            <Text style={[s.footerLogo, { color: colors.black }]}>GottaGig</Text>
+            <Text style={[s.footerLogo, { color: colors.black }]}>Twaylo</Text>
             <Text style={[s.footerMeta, { color: colors.grey }]}>BETA · MELBOURNE</Text>
           </View>
           <View style={s.footerNav}>

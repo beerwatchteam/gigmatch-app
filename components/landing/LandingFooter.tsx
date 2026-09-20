@@ -19,7 +19,7 @@ export function LandingFooter() {
         }}>
           <a
             href="/"
-            aria-label="GottaGig home"
+            aria-label="Twaylo home"
             style={{
               fontSize: 18,
               fontWeight: 800,
@@ -28,7 +28,7 @@ export function LandingFooter() {
               textDecoration: 'none',
             }}
           >
-            GottaGig
+            Twaylo
           </a>
           <nav aria-label="Footer navigation" className="lp-footer-nav" style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
             {[
@@ -65,7 +65,7 @@ export function LandingFooter() {
           flexWrap: 'wrap',
         }}>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', margin: 0 }}>
-            &copy; 2026 GottaGig. All rights reserved.
+            &copy; 2026 Twaylo. All rights reserved.
           </p>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', margin: 0 }}>
             Built for Australian live music.
