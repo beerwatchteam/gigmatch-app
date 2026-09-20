@@ -19,7 +19,7 @@ export default function WebHeader() {
   const pathname = usePathname();
   const { user, profile } = useAuth();
   const venueId    = profile?.venueId ?? null;
-  const badgeCount = useInboxBadgeCount(user?.uid ?? null, venueId);
+  const { count: badgeCount, hasUnseenConfirmed } = useInboxBadgeCount(user?.uid ?? null, venueId);
   const { colors, isDark, toggleDark } = useTheme();
 
   const isActive = (href: string) => {
@@ -62,6 +62,11 @@ export default function WebHeader() {
                 {isInbox && badgeCount > 0 && user && (
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>{badgeCount}</Text>
+                  </View>
+                )}
+                {isInbox && hasUnseenConfirmed && user && (
+                  <View style={[styles.badge, { backgroundColor: '#16a34a' }]}>
+                    <Text style={styles.badgeText}>✓</Text>
                   </View>
                 )}
               </View>

@@ -1,4 +1,5 @@
-import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useState, useCallback } from 'react';
+import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Modal } from 'react-native';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Ticket, Microphone, Compass, Envelope } from 'phosphor-react-native';
 import { Text } from '@/components/Text';
@@ -6,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
-import { useInboxBadgeCount } from '@/lib/useEnquiries';
+import { useInboxBadgeCount, markConfirmedSeen, type Enquiry } from '@/lib/useEnquiries';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 
@@ -18,7 +19,7 @@ export const WEB_TAB_H   = 48;
 
 // ── Web tab bar (text-only, horizontal) ──────────────────────────
 
-function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
+function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: any) {
   const { colors } = useTheme();
   const { user: tabUser, profile: tabProfile } = useAuth();
   const router = useRouter();
@@ -65,6 +66,11 @@ function WebTabBar({ state, descriptors, navigation, badgeCount }: any) {
               {badge > 0 && (
                 <View style={wb.badge}>
                   <Text style={wb.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+                </View>
+              )}
+              {route.name === 'inbox' && greenTick && (
+                <View style={[wb.badge, { backgroundColor: '#16a34a' }]}>
+                  <Text style={wb.badgeText}>✓</Text>
                 </View>
               )}
               {focused && <View style={wb.activeIndicator} />}
@@ -116,7 +122,7 @@ function TopTabBar(_props: any) {
 
 // ── Bottom tab bar (all 4 tabs) ───────────────────────────────────
 
-function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
+function BottomTabBar({ state, descriptors, navigation, badgeCount, greenTick }: any) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -176,6 +182,11 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount }: any) {
               {badge > 0 && (
                 <View style={bb.badge}>
                   <Text style={bb.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+                </View>
+              )}
+              {route.name === 'inbox' && greenTick && (
+                <View style={[bb.badge, bb.badgeLeft, { backgroundColor: '#16a34a' }]}>
+                  <Text style={bb.badgeText}>✓</Text>
                 </View>
               )}
             </View>
@@ -278,7 +289,114 @@ const bb = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 4,
   },
+  badgeLeft: {
+    right: undefined,
+    left: -8,
+  },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 16 },
+});
+
+// ── Confirmed gig modal ───────────────────────────────────────────
+
+function ConfirmedGigModal({
+  enquiry,
+  onAcknowledge,
+  onViewInInbox,
+}: {
+  enquiry: Enquiry;
+  onAcknowledge: () => void;
+  onViewInInbox: () => void;
+}) {
+  const { colors } = useTheme();
+
+  const dateStr = enquiry.requestedSlot.date
+    ? new Date(enquiry.requestedSlot.date + 'T12:00:00').toLocaleDateString('en-AU', {
+        weekday: 'short', day: 'numeric', month: 'long',
+      })
+    : enquiry.requestedSlot.day ?? '';
+  const timeStr = enquiry.requestedSlot.time ?? '';
+  const slotStr = [dateStr, timeStr].filter(Boolean).join(' at ');
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onAcknowledge}>
+      <View style={cgm.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onAcknowledge} activeOpacity={1} />
+        <View style={[cgm.card, { backgroundColor: colors.bg }]}>
+          <View style={cgm.checkCircle}>
+            <Text style={cgm.checkMark}>✓</Text>
+          </View>
+          <Text style={[cgm.heading, { color: colors.black }]}>Gig confirmed!</Text>
+          <Text style={[cgm.bandName, { color: colors.black }]}>{enquiry.bandName}</Text>
+          <Text style={[cgm.detail, { color: colors.grey }]}>{enquiry.venueName}</Text>
+          {slotStr ? (
+            <Text style={[cgm.detail, { color: colors.grey }]}>{slotStr}</Text>
+          ) : null}
+          <View style={cgm.btnRow}>
+            <TouchableOpacity
+              style={[cgm.secondaryBtn, { borderColor: colors.border }]}
+              onPress={onAcknowledge}
+            >
+              <Text style={[cgm.secondaryBtnText, { color: colors.black }]}>Got it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={cgm.primaryBtn} onPress={onViewInInbox}>
+              <Text style={cgm.primaryBtnText}>View in inbox</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const cgm = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 20,
+    padding: 28,
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
+    elevation: 12,
+  },
+  checkCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(22,163,74,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  checkMark: { fontSize: 28, color: '#16a34a' },
+  heading:   { fontSize: 20, fontWeight: '800', letterSpacing: -0.3, marginTop: 2 },
+  bandName:  { fontSize: 17, fontWeight: '700', marginTop: 2 },
+  detail:    { fontSize: 14, textAlign: 'center' },
+  btnRow:    { flexDirection: 'row', gap: 10, marginTop: 16 },
+  secondaryBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  secondaryBtnText: { fontSize: 14, fontWeight: '600' },
+  primaryBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  primaryBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 });
 
 // ── Layout ────────────────────────────────────────────────────────
@@ -286,11 +404,32 @@ export default function TabsLayout() {
   const { user, profile } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { width } = useWindowDimensions();
-  const badgeCount = useInboxBadgeCount(
+
+  const {
+    count: badgeCount,
+    hasUnseenConfirmed,
+    unseenConfirmedEnquiries,
+  } = useInboxBadgeCount(
     user?.uid ?? null,
     profile?.venueId ?? null,
   );
+
+  // Track which confirmed gigs have been dismissed this session (before Firestore write lands)
+  const [sessionAcknowledged, setSessionAcknowledged] = useState<Set<string>>(new Set());
+
+  const pendingModal = unseenConfirmedEnquiries.find(e => !sessionAcknowledged.has(e.id)) ?? null;
+
+  const handleAcknowledge = useCallback((enquiryId: string) => {
+    setSessionAcknowledged(prev => new Set([...prev, enquiryId]));
+    if (user?.uid) markConfirmedSeen(enquiryId, user.uid).catch(() => {});
+  }, [user?.uid]);
+
+  const handleViewInInbox = useCallback((enquiryId: string) => {
+    handleAcknowledge(enquiryId);
+    router.push(`/(tabs)/inbox?openEnquiryId=${enquiryId}` as any);
+  }, [handleAcknowledge, router]);
 
   const profileTabTitle = !user
     ? 'Profile'
@@ -305,13 +444,20 @@ export default function TabsLayout() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {pendingModal && (
+        <ConfirmedGigModal
+          enquiry={pendingModal}
+          onAcknowledge={() => handleAcknowledge(pendingModal.id)}
+          onViewInInbox={() => handleViewInInbox(pendingModal.id)}
+        />
+      )}
       <Tabs
         tabBar={props => !isMobileWeb && isWeb ? (
-          <WebTabBar {...props} badgeCount={badgeCount} />
+          <WebTabBar {...props} badgeCount={badgeCount} greenTick={hasUnseenConfirmed} />
         ) : (
           <>
             <TopTabBar {...props} />
-            <BottomTabBar {...props} badgeCount={badgeCount} />
+            <BottomTabBar {...props} badgeCount={badgeCount} greenTick={hasUnseenConfirmed} />
           </>
         )}
         screenOptions={{

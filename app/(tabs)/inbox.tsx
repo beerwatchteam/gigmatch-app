@@ -496,7 +496,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const slotStr    = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
   const setStr     = [time, setLength].filter(Boolean).join(' · ') || '—';
   const billing    = slotType || '—';
-  const fee        = (enquiry as any).fee ? `$${(enquiry as any).fee}` : '—';
+  const savedFee   = (enquiry as any).fee as { type?: string; amountCents?: number; doorPercent?: number; ticketPrice?: number; notes?: string } | null | undefined;
 
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -909,6 +909,40 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     }
                   </TouchableOpacity>
                 </View>
+              )}
+
+              {/* Confirmed fee summary — shown when gig is confirmed and fee was saved */}
+              {savedFee && (normalizeEnquiryStatus(enquiry.status) === 'confirmed') && (
+                (() => {
+                  const feeLabel: Record<string, string> = {
+                    flat: 'Flat fee', door_split: 'Door split',
+                    guarantee_vs_door: 'Guarantee + door', ticket_split: 'Ticket split',
+                    unpaid: 'Unpaid', other: 'Other',
+                  };
+                  const rows: { label: string; val: string }[] = [];
+                  if (savedFee.type) rows.push({ label: 'Fee type', val: feeLabel[savedFee.type] ?? savedFee.type });
+                  if (savedFee.amountCents != null) {
+                    const d = savedFee.amountCents / 100;
+                    rows.push({ label: savedFee.type === 'guarantee_vs_door' ? 'Guarantee' : 'Amount', val: `$${Number.isInteger(d) ? d : d.toFixed(2)}` });
+                  }
+                  if (savedFee.doorPercent != null) rows.push({ label: 'Door split', val: `${savedFee.doorPercent}%` });
+                  if (savedFee.ticketPrice != null) {
+                    const tp = savedFee.ticketPrice / 100;
+                    rows.push({ label: 'Ticket price', val: `$${Number.isInteger(tp) ? tp : tp.toFixed(2)}` });
+                  }
+                  if (savedFee.notes) rows.push({ label: 'Fee notes', val: savedFee.notes });
+                  if (rows.length === 0) return null;
+                  return (
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 10 }]}>
+                      {rows.map((r, i) => (
+                        <View key={r.label} style={[eh.drawerInfoRow, i < rows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{r.label}</Text>
+                          <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{r.val}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()
               )}
 
               {/* Quick links */}
@@ -2269,60 +2303,58 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         </SafeAreaView>
 
       ) : isVenue && (enquiry.status === 'accepted' || enquiry.status === 'confirmed') ? (
-        // ── Venue accepted: compact single row — chat + timetable controls
-        <SafeAreaView edges={['bottom']} style={{ borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bgFaint }}>
-          <View style={[vp.wrap, { borderTopWidth: 0 }]}>
-            <View style={vp.combinedRow}>
-              <TextInput
-                style={vp.replyInput}
-                placeholder={`Message ${who}…`}
-                placeholderTextColor={colors.greyLight}
-                value={chatText}
-                onChangeText={setChatText}
-                multiline
-              />
-              {chatText.trim() ? (
-                <TouchableOpacity
-                  style={[vp.sendBtn, submitting && vp.sendBtnOff]}
-                  onPress={handleSendChat}
-                  disabled={submitting}
-                >
-                  {submitting
-                    ? <ActivityIndicator color="#111111" size="small" />
-                    : <Text style={vp.sendBtnText}>↑</Text>
-                  }
-                </TouchableOpacity>
-              ) : null}
-              <View style={[tp.timetablePill, enquiry.listAsBooked ? tp.timetablePillBooked : tp.timetablePillPending]}>
-                <Text style={[tp.timetablePillText, enquiry.listAsBooked ? { color: '#ffffff' } : { color: '#555555' }]}>
-                  {enquiry.listAsBooked ? 'Booked' : 'Pending'}
-                </Text>
-              </View>
-              {!enquiry.listAsBooked ? (
-                <TouchableOpacity
-                  style={vp.outlineBtn}
-                  onPress={async () => { setSubmitting(true); await bookSlotOnTimetable(enquiry, true); setSubmitting(false); }}
-                  disabled={submitting}
-                >
-                  <Text style={[vp.outlineBtnText, { color: '#16a34a' }]}>List as Booked</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={vp.outlineBtn}
-                  onPress={async () => { setSubmitting(true); await bookSlotOnTimetable(enquiry, false); setSubmitting(false); }}
-                  disabled={submitting}
-                >
-                  <Text style={[vp.outlineBtnText, { color: '#f5a623' }]}>List as Pending</Text>
-                </TouchableOpacity>
-              )}
+        // ── Venue confirmed: action strip above chat input
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
+          <View style={[vp.confirmedStrip, { borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+            <View style={[tp.timetablePill, enquiry.listAsBooked ? tp.timetablePillBooked : tp.timetablePillPending]}>
+              <Text style={[tp.timetablePillText, enquiry.listAsBooked ? { color: '#ffffff' } : { color: '#555555' }]}>
+                {enquiry.listAsBooked ? 'Booked' : 'Pending'}
+              </Text>
+            </View>
+            {!enquiry.listAsBooked ? (
               <TouchableOpacity
                 style={vp.outlineBtn}
-                onPress={async () => { setSubmitting(true); await cancelAcceptance(enquiry, user?.uid ?? ''); setSubmitting(false); }}
+                onPress={() => router.push({ pathname: '/confirm-gig', params: { enquiryId: enquiry.id, mode: 'upgrade' } })}
                 disabled={submitting}
               >
-                <Text style={vp.outlineBtnText}>Cancel Acceptance</Text>
+                <Text style={[vp.outlineBtnText, { color: '#16a34a' }]}>List as Booked</Text>
               </TouchableOpacity>
-            </View>
+            ) : (
+              <TouchableOpacity
+                style={vp.outlineBtn}
+                onPress={async () => { setSubmitting(true); await bookSlotOnTimetable(enquiry, false); setSubmitting(false); }}
+                disabled={submitting}
+              >
+                <Text style={[vp.outlineBtnText, { color: '#f5a623' }]}>List as Pending</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={vp.outlineBtn}
+              onPress={async () => { setSubmitting(true); await cancelAcceptance(enquiry, user?.uid ?? ''); setSubmitting(false); }}
+              disabled={submitting}
+            >
+              <Text style={vp.outlineBtnText}>Cancel Acceptance</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+            <TextInput
+              style={[ci.input, { color: colors.black }]}
+              placeholder={`Message ${who}…`}
+              placeholderTextColor={colors.greyLight}
+              value={chatText}
+              onChangeText={setChatText}
+              multiline
+            />
+            <TouchableOpacity
+              style={[ci.send, (!chatText.trim() || submitting) && ci.sendOff]}
+              onPress={handleSendChat}
+              disabled={!chatText.trim() || submitting}
+            >
+              {submitting
+                ? <ActivityIndicator color="#111111" size="small" />
+                : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>↑</Text>
+              }
+            </TouchableOpacity>
           </View>
         </SafeAreaView>
 
@@ -2422,6 +2454,8 @@ const vp = StyleSheet.create({
   declineBtnActive:   { borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.06)' },
   confirmBtn:         { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 8, backgroundColor: Colors.orange, alignItems: 'center' },
   confirmBtnText:     { fontSize: 13, fontWeight: '700', color: '#111111' },
+  // Confirmed strip (shown when gig is confirmed)
+  confirmedStrip:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: isWeb ? 24 : 16, paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, backgroundColor: 'rgba(22,163,74,0.05)', flexWrap: 'wrap' as const },
   // Confirm booking strip (shown in discussing state)
   confirmStrip:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isWeb ? 24 : 16, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, backgroundColor: Colors.orange + '0a' },
   confirmStripLabel:  { fontSize: 13, fontWeight: '500' },

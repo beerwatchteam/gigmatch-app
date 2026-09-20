@@ -9,7 +9,7 @@ import { type GigFee, type GigSource, type Gig, toStartAt } from './gig-types';
 
 export class SlotConflictError extends Error {
   constructor() {
-    super('This slot is already booked by another act.');
+    super('This slot is already reserved for another act.');
     this.name = 'SlotConflictError';
   }
 }
@@ -44,7 +44,7 @@ export function applySlotBooking(
   if (existingIdx >= 0) {
     const existing = daySlots[existingIdx];
     if (
-      existing.status === 'booked' &&
+      (existing.status === 'booked' || existing.status === 'pending') &&
       existing.bandName &&
       existing.bandName !== enquiry.bandName
     ) {
@@ -155,7 +155,7 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
     // ── WRITES last ──────────────────────────────────────────────────
     tx.set(gigRef, gigData);
     tx.update(venueRef, { slots: newSlots });
-    tx.update(enquiryRef, { status: 'confirmed', gigId, listAsBooked });
+    tx.update(enquiryRef, { status: 'confirmed', gigId, listAsBooked, feeType: fee.type, fee });
   });
 
   // Best-effort post-transaction side effects
@@ -221,6 +221,40 @@ export async function cancelAcceptance(enquiry: Enquiry, _actingUid: string): Pr
     tx.update(enquiryRef, { status: 'discussing', listAsBooked: false });
     if (gigId && gigSnap?.exists()) {
       tx.update(doc(db, 'gigs', gigId), { status: 'cancelled', updatedAt: Timestamp.now() });
+    }
+  });
+}
+
+// ── upgradeGigToBooked ───────────────────────────────────────────────────────
+
+/**
+ * Upgrades an already-confirmed gig from pending to publicly listed (booked).
+ * Atomically updates the enquiry, the gig doc (if present), and the venue timetable slot.
+ * Called when the venue presses "List as Booked" after the initial confirm-as-pending flow.
+ */
+export async function upgradeGigToBooked(
+  enquiry: Enquiry,
+  fee: import('./gig-types').GigFee,
+): Promise<void> {
+  const enquiryRef = doc(db, 'inquiries', enquiry.id);
+  const venueRef   = doc(db, 'venues', enquiry.venueId);
+  const gigId      = (enquiry as any).gigId as string | undefined;
+
+  await runTransaction(db, async (tx) => {
+    const venueSnap = await tx.get(venueRef);
+    if (gigId) await tx.get(doc(db, 'gigs', gigId)); // read before writes
+
+    let newSlots: Record<string, any[]> | null = null;
+    if (venueSnap.exists()) {
+      try {
+        newSlots = applySlotBooking({ ...(venueSnap.data().slots || {}) }, enquiry, 'booked');
+      } catch { /* slot conflict — ignore, already booked */ }
+    }
+
+    tx.update(enquiryRef, { listAsBooked: true, feeType: fee.type, fee });
+    if (newSlots && venueSnap.exists()) tx.update(venueRef, { slots: newSlots });
+    if (gigId) {
+      tx.update(doc(db, 'gigs', gigId), { fee, listAsBooked: true, updatedAt: Timestamp.now() });
     }
   });
 }

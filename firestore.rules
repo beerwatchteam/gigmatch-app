@@ -262,7 +262,12 @@ service cloud.firestore {
       }
 
       allow read:   if isParticipant() || isAdmin();
-      allow create: if isSignedIn() && request.auth.uid in request.resource.data.participantIds;
+      allow create: if isSignedIn() &&
+        (
+          request.resource.data.artistUid == request.auth.uid ||
+          isVenueOwner(request.resource.data.venueId)
+        ) &&
+        request.auth.uid in request.resource.data.participantIds;
       allow update: if isParticipant() || isAdmin();
       allow delete: if isAdmin();
     }

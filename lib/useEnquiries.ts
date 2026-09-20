@@ -700,17 +700,49 @@ export async function bookSlotOnTimetable(enquiry: Enquiry, listAsBooked: boolea
   ]);
 }
 
+// ── Confirmed-gig acknowledgement ───────────────────────────────────────────
+
+/**
+ * Mark a confirmed gig as seen by the artist.
+ * The artist already has update access via canAccessInquiry (createdBy == uid).
+ */
+export async function markConfirmedSeen(enquiryId: string, uid: string): Promise<void> {
+  await updateDoc(doc(db, 'inquiries', enquiryId), {
+    [`confirmedSeenBy.${uid}`]: true,
+  });
+}
+
 // ── Inbox badge count ───────────────────────────────────────────────────────
 
-/** Returns the number of pending enquiries for the current user (artist or venue). */
-export function useInboxBadgeCount(uid: string | null, venueId: string | null): number {
+export type InboxBadgeInfo = {
+  count: number;
+  hasUnseenConfirmed: boolean;
+  unseenConfirmedEnquiries: Enquiry[];
+};
+
+/** Returns badge info for the inbox tab — pending enquiry count and unseen confirmed gigs. */
+export function useInboxBadgeCount(uid: string | null, venueId: string | null): InboxBadgeInfo {
   const { enquiries: artistEnqs } = useArtistEnquiries(!venueId ? uid : null);
   const { enquiries: venueEnqs  } = useVenueEnquiries(venueId);
   const enqs = venueId ? venueEnqs : artistEnqs;
-  return enqs.filter(e => {
+
+  const count = enqs.filter(e => {
     const s = normalizeEnquiryStatus(e.status);
     return s === 'enquired';
   }).length;
+
+  const unseenConfirmedEnquiries = (!venueId && uid)
+    ? artistEnqs.filter(e => {
+        const s = normalizeEnquiryStatus(e.status);
+        return s === 'confirmed' && !(e as any).confirmedSeenBy?.[uid];
+      })
+    : [];
+
+  return {
+    count,
+    hasUnseenConfirmed: unseenConfirmedEnquiries.length > 0,
+    unseenConfirmedEnquiries,
+  };
 }
 
 // cancelAcceptance has been moved to lib/useGigs.ts (transactional version).

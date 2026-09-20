@@ -15,7 +15,7 @@ import { useTheme } from '@/lib/theme-context';
 import { Colors } from '@/constants/colors';
 import { type Enquiry } from '@/lib/useEnquiries';
 import { type GigFee, type FeeType, STATE_TZ, dollarsToCents } from '@/lib/gig-types';
-import { confirmGigFromEnquiry, SlotConflictError } from '@/lib/useGigs';
+import { confirmGigFromEnquiry, upgradeGigToBooked, SlotConflictError } from '@/lib/useGigs';
 
 const isWeb = Platform.OS === 'web';
 
@@ -210,7 +210,8 @@ export default function ConfirmGigScreen() {
   const router   = useRouter();
   const { user } = useAuth();
   const { colors } = useTheme();
-  const { enquiryId } = useLocalSearchParams<{ enquiryId: string }>();
+  const { enquiryId, mode: modeParam } = useLocalSearchParams<{ enquiryId: string; mode?: string }>();
+  const isUpgrade = modeParam === 'upgrade';
 
   // Data
   const [enquiry,        setEnquiry]        = useState<Enquiry | null>(null);
@@ -233,14 +234,15 @@ export default function ConfirmGigScreen() {
   const [setLengthMins,  setSetLengthMins]  = useState(45);
   const [loadInTime,     setLoadInTime]     = useState('');
   const [soundCheckTime, setSoundCheckTime] = useState('');
-  const [listAsBooked,   setListAsBooked]   = useState<'pending' | 'booked'>('pending');
+  const [listAsBooked,   setListAsBooked]   = useState<'pending' | 'booked'>(isUpgrade ? 'booked' : 'pending');
   const [confirmMsg,     setConfirmMsg]     = useState('');
   const [ticketExpanded, setTicketExpanded] = useState(false);
 
   // UI
-  const [submitting, setSubmitting] = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [done,       setDone]       = useState(false);
+  const [submitting,   setSubmitting]   = useState(false);
+  const [error,        setError]        = useState<string | null>(null);
+  const [done,         setDone]         = useState(false);
+  const [triedSubmit,  setTriedSubmit]  = useState(false);
 
   useEffect(() => {
     if (!enquiryId) return;
@@ -258,15 +260,25 @@ export default function ConfirmGigScreen() {
         if (enq.loadInTime)     setLoadInTime(enq.loadInTime);
         if (enq.soundCheckTime) setSoundCheckTime(enq.soundCheckTime);
 
-        // Prefill fee type and amount from enquiry (saved when venue taps pills in the drawer)
-        const enqAny = enq as any;
-        if (enqAny.feeType) {
-          const ft = FEE_TYPES.find(f => f.value === enqAny.feeType);
+        // Prefill fee type and all amount fields from the saved GigFee object
+        const enqAny  = enq as any;
+        const savedFee = enqAny.fee as GigFee | null | undefined;
+        const feeTypeVal: string | undefined = enqAny.feeType ?? savedFee?.type;
+        if (feeTypeVal) {
+          const ft = FEE_TYPES.find(f => f.value === feeTypeVal);
           if (ft) setFeeType(ft.value);
         }
-        if (enqAny.fee != null && String(enqAny.fee).trim() !== '') {
-          setAmountStr(String(enqAny.fee));
+        if (savedFee?.amountCents != null) {
+          const dollars = savedFee.amountCents / 100;
+          setAmountStr(Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2));
         }
+        if (savedFee?.doorPercent != null) setDoorPercent(String(savedFee.doorPercent));
+        if (savedFee?.ticketPrice != null) {
+          const tp = savedFee.ticketPrice / 100;
+          setTicketPriceStr(Number.isInteger(tp) ? String(tp) : tp.toFixed(2));
+        }
+        if (savedFee?.ticketUrl) setTicketUrl(savedFee.ticketUrl);
+        if (savedFee?.notes)     setFeeNotes(savedFee.notes);
 
         // Load venue
         const venueSnap = await getDoc(doc(db, 'venues', enq.venueId));
@@ -340,6 +352,25 @@ export default function ConfirmGigScreen() {
   const showDoor     = feeType === 'door_split' || feeType === 'guarantee_vs_door';
   const showTicket   = feeType === 'ticket_split';
 
+  // Fee is "complete" when enough info has been entered for the chosen type.
+  const feeComplete =
+    feeType === 'unpaid' || feeType === 'other'
+      ? true
+      : (feeType === 'flat' || feeType === 'guarantee_vs_door')
+        ? amountStr.trim() !== ''
+        : feeType === 'door_split'
+          ? doorPercent.trim() !== ''
+          : feeType === 'ticket_split'
+            ? ticketPriceStr.trim() !== ''
+            : true;
+
+  // Fee is required when listing as booked.
+  const feeRequired = listAsBooked === 'booked';
+
+  // Show the red error state: always in upgrade mode (they're here to fix it),
+  // otherwise only after they've tried to submit.
+  const showFeeError = feeRequired && !feeComplete && (triedSubmit || isUpgrade);
+
   const localTime = enquiry?.requestedSlot.time ?? '';
 
   const previewMsg = enquiry
@@ -348,8 +379,17 @@ export default function ConfirmGigScreen() {
 
   async function handleConfirm() {
     if (!user || !enquiry) return;
-    if (!localDate) { setError('Please select a date.'); return; }
-    if (!localTime) { setError('No time on this slot — contact support.'); return; }
+
+    if (feeRequired && !feeComplete) {
+      setTriedSubmit(true);
+      setError('Please complete the fee details before confirming.');
+      return;
+    }
+
+    if (!isUpgrade) {
+      if (!localDate) { setError('Please select a date.'); return; }
+      if (!localTime) { setError('No time on this slot — contact support.'); return; }
+    }
 
     const fee: GigFee = { type: feeType };
     if (showAmount && amountStr) fee.amountCents = dollarsToCents(amountStr);
@@ -361,22 +401,25 @@ export default function ConfirmGigScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await confirmGigFromEnquiry({
-        enquiry,
-        venueOwnerUid: venueOwnerUid || (user?.uid ?? ''),
-        venueDisplayName,
-        venuePhotoUrl,
-        localDate,
-        localTime,
-        timezone,
-        fee,
-        setLengthMinutes: setLengthMins,
-        loadInTime:   loadInTime.trim()   || undefined,
-        soundCheckTime: soundCheckTime.trim() || undefined,
-
-        listAsBooked: listAsBooked === 'booked',
-        confirmMessage: confirmMsg.trim() || undefined,
-      });
+      if (isUpgrade) {
+        await upgradeGigToBooked(enquiry, fee);
+      } else {
+        await confirmGigFromEnquiry({
+          enquiry,
+          venueOwnerUid: venueOwnerUid || (user?.uid ?? ''),
+          venueDisplayName,
+          venuePhotoUrl,
+          localDate,
+          localTime,
+          timezone,
+          fee,
+          setLengthMinutes: setLengthMins,
+          loadInTime:   loadInTime.trim()   || undefined,
+          soundCheckTime: soundCheckTime.trim() || undefined,
+          listAsBooked: listAsBooked === 'booked',
+          confirmMessage: confirmMsg.trim() || undefined,
+        });
+      }
       setDone(true);
     } catch (err: any) {
       if (err instanceof SlotConflictError) {
@@ -401,9 +444,11 @@ export default function ConfirmGigScreen() {
             <View style={cs.successCircle}>
               <Text style={cs.successCheck}>✓</Text>
             </View>
-            <Text style={[cs.successTitle, { color: colors.black }]}>Gig confirmed</Text>
+            <Text style={[cs.successTitle, { color: colors.black }]}>{isUpgrade ? 'Listed as booked' : 'Gig confirmed'}</Text>
             <Text style={[cs.successSub, { color: colors.grey }]}>
-              {enquiry?.bandName} is locked in at {enquiry?.venueName}.
+              {isUpgrade
+                ? `${enquiry?.bandName} is now publicly listed at ${enquiry?.venueName}.`
+                : `${enquiry?.bandName} is locked in at ${enquiry?.venueName}.`}
             </Text>
             <TouchableOpacity style={cs.doneBtn} onPress={() => router.back()}>
               <Text style={cs.doneBtnText}>Back to inbox</Text>
@@ -445,7 +490,7 @@ export default function ConfirmGigScreen() {
         {/* Header */}
         <View style={cs.formHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={cs.headerLabel}>CONFIRM GIG</Text>
+            <Text style={cs.headerLabel}>{isUpgrade ? 'ADD FEE DETAILS' : 'CONFIRM GIG'}</Text>
             <Text style={[cs.bandName, { color: colors.black }]}>{enquiry.bandName}</Text>
             <Text style={[cs.venueName, { color: colors.grey }]}>{enquiry.venueName}</Text>
             <Text style={[cs.slotDetail, { color: colors.grey }]}>
@@ -480,8 +525,10 @@ export default function ConfirmGigScreen() {
         </View>
 
         {/* Fee type */}
-        <View style={cs.field}>
-          <Text style={[cs.label, { color: colors.grey }]}>FEE TYPE</Text>
+        <View style={[cs.field, showFeeError && cs.feeErrorSection]}>
+          <Text style={[cs.label, showFeeError ? { color: '#dc2626' } : { color: colors.grey }]}>
+            FEE TYPE{showFeeError ? '  — required to list as booked' : ''}
+          </Text>
           <View style={cs.feeGrid}>
             {FEE_TYPES.map(ft => {
               const isHighlighted = slotPayModels.includes(ft.value);
@@ -517,16 +564,19 @@ export default function ConfirmGigScreen() {
         {showAmount && (
           <View style={cs.field}>
             <Text style={[cs.label, { color: colors.grey }]}>
-              {feeType === 'guarantee_vs_door' ? 'GUARANTEE AMOUNT ($)' : 'FEE AMOUNT ($)'}
+              {feeType === 'guarantee_vs_door' ? 'GUARANTEE AMOUNT' : 'FEE AMOUNT'}
             </Text>
-            <TextInput
-              style={[cs.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
-              placeholder={feeRangePlaceholder}
-              placeholderTextColor={Colors.greyLight}
-              value={amountStr}
-              onChangeText={setAmountStr}
-              keyboardType="decimal-pad"
-            />
+            <View style={[cs.prefixInput, { backgroundColor: colors.bgFaint, borderColor: showFeeError && !amountStr.trim() ? '#dc2626' : colors.border }]}>
+              <Text style={[cs.prefixSymbol, { color: colors.black }]}>$</Text>
+              <TextInput
+                style={[cs.prefixTextInput, { color: colors.black }]}
+                placeholder={feeRangePlaceholder}
+                placeholderTextColor={Colors.greyLight}
+                value={amountStr}
+                onChangeText={setAmountStr}
+                keyboardType="decimal-pad"
+              />
+            </View>
           </View>
         )}
 
@@ -535,7 +585,7 @@ export default function ConfirmGigScreen() {
           <View style={cs.field}>
             <Text style={[cs.label, { color: colors.grey }]}>ARTIST DOOR SPLIT (%)</Text>
             <TextInput
-              style={[cs.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+              style={[cs.input, { backgroundColor: colors.bgFaint, borderColor: showFeeError && !doorPercent.trim() ? '#dc2626' : colors.border, color: colors.black }]}
               placeholder="e.g. 70"
               placeholderTextColor={Colors.greyLight}
               value={doorPercent}
@@ -550,7 +600,7 @@ export default function ConfirmGigScreen() {
           <View style={cs.field}>
             <Text style={[cs.label, { color: colors.grey }]}>TICKET PRICE ($)</Text>
             <TextInput
-              style={[cs.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+              style={[cs.input, { backgroundColor: colors.bgFaint, borderColor: showFeeError && !ticketPriceStr.trim() ? '#dc2626' : colors.border, color: colors.black }]}
               placeholder="0.00"
               placeholderTextColor={Colors.greyLight}
               value={ticketPriceStr}
@@ -607,8 +657,8 @@ export default function ConfirmGigScreen() {
           />
         </View>
 
-        {/* Listing choice */}
-        <View style={cs.field}>
+        {/* Listing choice — hidden in upgrade mode (already locked to booked) */}
+        {!isUpgrade && <View style={cs.field}>
           <Text style={[cs.label, { color: colors.grey }]}>TIMETABLE LISTING</Text>
           <View style={{ gap: 6 }}>
             {([
@@ -630,13 +680,15 @@ export default function ConfirmGigScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </View>}
 
-        {/* System message preview */}
-        <View style={[cs.previewRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-          <Text style={[cs.previewLabel, { color: colors.grey }]}>SYSTEM MESSAGE PREVIEW</Text>
-          <Text style={[cs.previewText, { color: colors.grey }]}>{previewMsg}</Text>
-        </View>
+        {/* System message preview — hidden in upgrade mode */}
+        {!isUpgrade && (
+          <View style={[cs.previewRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+            <Text style={[cs.previewLabel, { color: colors.grey }]}>SYSTEM MESSAGE PREVIEW</Text>
+            <Text style={[cs.previewText, { color: colors.grey }]}>{previewMsg}</Text>
+          </View>
+        )}
 
         {error && <Text style={cs.errorText}>{error}</Text>}
         <View style={{ height: 16 }} />
@@ -651,13 +703,13 @@ export default function ConfirmGigScreen() {
           <Text style={[cs.cancelBtnText, { color: colors.black }]}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[cs.confirmBtn, submitting && { opacity: 0.6 }]}
+          style={[cs.confirmBtn, (submitting || (feeRequired && !feeComplete)) && { opacity: 0.45 }]}
           onPress={handleConfirm}
-          disabled={submitting}
+          disabled={submitting || (feeRequired && !feeComplete)}
         >
           {submitting
             ? <ActivityIndicator color="#111111" size="small" />
-            : <Text style={cs.confirmBtnText}>Confirm gig</Text>
+            : <Text style={cs.confirmBtnText}>{isUpgrade ? 'List as Booked' : 'Confirm gig'}</Text>
           }
         </TouchableOpacity>
       </View>
@@ -717,13 +769,25 @@ const cs = StyleSheet.create({
   closeBtnText: { fontSize: 14, fontWeight: '600' },
 
   // Fields
-  field:     { gap: 6 },
+  field:         { gap: 6 },
+  feeErrorSection: { backgroundColor: 'rgba(220,38,38,0.04)', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: 'rgba(220,38,38,0.25)' },
   fieldRow:  { flexDirection: 'row', gap: 12 },
   label:     { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
   hint:      { fontSize: 12, marginTop: 2 },
   input: {
     height: 44, borderRadius: 8, borderWidth: 1,
     paddingHorizontal: 12, fontSize: 14,
+  },
+  prefixInput: {
+    height: 44, borderRadius: 8, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center',
+    paddingLeft: 12,
+  },
+  prefixSymbol: {
+    fontSize: 14, fontWeight: '600', marginRight: 2,
+  },
+  prefixTextInput: {
+    flex: 1, height: 44, fontSize: 14, paddingRight: 12,
   },
   textarea: {
     borderRadius: 8, borderWidth: 1,
