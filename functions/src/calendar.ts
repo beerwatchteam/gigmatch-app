@@ -189,7 +189,7 @@ export const calendarFeed = onRequest({ invoker: 'public' }, async (req, res) =>
       if (gig.soundCheckTime)   descLines.push(`Soundcheck: ${gig.soundCheckTime}`);
       if (gig.fee?.ticketUrl)   descLines.push(`Tickets: ${gig.fee.ticketUrl}`);
       if (gig.notes)            descLines.push(`Notes: ${gig.notes}`);
-      descLines.push('View in Twaylo: gigmatch://inbox');
+      descLines.push('For more information check twaylo.com.au');
 
       // SUMMARY
       const summary = gig.bandName && gig.venueName
@@ -197,7 +197,7 @@ export const calendarFeed = onRequest({ invoker: 'public' }, async (req, res) =>
         : (gig.bandName ?? gig.venueName ?? (gig.title as string | undefined) ?? 'Gig');
 
       cal.createEvent({
-        uid:         `${gigDoc.id}@twaylo.com.au`,
+        id:          `${gigDoc.id}@twaylo.com.au`,
         start:       startDate,
         end:         endDate,
         summary,

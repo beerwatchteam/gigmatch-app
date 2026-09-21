@@ -263,6 +263,7 @@ export function AddToCalendarFromEnquiry({ enquiry }: { enquiry: Enquiry }) {
         enquiry.requestedSlot.setLength ? `Set length: ${enquiry.requestedSlot.setLength}` : '',
         (enquiry as any).loadInTime ? `Load-in: ${(enquiry as any).loadInTime}` : '',
         (enquiry as any).soundCheckTime ? `Soundcheck: ${(enquiry as any).soundCheckTime}` : '',
+        'For more information check twaylo.com.au',
       ].filter(Boolean).join('\n')}
       gigId={(enquiry as any).gigId}
       timezone={dates.timezone}

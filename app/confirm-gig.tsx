@@ -468,6 +468,12 @@ export default function ConfirmGigScreen() {
                   endDate={end}
                   summary={`${enquiry.bandName} @ ${enquiry.venueName}`}
                   location={enquiry.venueName}
+                  description={[
+                    setLengthMins > 0 ? `Set length: ${setLengthMins} min` : '',
+                    loadInTime.trim() ? `Load-in: ${loadInTime.trim()}` : '',
+                    soundCheckTime.trim() ? `Soundcheck: ${soundCheckTime.trim()}` : '',
+                    'For more information check twaylo.com.au',
+                  ].filter(Boolean).join('\n')}
                   gigId={confirmedGigId}
                   timezone={timezone}
                 />
