@@ -31,8 +31,13 @@
     "react-native-webview": "13.16.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
     "firebase-admin": "^14.4.0",
+    "firebase-functions-test": "^3.5.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.12",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -41,8 +46,13 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build": "expo export --platform web",
+    "build:functions": "cd functions && npm run build",
     "emulate": "firebase emulators:start --only functions,firestore",
-    "deploy:functions": "cd functions && npm run deploy"
+    "deploy:functions": "cd functions && npm run deploy",
+    "test:unit": "jest --testPathPattern='tests/unit'",
+    "test:rules": "firebase emulators:exec --only firestore,auth,storage \"jest --testPathPattern='tests/rules'\"",
+    "test:functions": "npm run build:functions && firebase emulators:exec --only firestore,auth,functions \"jest --testPathPattern='tests/functions'\"",
+    "test:all": "npm run build:functions && firebase emulators:exec --only firestore,auth,storage,functions \"jest\""
   },
   "private": true
 }

@@ -160,7 +160,6 @@ export const syncPublicGig = onDocumentWritten('gigs/{gigId}', async (event) => 
 // ── Dev helper: resync all public gigs ───────────────────────────────────────
 
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getAuth } from 'firebase-admin/auth';
 
 /**
  * Callable function for admins to rebuild all publicGigs projections from gigs.

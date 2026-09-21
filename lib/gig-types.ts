@@ -128,16 +128,28 @@ export const STATE_TZ: Record<string, string> = {
   ACT: 'Australia/Sydney',
 };
 
-/** Convert a dollar string or number to integer cents (rounds half-up). */
-export function dollarsToCents(dollars: string | number): number {
-  const n = typeof dollars === 'string' ? parseFloat(dollars) : dollars;
-  if (!Number.isFinite(n) || n < 0) return 0;
+/**
+ * Convert a dollar string or number to integer cents (rounds half-up).
+ * Returns null for empty input, non-numeric values, or negative amounts.
+ * Strips commas before parsing (e.g. "1,200" -> 120000).
+ * Result is always Number.isInteger when non-null.
+ */
+export function dollarsToCents(dollars: string | number): number | null {
+  if (dollars === '' || dollars == null) return null;
+  const s = typeof dollars === 'string' ? dollars.replace(/,/g, '') : String(dollars);
+  const n = parseFloat(s);
+  if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100);
 }
 
-/** Parse "HH:MM" (24h) or "H:MM AM/PM" (12h) into [hour, minute]. */
+/**
+ * Parse "H:MM AM/PM" (12h) into [hour24, minute].
+ * Throws for bare 24-hour inputs (hour > 12) and unparseable strings.
+ * A 24-hour "12:xx" is accepted as-is (noon/midnight must use AM/PM externally).
+ */
 function parseLocalTime(t: string): [number, number] {
-  const ampm = /(\d+):(\d+)\s*(AM|PM)/i.exec(t);
+  if (!t || typeof t !== 'string') throw new Error(`Invalid time: "${t}"`);
+  const ampm = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(t.trim());
   if (ampm) {
     let h = parseInt(ampm[1], 10);
     const m = parseInt(ampm[2], 10);
@@ -145,7 +157,15 @@ function parseLocalTime(t: string): [number, number] {
     if (/AM/i.test(ampm[3]) && h === 12) h = 0;
     return [h, m];
   }
-  const parts = t.split(':').map(Number);
+  const parts = t.trim().split(':').map(Number);
+  if (
+    parts.length < 2 ||
+    !Number.isFinite(parts[0]) ||
+    !Number.isFinite(parts[1]) ||
+    (parts[0] as number) > 12
+  ) {
+    throw new Error(`Invalid time format: "${t}". Use H:MM AM/PM.`);
+  }
   return [parts[0] ?? 0, parts[1] ?? 0];
 }
 
@@ -162,4 +182,72 @@ export function toStartAt(localDate: string, localTime: string, timezone: string
     timezone,
   );
   return Timestamp.fromDate(utcDate);
+}
+
+/**
+ * Parse a set-length string into total minutes.
+ * Supports: "45 min", "1 hr", "1.5 hours", "90" (bare number).
+ * Returns null for empty or unparseable input.
+ */
+export function parseSetLength(s: string): number | null {
+  if (s == null || s === '') return null;
+  const t = s.trim();
+  if (!t) return null;
+  const hrMatch = /^([\d.]+)\s*(?:hr|hour)/i.exec(t);
+  if (hrMatch) {
+    const n = parseFloat(hrMatch[1]);
+    return Number.isFinite(n) ? Math.round(n * 60) : null;
+  }
+  const minMatch = /^([\d.]+)\s*min/i.exec(t);
+  if (minMatch) {
+    const n = parseFloat(minMatch[1]);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  }
+  const num = parseFloat(t);
+  if (/^[\d.]+$/.test(t) && Number.isFinite(num) && num > 0) return Math.round(num);
+  return null;
+}
+
+/**
+ * Validate a ticket URL: must be https protocol only.
+ * Rejects http://, javascript:, bare domains, and empty strings.
+ */
+export function validateTicketUrl(url: string): boolean {
+  if (!url || !url.trim()) return false;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Validate a door-split percentage: must be a finite number in [0, 100]. */
+export function validateDoorSplitPct(pct: number): boolean {
+  return Number.isFinite(pct) && pct >= 0 && pct <= 100;
+}
+
+/**
+ * Validate a GigFee object.
+ * Returns an error message string, or null if valid.
+ * - flat / guarantee_vs_door / ticket_split: require amountCents
+ * - door_split: requires doorPercent in [0, 100]
+ * - unpaid / other: no requirements
+ */
+export function validateFee(fee: GigFee): string | null {
+  if (
+    fee.type === 'flat' ||
+    fee.type === 'guarantee_vs_door' ||
+    fee.type === 'ticket_split'
+  ) {
+    if (fee.amountCents == null || fee.amountCents < 0) {
+      return 'A fee amount is required for this fee type.';
+    }
+  }
+  if (fee.type === 'door_split') {
+    if (fee.doorPercent == null || !validateDoorSplitPct(fee.doorPercent)) {
+      return 'A valid door split percentage (0-100) is required.';
+    }
+  }
+  return null;
 }

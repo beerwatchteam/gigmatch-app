@@ -286,7 +286,7 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
   });
 
   // Best-effort post-transaction side effects
-  const sysMsg = formatGigConfirmedMessage(enquiry.bandName, enquiry.venueName, localDate, localTime);
+  const sysMsg = formatGigConfirmedMessage(enquiry.bandName, enquiry.venueName, localDate, localTime, fee);
   await postSystemMessage(enquiry.id, sysMsg).catch(() => {});
 
   if (confirmMessage?.trim()) {
@@ -331,7 +331,13 @@ export async function cancelAcceptance(enquiry: Enquiry, _actingUid: string): Pr
     }
     tx.update(enquiryRef, { status: 'discussing', listAsBooked: false });
     if (gigId && gigSnap?.exists()) {
-      tx.update(doc(db, 'gigs', gigId), { status: 'cancelled', updatedAt: Timestamp.now() });
+      const now = Timestamp.now();
+      tx.update(doc(db, 'gigs', gigId), {
+        status:      'cancelled',
+        cancelledAt: now,
+        cancelledBy: _actingUid,
+        updatedAt:   now,
+      });
     }
   });
 }
@@ -821,11 +827,35 @@ export async function uploadGigDoc(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+const _DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/**
+ * Build the system message posted when a gig is confirmed.
+ * Format: "Gig confirmed: Fri 14 Nov: BandName at VenueName $400 flat"
+ * Matches /Gig confirmed: \w+ \d+ \w+.* \$\d+ flat/ for flat fees.
+ */
 export function formatGigConfirmedMessage(
   bandName: string,
   venueName: string,
-  localDate: string,
+  localDate: string,   // YYYY-MM-DD
   localTime: string,
+  fee?: GigFee | null,
 ): string {
-  return `Gig confirmed: ${bandName} at ${venueName} on ${localDate} at ${localTime}`;
+  const [y, m, d] = localDate.split('-').map(Number);
+  const dt  = new Date(y, m - 1, d);
+  const dow = _DOW[dt.getDay()];
+  const dmm = `${d} ${_MON[m - 1]}`;
+
+  let feeStr = '';
+  if (fee) {
+    if ((fee.type === 'flat' || fee.type === 'guarantee_vs_door') && fee.amountCents != null) {
+      feeStr = ` $${Math.round(fee.amountCents / 100)} flat`;
+    } else if (fee.type === 'door_split' && fee.doorPercent != null) {
+      feeStr = ` ${fee.doorPercent}% door`;
+    }
+  }
+
+  return `Gig confirmed: ${dow} ${dmm}: ${bandName} at ${venueName}${feeStr}`;
 }
+
