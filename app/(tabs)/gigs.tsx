@@ -273,9 +273,9 @@ const away = StyleSheet.create({
   cancelBtnText: { fontSize: 14, fontWeight: '600' },
 });
 
-// ── Main screen ───────────────────────────────────────────────────────────────
+// ── Shared content (also used embedded in the musician profile dashboard) ─────
 
-export default function MyGigsScreen() {
+export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
   const { user, profile } = useAuth();
   const { colors }        = useTheme();
   const { width }         = useWindowDimensions();
@@ -306,8 +306,6 @@ export default function MyGigsScreen() {
   const isArtist = profile?.type !== 'venue';
   const uid      = user?.uid ?? '';
   const venueId  = profile?.venueId ?? null;
-
-  if (!user) return <Redirect href="/login" />;
 
   // Load venue doc for venue gig form
   useEffect(() => {
@@ -430,14 +428,12 @@ export default function MyGigsScreen() {
     setEditGig(null);
   };
 
-  const contentMaxWidth = isWeb && width > 700 ? 640 : undefined;
+  const contentMaxWidth = isWeb && !embedded && width > 700 ? 640 : undefined;
+
+  if (!user) return null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView
-        contentContainerStyle={[s.scroll, contentMaxWidth ? { alignSelf: 'center', width: '100%', maxWidth: contentMaxWidth } : {}]}
-        keyboardShouldPersistTaps="handled"
-      >
+    <View style={[embedded ? s.embedded : s.scroll, contentMaxWidth ? { alignSelf: 'center', width: '100%', maxWidth: contentMaxWidth } : {}]}>
         {/* Header */}
         <View style={s.header}>
           <Text style={[s.heading, { color: colors.black }]}>My Gigs</Text>
@@ -639,12 +635,28 @@ export default function MyGigsScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+    </View>
+  );
+}
+
+// ── Standalone tab screen ─────────────────────────────────────────────────────
+
+export default function MyGigsScreen() {
+  const { user }   = useAuth();
+  const { colors } = useTheme();
+  if (!user) return <Redirect href="/login" />;
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView keyboardShouldPersistTaps="handled">
+        <MyGigsContent />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
   scroll:          { padding: 16, paddingBottom: 40 },
+  embedded:        { paddingBottom: 40 },
   header:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   heading:         { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
   addBtn:          { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },

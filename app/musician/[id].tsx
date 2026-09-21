@@ -9,6 +9,7 @@ import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { MyGigsContent } from '@/app/(tabs)/gigs';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -1012,8 +1013,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   const [musician, setMusician]   = useState<Musician | null>(null);
   const [loading, setLoading]     = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable'>(
-    initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : 'overview'
+  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable' | 'gigs'>(
+    initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : 'overview'
   );
   const [publicGigs, setPublicGigs] = useState<any[]>([]);
 
@@ -1134,6 +1135,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
               { id: 'overview',  label: 'Overview'       },
               { id: 'music',     label: 'Music & Social' },
               { id: 'timetable', label: 'Timetable'      },
+              { id: 'gigs',      label: 'My Gigs'        },
             ] as const).map(tab => (
               <TouchableOpacity
                 key={tab.id}
@@ -1149,13 +1151,6 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             <View style={[dash.divider, { backgroundColor: colors.border }]} />
 
-            <TouchableOpacity
-              style={dash.editBtn}
-              onPress={() => router.push('/(tabs)/gigs' as any)}
-              activeOpacity={0.85}
-            >
-              <Text style={dash.editBtnText}>My Gigs</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               style={dash.editBtn}
               onPress={() => router.push('/edit-profile')}
@@ -1178,6 +1173,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             {activeTab === 'overview'  && <OverviewTab m={musician} isMobileLayout={false} publicGigs={publicGigs} />}
             {activeTab === 'music'     && <MusicTab m={musician} />}
             {activeTab === 'timetable' && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={publicGigs} />}
+            {activeTab === 'gigs'      && <MyGigsContent embedded />}
             <View style={{ height: 40 }} />
           </ScrollView>
 
