@@ -138,7 +138,6 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
 };
 
 type Song    = { title: string; url: string; notes: string };
-type Gig     = { venue: string; suburb: string; date: string; endDate?: string; notes: string; attendance?: string; socialPostUrl?: string; ticketUrl?: string; type?: 'gig' | 'away' | 'free'; _isNew?: boolean };
 type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; instruments: string[]; location: string;
@@ -146,7 +145,7 @@ type Profile = {
   about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
   customLinks: { label: string; url: string }[];
-  songs: Song[]; gigHistory: Gig[]; upcomingGigs: Gig[];
+  songs: Song[];
   techRider: Record<string, string>;
   techRiderDocs: { url: string; name: string }[];
   techRiderBools: Record<string, boolean>;
@@ -159,7 +158,7 @@ const BLANK: Profile = {
   name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', instruments: [], location: '', email: '', phone: '',
   feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
-  customLinks: [], songs: [], gigHistory: [], upcomingGigs: [],
+  customLinks: [], songs: [],
   techRider: {}, techRiderDocs: [], techRiderBools: {}, photos: [], videos: [],
   payment: { ...BLANK_ARTIST_PAYMENT },
   settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
@@ -440,8 +439,6 @@ export default function EditProfileScreen() {
         averageDraw: raw.averageDraw != null ? String(raw.averageDraw) : '',
       };
       d.songs       = d.songs       || [];
-      d.gigHistory  = d.gigHistory  || [];
-      d.upcomingGigs = d.upcomingGigs || [];
       d.photos      = d.photos      || [];
       d.videos      = d.videos      || [];
       d.techRiderDocs = d.techRiderDocs || [];
@@ -478,20 +475,6 @@ export default function EditProfileScreen() {
   }
   function addSong() { setProfile(prev => ({ ...prev, songs: [...prev.songs, { title: '', url: '', notes: '' }] })); }
   function removeSong(i: number) { setProfile(prev => ({ ...prev, songs: prev.songs.filter((_, idx) => idx !== i) })); }
-
-  // ── Gig History ──
-  function setGig(i: number, field: keyof Gig, val: string) {
-    setProfile(prev => ({ ...prev, gigHistory: prev.gigHistory.map((g, idx) => idx === i ? { ...g, [field]: val } : g) }));
-  }
-  function addGig() { setProfile(prev => ({ ...prev, gigHistory: [{ venue: '', suburb: '', date: '', notes: '', attendance: '', _isNew: true }, ...prev.gigHistory] })); }
-  function removeGig(i: number) { setProfile(prev => ({ ...prev, gigHistory: prev.gigHistory.filter((_, idx) => idx !== i) })); }
-
-  // ── Upcoming ──
-  function setUpcoming(i: number, field: keyof Gig, val: string) {
-    setProfile(prev => ({ ...prev, upcomingGigs: prev.upcomingGigs.map((g, idx) => idx === i ? { ...g, [field]: val } : g) }));
-  }
-  function addUpcoming() { setProfile(prev => ({ ...prev, upcomingGigs: [...prev.upcomingGigs, { venue: '', suburb: '', date: '', notes: '', socialPostUrl: '', ticketUrl: '', type: 'gig' as const, _isNew: true }] })); }
-  function removeUpcoming(i: number) { setProfile(prev => ({ ...prev, upcomingGigs: prev.upcomingGigs.filter((_, idx) => idx !== i) })); }
 
   // ── Photo upload ──
   async function pickBannerPhoto() {
@@ -582,10 +565,6 @@ export default function EditProfileScreen() {
     if (!profile.about?.trim())                      errors.push('About');
     if (profile.songs.some(s => !s.title?.trim() || !s.url?.trim()))
       errors.push('Music');
-    if (profile.gigHistory.some(g => !g.venue?.trim() || !g.suburb?.trim() || !g.date?.trim()))
-      errors.push('Past Gigs');
-    if (profile.upcomingGigs.some(g => !g.date?.trim() || ((g.type || 'gig') === 'gig' && (!g.venue?.trim() || !g.suburb?.trim()))))
-      errors.push('Timetable');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
@@ -614,19 +593,12 @@ export default function EditProfileScreen() {
         feeMin:      toNum(profile.feeMin),
         feeMax:      toNum(profile.feeMax),
         averageDraw: toNum(profile.averageDraw),
-        gigHistory:   profile.gigHistory.map(({ _isNew, ...g }: any) => g),
-        upcomingGigs: profile.upcomingGigs.map(({ _isNew, ...g }: any) => g),
       };
       await setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true });
       // Also update username in users doc
       await updateDoc(doc(db, 'users', uid), { username: newUsername });
       originalUsername.current = newUsername;
       setSaved(profile);
-      setProfile(prev => ({
-        ...prev,
-        gigHistory:   prev.gigHistory.map(({ _isNew, ...g }: any) => g),
-        upcomingGigs: prev.upcomingGigs.map(({ _isNew, ...g }: any) => g),
-      }));
       setShowErrors(false);
       setJustSaved(true);
     } catch (e: any) {
@@ -899,59 +871,20 @@ export default function EditProfileScreen() {
             {activeTab === 'Past Gigs' && (
               <View style={s.section}>
                 <Text style={[s.sectionTitle, { color: colors.black }]}>Past Gigs</Text>
-                <Text style={s.hint}>Show venues where you've played. A solid track record builds credibility and gives bookers confidence in your professionalism.</Text>
-                {profile.gigHistory.map((gig, i) => {
-                  const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
-                  return (
-                    <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setGig(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
-                        <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setGig(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
-                      </View>
-                      <View style={{ height: 8 }} />
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}><DatePicker value={gig.date} onChange={v => setGig(i, 'date', v)} /></View>
-                        <TextInput style={[s.input, { flex: 1 }]} value={gig.attendance || ''} onChangeText={v => setGig(i, 'attendance', v)} placeholder="Attendance" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-                      </View>
-                      <View style={{ height: 8 }} />
-                      <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setGig(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                      <View style={s.itemBtnRow}>
-                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeGig(i)}><Text style={s.removeBtnText}>Remove Gig</Text></TouchableOpacity>
-                        <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add Gig' : 'Save'}</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
-                <TouchableOpacity style={s.addBtn} onPress={addGig}><Text style={s.addBtnText}>+ Add Gig</Text></TouchableOpacity>
+                <Text style={s.hint}>Your gig history is now managed in My Gigs. Past confirmed gigs appear automatically on your public profile once they have passed.</Text>
+                <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
+                  <Text style={s.addBtnText}>Go to My Gigs</Text>
+                </TouchableOpacity>
               </View>
             )}
 
             {activeTab === 'Timetable' && (
               <View style={s.section}>
                 <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
-                <Text style={s.hint}>Let venues know where you're already booked. It shows you're active and in demand — and helps them spot scheduling conflicts early.</Text>
-                {profile.upcomingGigs.map((gig, i) => {
-                  const entryType = gig.type || 'gig';
-                  const hasError = showErrors && (!gig.date?.trim() || (entryType === 'gig' && (!gig.venue?.trim() || !gig.suburb?.trim())));
-                  return (
-                    <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                      <Field label="Type"><Pills options={['Gig', 'Away']} value={entryType === 'away' ? 'Away' : 'Gig'} onSelect={(v: string) => setUpcoming(i, 'type', v.toLowerCase() as 'gig' | 'away')} /></Field>
-                      {entryType === 'gig' && (<><View style={{ height: 10 }} /><View style={{ flexDirection: 'row', gap: 8 }}><TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setUpcoming(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} /><TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} /></View></>)}
-                      <View style={{ height: 8 }} />
-                      {entryType === 'away' ? (
-                        <><View style={{ flexDirection: 'row', gap: 8 }}><View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}><DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} placeholder="From" /></View><View style={{ flex: 1 }}><DatePicker value={gig.endDate || ''} onChange={v => setUpcoming(i, 'endDate', v)} placeholder="To (optional)" /></View></View><View style={{ height: 8 }} /><TextInput style={s.input} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} /></>
-                      ) : (
-                        <View style={{ flexDirection: 'row', gap: 8 }}><View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}><DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} /></View><TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} /></View>
-                      )}
-                      {entryType === 'gig' && (<><View style={{ height: 8 }} /><TextInput style={s.input} value={gig.socialPostUrl || ''} onChangeText={v => setUpcoming(i, 'socialPostUrl', v)} placeholder="Social post link (Instagram, Facebook, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" /><View style={{ height: 8 }} /><TextInput style={s.input} value={gig.ticketUrl || ''} onChangeText={v => setUpcoming(i, 'ticketUrl', v)} placeholder="Ticket link (Moshtix, Eventbrite, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" /></>)}
-                      <View style={s.itemBtnRow}>
-                        <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeUpcoming(i)}><Text style={s.removeBtnText}>Remove</Text></TouchableOpacity>
-                        <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add' : 'Save'}</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
-                <TouchableOpacity style={s.addBtn} onPress={addUpcoming}><Text style={s.addBtnText}>+ Add Gig</Text></TouchableOpacity>
+                <Text style={s.hint}>Your upcoming gigs are now managed in My Gigs. Confirmed public gigs appear on your profile timetable automatically.</Text>
+                <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
+                  <Text style={s.addBtnText}>Go to My Gigs</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -1627,37 +1560,9 @@ export default function EditProfileScreen() {
         {activeTab === 'Past Gigs' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Past Gigs</Text>
-            <Text style={s.hint}>Show venues where you've played. A solid track record builds credibility and gives bookers confidence in your professionalism.</Text>
-            {profile.gigHistory.map((gig, i) => {
-              const hasError = showErrors && (!gig.venue?.trim() || !gig.suburb?.trim() || !gig.date?.trim());
-              return (
-                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setGig(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
-                    <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setGig(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
-                  </View>
-                  <View style={{ height: 8 }} />
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
-                      <DatePicker value={gig.date} onChange={v => setGig(i, 'date', v)} />
-                    </View>
-                    <TextInput style={[s.input, { flex: 1 }]} value={gig.attendance || ''} onChangeText={v => setGig(i, 'attendance', v)} placeholder="Attendance" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-                  </View>
-                  <View style={{ height: 8 }} />
-                  <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setGig(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                  <View style={s.itemBtnRow}>
-                    <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeGig(i)}>
-                      <Text style={s.removeBtnText}>Remove Gig</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
-                      <Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add Gig' : 'Save'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-            <TouchableOpacity style={s.addBtn} onPress={addGig}>
-              <Text style={s.addBtnText}>+ Add Gig</Text>
+            <Text style={s.hint}>Your gig history is now managed in My Gigs. Past confirmed gigs appear automatically on your public profile once they have passed.</Text>
+            <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
+              <Text style={s.addBtnText}>Go to My Gigs</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1666,71 +1571,9 @@ export default function EditProfileScreen() {
         {activeTab === 'Timetable' && (
           <View style={s.section}>
             <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
-            <Text style={s.hint}>Let venues know where you're already booked. It shows you're active and in demand — and helps them spot scheduling conflicts early.</Text>
-            {profile.upcomingGigs.map((gig, i) => {
-              const entryType = gig.type || 'gig';
-              const hasError = showErrors && (!gig.date?.trim() || (entryType === 'gig' && (!gig.venue?.trim() || !gig.suburb?.trim())));
-              return (
-                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                  <Field label="Type">
-                    <Pills
-                      options={['Gig', 'Away']}
-                      value={entryType === 'away' ? 'Away' : 'Gig'}
-                      onSelect={(v: string) => setUpcoming(i, 'type', v.toLowerCase() as 'gig' | 'away')}
-                    />
-                  </Field>
-                  {entryType === 'gig' && (
-                    <>
-                      <View style={{ height: 10 }} />
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TextInput style={[s.input, { flex: 2 }, showErrors && !gig.venue?.trim() ? s.inputError : {}]} value={gig.venue} onChangeText={v => setUpcoming(i, 'venue', v)} placeholder="Venue / Event *" placeholderTextColor={Colors.greyLight} />
-                        <TextInput style={[s.input, { flex: 1 }, showErrors && !gig.suburb?.trim() ? s.inputError : {}]} value={gig.suburb} onChangeText={v => setUpcoming(i, 'suburb', v)} placeholder="Suburb *" placeholderTextColor={Colors.greyLight} />
-                      </View>
-                    </>
-                  )}
-                  <View style={{ height: 8 }} />
-                  {entryType === 'away' ? (
-                    <>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
-                          <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} placeholder="From" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <DatePicker value={gig.endDate || ''} onChange={v => setUpcoming(i, 'endDate', v)} placeholder="To (optional)" />
-                        </View>
-                      </View>
-                      <View style={{ height: 8 }} />
-                      <TextInput style={s.input} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                    </>
-                  ) : (
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <View style={[{ flex: 1 }, showErrors && !gig.date?.trim() ? { borderColor: Colors.danger, borderWidth: 1, borderRadius: 10 } : {}]}>
-                        <DatePicker value={gig.date} onChange={v => setUpcoming(i, 'date', v)} />
-                      </View>
-                      <TextInput style={[s.input, { flex: 1 }]} value={gig.notes} onChangeText={v => setUpcoming(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                    </View>
-                  )}
-                  {entryType === 'gig' && (
-                    <>
-                      <View style={{ height: 8 }} />
-                      <TextInput style={s.input} value={gig.socialPostUrl || ''} onChangeText={v => setUpcoming(i, 'socialPostUrl', v)} placeholder="Social post link (Instagram, Facebook, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" />
-                      <View style={{ height: 8 }} />
-                      <TextInput style={s.input} value={gig.ticketUrl || ''} onChangeText={v => setUpcoming(i, 'ticketUrl', v)} placeholder="Ticket link (Moshtix, Eventbrite, etc.)" placeholderTextColor={Colors.greyLight} autoCapitalize="none" keyboardType="url" />
-                    </>
-                  )}
-                  <View style={s.itemBtnRow}>
-                    <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeUpcoming(i)}>
-                      <Text style={s.removeBtnText}>Remove</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}>
-                      <Text style={s.itemSaveBtnText}>{gig._isNew ? 'Add' : 'Save'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-            <TouchableOpacity style={s.addBtn} onPress={addUpcoming}>
-              <Text style={s.addBtnText}>+ Add Gig</Text>
+            <Text style={s.hint}>Your upcoming gigs are now managed in My Gigs. Confirmed public gigs appear on your profile timetable automatically.</Text>
+            <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
+              <Text style={s.addBtnText}>Go to My Gigs</Text>
             </TouchableOpacity>
           </View>
         )}

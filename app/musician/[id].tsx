@@ -8,7 +8,7 @@ import { SpotifyEmbed } from '@/components/SpotifyEmbed';
 import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -131,7 +131,7 @@ type Musician = {
 
 // ── Overview Tab ──────────────────────────────────────────────────
 
-function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boolean }) {
+function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMobileLayout: boolean; publicGigs?: any[] }) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const [agentName, setAgentName] = useState<string | null>(null);
@@ -150,17 +150,11 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
   }, [m.id]);
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
-  const gigHistory     = (m.gigHistory || [])
-    .filter(g => g.venue || g.date)
-    .slice()
-    .sort((a, b) => {
-      const da = a.date ? Date.parse(a.date) : NaN;
-      const db = b.date ? Date.parse(b.date) : NaN;
-      if (isNaN(da) && isNaN(db)) return 0;
-      if (isNaN(da)) return 1;
-      if (isNaN(db)) return -1;
-      return db - da;
-    });
+  const now            = new Date();
+  const gigHistory     = publicGigs
+    .filter(pg => pg.startAt && pg.startAt.toDate() < now && pg.venueName)
+    .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
+    .map(pg => ({ venue: pg.venueName, date: isoDate(pg.startAt.toDate()) } as GigEntry));
   const socialLinks    = PLATFORMS.filter(p => (m as any)[p.key]);
   const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
   const hasContact     = !!(m.email || m.phone);
@@ -305,7 +299,7 @@ function OverviewTab({ m, isMobileLayout }: { m: Musician; isMobileLayout: boole
         </View>
       )}
 
-      {!about && gigHistory.length === 0 && (
+      {!about && gigHistory.length === 0 && !(m.instruments && m.instruments.length > 0) && (
         <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
     </View>
@@ -658,15 +652,26 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
 
 // ── Timetable Tab ─────────────────────────────────────────────────
 
-function TimetableTab({ m, isOwn, isMobileLayout }: { m: Musician; isOwn: boolean; isMobileLayout: boolean }) {
+function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [] }: { m: Musician; isOwn: boolean; isMobileLayout: boolean; publicGigs?: any[] }) {
   const { colors } = useTheme();
   const today = new Date();
   const [filterTab, setFilterTab]   = useState<'all' | 'gigs' | 'away'>('all');
   const [monthOffset, setMonthOffset] = useState(0);
 
-  const allEntries: EntryItem[] = (m.upcomingGigs || [])
-    .filter(g => !!g.date)
-    .map(g => { const d = new Date(g.date!); return { date: d, dateISO: isoDate(d), entry: g }; })
+  const allEntries: EntryItem[] = publicGigs
+    .filter(pg => !!pg.startAt)
+    .map(pg => {
+      const d = pg.startAt.toDate();
+      const entry: GigEntry = {
+        venue: pg.venueName ?? undefined,
+        suburb: pg.locationText ?? undefined,
+        date: isoDate(d),
+        ticketUrl: pg.ticketUrl ?? undefined,
+        notes: pg.description ?? undefined,
+        type: 'gig',
+      };
+      return { date: d, dateISO: isoDate(d), entry };
+    })
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const windowStart = new Date(today);
@@ -1010,6 +1015,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable'>(
     initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : 'overview'
   );
+  const [publicGigs, setPublicGigs] = useState<any[]>([]);
 
   const isOwn = user?.uid === id;
   const { width } = useWindowDimensions();
@@ -1019,6 +1025,16 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     getDoc(doc(db, 'bandProfiles', id)).then(snap => {
       if (snap.exists()) setMusician({ id: snap.id, ...snap.data() } as Musician);
     }).catch(console.error).finally(() => setLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    getDocs(query(
+      collection(db, 'publicGigs'),
+      where('artistUid', '==', id),
+      orderBy('startAt', 'asc'),
+    )).then(snap => {
+      setPublicGigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }).catch(() => {});
   }, [id]);
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
@@ -1059,8 +1075,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
-  // Auto-count gigs from gigHistory entries whose date contains the current year
-  const gigsThisYear = (musician.gigHistory || []).filter(g => g.date && g.date.includes(String(year))).length;
+  // Count confirmed public gigs in the current year
+  const gigsThisYear = publicGigs.filter(pg => pg.startAt && pg.startAt.toDate().getFullYear() === year).length;
 
   const hasFee = musician.feeMin != null || musician.feeMax != null;
   const feeStr = hasFee
@@ -1135,6 +1151,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             <TouchableOpacity
               style={dash.editBtn}
+              onPress={() => router.push('/(tabs)/gigs' as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={dash.editBtnText}>My Gigs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={dash.editBtn}
               onPress={() => router.push('/edit-profile')}
               activeOpacity={0.85}
             >
@@ -1152,9 +1175,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'  && <OverviewTab m={musician} isMobileLayout={false} />}
+            {activeTab === 'overview'  && <OverviewTab m={musician} isMobileLayout={false} publicGigs={publicGigs} />}
             {activeTab === 'music'     && <MusicTab m={musician} />}
-            {activeTab === 'timetable' && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} />}
+            {activeTab === 'timetable' && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={publicGigs} />}
             <View style={{ height: 40 }} />
           </ScrollView>
 
@@ -1200,6 +1223,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             </Text>
             {isOwn && (
               <View style={[styles.ownerBtns, isMobileLayout && { marginTop: 10 }]}>
+                <TouchableOpacity
+                  style={[styles.outlineBtn, { borderColor: colors.border }]}
+                  onPress={() => router.push('/(tabs)/gigs' as any)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.outlineBtnText, { color: colors.black }]}>My Gigs</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
                   onPress={() => router.push('/edit-profile')}
@@ -1282,9 +1312,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} />}
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={publicGigs} />}
         {activeTab === 'music'      && <MusicTab m={musician} />}
-        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} />}
+        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={publicGigs} />}
 
         <View style={{ height: 40 }} />
       </ScrollView>

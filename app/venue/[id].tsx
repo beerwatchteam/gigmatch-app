@@ -23,8 +23,12 @@ type Slot = {
   time: string;
   date?: string | null;
   status: 'open' | 'booked' | 'pending';
+  gigId?: string;
+  gigName?: string;
+  actName?: string;
   bandName?: string;
   name?: string;
+  description?: string;
   room?: string;
   slotType?: string;
   feeMin?: number | null;
@@ -656,7 +660,10 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               {address ? <Text style={[s.address, { color: colors.grey }]}>{address}</Text> : null}
             </View>
             {isMyVenue ? (
-              <View style={{ flexDirection: 'row', gap: 8, marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4 }}>
+              <View style={{ flexDirection: 'row', gap: 8, marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4, flexWrap: 'wrap' }}>
+                <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
+                  <Text style={s.editProfileBtnText}>My Gigs</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                   <Text style={s.editProfileBtnText}>Edit Profile</Text>
                 </TouchableOpacity>
@@ -1569,11 +1576,23 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
           <Text style={[ns.time, { color: colors.black }]}>{slot.time}</Text>
           {slot.room ? <Text style={[ns.room, { color: colors.grey }]}>{slot.room}</Text> : null}
         </View>
-        {isBooked  ? <Text style={ns.bandName}>{slot.bandName}</Text> : null}
-        {isBooked && slot.ticketUrl ? (
-          <TouchableOpacity onPress={() => Linking.openURL(slot.ticketUrl!)} style={ns.ticketBtn}>
-            <Text style={ns.ticketBtnText}>Tickets →</Text>
-          </TouchableOpacity>
+        {isBooked ? (
+          <>
+            {(slot.gigName || slot.actName || slot.bandName) ? (
+              <Text style={ns.bandName}>{slot.actName ?? slot.bandName}</Text>
+            ) : null}
+            {slot.gigName && slot.gigName !== (slot.actName ?? slot.bandName) ? (
+              <Text style={[ns.notes, { fontStyle: 'italic' }]}>{slot.gigName}</Text>
+            ) : null}
+            {slot.description ? (
+              <Text style={ns.notes} numberOfLines={2}>{slot.description}</Text>
+            ) : null}
+            {slot.ticketUrl ? (
+              <TouchableOpacity onPress={() => Linking.openURL(slot.ticketUrl!)} style={ns.ticketBtn}>
+                <Text style={ns.ticketBtnText}>Tickets →</Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
         ) : null}
         {isPending ? <Text style={ns.pendingLabel}>Pending</Text> : null}
         {isOpen && hasEnquired ? (

@@ -18,17 +18,15 @@ const isWeb = Platform.OS === 'web';
 const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SLOT_PREFS = ['Headline', 'Support', 'Open Mic', 'Other'] as const;
 
-type SectionKey = 'about' | 'music' | 'gigHistory' | 'upcomingGigs' | 'socials' | 'techRider' | 'photos' | 'contact';
+type SectionKey = 'about' | 'music' | 'socials' | 'techRider' | 'photos' | 'contact';
 
 const SECTIONS: { key: SectionKey; label: string }[] = [
-  { key: 'about',        label: 'About'          },
-  { key: 'music',        label: 'Music'           },
-  { key: 'gigHistory',   label: 'Gig history'     },
-  { key: 'upcomingGigs', label: 'Upcoming gigs'   },
-  { key: 'socials',      label: 'Socials'         },
-  { key: 'techRider',    label: 'Tech rider'      },
-  { key: 'photos',       label: 'Photos & videos' },
-  { key: 'contact',      label: 'Contact'         },
+  { key: 'about',     label: 'About'          },
+  { key: 'music',     label: 'Music'          },
+  { key: 'socials',   label: 'Socials'        },
+  { key: 'techRider', label: 'Tech rider'     },
+  { key: 'photos',    label: 'Photos & videos'},
+  { key: 'contact',   label: 'Contact'        },
 ];
 
 function truncate(str: string | undefined, n: number): string {
@@ -59,8 +57,7 @@ export default function EnquireScreen() {
   const [otherNote, setOtherNote] = useState('');
   const [note, setNote]           = useState('');
   const [sections, setSections]   = useState<Record<SectionKey, boolean>>({
-    about: true, music: true, gigHistory: true, upcomingGigs: true,
-    socials: true, techRider: true, photos: true, contact: true,
+    about: true, music: true, socials: true, techRider: true, photos: true, contact: true,
   });
   const [availConfirmed, setAvailConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -106,16 +103,13 @@ export default function EnquireScreen() {
   }
 
   function selectAll() {
-    setSections({ about: true, music: true, gigHistory: true, upcomingGigs: true,
-                  socials: true, techRider: true, photos: true, contact: true });
+    setSections({ about: true, music: true, socials: true, techRider: true, photos: true, contact: true });
   }
 
   function sectionPreview(key: SectionKey): string {
     switch (key) {
       case 'about':       return truncate(band.about, 60);
       case 'music':       return (band.songs || []).map((s: any) => s.title).filter(Boolean).join(' · ') || 'None listed';
-      case 'gigHistory':  return (band.gigHistory || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || 'None listed';
-      case 'upcomingGigs':return (band.upcomingGigs || []).map((g: any) => g.venue).filter(Boolean).join(' · ') || 'None listed';
       case 'socials': {
         const parts: string[] = [];
         if (band.instagram)  parts.push('Instagram');
@@ -179,8 +173,6 @@ export default function EnquireScreen() {
         photoUrl:   sections.photos ? band.photoUrl : undefined,
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
-        ...(sections.gigHistory   && { gigHistory:   band.gigHistory }),
-        ...(sections.upcomingGigs && { upcomingGigs: band.upcomingGigs }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
         ...(sections.techRider    && { techRider: band.techRider, stagePlot: band.stagePlot, inputList: band.inputList }),
         ...(sections.contact      && { email: band.email, phone: band.phone }),

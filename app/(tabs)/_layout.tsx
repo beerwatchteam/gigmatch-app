@@ -478,6 +478,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
         <Tabs.Screen name="discover"  options={{ title: 'Discover' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
+        <Tabs.Screen name="gigs"      options={{ href: null }} />
         <Tabs.Screen name="profile"   options={{ href: null }} />
       </Tabs>
     </View>

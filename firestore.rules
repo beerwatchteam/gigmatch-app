@@ -261,15 +261,60 @@ service cloud.firestore {
         return isSignedIn() && request.auth.uid in resource.data.participantIds;
       }
 
-      allow read:   if isParticipant() || isAdmin();
-      allow create: if isSignedIn() &&
-        (
-          request.resource.data.artistUid == request.auth.uid ||
-          isVenueOwner(request.resource.data.venueId)
-        ) &&
-        request.auth.uid in request.resource.data.participantIds;
-      allow update: if isParticipant() || isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isSignedIn() && (isParticipant() || isAdmin());
+
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && (
+          // artist outside gig: only ever the creator
+          (request.resource.data.source == 'artist_added'
+            && request.resource.data.artistUid == request.auth.uid
+            && request.resource.data.participantIds == [request.auth.uid])
+          // venue-created: venue owner only, never public-projected
+          || (request.resource.data.source == 'venue_created'
+              && request.resource.data.venueUid == request.auth.uid
+              && request.resource.data.participantIds == [request.auth.uid]
+              && request.resource.data.isPublic == false
+              && getUserData().venueId == request.resource.data.venueId)
+          // enquiry: exactly [artist, venue], both verified against the enquiry
+          || (request.resource.data.source == 'enquiry'
+              && request.resource.data.venueUid == request.auth.uid
+              && request.resource.data.participantIds.size() == 2
+              && request.resource.data.artistUid in request.resource.data.participantIds
+              && request.resource.data.venueUid in request.resource.data.participantIds
+              && getUserData().venueId == request.resource.data.venueId
+              && get(/databases/$(database)/documents/inquiries/$(gigId)).data.venueId == request.resource.data.venueId
+              && get(/databases/$(database)/documents/inquiries/$(gigId)).data.createdBy == request.resource.data.artistUid)
+        );
+
+      allow update: if isSignedIn() && (isParticipant() || isAdmin())
+        && request.resource.data.participantIds == resource.data.participantIds
+        && request.resource.data.createdBy     == resource.data.createdBy
+        && request.resource.data.source        == resource.data.source
+        && request.resource.data.venueId       == resource.data.venueId
+        && request.resource.data.venueUid      == resource.data.venueUid
+        && request.resource.data.artistUid     == resource.data.artistUid
+        && request.resource.data.get('enquiryId', null) == resource.data.get('enquiryId', null)
+        // only the artist may change isPublic
+        && (request.resource.data.isPublic == resource.data.isPublic
+            || request.auth.uid == resource.data.artistUid);
+
+      allow delete: if isSignedIn()
+        && resource.data.source == 'artist_added'
+        && resource.data.createdBy == request.auth.uid;
+
+      // ── Private per-user notes and documents ─────────────────────────────
+      match /private/{uid} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid
+          && request.auth.uid in
+             get(/databases/$(database)/documents/gigs/$(gigId)).data.participantIds;
+      }
+    }
+
+    // ── Public gig projections (written by Cloud Functions trigger only) ──────
+    match /publicGigs/{gigId} {
+      allow read:  if true;
+      allow write: if false; // Admin SDK (the trigger) bypasses rules
     }
 
     // ── Calendar feed tokens ─────────────────────────────────────────────────

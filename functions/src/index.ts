@@ -4,3 +4,4 @@ import { initializeApp } from 'firebase-admin/app';
 initializeApp();
 
 export * from './calendar';
+export * from './publicGigs';

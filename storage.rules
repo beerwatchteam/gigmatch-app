@@ -1,0 +1,85 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── Band profile photos ───────────────────────────────────────────────────
+    match /photos/bands/{uid}/{allPaths=**} {
+      allow read:   if true;
+      allow write:  if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // ── Venue photos ──────────────────────────────────────────────────────────
+    match /photos/venues/{venueId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|video/.*');
+    }
+
+    // ── Rider and tech spec docs (band profiles) ──────────────────────────────
+    match /riders/{uid}/{allPaths=**} {
+      allow read:   if true;
+      allow write:  if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|image/.*|application/msword|application/vnd\\..*'
+           );
+    }
+
+    // ── Venue docs (riders, stage plots, invoices, rooms) ────────────────────
+    match /riders/{venueId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|image/.*|application/msword|application/vnd\\..*'
+           );
+    }
+    match /stageplots/{venueId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+    match /rooms/{venueId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|image/.*|application/msword|application/vnd\\..*'
+           );
+    }
+    match /invoices/{venueId}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|image/.*|application/msword|application/vnd\\..*'
+           );
+    }
+
+    // ── Enquiry attachment docs ───────────────────────────────────────────────
+    match /enquiry-docs/{enquiryId}/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|image/.*|application/msword|application/vnd\\..*'
+           );
+    }
+
+    // ── Gig private documents ─────────────────────────────────────────────────
+    // Path: gigDocs/{uid}/{gigId}/{fileName}
+    // Only the owning uid may read, write, or delete their own files.
+    match /gigDocs/{uid}/{gigId}/{file} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches(
+             'application/pdf|image/.*|application/msword|application/vnd\\..*'
+           );
+    }
+  }
+}
