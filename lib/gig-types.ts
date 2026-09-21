@@ -13,6 +13,37 @@ export type GigFee = {
   ticketPriceCents: number | null;
   ticketUrl: string | null;
   notes: string | null;
+  includesGst?: boolean | null;  // null / omitted = not specified
+};
+
+// ── Payment types ────────────────────────────────────────────────────────────
+
+export type PaymentTiming = 'before' | 'after';
+export type PaymentStatus = 'pending' | 'disputed' | 'confirmed' | 'self_reported' | 'not_applicable';
+
+export type PaymentConfirmation = {
+  amountCents: number;
+  at: Timestamp;
+  by: string;
+};
+
+export type GigPayment = {
+  /** null on single-party gigs (venue_created, artist_added) */
+  timing: PaymentTiming | null;
+  /** Pending timing change proposal; null when none */
+  timingProposal: {
+    proposedBy: string;
+    timing: PaymentTiming;
+    proposedAt: Timestamp;
+  } | null;
+  status: PaymentStatus;
+  venueConfirm: PaymentConfirmation | null;
+  /** Single-party gigs use whichever role the owner has */
+  artistConfirm: PaymentConfirmation | null;
+  confirmedAmountCents: number | null;
+  confirmedAt: Timestamp | null;
+  reminderSentAt: Timestamp | null;
+  updatedAt: Timestamp;
 };
 
 /**
@@ -50,6 +81,7 @@ export type Gig = {
   soundCheckTime: string | null; // "HH:MM" local
   room: string | null;
   fee: GigFee;
+  payment: GigPayment;
   participantIds: string[];
   createdBy: string;
   listAsBooked: boolean;

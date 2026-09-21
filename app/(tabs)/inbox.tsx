@@ -27,13 +27,14 @@ import {
   type Enquiry, type Participant,
 } from '@/lib/useEnquiries';
 import { cancelAcceptance } from '@/lib/useGigs';
-import { type FeeType, tzLabel } from '@/lib/gig-types';
+import { type FeeType, tzLabel, type Gig } from '@/lib/gig-types';
+import { PaymentCard } from '@/components/PaymentCard';
 import {
   useDMConversations, useDMMessages,
   sendDMMessage, acceptDMRequest, deleteDMConv,
   type DMConv,
 } from '@/lib/useDirectMessages';
-import { doc, getDoc, updateDoc, getDocs, collection, query, where, limit, arrayRemove, addDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, updateDoc, getDocs, collection, query, where, limit, arrayRemove, addDoc } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
 import { Toast } from '@/components/Toast';
 import { AddToCalendarFromEnquiry } from '@/components/AddToCalendarButton';
@@ -485,6 +486,39 @@ const dg = StyleSheet.create({
   detailsBtn:  { paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' },
   detailsText: { fontSize: 13, fontWeight: '700', color: Colors.orange },
 });
+
+// ── GigPaymentCardWrapper — listens to the gig doc and renders PaymentCard ───
+
+function GigPaymentCardWrapper({
+  gigId, uid, isVenue, otherPartyName, onOpenThread, colors,
+}: {
+  gigId: string;
+  uid: string;
+  isVenue: boolean;
+  otherPartyName: string;
+  onOpenThread?: () => void;
+  colors: any;
+}) {
+  const [gig, setGig] = useState<(Gig & { id: string }) | null>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'gigs', gigId), snap => {
+      if (snap.exists()) setGig({ id: snap.id, ...snap.data() } as Gig & { id: string });
+    });
+    return unsub;
+  }, [gigId]);
+
+  if (!gig) return null;
+  return (
+    <PaymentCard
+      gig={gig}
+      uid={uid}
+      isVenue={isVenue}
+      otherPartyName={otherPartyName}
+      onOpenThread={onOpenThread}
+    />
+  );
+}
 
 // ── Enquiry header (compact) ───────────────────────────────────────────────
 
@@ -958,6 +992,28 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   );
                 })()
               )}
+
+              {/* Payment card — shown for confirmed Twaylo bookings that have a gigId */}
+              {normalizeEnquiryStatus(enquiry.status) === 'confirmed' &&
+               currentUserUid &&
+               (() => {
+                 const gigId = (enquiry as any).gigId as string | undefined;
+                 if (!gigId) return null;
+                 // We don't have the full gig doc here (only enquiry), so the
+                 // PaymentCard is fed via a live gig listener. Render a minimal
+                 // wrapper that listens to the gig doc.
+                 return (
+                   <GigPaymentCardWrapper
+                     gigId={gigId}
+                     uid={currentUserUid}
+                     isVenue={isVenue}
+                     otherPartyName={isVenue ? enquiry.bandName : enquiry.venueName}
+                     onOpenThread={() => closeDetails(() => {})}
+                     colors={colors}
+                   />
+                 );
+               })()
+              }
 
               {/* Quick links */}
               {quickLinks.length > 0 && (

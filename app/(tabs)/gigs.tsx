@@ -16,6 +16,8 @@ import { Redirect } from 'expo-router';
 import { toZonedTime } from 'date-fns-tz';
 import { type Gig } from '@/lib/gig-types';
 import { cancelVenueGig, deleteArtistGig } from '@/lib/useGigs';
+import { PaymentCard, PaymentDueChip } from '@/components/PaymentCard';
+import { isPaymentActive, paymentExpectation } from '@/lib/payments';
 import ArtistGigForm from '@/components/ArtistGigForm';
 import VenueGigForm from '@/components/VenueGigForm';
 
@@ -125,6 +127,17 @@ function GigRow({
         </View>
       </View>
 
+      {/* Payment due chip on the collapsed row */}
+      {!expanded && !cancelled && gig.status === 'confirmed' && (() => {
+        const ps = (gig as any).payment?.status;
+        if (!ps || ps === 'not_applicable' || ps === 'confirmed' || ps === 'self_reported') return null;
+        const active = isPaymentActive(gig as any, new Date());
+        if (!active) return null;
+        const exp = paymentExpectation(gig.fee);
+        if (exp.mode === 'none') return null;
+        return <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}><PaymentDueChip colors={colors} /></View>;
+      })()}
+
       {/* Expanded detail */}
       {expanded && (
         <View style={[row.detail, { borderTopColor: colors.border }]}>
@@ -140,6 +153,16 @@ function GigRow({
               {gig.fee.amountCents ? ` · $${(gig.fee.amountCents / 100).toFixed(0)}` : ''}
             </Text>
           ) : null}
+
+          {/* Payment card */}
+          {gig.status === 'confirmed' && (gig as any).payment && (
+            <PaymentCard
+              gig={gig as any}
+              uid={uid}
+              isVenue={!isArtist}
+              otherPartyName={isArtist ? (gig.venueName ?? 'Venue') : (gig.artistName ?? gig.bandName ?? 'Artist')}
+            />
+          )}
 
           {!cancelled && (
             <View style={row.actions}>

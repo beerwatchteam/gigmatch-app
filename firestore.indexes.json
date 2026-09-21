@@ -78,6 +78,15 @@
         }
       ]
     }
+    ,{
+      "collectionGroup": "gigs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "payment.status",       "order": "ASCENDING" },
+        { "fieldPath": "payment.reminderSentAt","order": "ASCENDING" },
+        { "fieldPath": "endAt",                "order": "ASCENDING" }
+      ]
+    }
   ],
   "fieldOverrides": []
 }

@@ -7,7 +7,7 @@ import { db, storage } from './firebase';
 import { type Enquiry, sendMessage, postSystemMessage, confirmHeadliner } from './useEnquiries';
 import {
   type GigFee, type GigSource, type GigStatus, type Gig,
-  type GigPrivateDoc, type GigDocKind,
+  type GigPrivateDoc, type GigDocKind, type GigPayment, type PaymentTiming,
   toStartAt, STATE_TZ,
 } from './gig-types';
 
@@ -152,6 +152,26 @@ export function updateOverrideDetails(
   return result;
 }
 
+// ── Payment helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Builds a fresh payment map for gig creation.
+ * status: 'not_applicable' for unpaid gigs, 'pending' otherwise.
+ */
+export function buildFreshPayment(feeType: GigFee['type'], timing: PaymentTiming | null): GigPayment {
+  return {
+    timing,
+    timingProposal:       null,
+    status:               feeType === 'unpaid' ? 'not_applicable' : 'pending',
+    venueConfirm:         null,
+    artistConfirm:        null,
+    confirmedAmountCents: null,
+    confirmedAt:          null,
+    reminderSentAt:       null,
+    updatedAt:            Timestamp.now(),
+  };
+}
+
 // ── confirmGigFromEnquiry ────────────────────────────────────────────────────
 
 export type ConfirmGigParams = {
@@ -164,6 +184,7 @@ export type ConfirmGigParams = {
   localEndTime?: string;     // HH:MM (optional; defaults to localTime + setLengthMinutes)
   timezone: string;          // IANA
   fee: GigFee;
+  paymentTiming?: PaymentTiming;
   setLengthMinutes: number;
   loadInTime?: string;
   soundCheckTime?: string;
@@ -188,7 +209,7 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
   const {
     enquiry, venueOwnerUid,
     localDate, localTime, localEndTime,
-    timezone, fee, setLengthMinutes,
+    timezone, fee, paymentTiming = 'after', setLengthMinutes,
     loadInTime, soundCheckTime,
     listAsBooked, confirmMessage,
     venueDisplayName, venuePhotoUrl,
@@ -223,10 +244,12 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
     if (!venueSnap.exists()) throw new Error('Venue not found');
 
     let existingIsPublic = true; // default on first confirm
+    let existingGigData: Record<string, any> | null = null;
     if (existingGigId) {
       const existingGigSnap = await tx.get(gigRef);
       if (existingGigSnap.exists()) {
-        existingIsPublic = existingGigSnap.data()?.isPublic ?? true;
+        existingGigData = existingGigSnap.data() as Record<string, any>;
+        existingIsPublic = existingGigData?.isPublic ?? true;
       }
     }
 
@@ -241,6 +264,19 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
     const participantIds = Array.from(
       new Set([enquiry.createdBy, venueOwnerUid].filter(Boolean))
     );
+
+    // On re-accept of a cancelled gig, keep existing payment if already confirmed.
+    let paymentForGig: GigPayment;
+    if (existingGigData) {
+      const existingPayment = existingGigData.payment as GigPayment | undefined;
+      if (existingPayment?.status === 'confirmed') {
+        paymentForGig = existingPayment;
+      } else {
+        paymentForGig = buildFreshPayment(fee.type, paymentTiming);
+      }
+    } else {
+      paymentForGig = buildFreshPayment(fee.type, paymentTiming);
+    }
 
     const gigData = {
       enquiryId:        enquiry.id,
@@ -265,6 +301,7 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
       soundCheckTime:   soundCheckTime ?? null,
       room:             enquiry.requestedSlot.room ?? null,
       fee,
+      payment:          paymentForGig,
       participantIds,
       createdBy:        venueOwnerUid,
       listAsBooked,
@@ -286,7 +323,10 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
   });
 
   // Best-effort post-transaction side effects
-  const sysMsg = formatGigConfirmedMessage(enquiry.bandName, enquiry.venueName, localDate, localTime, fee);
+  const sysMsg = formatGigConfirmedMessage(
+    enquiry.bandName, enquiry.venueName ?? '', localDate, localTime, fee,
+    paymentTiming, loadInTime ?? null,
+  );
   await postSystemMessage(enquiry.id, sysMsg).catch(() => {});
 
   if (confirmMessage?.trim()) {
@@ -483,7 +523,9 @@ export async function createVenueGig({
         ticketPriceCents: input.ticketPriceCents,
         ticketUrl:        input.ticketUrl,
         notes:            null,
+        includesGst:      null,
       },
+      payment:        buildFreshPayment('other', null),
       participantIds: [venueUid],
       createdBy:      venueUid,
       listAsBooked:   input.listAsBooked,
@@ -672,10 +714,12 @@ export async function createArtistGig({
       ticketPriceCents: input.ticketPriceCents,
       ticketUrl:        input.ticketUrl,
       notes:            null,
+      includesGst:      null,
     },
+    payment:        buildFreshPayment(input.fee?.type ?? 'other', null),
     participantIds: [artistUid],
     createdBy:      artistUid,
-    listAsBooked:   false,
+    listAsBooked:   true,  // outside gigs default listAsBooked: true
     createdAt:      now,
     updatedAt:      now,
   };
@@ -832,30 +876,38 @@ const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oc
 
 /**
  * Build the system message posted when a gig is confirmed.
- * Format: "Gig confirmed: Fri 14 Nov: BandName at VenueName $400 flat"
- * Matches /Gig confirmed: \w+ \d+ \w+.* \$\d+ flat/ for flat fees.
+ * Format: "Gig confirmed: Fri 14 Nov · 8:00 PM · $400 flat · pay after the gig · load-in 6:30 PM"
  */
 export function formatGigConfirmedMessage(
   bandName: string,
   venueName: string,
-  localDate: string,   // YYYY-MM-DD
+  localDate: string,    // YYYY-MM-DD
   localTime: string,
   fee?: GigFee | null,
+  paymentTiming?: 'before' | 'after' | null,
+  loadInTime?: string | null,
 ): string {
   const [y, m, d] = localDate.split('-').map(Number);
   const dt  = new Date(y, m - 1, d);
   const dow = _DOW[dt.getDay()];
   const dmm = `${d} ${_MON[m - 1]}`;
 
-  let feeStr = '';
+  const parts: string[] = [`Gig confirmed: ${dow} ${dmm}`];
+  if (localTime) parts.push(localTime);
   if (fee) {
     if ((fee.type === 'flat' || fee.type === 'guarantee_vs_door') && fee.amountCents != null) {
-      feeStr = ` $${Math.round(fee.amountCents / 100)} flat`;
+      parts.push(`$${Math.round(fee.amountCents / 100)} flat`);
     } else if (fee.type === 'door_split' && fee.doorPercent != null) {
-      feeStr = ` ${fee.doorPercent}% door`;
+      parts.push(`${fee.doorPercent}% door`);
     }
   }
+  if (paymentTiming) {
+    parts.push(`pay ${paymentTiming} the gig`);
+  }
+  if (loadInTime) {
+    parts.push(`load-in ${loadInTime}`);
+  }
 
-  return `Gig confirmed: ${dow} ${dmm}: ${bandName} at ${venueName}${feeStr}`;
+  return parts.join(' · ');
 }
 

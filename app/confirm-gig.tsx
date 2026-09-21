@@ -14,7 +14,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { Colors } from '@/constants/colors';
 import { type Enquiry } from '@/lib/useEnquiries';
-import { type GigFee, type FeeType, STATE_TZ, dollarsToCents } from '@/lib/gig-types';
+import { type GigFee, type FeeType, type PaymentTiming, STATE_TZ, dollarsToCents } from '@/lib/gig-types';
 import { confirmGigFromEnquiry, upgradeGigToBooked, SlotConflictError } from '@/lib/useGigs';
 import { fromZonedTime } from 'date-fns-tz';
 import { AddToCalendarButton } from '@/components/AddToCalendarButton';
@@ -233,6 +233,8 @@ export default function ConfirmGigScreen() {
   const [ticketPriceStr, setTicketPriceStr] = useState('');
   const [ticketUrl,      setTicketUrl]      = useState('');
   const [feeNotes,       setFeeNotes]       = useState('');
+  const [includesGst,    setIncludesGst]    = useState<boolean | null>(null);
+  const [paymentTiming,  setPaymentTiming]  = useState<PaymentTiming>('after');
   const [setLengthMins,  setSetLengthMins]  = useState(45);
   const [loadInTime,     setLoadInTime]     = useState('');
   const [soundCheckTime, setSoundCheckTime] = useState('');
@@ -276,8 +278,8 @@ export default function ConfirmGigScreen() {
           setAmountStr(Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2));
         }
         if (savedFee?.doorPercent != null) setDoorPercent(String(savedFee.doorPercent));
-        if (savedFee?.ticketPrice != null) {
-          const tp = savedFee.ticketPrice / 100;
+        if (savedFee?.ticketPriceCents != null) {
+          const tp = savedFee.ticketPriceCents / 100;
           setTicketPriceStr(Number.isInteger(tp) ? String(tp) : tp.toFixed(2));
         }
         if (savedFee?.ticketUrl) setTicketUrl(savedFee.ticketUrl);
@@ -290,6 +292,10 @@ export default function ConfirmGigScreen() {
           setVenueDisplayName(vd.name ?? enq.venueName);
           setVenuePhotoUrl(vd.photoUrl ?? null);
           setTimezone(deriveTimezone(vd));
+
+          // Prefill payment timing from venue settings — all timing options map to 'after'
+          // (same-night, within-N-days, other all mean after the gig). Default: 'after'.
+          setPaymentTiming('after');
 
           // Find matching slot for paymentModels
           const { day, date, time, room } = enq.requestedSlot;
@@ -376,9 +382,23 @@ export default function ConfirmGigScreen() {
 
   const localTime = enquiry?.requestedSlot.time ?? '';
 
-  const previewMsg = enquiry
-    ? `Gig confirmed: ${enquiry.bandName} at ${enquiry.venueName}${localDate ? ` on ${localDate}` : ''}${localTime ? ` at ${localTime}` : ''}`
-    : '';
+  const previewMsg = (() => {
+    if (!enquiry) return '';
+    const parts: string[] = [];
+    if (localDate) {
+      const [y, mo, d] = localDate.split('-').map(Number);
+      const dt  = new Date(y, mo - 1, d);
+      const dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()];
+      const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][mo - 1];
+      parts.push(`${dow} ${d} ${mon}`);
+    }
+    if (localTime) parts.push(localTime);
+    if (feeType === 'flat' && amountStr) parts.push(`$${amountStr} flat`);
+    else if (feeType === 'door_split' && doorPercent) parts.push(`${doorPercent}% door`);
+    parts.push(`pay ${paymentTiming} the gig`);
+    if (loadInTime.trim()) parts.push(`load-in ${loadInTime.trim()}`);
+    return `Gig confirmed: ${parts.join(' · ')}`;
+  })();
 
   async function handleConfirm() {
     if (!user || !enquiry) return;
@@ -394,10 +414,18 @@ export default function ConfirmGigScreen() {
       if (!localTime) { setError('No time on this slot — contact support.'); return; }
     }
 
-    const fee: GigFee = { type: feeType };
+    const fee: GigFee = {
+      type:            feeType,
+      amountCents:     null,
+      doorPercent:     null,
+      ticketPriceCents: null,
+      ticketUrl:       null,
+      notes:           null,
+      includesGst:     includesGst,
+    };
     if (showAmount && amountStr) fee.amountCents = dollarsToCents(amountStr);
     if (showDoor && doorPercent)  fee.doorPercent = parseFloat(doorPercent);
-    if (showTicket && ticketPriceStr) fee.ticketPrice = dollarsToCents(ticketPriceStr);
+    if (showTicket && ticketPriceStr) fee.ticketPriceCents = dollarsToCents(ticketPriceStr);
     if (showTicket && ticketUrl.trim()) fee.ticketUrl = ticketUrl.trim();
     if (feeNotes.trim()) fee.notes = feeNotes.trim();
 
@@ -416,6 +444,7 @@ export default function ConfirmGigScreen() {
           localTime,
           timezone,
           fee,
+          paymentTiming,
           setLengthMinutes: setLengthMins,
           loadInTime:   loadInTime.trim()   || undefined,
           soundCheckTime: soundCheckTime.trim() || undefined,
@@ -668,6 +697,61 @@ export default function ConfirmGigScreen() {
           />
         </View>
 
+        {/* Payment timing */}
+        {feeType !== 'unpaid' && (
+          <View style={cs.field}>
+            <Text style={[cs.label, { color: colors.grey }]}>PAYMENT TIMING</Text>
+            <View style={cs.segmentRow}>
+              {([
+                { value: 'before', label: 'Before the gig' },
+                { value: 'after',  label: 'After the gig'  },
+              ] as const).map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => setPaymentTiming(opt.value)}
+                  style={[
+                    cs.segment,
+                    { borderColor: paymentTiming === opt.value ? Colors.orange : colors.border },
+                    paymentTiming === opt.value && { backgroundColor: Colors.orange + '18' },
+                  ]}
+                >
+                  <Text style={[cs.segmentText, { color: paymentTiming === opt.value ? Colors.orange : colors.black }]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Fee includes GST */}
+        {feeType !== 'unpaid' && (
+          <View style={cs.field}>
+            <Text style={[cs.label, { color: colors.grey }]}>FEE INCLUDES GST</Text>
+            <View style={cs.segmentRow}>
+              {([
+                { value: true,  label: 'Yes' },
+                { value: false, label: 'No'  },
+                { value: null,  label: 'Not specified' },
+              ] as const).map(opt => (
+                <TouchableOpacity
+                  key={String(opt.value)}
+                  onPress={() => setIncludesGst(opt.value)}
+                  style={[
+                    cs.segment,
+                    { borderColor: includesGst === opt.value ? Colors.orange : colors.border },
+                    includesGst === opt.value && { backgroundColor: Colors.orange + '18' },
+                  ]}
+                >
+                  <Text style={[cs.segmentText, { color: includesGst === opt.value ? Colors.orange : colors.black }]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Message to artist */}
         <View style={cs.field}>
           <Text style={[cs.label, { color: colors.grey }]}>MESSAGE TO ARTIST</Text>
@@ -843,6 +927,14 @@ const cs = StyleSheet.create({
   },
   feeChipText:  { fontSize: 13, fontWeight: '600' },
   suggestedDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange },
+
+  // Segmented control (timing / GST)
+  segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  segment: {
+    borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 8, flex: 1, alignItems: 'center',
+  },
+  segmentText: { fontSize: 13, fontWeight: '600' },
 
   // Set length pills
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

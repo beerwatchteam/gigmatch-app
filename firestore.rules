@@ -261,10 +261,23 @@ service cloud.firestore {
         return isSignedIn() && request.auth.uid in resource.data.participantIds;
       }
 
+      // A payment map is "fresh" — initial state only, no confirmations or proposals.
+      function freshPayment(p) {
+        return p.status in ['pending', 'not_applicable']
+          && p.get('venueConfirm', null) == null
+          && p.get('artistConfirm', null) == null
+          && p.get('confirmedAmountCents', null) == null
+          && p.get('confirmedAt', null) == null
+          && p.get('timingProposal', null) == null
+          && p.get('reminderSentAt', null) == null
+          && (p.get('timing', null) == null || p.timing in ['before', 'after']);
+      }
+
       allow read: if isSignedIn() && (isParticipant() || isAdmin());
 
       allow create: if isSignedIn()
         && request.resource.data.createdBy == request.auth.uid
+        && freshPayment(request.resource.data.payment)
         && (
           // artist outside gig: only ever the creator
           (request.resource.data.source == 'artist_added'
@@ -297,7 +310,22 @@ service cloud.firestore {
         && request.resource.data.get('enquiryId', null) == resource.data.get('enquiryId', null)
         // only the artist may change isPublic
         && (request.resource.data.isPublic == resource.data.isPublic
-            || request.auth.uid == resource.data.artistUid);
+            || request.auth.uid == resource.data.artistUid)
+        && (
+          // ordinary edits never touch payment;
+          // fee is locked on Twaylo bookings (use updateGigFee callable)
+          (request.resource.data.payment == resource.data.payment
+            && (resource.data.source != 'enquiry'
+                || request.resource.data.fee == resource.data.fee))
+          // re-accepting a cancelled Twaylo booking: venue may reset fee, timing and
+          // payment, but only if payment was not already confirmed
+          || (resource.data.source == 'enquiry'
+              && resource.data.status == 'cancelled'
+              && request.resource.data.status == 'confirmed'
+              && request.auth.uid == resource.data.venueUid
+              && resource.data.payment.status != 'confirmed'
+              && freshPayment(request.resource.data.payment))
+        );
 
       allow delete: if isSignedIn()
         && resource.data.source == 'artist_added'

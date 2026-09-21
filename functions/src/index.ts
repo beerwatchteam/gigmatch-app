@@ -5,3 +5,4 @@ initializeApp();
 
 export * from './calendar';
 export * from './publicGigs';
+export * from './payments';

@@ -348,6 +348,7 @@ export default function ArtistGigForm({
           ticketPriceCents: ticketPrice ? dollarsToCents(ticketPrice) : null,
           ticketUrl:        ticketUrl.trim() || null,
           notes:            feeNotes.trim() || null,
+          includesGst:      null,
         },
       };
 
