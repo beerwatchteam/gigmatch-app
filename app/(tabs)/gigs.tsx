@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Platform, useWindowDimensions,
+  ActivityIndicator, Platform, useWindowDimensions, Modal, TextInput,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  collection, onSnapshot, query, where, orderBy, doc, getDoc,
+  collection, onSnapshot, query, where, orderBy, doc, getDoc, updateDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
@@ -23,7 +23,8 @@ const isWeb = Platform.OS === 'web';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type GigWithId = Gig & { id: string };
+type GigWithId   = Gig & { id: string };
+type AwayPeriod  = { id: string; from: string; to?: string; notes?: string };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -197,6 +198,81 @@ const sh = StyleSheet.create({
   count: { fontSize: 13 },
 });
 
+// ── Away period helpers ───────────────────────────────────────────────────────
+
+function AwayDateInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  if (Platform.OS === 'web') {
+    return (
+      <input
+        type="date"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ flex: 1, border: '1px solid #ccc', borderRadius: 8, padding: '9px 12px', fontSize: 14, fontFamily: 'inherit', background: 'transparent', color: 'inherit' } as any}
+      />
+    );
+  }
+  return (
+    <TextInput
+      value={value}
+      onChangeText={onChange}
+      placeholder={placeholder ?? 'YYYY-MM-DD'}
+      placeholderTextColor="#aaa"
+      style={away.dateInput}
+    />
+  );
+}
+
+function AwayPeriodRow({ period, onEdit, onDelete, colors }: { period: AwayPeriod; onEdit: () => void; onDelete: () => void; colors: any }) {
+  const label = period.to && period.to !== period.from
+    ? `${fmtDate(period.from)} to ${fmtDate(period.to)}`
+    : fmtDate(period.from);
+  return (
+    <View style={[away.row, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+      <View style={away.rowLeft}>
+        <Text style={[away.rowLabel, { color: colors.black }]}>{label}</Text>
+        {period.notes ? <Text style={[away.rowNotes, { color: colors.grey }]}>{period.notes}</Text> : null}
+      </View>
+      <View style={away.rowActions}>
+        <TouchableOpacity onPress={onEdit} style={[away.rowBtn, { borderColor: colors.border }]}>
+          <Text style={[away.rowBtnText, { color: colors.black }]}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDelete} style={[away.rowBtn, { borderColor: Colors.danger + '60' }]}>
+          <Text style={[away.rowBtnText, { color: Colors.danger }]}>Remove</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function fmtDate(iso: string): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m, 10) - 1];
+  return `${parseInt(d, 10)} ${mon} ${y}`;
+}
+
+const away = StyleSheet.create({
+  row:        { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 8, gap: 10 },
+  rowLeft:    { flex: 1, gap: 3 },
+  rowLabel:   { fontSize: 14, fontWeight: '600' },
+  rowNotes:   { fontSize: 12 },
+  rowActions: { flexDirection: 'row', gap: 6 },
+  rowBtn:     { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  rowBtnText: { fontSize: 12, fontWeight: '600' },
+  dateInput:  { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
+  sheet:      { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40, gap: 14 },
+  sheetTitle: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  label:      { fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' as const, marginBottom: 4 },
+  row2:       { flexDirection: 'row', gap: 10 },
+  notesInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, minHeight: 60 },
+  btns:       { flexDirection: 'row', gap: 10, marginTop: 8 },
+  saveBtn:    { flex: 1, backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 13, alignItems: 'center' },
+  saveBtnText:{ fontSize: 14, fontWeight: '700', color: '#111' },
+  cancelBtn:  { borderRadius: 10, paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center', borderWidth: 1 },
+  cancelBtnText: { fontSize: 14, fontWeight: '600' },
+});
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function MyGigsScreen() {
@@ -215,6 +291,15 @@ export default function MyGigsScreen() {
   const [showVenueForm, setShowVenueForm]   = useState(false);
   const [editGig, setEditGig]               = useState<GigWithId | null>(null);
 
+  // Away periods
+  const [awayPeriods, setAwayPeriods]     = useState<AwayPeriod[]>([]);
+  const [showAwayForm, setShowAwayForm]   = useState(false);
+  const [editAway, setEditAway]           = useState<AwayPeriod | null>(null);
+  const [awayFrom, setAwayFrom]           = useState('');
+  const [awayTo, setAwayTo]               = useState('');
+  const [awayNotes, setAwayNotes]         = useState('');
+  const [awaySaving, setAwaySaving]       = useState(false);
+
   // Venue info for VenueGigForm
   const [venueDoc, setVenueDoc] = useState<any>(null);
 
@@ -232,6 +317,49 @@ export default function MyGigsScreen() {
       }).catch(() => {});
     }
   }, [isArtist, venueId]);
+
+  // Load away periods from artist profile
+  useEffect(() => {
+    if (!isArtist || !uid) return;
+    getDoc(doc(db, 'bandProfiles', uid)).then(s => {
+      if (s.exists()) setAwayPeriods((s.data().awayPeriods ?? []) as AwayPeriod[]);
+    }).catch(() => {});
+  }, [isArtist, uid]);
+
+  const openAwayForm = (period: AwayPeriod | null) => {
+    setEditAway(period);
+    setAwayFrom(period?.from ?? '');
+    setAwayTo(period?.to ?? '');
+    setAwayNotes(period?.notes ?? '');
+    setShowAwayForm(true);
+  };
+
+  const saveAwayPeriod = async () => {
+    if (!awayFrom) return;
+    setAwaySaving(true);
+    try {
+      const updated = editAway
+        ? awayPeriods.map(p => p.id === editAway.id ? { ...p, from: awayFrom, to: awayTo || undefined, notes: awayNotes || undefined } : p)
+        : [...awayPeriods, { id: Date.now().toString(36), from: awayFrom, to: awayTo || undefined, notes: awayNotes || undefined }];
+      await updateDoc(doc(db, 'bandProfiles', uid), { awayPeriods: updated });
+      setAwayPeriods(updated);
+      setShowAwayForm(false);
+    } catch {
+      // silent — offline or permission error
+    } finally {
+      setAwaySaving(false);
+    }
+  };
+
+  const deleteAwayPeriod = async (id: string) => {
+    const updated = awayPeriods.filter(p => p.id !== id);
+    try {
+      await updateDoc(doc(db, 'bandProfiles', uid), { awayPeriods: updated });
+      setAwayPeriods(updated);
+    } catch {
+      // silent
+    }
+  };
 
   // Live query from gigs collection
   useEffect(() => {
@@ -313,12 +441,22 @@ export default function MyGigsScreen() {
         {/* Header */}
         <View style={s.header}>
           <Text style={[s.heading, { color: colors.black }]}>My Gigs</Text>
-          <TouchableOpacity
-            style={s.addBtn}
-            onPress={() => { setEditGig(null); if (isArtist) setShowArtistForm(true); else setShowVenueForm(true); }}
-          >
-            <Text style={s.addBtnText}>+ Add gig</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {isArtist && (
+              <TouchableOpacity
+                style={[s.addBtn, { backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border }]}
+                onPress={() => openAwayForm(null)}
+              >
+                <Text style={[s.addBtnText, { color: colors.black }]}>Away</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={s.addBtn}
+              onPress={() => { setEditGig(null); if (isArtist) setShowArtistForm(true); else setShowVenueForm(true); }}
+            >
+              <Text style={s.addBtnText}>+ Add gig</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {actionError ? (
@@ -352,7 +490,9 @@ export default function MyGigsScreen() {
             {/* Past */}
             <SectionHeader title="Past" count={past.length} colors={colors} />
             {past.length === 0 ? (
-              <Text style={[s.empty, { color: colors.grey }]}>No past gigs yet.</Text>
+              <Text style={[s.empty, { color: colors.grey }]}>
+                No past gigs yet.{isArtist ? ' Use "+ Add gig" above and pick any past date.' : ''}
+              </Text>
             ) : (
               past.map(g => (
                 <GigRow
@@ -377,6 +517,34 @@ export default function MyGigsScreen() {
                   {showCancelled ? 'Hide cancelled' : `Show cancelled (${cancelledCount})`}
                 </Text>
               </TouchableOpacity>
+            )}
+
+            {/* Away Periods */}
+            {isArtist && (
+              <>
+                <View style={[sh.row, { marginTop: 24 }]}>
+                  <Text style={[sh.title, { color: colors.black }]}>Away Periods</Text>
+                  <TouchableOpacity onPress={() => openAwayForm(null)}>
+                    <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>+ Add</Text>
+                  </TouchableOpacity>
+                </View>
+                {awayPeriods.length === 0 ? (
+                  <Text style={[s.empty, { color: colors.grey }]}>No away periods set. Mark dates when you're unavailable.</Text>
+                ) : (
+                  awayPeriods
+                    .slice()
+                    .sort((a, b) => a.from.localeCompare(b.from))
+                    .map(p => (
+                      <AwayPeriodRow
+                        key={p.id}
+                        period={p}
+                        onEdit={() => openAwayForm(p)}
+                        onDelete={() => deleteAwayPeriod(p.id)}
+                        colors={colors}
+                      />
+                    ))
+                )}
+              </>
             )}
           </>
         )}
@@ -407,6 +575,70 @@ export default function MyGigsScreen() {
           onSaved={handleFormSaved}
         />
       )}
+
+      {/* Away period form modal */}
+      <Modal
+        visible={showAwayForm}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAwayForm(false)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={() => setShowAwayForm(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={[away.sheet, { backgroundColor: colors.bg }]}>
+              <Text style={[away.sheetTitle, { color: colors.black }]}>
+                {editAway ? 'Edit Away Period' : 'Log Away Period'}
+              </Text>
+
+              <View>
+                <Text style={[away.label, { color: colors.grey }]}>From</Text>
+                <View style={away.row2}>
+                  <AwayDateInput value={awayFrom} onChange={setAwayFrom} placeholder="From date" />
+                </View>
+              </View>
+
+              <View>
+                <Text style={[away.label, { color: colors.grey }]}>To (optional)</Text>
+                <View style={away.row2}>
+                  <AwayDateInput value={awayTo} onChange={setAwayTo} placeholder="End date" />
+                </View>
+              </View>
+
+              <View>
+                <Text style={[away.label, { color: colors.grey }]}>Notes (optional)</Text>
+                <TextInput
+                  value={awayNotes}
+                  onChangeText={setAwayNotes}
+                  placeholder="e.g. East coast tour, family holiday"
+                  placeholderTextColor={colors.grey}
+                  style={[away.notesInput, { color: colors.black, borderColor: colors.border }]}
+                  multiline
+                />
+              </View>
+
+              <View style={away.btns}>
+                <TouchableOpacity
+                  style={[away.cancelBtn, { borderColor: colors.border }]}
+                  onPress={() => setShowAwayForm(false)}
+                >
+                  <Text style={[away.cancelBtnText, { color: colors.black }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[away.saveBtn, !awayFrom && { opacity: 0.4 }]}
+                  onPress={saveAwayPeriod}
+                  disabled={!awayFrom || awaySaving}
+                >
+                  <Text style={away.saveBtnText}>{awaySaving ? 'Saving…' : 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }

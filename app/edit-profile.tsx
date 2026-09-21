@@ -56,11 +56,11 @@ const BLANK_ARTIST_PAYMENT: ArtistPayment = {
   paymentNotes: '',
 };
 
-const TABS = ['Settings','Basic Info','About','Music','Past Gigs','Timetable','Tech Rider','Payment','Photos'];
+const TABS = ['Settings','Basic Info','About','Music','Tech Rider','Payment','Photos'];
 
 const STEP_TAB: Record<number, string | null> = {
   1: null, 2: 'Basic Info', 3: 'About', 4: 'Music',
-  5: 'Past Gigs', 6: 'Timetable', 7: 'Tech Rider', 8: 'Payment', 9: 'Photos', 10: 'Photos',
+  5: null, 6: null, 7: 'Tech Rider', 8: 'Payment', 9: 'Photos', 10: 'Photos',
 };
 
 type OnboardingStepData = {
@@ -98,15 +98,15 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
     nextLabel: 'Next: Past Gigs',
   },
   5: {
-    title: 'Past Gigs',
-    body: "Log your previous performances. Venues want to know where you've played before they take a chance on you.",
-    body2: 'Include the venue name, date, and any relevant notes. A strong gig history builds credibility fast.',
+    title: 'Gig History',
+    body: "Log where you've played. Venues check your track record before they respond to enquiries.",
+    body2: "Head to My Gigs once your profile is live. Pick any past date to log a previous performance, including the venue, attendance, and any docs.",
     nextLabel: 'Next: Timetable',
   },
   6: {
-    title: 'Timetable',
-    body: "Set your general availability. Venues use this to know when you're already booked and when you're free.",
-    body2: "You're not locked in to anything here. This is just a guide so venues don't waste your time with dates that don't work.",
+    title: 'Timetable and Away Periods',
+    body: "Your upcoming gigs and away periods all live in My Gigs. Mark yourself unavailable when you're on tour, on holiday, or otherwise committed.",
+    body2: "Venues will see your confirmed public gigs on your profile timetable automatically once you're booked.",
     nextLabel: 'Next: Tech Rider',
   },
   7: {
