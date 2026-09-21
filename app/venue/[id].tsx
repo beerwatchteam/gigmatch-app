@@ -14,6 +14,7 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useArtistEnquiries, type Enquiry } from '@/lib/useEnquiries';
 import { useTheme } from '@/lib/theme-context';
+import { STATE_TZ } from '@/lib/gig-types';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -534,6 +535,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           slotType:       slot.slotType || 'Either',
           duration:       slot.duration ? String(slot.duration) : '',
           capacity:       venue.capacity ? String(venue.capacity) : '',
+          venueTimezone:  STATE_TZ[venue.state ?? ''] ?? 'Australia/Sydney',
           slotNote:       slot.notes || '',
           ...(_models.length ? { paymentModels: _models.join(',') } : {}),
           ...(slot.feeMin != null ? { feeMin: String(slot.feeMin) } : {}),
@@ -732,6 +734,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                   slotType:       slot.slotType || 'Either',
                   duration:       slot.duration ? String(slot.duration) : '',
                   capacity:       venue.capacity ? String(venue.capacity) : '',
+                  venueTimezone:  STATE_TZ[venue.state ?? ''] ?? 'Australia/Sydney',
                   ...(slot.name ? { slotName: slot.name } : {}),
                   slotNote:       slot.notes || '',
                   ...(_models.length ? { paymentModels: _models.join(',') } : {}),

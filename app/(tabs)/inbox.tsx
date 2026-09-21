@@ -27,7 +27,7 @@ import {
   type Enquiry, type Participant,
 } from '@/lib/useEnquiries';
 import { cancelAcceptance } from '@/lib/useGigs';
-import { type FeeType } from '@/lib/gig-types';
+import { type FeeType, tzLabel } from '@/lib/gig-types';
 import {
   useDMConversations, useDMMessages,
   sendDMMessage, acceptDMRequest, deleteDMConv,
@@ -107,6 +107,12 @@ let _sessionInboxTab: 'enquiries' | 'messages' = 'enquiries';
 function fmtMsgTime(iso: string): string {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
+}
+
+/** Returns the venue's IANA timezone from the enquiry, using venueTimezone (set at creation)
+ *  or timezone (set at confirmation) as a fallback. */
+function getVenueTz(enquiry: Enquiry): string | undefined {
+  return enquiry.venueTimezone ?? (enquiry as any).timezone;
 }
 
 function fmtSlotDate(date?: string | null): string {
@@ -447,8 +453,9 @@ const avb = StyleSheet.create({
 
 function DealSheetGrid({ enquiry, onDetails }: { enquiry: Enquiry; onDetails: () => void }) {
   const { setLength, time, date, day } = enquiry.requestedSlot;
-  const dateStr = date ? fmtSlotDateFull(date) : (day || '—');
-  const setStr  = [time, setLength].filter(Boolean).join(' · ') || '—';
+  const dateStr   = date ? fmtSlotDateFull(date) : (day || '—');
+  const setStr    = [time, setLength].filter(Boolean).join(' · ') || '—';
+  const venueTzLbl = tzLabel(getVenueTz(enquiry));
 
   return (
     <View style={dg.bar}>
@@ -459,6 +466,7 @@ function DealSheetGrid({ enquiry, onDetails }: { enquiry: Enquiry; onDetails: ()
       <View style={[dg.col, dg.colDivider]}>
         <Text style={dg.label}>SET</Text>
         <Text style={dg.value} numberOfLines={1}>{setStr}</Text>
+        {venueTzLbl ? <Text style={dg.tzNote}>{venueTzLbl}</Text> : null}
       </View>
       <TouchableOpacity style={dg.detailsBtn} onPress={onDetails} activeOpacity={0.7}>
         <Text style={dg.detailsText}>More Details →</Text>
@@ -473,6 +481,7 @@ const dg = StyleSheet.create({
   colDivider:  { borderRightWidth: 1, borderRightColor: '#eeeeee' },
   label:       { fontSize: 9, fontWeight: '700', color: '#aaaaaa', letterSpacing: 0.7, marginBottom: 4, textTransform: 'uppercase' as const },
   value:       { fontSize: 13, fontWeight: '700', color: '#111111' },
+  tzNote:      { fontSize: 10, fontWeight: '500', color: '#aaaaaa', marginTop: 2 },
   detailsBtn:  { paddingVertical: 10, paddingHorizontal: 14, alignItems: 'center' },
   detailsText: { fontSize: 13, fontWeight: '700', color: Colors.orange },
 });
@@ -496,6 +505,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const dateStrFull = date ? fmtSlotDateFull(date) : (day || '—');
   const slotStr    = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
   const setStr     = [time, setLength].filter(Boolean).join(' · ') || '—';
+  const venueTzLbl = tzLabel(getVenueTz(enquiry));
   const billing    = slotType || '—';
   const savedFee   = (enquiry as any).fee as { type?: string; amountCents?: number; doorPercent?: number; ticketPrice?: number; notes?: string } | null | undefined;
 
@@ -645,6 +655,9 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             </View>
             {slotStr ? (
               <Text style={[eh.slot, { color: colors.grey }]} numberOfLines={1}>{slotStr}</Text>
+            ) : null}
+            {slotStr && venueTzLbl ? (
+              <Text style={[eh.slot, { color: colors.greyLight, fontSize: 10 }]}>{venueTzLbl}</Text>
             ) : null}
             <View style={eh.quickLinks}>
               {quickLinks.map((l, i) => (
@@ -1550,7 +1563,8 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
   );
   const { day, date, time, slotType } = item.requestedSlot;
   const dateStr = date ? fmtSlotDate(date) : '';
-  const slotStr = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
+  const slotStr      = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
+  const tileTzLbl    = tzLabel(getVenueTz(item));
   const cfg = getStatusCfg(item.status, isVenue);
   const fee = (item as any).fee ? `$${(item as any).fee}` : null;
 
@@ -1622,7 +1636,10 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
               <Text style={tt.time}>{formatTileDate(item.submittedAt)}</Text>
             </View>
           </View>
-          <Text style={tt.slot} numberOfLines={1}>{slotStr || 'No slot specified'}</Text>
+          <Text style={tt.slot} numberOfLines={1}>
+            {slotStr || 'No slot specified'}
+            {slotStr && tileTzLbl ? <Text style={tt.tzNote}>{`  ${tileTzLbl}`}</Text> : null}
+          </Text>
           <View style={tt.bottomRow}>
             {isVenue ? (
               <TouchableOpacity
@@ -1704,6 +1721,7 @@ const tt = StyleSheet.create({
   name:           { fontSize: 14, fontWeight: '700', color: '#111111', flex: 1 },
   time:           { fontSize: 11, color: '#bbbbbb', flexShrink: 0 },
   slot:           { fontSize: 12, color: '#777777' },
+  tzNote:         { fontSize: 10, color: '#bbbbbb' },
   badge:          { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, backgroundColor: '#ffffff' },
   badgeText:      { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
   fee:            { fontSize: 12, fontWeight: '600', color: '#444444' },

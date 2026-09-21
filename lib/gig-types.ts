@@ -37,6 +37,29 @@ export type Gig = {
   updatedAt: Timestamp;
 };
 
+/** Short display name for a given IANA timezone (Australian cities). */
+const TZ_CITY: Record<string, string> = {
+  'Australia/Perth':     'Perth time',
+  'Australia/Darwin':    'Darwin time',
+  'Australia/Adelaide':  'Adelaide time',
+  'Australia/Brisbane':  'Brisbane time',
+  'Australia/Sydney':    'Sydney time',
+  'Australia/Melbourne': 'Melbourne time',
+  'Australia/Hobart':    'Hobart time',
+};
+
+/**
+ * Returns a short label like "Perth time" when the venue's timezone
+ * differs from the viewer's device timezone.
+ * Returns null when they match — no label needed.
+ */
+export function tzLabel(venueTimezone: string | undefined | null): string | null {
+  if (!venueTimezone) return null;
+  const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (deviceTz === venueTimezone) return null;
+  return TZ_CITY[venueTimezone] ?? null;
+}
+
 /** IANA timezone lookup by Australian state code */
 export const STATE_TZ: Record<string, string> = {
   NSW: 'Australia/Sydney',

@@ -53,6 +53,7 @@ export type Enquiry = {
   // scheduling
   loadInTime?: string;
   soundCheckTime?: string;
+  venueTimezone?: string;  // IANA timezone of the venue, saved at enquiry creation
   // timetable booking
   listAsBooked?: boolean;
   declineReason?: string;

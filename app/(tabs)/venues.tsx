@@ -14,6 +14,7 @@ import { searchSuburbs, haversineKm, type AreaResult } from '@/lib/suburbSearch'
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { useArtistEnquiries, normalizeEnquiryStatus } from '@/lib/useEnquiries';
+import { STATE_TZ, tzLabel } from '@/lib/gig-types';
 import { SlidersHorizontal } from 'phosphor-react-native';
 import { TOP_TAB_H } from './_layout';
 
@@ -495,6 +496,7 @@ type SlotViewInfo = {
   paymentMethod?: string;
   minNotice?: string;
   slotNote?: string;
+  venueTimezone?: string;
   enquiryId: string;
   status: 'enquired' | 'confirmed';
 };
@@ -530,6 +532,9 @@ function SlotViewModal({ info, colors, onClose, onViewInbox }: {
               <Text style={{ fontSize: 22, fontWeight: '800', color: colors.black, letterSpacing: -0.3 }}>{info.venueName}</Text>
               {info.slotName ? <Text style={{ fontSize: 14, fontWeight: '600', color: colors.grey, marginTop: 2 }}>{info.slotName}</Text> : null}
               <Text style={{ fontSize: 13, color: Colors.grey, marginTop: 3 }}>{slotParts.join(' · ')}</Text>
+              {tzLabel(info.venueTimezone) ? (
+                <Text style={{ fontSize: 11, color: Colors.grey, opacity: 0.7, marginTop: 1 }}>{tzLabel(info.venueTimezone)}</Text>
+              ) : null}
             </View>
             <TouchableOpacity onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: 2, marginLeft: 12 }}>
               <Text style={{ fontSize: 13, color: colors.black }}>✕</Text>
@@ -1044,15 +1049,16 @@ export default function VenuesScreen() {
                 {shown.map((slot, i) => {
                   const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
                   const enquireParams = {
-                    venueId:   item.id,
-                    venueName: item.name,
-                    day:       slot.day,
+                    venueId:       item.id,
+                    venueName:     item.name,
+                    day:           slot.day,
                     ...(slot.dateStr ? { date: slot.dateStr } : {}),
-                    time:      slot.time,
+                    time:          slot.time,
                     ...(slot.room ? { room: slot.room } : {}),
-                    slotType:  slot.slotType ?? 'Either',
-                    duration:  slot.duration ? String(slot.duration) : '',
-                    capacity:  maxCapacity ? String(maxCapacity) : '',
+                    slotType:      slot.slotType ?? 'Either',
+                    duration:      slot.duration ? String(slot.duration) : '',
+                    capacity:      maxCapacity ? String(maxCapacity) : '',
+                    venueTimezone: STATE_TZ[item.state ?? ''] ?? 'Australia/Sydney',
                     ...(slot.name ? { slotName: slot.name } : {}),
                     ...(slot.notes ? { slotNote: slot.notes } : {}),
                     ...(_models.length ? { paymentModels: _models.join(',') } : {}),
@@ -1079,6 +1085,10 @@ export default function VenuesScreen() {
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={[st.slotDate, { color: colors.black }]}>{slot.dateLabel} · {slot.time}</Text>
+                        {(() => {
+                          const lbl = tzLabel(STATE_TZ[item.state ?? '']);
+                          return lbl ? <Text style={[st.slotType, { color: colors.greyLight, fontSize: 10, fontWeight: '500' }]}>{lbl}</Text> : null;
+                        })()}
                         {slot.slotType ? (
                           <Text style={[st.slotType, { color: colors.grey, fontSize: 11, fontWeight: '500' }]}>{slot.slotType}</Text>
                         ) : null}
@@ -1086,7 +1096,7 @@ export default function VenuesScreen() {
                       {(isArtist || !user) ? (
                         isArtist && slotEnquiry ? (
                           <TouchableOpacity
-                            onPress={(e: any) => { if (isWeb) e?.stopPropagation?.(); const s = normalizeEnquiryStatus(slotEnquiry!.status); setSlotViewModal({ venueName: item.name, venueId: item.id, day: slot.day, date: slot.dateStr, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _models, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, enquiryId: slotEnquiry!.id, status: s === 'confirmed' ? 'confirmed' : 'enquired' }); }}
+                            onPress={(e: any) => { if (isWeb) e?.stopPropagation?.(); const s = normalizeEnquiryStatus(slotEnquiry!.status); setSlotViewModal({ venueName: item.name, venueId: item.id, day: slot.day, date: slot.dateStr, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _models, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, venueTimezone: STATE_TZ[item.state ?? ''] ?? 'Australia/Sydney', enquiryId: slotEnquiry!.id, status: s === 'confirmed' ? 'confirmed' : 'enquired' }); }}
                             activeOpacity={0.7}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                           >
@@ -1331,15 +1341,16 @@ export default function VenuesScreen() {
                         router.push({
                           pathname: '/enquire',
                           params: {
-                            venueId:   item.id,
-                            venueName: item.name,
-                            day:       dayName,
-                            date:      selectedDate!,
-                            time:      slot.time ?? '',
-                            slotType:  slot.slotType ?? 'Either',
+                            venueId:       item.id,
+                            venueName:     item.name,
+                            day:           dayName,
+                            date:          selectedDate!,
+                            time:          slot.time ?? '',
+                            slotType:      slot.slotType ?? 'Either',
                             ...(slot.room ? { room: slot.room } : {}),
-                            duration:  slot.duration ? String(slot.duration) : '',
-                            capacity:  item.capacity ? String(item.capacity) : '',
+                            duration:      slot.duration ? String(slot.duration) : '',
+                            capacity:      item.capacity ? String(item.capacity) : '',
+                            venueTimezone: STATE_TZ[item.state ?? ''] ?? 'Australia/Sydney',
                             ...(slot.notes ? { slotNote: slot.notes } : {}),
                             ...(_models.length ? { paymentModels: _models.join(',') } : {}),
                             ...((slot as any).feeMin != null ? { feeMin: String((slot as any).feeMin) } : {}),
@@ -1464,7 +1475,7 @@ export default function VenuesScreen() {
               return (
                 <TouchableOpacity
                   style={[st.webTimetableBtn, { borderColor: calMyStatus === 'confirmed' ? '#22c55e' : colors.border, alignSelf: 'stretch' }]}
-                  onPress={() => { if (!calEnquiry) return; const _m = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []); setSlotViewModal({ venueName: slot.venue.name, venueId: slot.venue.id, day: slot.day, date: slot.dateISO, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _m, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, enquiryId: calEnquiry.id, status: calMyStatus }); }}
+                  onPress={() => { if (!calEnquiry) return; const _m = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []); setSlotViewModal({ venueName: slot.venue.name, venueId: slot.venue.id, day: slot.day, date: slot.dateISO, time: slot.time, slotName: slot.name, room: slot.room, slotType: slot.slotType, duration: slot.duration, paymentModels: _m, feeMin: slot.feeMin, feeMax: slot.feeMax, paymentMethod: slot.paymentMethod, minNotice: slot.minNotice, slotNote: slot.notes, venueTimezone: STATE_TZ[slot.venue.state ?? ''] ?? 'Australia/Sydney', enquiryId: calEnquiry.id, status: calMyStatus }); }}
                   activeOpacity={0.85}
                 >
                   <Text style={[st.webTimetableBtnText, { color: calMyStatus === 'confirmed' ? '#22c55e' : colors.black, fontSize: 12 }]}>View</Text>
@@ -1480,15 +1491,16 @@ export default function VenuesScreen() {
                   router.push({
                     pathname: '/enquire',
                     params: {
-                      venueId:   slot.venue.id,
-                      venueName: slot.venue.name,
-                      day:       slot.day,
-                      date:      slot.dateISO,
-                      time:      slot.time,
-                      slotType:  slot.slotType ?? 'Either',
+                      venueId:       slot.venue.id,
+                      venueName:     slot.venue.name,
+                      day:           slot.day,
+                      date:          slot.dateISO,
+                      time:          slot.time,
+                      slotType:      slot.slotType ?? 'Either',
                       ...(slot.room ? { room: slot.room } : {}),
-                      duration:  slot.duration ? String(slot.duration) : '',
-                      capacity:  slot.venue.capacity ? String(slot.venue.capacity) : '',
+                      duration:      slot.duration ? String(slot.duration) : '',
+                      capacity:      slot.venue.capacity ? String(slot.venue.capacity) : '',
+                      venueTimezone: STATE_TZ[slot.venue.state ?? ''] ?? 'Australia/Sydney',
                       ...(slot.name ? { slotName: slot.name } : {}),
                       ...(slot.notes ? { slotNote: slot.notes } : {}),
                       ...(_models.length ? { paymentModels: _models.join(',') } : {}),

@@ -46,7 +46,7 @@ export default function EnquireScreen() {
     room?: string; slotType?: string; duration?: string; capacity?: string;
     slotName?: string; slotNote?: string;
     paymentModels?: string; feeMin?: string; feeMax?: string; paymentMethod?: string;
-    minNotice?: string;
+    minNotice?: string; venueTimezone?: string;
   }>();
 
   // Locked by venue
@@ -162,6 +162,7 @@ export default function EnquireScreen() {
         createdBy:   user.uid,
         submittedAt: new Date().toISOString(),
         additionalInfo: note,
+        ...(params.venueTimezone ? { venueTimezone: params.venueTimezone } : {}),
         requestedSlot: {
           day:       params.day,
           date:      params.date || null,
