@@ -16,6 +16,8 @@ import { Colors } from '@/constants/colors';
 import { type Enquiry } from '@/lib/useEnquiries';
 import { type GigFee, type FeeType, STATE_TZ, dollarsToCents } from '@/lib/gig-types';
 import { confirmGigFromEnquiry, upgradeGigToBooked, SlotConflictError } from '@/lib/useGigs';
+import { fromZonedTime } from 'date-fns-tz';
+import { AddToCalendarButton } from '@/components/AddToCalendarButton';
 
 const isWeb = Platform.OS === 'web';
 
@@ -242,6 +244,7 @@ export default function ConfirmGigScreen() {
   const [submitting,   setSubmitting]   = useState(false);
   const [error,        setError]        = useState<string | null>(null);
   const [done,         setDone]         = useState(false);
+  const [confirmedGigId, setConfirmedGigId] = useState<string | undefined>(undefined);
   const [triedSubmit,  setTriedSubmit]  = useState(false);
 
   useEffect(() => {
@@ -404,7 +407,7 @@ export default function ConfirmGigScreen() {
       if (isUpgrade) {
         await upgradeGigToBooked(enquiry, fee);
       } else {
-        await confirmGigFromEnquiry({
+        const newGigId = await confirmGigFromEnquiry({
           enquiry,
           venueOwnerUid: venueOwnerUid || (user?.uid ?? ''),
           venueDisplayName,
@@ -419,6 +422,7 @@ export default function ConfirmGigScreen() {
           listAsBooked: listAsBooked === 'booked',
           confirmMessage: confirmMsg.trim() || undefined,
         });
+        setConfirmedGigId(newGigId);
       }
       setDone(true);
     } catch (err: any) {
@@ -453,6 +457,22 @@ export default function ConfirmGigScreen() {
             <TouchableOpacity style={cs.doneBtn} onPress={() => router.back()}>
               <Text style={cs.doneBtnText}>Back to inbox</Text>
             </TouchableOpacity>
+            {!isUpgrade && enquiry && localDate && localTime && (() => {
+              const [y, mo, d] = localDate.split('-').map(Number);
+              const [h, mi]    = localTime.split(':').map(Number);
+              const start      = fromZonedTime(new Date(y, mo - 1, d, h, mi, 0, 0), timezone);
+              const end        = new Date(start.getTime() + setLengthMins * 60_000);
+              return (
+                <AddToCalendarButton
+                  startDate={start}
+                  endDate={end}
+                  summary={`${enquiry.bandName} @ ${enquiry.venueName}`}
+                  location={enquiry.venueName}
+                  gigId={confirmedGigId}
+                  timezone={timezone}
+                />
+              );
+            })()}
           </View>
         </View>
       </View>

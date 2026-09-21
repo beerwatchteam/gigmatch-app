@@ -272,6 +272,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Calendar feed tokens ─────────────────────────────────────────────────
+    // Tokens are server-side only (Admin SDK). No client access is permitted.
+    match /calendarFeeds/{token} {
+      allow read, write: if false;
+    }
+
     // ── Admin settings ───────────────────────────────────────────────────────
     match /settings/{docId} {
       allow read:  if true;

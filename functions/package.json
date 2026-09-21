@@ -1,0 +1,20 @@
+{
+  "name": "gigmatch-functions",
+  "private": true,
+  "engines": { "node": "20" },
+  "main": "lib/index.js",
+  "scripts": {
+    "build":  "tsc",
+    "watch":  "tsc --watch",
+    "deploy": "npm run build && firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin":    "^13.4.0",
+    "firebase-functions": "^6.4.0",
+    "ical-generator":    "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript":  "~6.0.3"
+  }
+}

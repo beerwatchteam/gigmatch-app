@@ -36,6 +36,7 @@ import {
 import { doc, getDoc, updateDoc, getDocs, collection, query, where, limit, arrayRemove, addDoc } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
 import { Toast } from '@/components/Toast';
+import { AddToCalendarFromEnquiry } from '@/components/AddToCalendarButton';
 
 /** Fetches and caches a venue's photoUrl for display in artist-side tiles/threads. */
 function useVenuePhoto(venueId: string | null | undefined): string | null {
@@ -2374,6 +2375,34 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
             <TextInput
               style={[ci.input, { color: colors.black }]}
               placeholder={`Message ${who}…`}
+              placeholderTextColor={colors.greyLight}
+              value={chatText}
+              onChangeText={setChatText}
+              multiline
+            />
+            <TouchableOpacity
+              style={[ci.send, !chatText.trim() && ci.sendOff]}
+              onPress={handleSendChat}
+              disabled={!chatText.trim() || submitting}
+            >
+              {submitting
+                ? <ActivityIndicator color="#111111" size="small" />
+                : <Text style={[ci.sendText, !chatText.trim() && ci.sendTextOff]}>↑</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+
+      ) : !isVenue && (enquiry.status === 'confirmed' || enquiry.status === 'accepted') ? (
+        // ── Artist confirmed: add-to-calendar strip above chat input
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <AddToCalendarFromEnquiry enquiry={enquiry} />
+          </View>
+          <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+            <TextInput
+              style={[ci.input, { color: colors.black }]}
+              placeholder="Message…"
               placeholderTextColor={colors.greyLight}
               value={chatText}
               onChangeText={setChatText}

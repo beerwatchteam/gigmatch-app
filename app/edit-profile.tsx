@@ -17,6 +17,7 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
+import { CalendarSync } from '@/components/CalendarSync';
 
 const GENRES    = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const ACT_TYPES   = ['Solo Artist','Duo','Trio','Band','Cover Band','Acoustic Act','DJ','Choir / Vocal Group','Other'];
@@ -792,6 +793,7 @@ export default function EditProfileScreen() {
                   <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>{profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}</View>
                   <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
                 </TouchableOpacity>
+                <CalendarSync />
                 <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
                 <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
                   <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
@@ -1358,6 +1360,7 @@ export default function EditProfileScreen() {
               <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
             </TouchableOpacity>
 
+            <CalendarSync />
             <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
             <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
               <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>

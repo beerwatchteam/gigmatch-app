@@ -155,7 +155,7 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
     // ── WRITES last ──────────────────────────────────────────────────
     tx.set(gigRef, gigData);
     tx.update(venueRef, { slots: newSlots });
-    tx.update(enquiryRef, { status: 'confirmed', gigId, listAsBooked, feeType: fee.type, fee });
+    tx.update(enquiryRef, { status: 'confirmed', gigId, listAsBooked, feeType: fee.type, fee, timezone, 'requestedSlot.date': localDate });
   });
 
   // Best-effort post-transaction side effects

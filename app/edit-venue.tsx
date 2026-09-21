@@ -17,6 +17,7 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
+import { CalendarSync } from '@/components/CalendarSync';
 
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
@@ -1114,6 +1115,7 @@ export default function EditVenueScreen() {
                   <View style={[s.checkbox, { borderColor: colors.border }, data.settings.emailEnquiryReminders && s.checkboxChecked]}>{data.settings.emailEnquiryReminders && <Text style={s.checkmark}>✓</Text>}</View>
                   <Text style={[s.checkLabel, { color: colors.black }]}>Email me enquiry reminders</Text>
                 </TouchableOpacity>
+                <CalendarSync />
                 <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
                 <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
                   <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
@@ -1646,7 +1648,7 @@ export default function EditVenueScreen() {
               <Text style={[s.checkLabel, { color: colors.black }]}>Email me enquiry reminders</Text>
             </TouchableOpacity>
 
-
+            <CalendarSync />
             <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
             <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
               <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>

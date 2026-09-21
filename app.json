@@ -44,6 +44,12 @@
           "cameraPermission": "Twaylo uses your camera to upload images."
         }
       ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Twaylo needs access to your calendar to add confirmed gig events."
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-font",
       "expo-splash-screen"

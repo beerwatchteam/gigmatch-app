@@ -41,3 +41,7 @@ yarn-error.*
 /ios
 /android
 scripts/scripts1serviceAccountKey.json
+
+# Firebase functions build
+functions/lib/
+functions/node_modules/
