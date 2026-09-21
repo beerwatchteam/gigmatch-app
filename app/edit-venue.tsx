@@ -143,7 +143,7 @@ const VENUE_ONBOARDING: Record<number, VenueOnboardingStep> = {
   4: {
     title: 'Timetable',
     body: 'Add your band nights. Set recurring weekly slots or specific one-off dates, room by room.',
-    body2: 'Open slots are what artists browse. The more complete your timetable, the more enquiries you\'ll get.',
+    body2: "Open slots are what artists browse. The more complete your timetable, the more enquiries you'll get. When a booking is confirmed, the gig details including load-in and soundcheck times go straight to the artist's My Gigs.",
     nextLabel: 'Next: Tech Specs',
   },
   5: {

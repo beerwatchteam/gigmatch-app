@@ -544,7 +544,6 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
             )}
           </>
         )}
-      </ScrollView>
 
       {/* Artist gig form modal */}
       {showArtistForm && (
