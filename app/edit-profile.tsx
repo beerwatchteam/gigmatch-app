@@ -60,7 +60,7 @@ const TABS = ['Settings','Basic Info','About','Music','Tech Rider','Payment','Ph
 
 const STEP_TAB: Record<number, string | null> = {
   1: null, 2: 'Basic Info', 3: 'About', 4: 'Music',
-  5: null, 6: 'Tech Rider', 7: 'Payment', 8: 'Photos', 9: 'Photos',
+  5: 'Tech Rider', 6: 'Payment', 7: 'Photos', 8: null, 9: 'Photos',
 };
 
 type OnboardingStepData = {
@@ -95,32 +95,32 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
     title: 'Music',
     body: 'Adds links to your music. This is the most important part of your profile. Venues will listen before they respond.',
     body2: 'Spotify, YouTube, SoundCloud, Bandcamp: anything that lets them hear you immediately. No links means no bookings.',
-    nextLabel: 'Next: My Gigs',
-  },
-  5: {
-    title: 'My Gigs',
-    body: 'Your gig history, upcoming shows, and availability all live in the My Gigs tab.',
-    body2: "Log past performances to build your track record. Mark away periods when you're unavailable. Confirmed bookings from GigMatch appear here automatically and sync to your calendar.",
     nextLabel: 'Next: Tech Rider',
   },
-  6: {
+  5: {
     title: 'Tech Rider',
     body: 'Upload your rider PDF if you have one. It can cover most of the fields. Then fill in the stage setup, hospitality, and logistics details so venues know exactly what to expect.',
     fieldsLabel: 'SECTIONS TO COMPLETE',
     fields: ['Rider PDF (upload)', 'Stage plot (upload)', 'Input list and monitoring', 'Backline needed / brought', 'Hospitality (meals, drinks, green room)', 'Technical (set length, soundcheck, PA)', 'Logistics (load-in, merch, accommodation)'],
     nextLabel: 'Next: Payment',
   },
-  7: {
+  6: {
     title: 'Payment',
     body: 'Let venues know how you prefer to be paid and what to expect upfront. Clear payment terms save back-and-forth later.',
     fieldsLabel: 'COVERS',
     fields: ['Preferred payment methods', 'Typical fee and minimum floor', 'ABN and invoicing details', 'Payment timing expectation', 'Public liability insurance'],
     nextLabel: 'Next: Photos',
   },
-  8: {
+  7: {
     title: 'Photos',
     body: 'Upload photos of your act. Venues use these for promotional material when they confirm a booking, so give them something worth using.',
     body2: "Live shots perform better than studio portraits. Show them what the room will look like when you're on stage.",
+    nextLabel: 'Next: My Gigs',
+  },
+  8: {
+    title: 'My Gigs',
+    body: "One more thing before you go live. My Gigs is its own section in the app, separate from your profile.",
+    body2: "Head there to log past performances, mark away periods when you're unavailable, and track upcoming shows. Confirmed bookings appear there automatically and sync to your calendar.",
     nextLabel: 'Next: Go live',
   },
   9: {
