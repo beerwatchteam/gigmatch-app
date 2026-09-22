@@ -117,8 +117,11 @@ type Musician = {
   upcomingGigs?: GigEntry[];
   feeMin?: number;
   feeMax?: number;
-  payment?: { typicalFee?: string; minimumFee?: string };
+  payment?: { typicalFee?: string; minimumFee?: string; publicLiabilityHeld?: boolean };
   averageDraw?: number;
+  memberCount?: string;
+  setType?: string;
+  ageRestriction?: string;
   backline?: string;
   availability?: string;
   techRider?: {
@@ -1072,6 +1075,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const { user }     = useAuth();
   const { colors }   = useTheme();
   const year         = new Date().getFullYear();
+  const now          = new Date();
 
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/musicians');
 
@@ -1158,11 +1162,10 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
-  // Count confirmed public gigs in the current year
-  const gigsThisYear = mergedPublicGigs.filter(pg => pg.startAt && pg.startAt.toDate().getFullYear() === year).length;
+  // Count confirmed public gigs that have already happened
+  const completedGigs = mergedPublicGigs.filter(pg => pg.startAt && pg.startAt.toDate() < now).length;
 
   const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
-  const minFeeNum = musician.payment?.minimumFee ? parseFloat(musician.payment.minimumFee) : null;
   const feeStr = typicalFeeText
     ? typicalFeeText
     : (musician.feeMin != null || musician.feeMax != null)
@@ -1171,16 +1174,17 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           : musician.feeMin != null
             ? `From $${musician.feeMin.toLocaleString()}`
             : `Up to $${musician.feeMax!.toLocaleString()}`)
-      : minFeeNum != null
-        ? `From $${minFeeNum.toLocaleString()}`
-        : null;
+      : null;
 
   const statsItems = [
-    musician.averageDraw != null ? { value: String(musician.averageDraw), label: 'TYPICAL DRAW' } : null,
-    gigsThisYear > 0             ? { value: String(gigsThisYear),         label: `GIGS IN ${year}` } : null,
-    feeStr                       ? { value: feeStr,                        label: 'FEE'          } : null,
-    musician.actSize             ? { value: musician.actSize,             label: 'ACT SIZE'     } : null,
-    musician.backline            ? { value: musician.backline,            label: 'BACKLINE'     } : null,
+    musician.memberCount              ? { value: musician.memberCount,                   label: 'LINEUP'           } : null,
+    completedGigs > 0                 ? { value: String(completedGigs),                  label: 'GIGS PLAYED'      } : null,
+    feeStr                            ? { value: feeStr,                                 label: 'FEE'              } : null,
+    musician.setType                  ? { value: musician.setType,                       label: 'SET TYPE'         } : null,
+    musician.ageRestriction           ? { value: musician.ageRestriction,                label: 'SUITABILITY'      } : null,
+    musician.payment?.publicLiabilityHeld ? { value: 'Insured',                          label: 'PUBLIC LIABILITY' } : null,
+    musician.actSize                  ? { value: musician.actSize,                       label: 'ACT SIZE'         } : null,
+    musician.backline                 ? { value: musician.backline,                      label: 'BACKLINE'         } : null,
   ].filter(Boolean) as { value: string; label: string }[];
 
   // ── Web desktop dashboard (own profile only) ──────────────────────

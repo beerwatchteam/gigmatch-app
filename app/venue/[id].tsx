@@ -105,6 +105,11 @@ type Venue = {
   genre?: string[];
   genres?: string[];
   genrePreferences?: string[];
+  venueType?: string;
+  ageRestriction?: string;
+  instagram?: string;
+  facebook?: string;
+  verified?: boolean;
   photoUrl?: string;
   photoPosition?: { x: number; y: number };
   photos?: string[];
@@ -118,7 +123,12 @@ type Venue = {
   bookingContact?: { name?: string; email?: string; phone?: string };
   slots?: Record<string, Slot[]>;
   rooms?: Room[];
-  techSpecs?: TechSpecs;
+  techSpecs?: TechSpecs & {
+    wheelchairAccess?: boolean;
+    accessibleBathroom?: boolean;
+    stepFreeStage?: boolean;
+    wheelchairParking?: boolean;
+  };
   gigNights?: GigNight[];
   nightPreferences?: GigNight[];
   payment?: { models?: string[] };
@@ -472,6 +482,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   const [venue, setVenue]               = useState<Venue | null>(null);
   const [loading, setLoading]           = useState(true);
   const [isAgentForVenue, setIsAgentForVenue] = useState(false);
+  const [gigsHosted, setGigsHosted]     = useState(0);
   const [activeTab, setActiveTab] = useState<'overview' | 'timetable' | 'rooms' | 'photos' | 'dashboard' | 'gigs'>(
     tabParam === 'timetable'   ? 'timetable'
     : tabParam === 'rooms'     ? 'rooms'
@@ -496,6 +507,12 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
         where('venueId', '==', id))
     ).then(snap => setIsAgentForVenue(!snap.empty)).catch(() => {});
   }, [user?.uid, id, profile?.type]);
+
+  useEffect(() => {
+    getDocs(query(collection(db, 'inquiries'), where('venueId', '==', id), where('status', '==', 'confirmed')))
+      .then(snap => setGigsHosted(snap.size))
+      .catch(() => {});
+  }, [id]);
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
@@ -641,7 +658,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           <ScrollView style={vd.main} contentContainerStyle={vd.mainContent}>
             <PendingAgentVenueClaims venueId={id} />
             {activeTab === 'overview' && (
-              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} isMyVenue={isMyVenue} />
+              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} isMyVenue={isMyVenue} gigsHosted={gigsHosted} />
             )}
             {activeTab === 'timetable' && (
               <TimetableTab
@@ -687,7 +704,14 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
         <View style={[s.stickyHeader, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
           <View style={[s.headerInfo, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
             <View style={isMobileLayout ? undefined : { flex: 1 }}>
-              <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
+                {venue.verified && (
+                  <View style={s.verifiedBadge}>
+                    <Text style={s.verifiedBadgeText}>Verified</Text>
+                  </View>
+                )}
+              </View>
               {address ? <Text style={[s.address, { color: colors.grey }]}>{address}</Text> : null}
             </View>
             {isMyVenue ? (
@@ -746,7 +770,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
         {/* ── Tab content ── */}
         {activeTab === 'overview' && (
-          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={isMobileLayout} isMyVenue={isMyVenue} />
+          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={isMobileLayout} isMyVenue={isMyVenue} gigsHosted={gigsHosted} />
         )}
         {activeTab === 'timetable' && (
           <TimetableTab
@@ -796,8 +820,8 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
 // ── Overview tab ─────────────────────────────────────────────────────
 
-function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayout, isMyVenue = false }: {
-  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void; isMobileLayout: boolean; isMyVenue?: boolean;
+function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayout, isMyVenue = false, gigsHosted = 0 }: {
+  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void; isMobileLayout: boolean; isMyVenue?: boolean; gigsHosted?: number;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -845,6 +869,9 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
           </View>
         </View>
       )}
+      {venue.venueType ? <StatCard num={venue.venueType} label="Venue type" /> : null}
+      {venue.ageRestriction ? <StatCard num={venue.ageRestriction} label="Entry" /> : null}
+      {gigsHosted > 0 && <StatCard num={gigsHosted} label="Gigs hosted" />}
       {openSlots > 0 && <StatCard num={openSlots} label="Open slots this month" />}
       {recurringSchedule.length > 0 && (
         <View style={[s.thisWeekCard, { borderColor: colors.border }]}>
@@ -868,7 +895,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
   );
 
   const hasBookingContact = !!(venue.bookingContact && (venue.bookingContact.name || venue.bookingContact.email || venue.bookingContact.phone));
-  const hasVenueInfo = !!(venue.phone || venue.email || venue.website);
+  const hasVenueInfo = !!(venue.phone || venue.email || venue.website || venue.instagram || venue.facebook);
   const hasPayment = (venue.payment?.models || []).length > 0;
 
   const main = (
@@ -987,10 +1014,52 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
                   </TouchableOpacity>
                 </View>
               ) : null}
+              {venue.instagram ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Instagram</Text>
+                  <TouchableOpacity onPress={() => {
+                    const raw = venue.instagram!;
+                    const url = raw.startsWith('http') ? raw : `https://www.instagram.com/${raw.replace(/^@/, '')}`;
+                    Linking.openURL(url);
+                  }}>
+                    <Text style={s.link}>Instagram →</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {venue.facebook ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Facebook</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(venue.facebook!)}>
+                    <Text style={s.link}>Facebook →</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </View>
           )}
         </View>
       )}
+
+      {/* Accessibility */}
+      {(() => {
+        const ts = venue.techSpecs;
+        const items: string[] = [];
+        if (ts?.wheelchairAccess)    items.push('Wheelchair access');
+        if (ts?.accessibleBathroom)  items.push('Accessible bathroom');
+        if (ts?.stepFreeStage)       items.push('Step-free stage access');
+        if (ts?.wheelchairParking)   items.push('Wheelchair parking');
+        if (items.length === 0) return null;
+        return (
+          <View style={s.section}>
+            <Text style={[s.sectionTitle, { color: colors.black }]}>Accessibility</Text>
+            {items.map((item, i) => (
+              <View key={i} style={s.accessibilityRow}>
+                <Text style={[s.accessibilityCheck, { color: Colors.orange }]}>✓</Text>
+                <Text style={[s.accessibilityLabel, { color: colors.black }]}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })()}
 
       {isMobileLayout && (
         <TouchableOpacity style={s.timetableBtn} onPress={onGoTimetable}>
@@ -2060,6 +2129,11 @@ const s = StyleSheet.create({
   headerInfo:         { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: isWeb ? 40 : 20, paddingTop: 20, paddingBottom: 12 },
   name:               { fontSize: isWeb ? 32 : 26, fontWeight: '800', color: '#111111', letterSpacing: -0.5, marginBottom: 4 },
   address:            { fontSize: 14, color: '#555555', marginBottom: 10 },
+  verifiedBadge:      { backgroundColor: Colors.orange, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center' },
+  verifiedBadgeText:  { fontSize: 11, fontWeight: '700', color: '#ffffff', letterSpacing: 0.5, textTransform: 'uppercase' },
+  accessibilityRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  accessibilityCheck: { fontSize: 14, fontWeight: '700' },
+  accessibilityLabel: { fontSize: 14 },
   genreRow:           { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   genrePill:          { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
   genreText:          { fontSize: 12, color: Colors.orange, fontWeight: '500' },

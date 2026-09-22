@@ -30,6 +30,8 @@ const PLATFORMS = [
 ];
 const ARTIST_PAY_METHODS = ['Cash', 'Bank transfer', 'PayPal', 'Stripe', 'Other'];
 const ARTIST_PAY_TIMING  = ['On the night', 'Within 7 days', 'Within 14 days', 'Within 30 days', 'Other'];
+const SET_TYPES          = ['Originals', 'Covers', 'Mixed'];
+const AGE_RESTRICTIONS   = ['All ages', '18+', 'Both'];
 
 type ArtistPayment = {
   methods: string[];
@@ -142,6 +144,7 @@ type Profile = {
   name: string; username: string; artistType: string; otherArtistType: string;
   genre: string[]; otherGenres: string; instruments: string[]; location: string;
   email: string; phone: string; feeMin: string; feeMax: string; averageDraw: string;
+  memberCount: string; setType: string; ageRestriction: string;
   about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string;
   customLinks: { label: string; url: string }[];
@@ -156,7 +159,8 @@ type Profile = {
 
 const BLANK: Profile = {
   name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '', instruments: [], location: '', email: '', phone: '',
-  feeMin: '', feeMax: '', averageDraw: '', about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
+  feeMin: '', feeMax: '', averageDraw: '', memberCount: '', setType: '', ageRestriction: '',
+  about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '',
   customLinks: [], songs: [],
   techRider: {}, techRiderDocs: [], techRiderBools: {}, photos: [], videos: [],
@@ -804,16 +808,15 @@ export default function EditProfileScreen() {
                   <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}><Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi /></Field>
                   {profile.genre?.includes('Other') && (<Field label="Other genres"><Input value={profile.otherGenres} onChangeText={(v: string) => set('otherGenres', v)} placeholder="e.g. Bluegrass, Afrobeat, Cumbia" /></Field>)}
                   <Field label="Instruments / What You Play"><Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi /></Field>
+                  <Field label="Lineup / Member Count"><Input value={profile.memberCount} onChangeText={(v: string) => set('memberCount', v)} placeholder="e.g. 4-piece band, Solo + 2 musicians" /></Field>
+                  <Field label="Set Type"><Pills options={SET_TYPES} value={profile.setType} onSelect={(v: string) => set('setType', v)} /></Field>
+                  <Field label="Age Suitability"><Pills options={AGE_RESTRICTIONS} value={profile.ageRestriction} onSelect={(v: string) => set('ageRestriction', v)} /></Field>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
                   <View style={{ marginBottom: 14 }}><SuburbSearch value={profile.location} onChange={(v: string) => set('location', v)} error={showErrors && !profile.location?.trim()} /></View>
                   <View style={{ marginBottom: 14 }}><Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} /></View>
                   <View style={{ marginBottom: 14 }}><Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" /></View>
-                </View>
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Average Draw Per Show</Text>
-                  <Input value={profile.averageDraw} onChangeText={(v: string) => set('averageDraw', v)} placeholder="Avg. audience size (optional), e.g. 120" keyboardType="numeric" />
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Social Links</Text>
@@ -963,10 +966,11 @@ export default function EditProfileScreen() {
                     <Text style={{ fontSize: 14, color: colors.black }}>Merch table required</Text>
                     <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                     <Text style={{ fontSize: 14, color: colors.black }}>Accommodation required</Text>
                     <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
                   </View>
+                  <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Private. Shared with venue only once a booking is in progress.</Text>
                 </View>
 
                 {/* ── Notes ── */}
@@ -985,12 +989,6 @@ export default function EditProfileScreen() {
                   </Field>
                   <Field label="Typical Fee Expectation">
                     <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
-                  </Field>
-                  <Field label="Minimum Fee (optional)">
-                    <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                      <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
-                      <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.minimumFee} onChangeText={(v: string) => setPayment('minimumFee', v)} placeholder="Floor rate" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-                    </View>
                   </Field>
                 </View>
 
@@ -1033,10 +1031,11 @@ export default function EditProfileScreen() {
                 {/* Legal / Compliance */}
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Legal and Compliance</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                     <Text style={{ fontSize: 14, color: colors.black }}>Public Liability Insurance Held</Text>
                     <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
                   </View>
+                  <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Toggle status is public. Coverage amount and certificate details stay private.</Text>
                   {profile.payment.publicLiabilityHeld && (
                     <Field label="Coverage Amount (optional)">
                       <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
@@ -1412,6 +1411,15 @@ export default function EditProfileScreen() {
               <Field label="Instruments / What You Play">
                 <Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi />
               </Field>
+              <Field label="Lineup / Member Count">
+                <Input value={profile.memberCount} onChangeText={(v: string) => set('memberCount', v)} placeholder="e.g. 4-piece band, Solo + 2 musicians" />
+              </Field>
+              <Field label="Set Type">
+                <Pills options={SET_TYPES} value={profile.setType} onSelect={(v: string) => set('setType', v)} />
+              </Field>
+              <Field label="Age Suitability">
+                <Pills options={AGE_RESTRICTIONS} value={profile.ageRestriction} onSelect={(v: string) => set('ageRestriction', v)} />
+              </Field>
             </View>
 
             {/* Contact */}
@@ -1426,17 +1434,6 @@ export default function EditProfileScreen() {
               <View style={{ marginBottom: 14 }}>
                 <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" />
               </View>
-            </View>
-
-            {/* Average Draw */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Average Draw Per Show</Text>
-              <Input
-                value={profile.averageDraw}
-                onChangeText={(v: string) => set('averageDraw', v)}
-                placeholder="Avg. audience size (optional), e.g. 120"
-                keyboardType="numeric"
-              />
             </View>
 
             {/* Social Links */}
@@ -1661,10 +1658,11 @@ export default function EditProfileScreen() {
                 <Text style={{ fontSize: 14, color: colors.black }}>Merch table required</Text>
                 <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Text style={{ fontSize: 14, color: colors.black }}>Accommodation required</Text>
                 <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
               </View>
+              <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Private. Shared with venue only once a booking is in progress.</Text>
             </View>
 
             {/* ── Notes ── */}
@@ -1686,12 +1684,6 @@ export default function EditProfileScreen() {
               </Field>
               <Field label="Typical Fee Expectation">
                 <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
-              </Field>
-              <Field label="Minimum Fee (optional)">
-                <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
-                  <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.minimumFee} onChangeText={(v: string) => setPayment('minimumFee', v)} placeholder="Floor rate" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-                </View>
               </Field>
             </View>
 
@@ -1734,10 +1726,11 @@ export default function EditProfileScreen() {
             {/* Legal / Compliance */}
             <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
               <Text style={[s.sectionTitle, { color: colors.black }]}>Legal and Compliance</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                 <Text style={{ fontSize: 14, color: colors.black }}>Public Liability Insurance Held</Text>
                 <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
               </View>
+              <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Toggle status is public. Coverage amount and certificate details stay private.</Text>
               {profile.payment.publicLiabilityHeld && (
                 <Field label="Coverage Amount (optional)">
                   <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>

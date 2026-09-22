@@ -28,7 +28,9 @@ const PAY_METHODS    = ['Cash','Bank transfer','PayPal','Stripe','Other'];
 const PAY_TIMING     = ['Same night','Within 7 days','Within 14 days','Within 30 days','Other'];
 const BACKLINE_OFFER = ['PA system','Stage monitors','Microphones + stands','Drum kit','Bass amp','Guitar amp','Keys / DI','Lighting rig'];
 const INVOICE_DIRS   = ['Artist invoices venue','Venue issues RCTI to artist','Not required'];
-const PL_OPTIONS     = ['Required','Preferred','Not required'];
+const PL_OPTIONS          = ['Required','Preferred','Not required'];
+const VENUE_TYPES         = ['Live music venue','Pub','Bar','RSL / Club','Theatre','Café','DIY space','Festival site','Other'];
+const VENUE_AGE_RESTRICTIONS = ['All ages','Licensed (18+)','Both'];
 
 type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; backline: string; monitoring: string; power: string; notes: string; documents: { url: string; name: string }[]; _isNew?: boolean };
 type Night = {
@@ -69,7 +71,8 @@ type Payment = {
 type VenueData = {
   id?: string; name: string; streetAddress: string; location: string; suburb: string;
   state: string; postcode: string; phone: string; email: string;
-  website: string; description: string; photoUrl: string;
+  website: string; instagram: string; facebook: string; description: string; photoUrl: string;
+  venueType: string; genrePreferences: string[]; ageRestriction: string;
   latitude: string; longitude: string;
   rooms: Room[]; gigNights: Night[];
   techSpecs: Record<string, any>;
@@ -96,7 +99,8 @@ const BLANK_PAYMENT: Payment = {
 
 const BLANK: VenueData = {
   name: '', streetAddress: '', location: '', suburb: '', state: '', postcode: '',
-  phone: '', email: '', website: '', description: '', photoUrl: '',
+  phone: '', email: '', website: '', instagram: '', facebook: '', description: '', photoUrl: '',
+  venueType: '', genrePreferences: [], ageRestriction: '',
   latitude: '', longitude: '',
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
@@ -1146,6 +1150,9 @@ export default function EditVenueScreen() {
                   <Field label="Venue name *" error={showErrors && !data.name?.trim()}><Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} /></Field>
                   <Field label="Street address *" error={showErrors && !data.streetAddress?.trim()}><Input value={data.streetAddress} onChangeText={(v: string) => set('streetAddress', v)} placeholder="123 Main St" error={showErrors && !data.streetAddress?.trim()} /></Field>
                   <Field label="Location *" error={showErrors && !data.location?.trim()}><SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} /></Field>
+                  <Field label="Venue Type"><Pills options={VENUE_TYPES} value={data.venueType || ''} onSelect={(v: string) => set('venueType', v)} /></Field>
+                  <Field label="Genre Preferences" helper="What styles do you typically book? Artists use this to filter before digging into your timetable."><Pills options={GENRES} value={data.genrePreferences || []} onSelect={(v: string[]) => set('genrePreferences', v)} multi /></Field>
+                  <Field label="Age Restriction"><Pills options={VENUE_AGE_RESTRICTIONS} value={data.ageRestriction || ''} onSelect={(v: string) => set('ageRestriction', v)} /></Field>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Map Coordinates</Text>
@@ -1158,6 +1165,8 @@ export default function EditVenueScreen() {
                   <Field label="Email *" error={showErrors && !data.email?.trim()}><Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !data.email?.trim()} /></Field>
                   <Field label="Phone number *" error={showErrors && !data.phone?.trim()}><Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone *" keyboardType="phone-pad" error={showErrors && !data.phone?.trim()} /></Field>
                   <Field label="Website *" error={showErrors && !data.website?.trim()}><Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="Website *" error={showErrors && !data.website?.trim()} /></Field>
+                  <Field label="Instagram"><Input value={data.instagram || ''} onChangeText={(v: string) => set('instagram', v)} placeholder="Instagram profile or post URL" /></Field>
+                  <Field label="Facebook"><Input value={data.facebook || ''} onChangeText={(v: string) => set('facebook', v)} placeholder="Facebook page URL" /></Field>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Description</Text>
@@ -1310,6 +1319,13 @@ export default function EditVenueScreen() {
                   </TouchableOpacity>
                   {data.techSpecs?.greenRoom && (<Input value={data.techSpecs?.greenRoomDetails || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, greenRoomDetails: v })} placeholder="e.g. shared green room, fridge and couch" />)}
                 </Field>
+                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.sectionTitle, { color: colors.black }]}>Accessibility</Text>
+                  <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, wheelchairAccess: !data.techSpecs?.wheelchairAccess })}><View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.wheelchairAccess && s.checkboxChecked]}>{data.techSpecs?.wheelchairAccess && <Text style={s.checkmark}>✓</Text>}</View><Text style={[s.checkLabel, { color: colors.black }]}>Wheelchair access</Text></TouchableOpacity>
+                  <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, accessibleBathroom: !data.techSpecs?.accessibleBathroom })}><View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.accessibleBathroom && s.checkboxChecked]}>{data.techSpecs?.accessibleBathroom && <Text style={s.checkmark}>✓</Text>}</View><Text style={[s.checkLabel, { color: colors.black }]}>Accessible bathroom</Text></TouchableOpacity>
+                  <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, stepFreeStage: !data.techSpecs?.stepFreeStage })}><View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.stepFreeStage && s.checkboxChecked]}>{data.techSpecs?.stepFreeStage && <Text style={s.checkmark}>✓</Text>}</View><Text style={[s.checkLabel, { color: colors.black }]}>Step-free stage access</Text></TouchableOpacity>
+                  <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, wheelchairParking: !data.techSpecs?.wheelchairParking })}><View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.wheelchairParking && s.checkboxChecked]}>{data.techSpecs?.wheelchairParking && <Text style={s.checkmark}>✓</Text>}</View><Text style={[s.checkLabel, { color: colors.black }]}>Wheelchair parking</Text></TouchableOpacity>
+                </View>
                 <Field label="General Venue Notes"><Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Anything acts should know about the venue in general" multiline /></Field>
               </View>
             )}
@@ -1745,6 +1761,15 @@ export default function EditVenueScreen() {
               <Field label="Location *" error={showErrors && !data.location?.trim()}>
                 <SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} />
               </Field>
+              <Field label="Venue Type">
+                <Pills options={VENUE_TYPES} value={data.venueType || ''} onSelect={(v: string) => set('venueType', v)} />
+              </Field>
+              <Field label="Genre Preferences" helper="What styles do you typically book? Artists use this to filter before digging into your timetable.">
+                <Pills options={GENRES} value={data.genrePreferences || []} onSelect={(v: string[]) => set('genrePreferences', v)} multi />
+              </Field>
+              <Field label="Age Restriction">
+                <Pills options={VENUE_AGE_RESTRICTIONS} value={data.ageRestriction || ''} onSelect={(v: string) => set('ageRestriction', v)} />
+              </Field>
             </View>
 
             {/* Map Coordinates */}
@@ -1770,6 +1795,12 @@ export default function EditVenueScreen() {
               </Field>
               <Field label="Website *" error={showErrors && !data.website?.trim()}>
                 <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="Website *" error={showErrors && !data.website?.trim()} />
+              </Field>
+              <Field label="Instagram">
+                <Input value={data.instagram || ''} onChangeText={(v: string) => set('instagram', v)} placeholder="Instagram profile or post URL" />
+              </Field>
+              <Field label="Facebook">
+                <Input value={data.facebook || ''} onChangeText={(v: string) => set('facebook', v)} placeholder="Facebook page URL" />
               </Field>
             </View>
 
@@ -2053,6 +2084,26 @@ export default function EditVenueScreen() {
                 />
               )}
             </Field>
+
+            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[s.sectionTitle, { color: colors.black }]}>Accessibility</Text>
+              <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, wheelchairAccess: !data.techSpecs?.wheelchairAccess })}>
+                <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.wheelchairAccess && s.checkboxChecked]}>{data.techSpecs?.wheelchairAccess && <Text style={s.checkmark}>✓</Text>}</View>
+                <Text style={[s.checkLabel, { color: colors.black }]}>Wheelchair access</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, accessibleBathroom: !data.techSpecs?.accessibleBathroom })}>
+                <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.accessibleBathroom && s.checkboxChecked]}>{data.techSpecs?.accessibleBathroom && <Text style={s.checkmark}>✓</Text>}</View>
+                <Text style={[s.checkLabel, { color: colors.black }]}>Accessible bathroom</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, stepFreeStage: !data.techSpecs?.stepFreeStage })}>
+                <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.stepFreeStage && s.checkboxChecked]}>{data.techSpecs?.stepFreeStage && <Text style={s.checkmark}>✓</Text>}</View>
+                <Text style={[s.checkLabel, { color: colors.black }]}>Step-free stage access</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.checkRow, { borderBottomWidth: 0, paddingTop: 2 }]} onPress={() => set('techSpecs', { ...data.techSpecs, wheelchairParking: !data.techSpecs?.wheelchairParking })}>
+                <View style={[s.checkbox, { borderColor: colors.border }, data.techSpecs?.wheelchairParking && s.checkboxChecked]}>{data.techSpecs?.wheelchairParking && <Text style={s.checkmark}>✓</Text>}</View>
+                <Text style={[s.checkLabel, { color: colors.black }]}>Wheelchair parking</Text>
+              </TouchableOpacity>
+            </View>
 
             <Field label="General Venue Notes">
               <Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Anything acts should know about the venue in general" multiline />
