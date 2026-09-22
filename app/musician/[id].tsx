@@ -10,6 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { MyGigsContent } from '@/app/(tabs)/gigs';
+import { DashboardContent } from '@/app/dashboard';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -1013,8 +1014,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   const [musician, setMusician]   = useState<Musician | null>(null);
   const [loading, setLoading]     = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable' | 'gigs'>(
-    initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : 'overview'
+  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable' | 'gigs' | 'dashboard'>(
+    initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : initialTab === 'dashboard' ? 'dashboard' : 'overview'
   );
   const [publicGigs, setPublicGigs] = useState<any[]>([]);
 
@@ -1132,15 +1133,16 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             <View style={[dash.divider, { backgroundColor: colors.border }]} />
 
             {([
-              { id: 'overview',  label: 'Overview'       },
-              { id: 'music',     label: 'Music & Social' },
-              { id: 'timetable', label: 'Timetable'      },
-              { id: 'gigs',      label: 'My Gigs'        },
-            ] as const).map(tab => (
+              { id: 'overview',   label: 'Overview'       },
+              { id: 'music',      label: 'Music & Social' },
+              { id: 'timetable',  label: 'Timetable'      },
+              { id: 'gigs',       label: 'My Gigs'        },
+              ...(isOwn ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
+            ] as const).map((tab: { id: string; label: string }) => (
               <TouchableOpacity
                 key={tab.id}
                 style={[dash.navItem, activeTab === tab.id && dash.navItemActive]}
-                onPress={() => setActiveTab(tab.id)}
+                onPress={() => setActiveTab(tab.id as any)}
                 activeOpacity={0.75}
               >
                 <Text style={[dash.navText, { color: activeTab === tab.id ? Colors.orange : colors.black }]}>
@@ -1151,13 +1153,6 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             <View style={[dash.divider, { backgroundColor: colors.border }]} />
 
-            <TouchableOpacity
-              style={[dash.editBtn, { marginBottom: 8 }]}
-              onPress={() => router.push('/dashboard' as any)}
-              activeOpacity={0.85}
-            >
-              <Text style={dash.editBtnText}>Dashboard</Text>
-            </TouchableOpacity>
             <TouchableOpacity
               style={dash.editBtn}
               onPress={() => router.push('/edit-profile')}
@@ -1177,10 +1172,11 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'  && <OverviewTab m={musician} isMobileLayout={false} publicGigs={publicGigs} />}
-            {activeTab === 'music'     && <MusicTab m={musician} />}
-            {activeTab === 'timetable' && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={publicGigs} />}
-            {activeTab === 'gigs'      && <MyGigsContent embedded />}
+            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={publicGigs} />}
+            {activeTab === 'music'      && <MusicTab m={musician} />}
+            {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={publicGigs} />}
+            {activeTab === 'gigs'       && <MyGigsContent embedded />}
+            {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
           </ScrollView>
 
@@ -1232,13 +1228,6 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.outlineBtnText, { color: colors.black }]}>My Gigs</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.outlineBtn, { borderColor: colors.border }]}
-                  onPress={() => router.push('/dashboard' as any)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.outlineBtnText, { color: colors.black }]}>Dashboard</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
@@ -1304,11 +1293,12 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             { id: 'overview',   label: 'Overview'       },
             { id: 'music',      label: 'Music & Social' },
             { id: 'timetable',  label: 'Timetable'      },
-          ] as const).map(tab => (
+            ...(isOwn ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
+          ] as const).map((tab: { id: string; label: string }) => (
             <TouchableOpacity
               key={tab.id}
               style={[styles.tab, activeTab === tab.id && styles.tabActive]}
-              onPress={() => setActiveTab(tab.id)}
+              onPress={() => setActiveTab(tab.id as any)}
             >
               <Text style={[
                 styles.tabText,
@@ -1325,6 +1315,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={publicGigs} />}
         {activeTab === 'music'      && <MusicTab m={musician} />}
         {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={publicGigs} />}
+        {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
         <View style={{ height: 40 }} />
       </ScrollView>

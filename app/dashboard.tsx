@@ -373,10 +373,9 @@ function SectionHeading({ label, colors }: { label: string; colors: any }) {
   );
 }
 
-// ── Main screen ───────────────────────────────────────────────────────────────
+// ── Embeddable content (no header / SafeAreaView) ─────────────────────────────
 
-export default function DashboardScreen() {
-  const router                = useRouter();
+export function DashboardContent() {
   const { user, profile }     = useAuth();
   const { colors }            = useTheme();
   const params                = useLocalSearchParams<{ mode?: string; entityId?: string }>();
@@ -557,16 +556,7 @@ export default function DashboardScreen() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
-      {/* Header */}
-      <View style={[s.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
-          <Text style={[s.backText, { color: colors.black }]}>\u2190 Back</Text>
-        </TouchableOpacity>
-        <Text style={[s.title, { color: colors.black }]}>Dashboard</Text>
-        <View style={s.headerSpacer} />
-      </View>
-
+    <View style={{ flex: 1 }}>
       {/* Agent roster strip */}
       {isAgent && rosterDash && rosterDash.entities.length > 0 && (
         <RosterStrip
@@ -769,6 +759,25 @@ export default function DashboardScreen() {
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+// ── Standalone screen wrapper ─────────────────────────────────────────────────
+
+export default function DashboardScreen() {
+  const router        = useRouter();
+  const { colors }    = useTheme();
+  return (
+    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+      <View style={[s.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
+          <Text style={[s.backText, { color: colors.black }]}>{'\u2190'} Back</Text>
+        </TouchableOpacity>
+        <Text style={[s.title, { color: colors.black }]}>Dashboard</Text>
+        <View style={s.headerSpacer} />
+      </View>
+      <DashboardContent />
     </SafeAreaView>
   );
 }

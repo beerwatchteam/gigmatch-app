@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useArtistEnquiries, type Enquiry } from '@/lib/useEnquiries';
 import { useTheme } from '@/lib/theme-context';
 import { STATE_TZ } from '@/lib/gig-types';
+import { DashboardContent } from '@/app/dashboard';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -470,10 +471,11 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   const [venue, setVenue]               = useState<Venue | null>(null);
   const [loading, setLoading]           = useState(true);
   const [isAgentForVenue, setIsAgentForVenue] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'timetable' | 'rooms' | 'photos'>(
-    tabParam === 'timetable' ? 'timetable'
-    : tabParam === 'rooms'   ? 'rooms'
-    : tabParam === 'photos'  ? 'photos'
+  const [activeTab, setActiveTab] = useState<'overview' | 'timetable' | 'rooms' | 'photos' | 'dashboard'>(
+    tabParam === 'timetable'  ? 'timetable'
+    : tabParam === 'rooms'    ? 'rooms'
+    : tabParam === 'photos'   ? 'photos'
+    : tabParam === 'dashboard' ? 'dashboard'
     : 'overview',
   );
 
@@ -578,7 +580,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
             <View style={[vd.divider, { backgroundColor: colors.border }]} />
 
-            {venueTabs.map(tab => (
+            {[...venueTabs, { id: 'dashboard', label: 'Dashboard' }].map((tab: { id: string; label: string }) => (
               <TouchableOpacity
                 key={tab.id}
                 style={[vd.navItem, activeTab === (tab.id as any) && vd.navItemActive]}
@@ -625,8 +627,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 onEnquire={enquireHandler}
               />
             )}
-            {activeTab === 'rooms'  && <RoomsTab venue={venue} />}
-            {activeTab === 'photos' && <PhotosTab venue={venue} />}
+            {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
+            {activeTab === 'photos'    && <PhotosTab venue={venue} />}
+            {activeTab === 'dashboard' && <DashboardContent />}
             <View style={{ height: 40 }} />
           </ScrollView>
 
@@ -664,9 +667,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
                   <Text style={s.editProfileBtnText}>My Gigs</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/dashboard' as any)}>
-                  <Text style={s.editProfileBtnText}>Dashboard</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                   <Text style={s.editProfileBtnText}>Edit Profile</Text>
                 </TouchableOpacity>
@@ -701,11 +701,12 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               { id: 'timetable', label: 'Timetable' },
               { id: 'rooms',     label: 'Rooms & Tech Specs' },
               ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
-            ] as const).map(tab => (
+              ...(isMyVenue ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
+            ] as const).map((tab: { id: string; label: string }) => (
               <TouchableOpacity
                 key={tab.id}
                 style={[s.tabBtn, activeTab === tab.id && s.tabBtnActive]}
-                onPress={() => setActiveTab(tab.id as 'overview' | 'timetable' | 'rooms' | 'photos')}
+                onPress={() => setActiveTab(tab.id as any)}
               >
                 <Text style={[s.tabText, { color: colors.grey }, activeTab === tab.id && s.tabTextActive]}>
                   {tab.label}
@@ -757,8 +758,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             }}
           />
         )}
-        {activeTab === 'rooms'   && <RoomsTab venue={venue} />}
-        {activeTab === 'photos'  && <PhotosTab venue={venue} />}
+        {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
+        {activeTab === 'photos'    && <PhotosTab venue={venue} />}
+        {activeTab === 'dashboard' && isMyVenue && <DashboardContent />}
 
       </ScrollView>
     </SafeAreaView>
