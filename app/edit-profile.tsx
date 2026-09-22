@@ -60,7 +60,7 @@ const TABS = ['Settings','Basic Info','About','Music','Tech Rider','Payment','Ph
 
 const STEP_TAB: Record<number, string | null> = {
   1: null, 2: 'Basic Info', 3: 'About', 4: 'Music',
-  5: 'Tech Rider', 6: 'Payment', 7: 'Photos', 8: null, 9: 'Photos',
+  5: 'Tech Rider', 6: 'Payment', 7: 'Photos', 8: null, 9: null, 10: 'Photos',
 };
 
 type OnboardingStepData = {
@@ -119,11 +119,17 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
   },
   8: {
     title: 'My Gigs',
-    body: "One more thing before you go live. My Gigs is its own section in the app, separate from your profile.",
-    body2: "Head there to log past performances, mark away periods when you're unavailable, and track upcoming shows. Confirmed bookings appear there automatically and sync to your calendar.",
-    nextLabel: 'Next: Go live',
+    body: "My Gigs is your private gig ledger. Add upcoming shows, past performances, and away periods: they feed into your public profile automatically.",
+    body2: "Upcoming gigs appear on your public Timetable. Past gigs show in the Past Gigs section of your Overview. Away periods also show on your Timetable so venues know when you're unavailable. Confirmed bookings from enquiries appear here too.",
+    nextLabel: 'Next: Dashboard',
   },
   9: {
+    title: 'Dashboard',
+    body: "Your financial snapshot. Track confirmed and pending earnings across any time period: this month, this quarter, this financial year, or a custom range.",
+    body2: "Export a PDF or CSV for your accountant or tax records. Only you can see this. It never appears on your public profile.",
+    nextLabel: 'Next: Go live',
+  },
+  10: {
     title: 'Go Live',
     body: "Your profile is ready. Hit save and you'll appear in the musicians directory.",
     body2: "Venues browse here when they have open slots to fill. Keep your profile current and your music links working.",
@@ -630,7 +636,7 @@ export default function EditProfileScreen() {
   }
 
   function advanceOnboarding() {
-    if (onboardingStep === 9) { finishOnboarding(); return; }
+    if (onboardingStep === 10) { finishOnboarding(); return; }
     const curTab = STEP_TAB[onboardingStep];
     if (curTab) setOnboardingVisited(prev => prev.includes(curTab) ? prev : [...prev, curTab]);
     const next = onboardingStep + 1;
@@ -1089,17 +1095,17 @@ export default function EditProfileScreen() {
           </ScrollView>
 
           {/* ── Onboarding side panel (steps 2-8) ── */}
-          {onboardingStep >= 2 && onboardingStep <= 8 && (() => {
+          {onboardingStep >= 2 && onboardingStep <= 9 && (() => {
             const data = ONBOARDING_DATA[onboardingStep];
             return (
               <View style={[epd.onboardingPanel, { borderLeftColor: colors.border, backgroundColor: colors.bg }]}>
                 <View style={epd.onboardingPanelInner}>
                   <View style={epd.onboardingStepRow}>
-                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                    <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 10</Text>
                     <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                   </View>
                   <View style={epd.onboardingProgress}>
-                    <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 9) * 100}%` as any }]} />
+                    <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 10) * 100}%` as any }]} />
                   </View>
                   <Text style={[epd.onboardingTitle, { color: colors.black }]}>{data.title}</Text>
                   <Text style={epd.onboardingBody}>{data.body}</Text>
@@ -1137,11 +1143,11 @@ export default function EditProfileScreen() {
           <View style={epd.modalOverlay}>
             <View style={[epd.welcomeCard, { backgroundColor: colors.bg }]}>
               <View style={epd.onboardingStepRow}>
-                <Text style={epd.onboardingStepLabel}>STEP 1 OF 9</Text>
+                <Text style={epd.onboardingStepLabel}>STEP 1 OF 10</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[epd.onboardingProgress, { marginBottom: 20 }]}>
-                <View style={[epd.onboardingProgressFill, { width: '11%' as any }]} />
+                <View style={[epd.onboardingProgressFill, { width: '10%' as any }]} />
               </View>
               <Text style={[epd.onboardingTitle, { color: colors.black, fontSize: 22 }]}>Welcome</Text>
               <Text style={[epd.onboardingBody, { marginBottom: 24 }]}>{ONBOARDING_DATA[1].body}</Text>
@@ -1152,20 +1158,20 @@ export default function EditProfileScreen() {
           </View>
         )}
 
-        {/* ── Step 9: Go Live card (bottom-left) ── */}
-        {onboardingStep === 9 && (
+        {/* ── Step 10: Go Live card (bottom-left) ── */}
+        {onboardingStep === 10 && (
           <View style={epd.goLiveCard}>
             <View style={[epd.goLiveCardInner, { backgroundColor: colors.bg }]}>
               <View style={epd.onboardingStepRow}>
-                <Text style={epd.onboardingStepLabel}>STEP 9 OF 9</Text>
+                <Text style={epd.onboardingStepLabel}>STEP 10 OF 10</Text>
                 <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
               </View>
               <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
                 <View style={[epd.onboardingProgressFill, { width: '100%' as any }]} />
               </View>
               <Text style={[epd.onboardingTitle, { color: colors.black }]}>Go Live</Text>
-              <Text style={epd.onboardingBody}>{ONBOARDING_DATA[9].body}</Text>
-              <Text style={[epd.onboardingBody, { marginTop: 8 }]}>{ONBOARDING_DATA[9].body2}</Text>
+              <Text style={epd.onboardingBody}>{ONBOARDING_DATA[10].body}</Text>
+              <Text style={[epd.onboardingBody, { marginTop: 8 }]}>{ONBOARDING_DATA[10].body2}</Text>
               <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
                 <TouchableOpacity style={epd.onboardingNextBtn} onPress={finishOnboarding}>
                   <Text style={epd.onboardingNextBtnText}>Publish my profile</Text>
@@ -1815,7 +1821,7 @@ export default function EditProfileScreen() {
       </ScrollView>
 
       {/* ── Mobile onboarding overlay ── */}
-      {onboardingStep >= 1 && onboardingStep <= 9 && (() => {
+      {onboardingStep >= 1 && onboardingStep <= 10 && (() => {
         const data = ONBOARDING_DATA[onboardingStep];
         const isFirst = onboardingStep === 1;
         return (
@@ -1823,11 +1829,11 @@ export default function EditProfileScreen() {
             <View style={s.mobileOnboardingOverlay}>
               <View style={[s.mobileOnboardingCard, { backgroundColor: colors.bg }]}>
                 <View style={epd.onboardingStepRow}>
-                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 9</Text>
+                  <Text style={epd.onboardingStepLabel}>STEP {onboardingStep} OF 10</Text>
                   <TouchableOpacity onPress={skipOnboarding}><Text style={epd.onboardingSkip}>Skip setup</Text></TouchableOpacity>
                 </View>
                 <View style={[epd.onboardingProgress, { marginBottom: 16 }]}>
-                  <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 9) * 100}%` as any }]} />
+                  <View style={[epd.onboardingProgressFill, { width: `${(onboardingStep / 10) * 100}%` as any }]} />
                 </View>
                 <Text style={[epd.onboardingTitle, { color: colors.black }]}>{data.title}</Text>
                 <Text style={epd.onboardingBody}>{data.body}</Text>
@@ -1844,7 +1850,7 @@ export default function EditProfileScreen() {
                   </View>
                 )}
                 <View style={[epd.onboardingBtns, { marginTop: 20 }]}>
-                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 9 ? finishOnboarding : advanceOnboarding}>
+                  <TouchableOpacity style={epd.onboardingNextBtn} onPress={onboardingStep === 10 ? finishOnboarding : advanceOnboarding}>
                     <Text style={epd.onboardingNextBtnText}>{data.nextLabel}</Text>
                   </TouchableOpacity>
                   {!isFirst && (
