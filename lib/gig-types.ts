@@ -85,6 +85,7 @@ export type Gig = {
   participantIds: string[];
   createdBy: string;
   listAsBooked: boolean;
+  attendance?: number | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 };

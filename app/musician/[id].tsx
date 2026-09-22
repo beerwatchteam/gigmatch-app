@@ -1177,14 +1177,15 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
       : null;
 
   const statsItems = [
-    musician.memberCount              ? { value: musician.memberCount,                   label: 'LINEUP'           } : null,
-    completedGigs > 0                 ? { value: String(completedGigs),                  label: 'GIGS PLAYED'      } : null,
-    feeStr                            ? { value: feeStr,                                 label: 'FEE'              } : null,
-    musician.setType                  ? { value: musician.setType,                       label: 'SET TYPE'         } : null,
-    musician.ageRestriction           ? { value: musician.ageRestriction,                label: 'SUITABILITY'      } : null,
-    musician.payment?.publicLiabilityHeld ? { value: 'Insured',                          label: 'PUBLIC LIABILITY' } : null,
-    musician.actSize                  ? { value: musician.actSize,                       label: 'ACT SIZE'         } : null,
-    musician.backline                 ? { value: musician.backline,                      label: 'BACKLINE'         } : null,
+    musician.memberCount              ? { value: musician.memberCount,                        label: 'LINEUP'           } : null,
+    completedGigs > 0                 ? { value: String(completedGigs),                       label: 'GIGS PLAYED'      } : null,
+    musician.averageDraw != null      ? { value: `~${musician.averageDraw}`,                  label: 'AVG DRAW'         } : null,
+    feeStr                            ? { value: feeStr,                                      label: 'FEE'              } : null,
+    musician.setType                  ? { value: musician.setType,                            label: 'SET TYPE'         } : null,
+    musician.ageRestriction           ? { value: musician.ageRestriction,                     label: 'SUITABILITY'      } : null,
+    musician.payment?.publicLiabilityHeld ? { value: 'Insured',                               label: 'PUBLIC LIABILITY' } : null,
+    musician.actSize                  ? { value: musician.actSize,                            label: 'ACT SIZE'         } : null,
+    musician.backline                 ? { value: musician.backline,                           label: 'BACKLINE'         } : null,
   ].filter(Boolean) as { value: string; label: string }[];
 
   // ── Web desktop dashboard (own profile only) ──────────────────────

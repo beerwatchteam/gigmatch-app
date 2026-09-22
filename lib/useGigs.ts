@@ -1,6 +1,6 @@
 import {
   doc, runTransaction, Timestamp, collection, writeBatch,
-  updateDoc,
+  updateDoc, getDocs, query, where,
 } from 'firebase/firestore';
 import { ref as sRef, deleteObject, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
@@ -658,6 +658,7 @@ export type ArtistGigInput = {
   setLengthMinutes: number | null;
   isPublic: boolean;
   fee?: GigFee;
+  attendance?: number | null;
 };
 
 /**
@@ -720,6 +721,7 @@ export async function createArtistGig({
     participantIds: [artistUid],
     createdBy:      artistUid,
     listAsBooked:   true,  // outside gigs default listAsBooked: true
+    attendance:     input.attendance ?? null,
     createdAt:      now,
     updatedAt:      now,
   };
@@ -782,7 +784,37 @@ export async function updateArtistGig({
       : rawEnd;
   }
 
+  if (input.attendance !== undefined) updates.attendance = input.attendance ?? null;
+
   await updateDoc(gigRef, updates);
+}
+
+/**
+ * Recompute and store the average draw on the artist's bandProfile.
+ * Called after any gig save that includes an attendance value.
+ */
+export async function recomputeAverageDraw(artistUid: string): Promise<void> {
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'gigs'),
+      where('artistUid', '==', artistUid),
+      where('status', '==', 'confirmed'),
+    ));
+    const now = new Date();
+    const values: number[] = [];
+    snap.docs.forEach(d => {
+      const g = d.data() as Gig;
+      const endAt = g.endAt?.toDate() ?? new Date(g.startAt.toDate().getTime() + 3_600_000);
+      if (endAt < now && typeof g.attendance === 'number' && g.attendance > 0) {
+        values.push(g.attendance);
+      }
+    });
+    if (values.length === 0) return;
+    const avg = Math.round(values.reduce((s, v) => s + v, 0) / values.length);
+    await updateDoc(doc(db, 'bandProfiles', artistUid), { averageDraw: avg });
+  } catch {
+    // silent — non-critical
+  }
 }
 
 /**

@@ -20,7 +20,7 @@ import { doc, getDoc, collection, getDocs, query, where, Timestamp } from 'fireb
 import { db } from '@/lib/firebase';
 import {
   createArtistGig, updateArtistGig, setGigPublic, savePrivateGigData,
-  uploadGigDoc, type ArtistGigInput, type UploadProgress,
+  uploadGigDoc, recomputeAverageDraw, type ArtistGigInput, type UploadProgress,
 } from '@/lib/useGigs';
 import {
   STATE_TZ, dollarsToCents, type Gig, type GigPrivateDoc,
@@ -217,6 +217,7 @@ export default function ArtistGigForm({
   const [ticketUrl,      setTicketUrl]      = useState(existingGig?.fee?.ticketUrl ?? '');
   const [ticketPrice,    setTicketPrice]    = useState(existingGig?.fee?.ticketPriceCents ? String(existingGig.fee.ticketPriceCents / 100) : '');
   const [description,    setDescription]    = useState(existingGig?.description ?? '');
+  const [attendance,     setAttendance]     = useState(existingGig?.attendance != null ? String(existingGig.attendance) : '');
 
   // ── Section 2: Visibility ──
   const [isPublic, setIsPublic] = useState(existingGig?.isPublic ?? false);
@@ -237,6 +238,10 @@ export default function ArtistGigForm({
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
   const [showErrors, setShowErrors] = useState(false);
+
+  // Past date detection
+  const today = new Date().toISOString().slice(0, 10);
+  const isPast = !!localDate && localDate < today;
 
   // Date conflict warning
   const otherDates = allGigDates.filter(d => d !== localDate && d === localDate);
@@ -316,8 +321,9 @@ export default function ArtistGigForm({
 
   // ── Validation ──
   function validate(): boolean {
-    if (!title.trim() || !venueName.trim() || !localDate || !localStartTime) return false;
-    if (ticketUrl.trim() && !ticketUrl.trim().startsWith('https://')) return false;
+    if (!title.trim() || !venueName.trim() || !localDate) return false;
+    if (!isPast && !localStartTime) return false;
+    if (!isPast && ticketUrl.trim() && !ticketUrl.trim().startsWith('https://')) return false;
     return true;
   }
 
@@ -327,26 +333,30 @@ export default function ArtistGigForm({
     setError('');
     setSubmitting(true);
     try {
+      const attendanceVal = attendance.trim() ? Math.round(Math.abs(parseFloat(attendance))) : null;
+      const effectiveStartTime = isPast ? (localStartTime || '00:00') : localStartTime;
+
       const input: ArtistGigInput = {
         title:            title.trim(),
         venueName:        venueName.trim(),
         locationText:     locationText.trim() || null,
         state,
         localDate,
-        localStartTime,
-        localEndTime:     localEndTime || null,
-        doorsTime:        doorsTime || null,
-        ticketUrl:        ticketUrl.trim() || null,
-        ticketPriceCents: ticketPrice ? dollarsToCents(ticketPrice) : null,
+        localStartTime:   effectiveStartTime,
+        localEndTime:     (!isPast && localEndTime) ? localEndTime : null,
+        doorsTime:        (!isPast && doorsTime) ? doorsTime : null,
+        ticketUrl:        (!isPast && ticketUrl.trim()) ? ticketUrl.trim() : null,
+        ticketPriceCents: (!isPast && ticketPrice) ? dollarsToCents(ticketPrice) : null,
         description:      description.trim() || null,
         setLengthMinutes: setLength,
         isPublic,
+        attendance:       attendanceVal,
         fee: {
           type:            feeType,
           amountCents:     feeAmount ? dollarsToCents(feeAmount) : null,
           doorPercent:     doorPercent ? parseFloat(doorPercent) : null,
-          ticketPriceCents: ticketPrice ? dollarsToCents(ticketPrice) : null,
-          ticketUrl:        ticketUrl.trim() || null,
+          ticketPriceCents: (!isPast && ticketPrice) ? dollarsToCents(ticketPrice) : null,
+          ticketUrl:        (!isPast && ticketUrl.trim()) ? ticketUrl.trim() : null,
           notes:            feeNotes.trim() || null,
           includesGst:      null,
         },
@@ -368,6 +378,11 @@ export default function ArtistGigForm({
           notes: privateNotes,
           docs:  privateDocs,
         });
+      }
+
+      // Recompute average draw from all past gigs with attendance logged
+      if (attendanceVal != null) {
+        recomputeAverageDraw(artistUid).catch(() => {});
       }
 
       onSaved(savedGigId);
@@ -493,26 +508,30 @@ export default function ArtistGigForm({
             </View>
           )}
 
-          <View style={fi.row}>
-            <View style={fi.half}>
-              <Field label="Start time *" error={showErrors && !localStartTime}>
-                <TimeInput value={localStartTime} onChange={setLocalStartTime} placeholder="HH:MM" />
-              </Field>
-            </View>
-            <View style={fi.half}>
-              <Field label="End time">
-                <TimeInput value={localEndTime} onChange={setLocalEndTime} placeholder="HH:MM" />
-              </Field>
-            </View>
-          </View>
+          {!isPast && (
+            <>
+              <View style={fi.row}>
+                <View style={fi.half}>
+                  <Field label="Start time *" error={showErrors && !localStartTime}>
+                    <TimeInput value={localStartTime} onChange={setLocalStartTime} placeholder="HH:MM" />
+                  </Field>
+                </View>
+                <View style={fi.half}>
+                  <Field label="End time">
+                    <TimeInput value={localEndTime} onChange={setLocalEndTime} placeholder="HH:MM" />
+                  </Field>
+                </View>
+              </View>
 
-          {setLength && setLength > 0 ? (
-            <Text style={[ms.setLength, { color: colors.grey }]}>Set length: {setLength} min</Text>
-          ) : null}
+              {setLength && setLength > 0 ? (
+                <Text style={[ms.setLength, { color: colors.grey }]}>Set length: {setLength} min</Text>
+              ) : null}
 
-          <Field label="Doors time">
-            <TimeInput value={doorsTime} onChange={setDoorsTime} placeholder="HH:MM" />
-          </Field>
+              <Field label="Doors time">
+                <TimeInput value={doorsTime} onChange={setDoorsTime} placeholder="HH:MM" />
+              </Field>
+            </>
+          )}
 
           <Field label="Description">
             <TextInput
@@ -526,33 +545,48 @@ export default function ArtistGigForm({
             />
           </Field>
 
-          <View style={fi.row}>
-            <View style={fi.half}>
-              <Field label="Ticket URL" hint="Must start with https://" error={showErrors && !!ticketUrl && !ticketUrl.startsWith('https://')}>
-                <TextInput
-                  style={fi.input}
-                  value={ticketUrl}
-                  onChangeText={setTicketUrl}
-                  placeholder="https://..."
-                  placeholderTextColor={Colors.greyLight}
-                  autoCapitalize="none"
-                  keyboardType="url"
-                />
-              </Field>
+          {!isPast && (
+            <View style={fi.row}>
+              <View style={fi.half}>
+                <Field label="Ticket URL" hint="Must start with https://" error={showErrors && !!ticketUrl && !ticketUrl.startsWith('https://')}>
+                  <TextInput
+                    style={fi.input}
+                    value={ticketUrl}
+                    onChangeText={setTicketUrl}
+                    placeholder="https://..."
+                    placeholderTextColor={Colors.greyLight}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                </Field>
+              </View>
+              <View style={fi.half}>
+                <Field label="Ticket price ($)">
+                  <TextInput
+                    style={fi.input}
+                    value={ticketPrice}
+                    onChangeText={setTicketPrice}
+                    placeholder="0.00"
+                    placeholderTextColor={Colors.greyLight}
+                    keyboardType="decimal-pad"
+                  />
+                </Field>
+              </View>
             </View>
-            <View style={fi.half}>
-              <Field label="Ticket price ($)">
-                <TextInput
-                  style={fi.input}
-                  value={ticketPrice}
-                  onChangeText={setTicketPrice}
-                  placeholder="0.00"
-                  placeholderTextColor={Colors.greyLight}
-                  keyboardType="decimal-pad"
-                />
-              </Field>
-            </View>
-          </View>
+          )}
+
+          {isPast && (
+            <Field label="Attendance" hint="How many people showed up? This feeds your average draw on your public profile.">
+              <TextInput
+                style={fi.input}
+                value={attendance}
+                onChangeText={setAttendance}
+                placeholder="e.g. 120"
+                placeholderTextColor={Colors.greyLight}
+                keyboardType="number-pad"
+              />
+            </Field>
+          )}
 
           {/* ── Section 2: Public visibility ── */}
           <Text style={[ms.sectionTitle, { color: colors.black }]}>Public profile</Text>
