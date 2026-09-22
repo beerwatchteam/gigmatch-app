@@ -664,6 +664,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
                   <Text style={s.editProfileBtnText}>My Gigs</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/dashboard' as any)}>
+                  <Text style={s.editProfileBtnText}>Dashboard</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                   <Text style={s.editProfileBtnText}>Edit Profile</Text>
                 </TouchableOpacity>

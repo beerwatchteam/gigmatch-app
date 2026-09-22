@@ -1152,6 +1152,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             <View style={[dash.divider, { backgroundColor: colors.border }]} />
 
             <TouchableOpacity
+              style={[dash.editBtn, { marginBottom: 8 }]}
+              onPress={() => router.push('/dashboard' as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={dash.editBtnText}>Dashboard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={dash.editBtn}
               onPress={() => router.push('/edit-profile')}
               activeOpacity={0.85}
@@ -1225,6 +1232,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.outlineBtnText, { color: colors.black }]}>My Gigs</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.outlineBtn, { borderColor: colors.border }]}
+                  onPress={() => router.push('/dashboard' as any)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.outlineBtnText, { color: colors.black }]}>Dashboard</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
