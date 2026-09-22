@@ -1156,18 +1156,15 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
               <Text style={[dash.viewPublicText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
 
-            <View style={[dash.divider, { backgroundColor: colors.border }]} />
-
             {([
               { id: 'overview',   label: 'Overview'       },
               { id: 'music',      label: 'Music & Social' },
               { id: 'timetable',  label: 'Timetable'      },
-              ...(isOwn ? [{ id: 'gigs', label: 'My Gigs' }, { id: 'dashboard', label: 'Dashboard' }] : []),
-            ] as const).map((tab: { id: string; label: string }) => (
+            ] as const).map(tab => (
               <TouchableOpacity
                 key={tab.id}
                 style={[dash.navItem, activeTab === tab.id && dash.navItemActive]}
-                onPress={() => setActiveTab(tab.id as any)}
+                onPress={() => setActiveTab(tab.id)}
                 activeOpacity={0.75}
               >
                 <Text style={[dash.navText, { color: activeTab === tab.id ? Colors.orange : colors.black }]}>
@@ -1175,6 +1172,27 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                 </Text>
               </TouchableOpacity>
             ))}
+
+            {isOwn && (
+              <>
+                <View style={[dash.divider, { backgroundColor: colors.border }]} />
+                {([
+                  { id: 'gigs',      label: 'My Gigs'   },
+                  { id: 'dashboard', label: 'Dashboard'  },
+                ] as const).map(tab => (
+                  <TouchableOpacity
+                    key={tab.id}
+                    style={[dash.navItem, activeTab === tab.id && dash.navItemActive]}
+                    onPress={() => setActiveTab(tab.id)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[dash.navText, { color: activeTab === tab.id ? Colors.orange : colors.black }]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
 
             <View style={[dash.divider, { backgroundColor: colors.border }]} />
 
