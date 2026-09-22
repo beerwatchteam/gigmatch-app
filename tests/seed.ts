@@ -56,6 +56,40 @@ export const VENUES: Record<string, object> = {
   },
 };
 
+// ── Payment fixtures ─────────────────────────────────────────────────────────
+
+/**
+ * Fresh payment map for an enquiry gig (timing 'before').
+ * Satisfies freshPayment() in firestore.rules.
+ */
+export const FRESH_PAYMENT_BEFORE = {
+  timing:               'before' as const,
+  timingProposal:       null,
+  status:               'pending' as const,
+  venueConfirm:         null,
+  artistConfirm:        null,
+  confirmedAmountCents: null,
+  confirmedAt:          null,
+  reminderSentAt:       null,
+  updatedAt:            { _seconds: 1788220800, _nanoseconds: 0 }, // 2026-10-01
+};
+
+/**
+ * Fresh payment map for an enquiry gig (timing 'after').
+ */
+export const FRESH_PAYMENT_AFTER = {
+  ...FRESH_PAYMENT_BEFORE,
+  timing: 'after' as const,
+};
+
+/**
+ * Fresh payment map for single-party gigs (no timing concept).
+ */
+export const FRESH_PAYMENT_SINGLE = {
+  ...FRESH_PAYMENT_BEFORE,
+  timing: null as null,
+};
+
 /** enq1: artistA enquiry against venue v1, Friday 2026-11-14 8:00 PM */
 export const ENQ1 = {
   createdBy:    UID.artistA,
@@ -104,7 +138,8 @@ export const GIG_ENQ1 = {
   loadInTime:    '18:30',
   soundCheckTime: '17:30',
   room:          'Main Room',
-  fee:           { type: 'flat', amountCents: 40000, doorPercent: null, ticketPriceCents: null, ticketUrl: null, notes: null },
+  fee:           { type: 'flat', amountCents: 40000, doorPercent: null, ticketPriceCents: null, ticketUrl: null, notes: null, includesGst: null },
+  payment:       FRESH_PAYMENT_BEFORE,
   participantIds: [UID.artistA, UID.venueOwner1],
   createdBy:     UID.venueOwner1,
   listAsBooked:  true,
@@ -133,7 +168,8 @@ export const GIG_ARTIST_ADDED = {
   loadInTime:    null,
   soundCheckTime: null,
   room:          null,
-  fee:           { type: 'other', amountCents: null, doorPercent: null, ticketPriceCents: null, ticketUrl: null, notes: null },
+  fee:           { type: 'other', amountCents: null, doorPercent: null, ticketPriceCents: null, ticketUrl: null, notes: null, includesGst: null },
+  payment:       FRESH_PAYMENT_SINGLE,
   participantIds: [UID.artistA],
   createdBy:     UID.artistA,
   listAsBooked:  false,
@@ -162,7 +198,8 @@ export const GIG_VENUE_CREATED = {
   loadInTime:    null,
   soundCheckTime: null,
   room:          'Main Room',
-  fee:           { type: 'other', amountCents: null, doorPercent: null, ticketPriceCents: null, ticketUrl: null, notes: null },
+  fee:           { type: 'other', amountCents: null, doorPercent: null, ticketPriceCents: null, ticketUrl: null, notes: null, includesGst: null },
+  payment:       FRESH_PAYMENT_SINGLE,
   participantIds: [UID.venueOwner1],
   createdBy:     UID.venueOwner1,
   listAsBooked:  false,

@@ -6,10 +6,10 @@ const tsJestConfig = {
 };
 
 const TRANSFORM = {
-  '^.+\\.tsx?$': ['ts-jest', tsJestConfig],
+  '^.+\\.[jt]sx?$': ['ts-jest', tsJestConfig],
 };
 
-const TRANSFORM_IGNORE = ['node_modules/(?!(@firebase|firebase)/)'];
+const TRANSFORM_IGNORE = ['node_modules/(?!(@firebase|firebase|jose|jwks-rsa|@panva|oidc-token-hash)/)'];
 
 module.exports = {
   testEnvironment: 'node',

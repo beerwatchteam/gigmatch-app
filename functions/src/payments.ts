@@ -180,14 +180,13 @@ export const confirmPayment = onCall<{ gigId: string; amountCents: number }>(
       const now = Timestamp.now();
       const confirmation: PaymentConfirmation = { amountCents: validCents, at: now, by: uid };
 
-      const updatedPayment: Partial<GigPayment> = {
-        updatedAt: now,
+      // Compute new status
+      const merged: GigPayment = {
+        ...gig.payment,
         ...(isVenue  ? { venueConfirm:  confirmation } : {}),
         ...(isArtist ? { artistConfirm: confirmation } : {}),
+        updatedAt: now,
       };
-
-      // Compute new status
-      const merged: GigPayment = { ...gig.payment, ...updatedPayment };
       const newStatus = computeStatus(merged, gig.fee, gig.participantIds);
 
       let confirmedAmountCents: number | null = null;
@@ -201,12 +200,16 @@ export const confirmPayment = onCall<{ gigId: string; amountCents: number }>(
         confirmedAt = now.toDate() >= otherAt.toDate() ? now : otherAt;
       }
 
-      tx.update(gigRef, {
-        ...updatedPayment,
+      const updateData: Record<string, unknown> = {
+        'payment.updatedAt':            now,
         'payment.status':               newStatus,
         'payment.confirmedAmountCents': confirmedAmountCents,
         'payment.confirmedAt':          confirmedAt,
-      });
+      };
+      if (isVenue)  updateData['payment.venueConfirm']  = confirmation;
+      if (isArtist) updateData['payment.artistConfirm'] = confirmation;
+
+      tx.update(gigRef, updateData);
 
       // System messages (best-effort, after transaction)
       const enquiryId = gig.enquiryId ?? '';
@@ -360,7 +363,7 @@ export const respondPaymentTiming = onCall<{ gigId: string; accept: boolean }>(
       const proposal = gig.payment.timingProposal;
       if (!proposal) throw new HttpsError('failed-precondition', 'No timing proposal to respond to.');
       if (proposal.proposedBy === uid) {
-        throw new HttpsError('failed-precondition', 'Only the other party can respond to this proposal.');
+        throw new HttpsError('permission-denied', 'Only the other party can respond to this proposal.');
       }
 
       const now      = Timestamp.now();

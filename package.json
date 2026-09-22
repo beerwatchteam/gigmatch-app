@@ -51,8 +51,8 @@
     "deploy:functions": "cd functions && npm run deploy",
     "test:unit": "jest --testPathPattern='tests/unit'",
     "test:rules": "firebase emulators:exec --only firestore,auth,storage \"jest --testPathPattern='tests/rules'\"",
-    "test:functions": "npm run build:functions && firebase emulators:exec --only firestore,auth,functions \"jest --testPathPattern='tests/functions'\"",
-    "test:all": "npm run build:functions && firebase emulators:exec --only firestore,auth,storage,functions \"jest\""
+    "test:functions": "npm run build:functions && firebase emulators:exec --only firestore,auth,functions,pubsub \"jest --runInBand --testPathPattern='tests/functions'\"",
+    "test:all": "npm run build:functions && firebase emulators:exec --only firestore,auth,storage,functions,pubsub \"jest --runInBand\""
   },
   "private": true
 }

@@ -20,7 +20,7 @@ import {
   setDoc, doc, getDoc, updateDoc, deleteDoc,
   collection, query, where, getDocs,
 } from 'firebase/firestore';
-import { UID, USERS, GIG_ENQ1, GIG_ARTIST_ADDED, GIG_VENUE_CREATED, ENQ1 } from '../seed';
+import { UID, USERS, GIG_ENQ1, GIG_ARTIST_ADDED, GIG_VENUE_CREATED, ENQ1, FRESH_PAYMENT_BEFORE, FRESH_PAYMENT_AFTER, FRESH_PAYMENT_SINGLE } from '../seed';
 
 const PROJECT_ID = 'gigmatchweb-aus-test-rules';
 const RULES_PATH = resolve(__dirname, '../../firestore.rules');
@@ -106,6 +106,7 @@ test('1 — artistA creates artist_added gig with participantIds [artistA]', asy
       participantIds: [UID.artistA],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
     })
   );
 });
@@ -121,6 +122,7 @@ test('2 — artistA denied: participantIds includes stranger', async () => {
       participantIds: [UID.artistA, UID.stranger],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
     })
   );
 });
@@ -136,6 +138,7 @@ test('3 — artistA denied: createdBy = artistB', async () => {
       participantIds: [UID.artistA],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
     })
   );
 });
@@ -155,6 +158,7 @@ test('4 — venueOwner1 creates enquiry gig with venueId v1, participantIds [art
       participantIds: [UID.artistA, UID.venueOwner1],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_BEFORE,
     })
   );
 });
@@ -170,6 +174,7 @@ test('5 — venueOwner1 denied: participantIds has 3 entries', async () => {
       participantIds: [UID.artistA, UID.venueOwner1, UID.stranger],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_BEFORE,
     })
   );
 });
@@ -185,6 +190,7 @@ test('6 — venueOwner2 denied: creating gig with venueId v1 (not their venue)',
       participantIds: [UID.artistA, UID.venueOwner2],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_BEFORE,
     })
   );
 });
@@ -200,6 +206,7 @@ test('7 — venueOwner1 denied: artistUid = artistB (mismatch with enquiry creat
       participantIds: [UID.artistB, UID.venueOwner1],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_BEFORE,
     })
   );
 });
@@ -217,6 +224,7 @@ test('8 — venueOwner1 creates venue_created gig, isPublic false', async () => 
       participantIds: [UID.venueOwner1],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
     })
   );
 });
@@ -232,6 +240,7 @@ test('9 — venueOwner1 denied: venue_created with isPublic true', async () => {
       participantIds: [UID.venueOwner1],
       isPublic:      true,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
     })
   );
 });
@@ -247,6 +256,7 @@ test('10 — venueOwner1 denied: venue_created with venueId v2', async () => {
       participantIds: [UID.venueOwner1],
       isPublic:      false,
       status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
     })
   );
 });
@@ -380,3 +390,150 @@ test('27 — unauthenticated read publicGigs/* is allowed', async () => {
 });
 
 // Test 28 (calendarFeeds) skipped — only applies once step 2a (calendar feed auth) exists.
+
+// ── Payment rules ─────────────────────────────────────────────────────────────
+
+// Shared base for enquiry gig creates in payment tests
+const BASE_ENQ_GIG = {
+  source:        'enquiry',
+  createdBy:     UID.venueOwner1,
+  venueId:       'v1',
+  venueUid:      UID.venueOwner1,
+  artistUid:     UID.artistA,
+  participantIds: [UID.artistA, UID.venueOwner1],
+  isPublic:      false,
+  status:        'confirmed',
+} as const;
+
+test('28 — venueOwner1 denied: create enquiry gig with payment.status confirmed', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('inquiries').doc('enq-pay-28').set({ ...ENQ1 });
+  });
+  await assertFails(
+    setDoc(doc(db(UID.venueOwner1), 'gigs', 'enq-pay-28'), {
+      ...BASE_ENQ_GIG,
+      payment: { ...FRESH_PAYMENT_BEFORE, status: 'confirmed' },
+    })
+  );
+});
+
+test('29 — venueOwner1 denied: create enquiry gig with non-null venueConfirm', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('inquiries').doc('enq-pay-29').set({ ...ENQ1 });
+  });
+  await assertFails(
+    setDoc(doc(db(UID.venueOwner1), 'gigs', 'enq-pay-29'), {
+      ...BASE_ENQ_GIG,
+      payment: {
+        ...FRESH_PAYMENT_BEFORE,
+        venueConfirm: { amountCents: 40000, at: new Date(), by: UID.venueOwner1 },
+      },
+    })
+  );
+});
+
+test('30 — venueOwner1 allowed: create enquiry gig with fresh payment timing after', async () => {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection('inquiries').doc('enq-pay-30').set({ ...ENQ1 });
+  });
+  await assertSucceeds(
+    setDoc(doc(db(UID.venueOwner1), 'gigs', 'enq-pay-30'), {
+      ...BASE_ENQ_GIG,
+      payment: FRESH_PAYMENT_AFTER,
+    })
+  );
+});
+
+test('31 — artistA denied: update payment.venueConfirm directly on enquiry gig', async () => {
+  await assertFails(
+    updateDoc(doc(db(UID.artistA), 'gigs', 'enq1'), {
+      ...GIG_ENQ1,
+      'payment.venueConfirm': { amountCents: 40000, at: new Date(), by: UID.artistA },
+    })
+  );
+});
+
+test('32 — venueOwner1 denied: update payment.status directly on enquiry gig', async () => {
+  await assertFails(
+    updateDoc(doc(db(UID.venueOwner1), 'gigs', 'enq1'), {
+      ...GIG_ENQ1,
+      'payment.status': 'confirmed',
+    })
+  );
+});
+
+test('33 — venueOwner1 denied: update fee directly on enquiry gig', async () => {
+  await assertFails(
+    updateDoc(doc(db(UID.venueOwner1), 'gigs', 'enq1'), {
+      ...GIG_ENQ1,
+      fee: { ...GIG_ENQ1.fee, amountCents: 50000 },
+    })
+  );
+});
+
+test('34 — artistA allowed: update fee directly on artist_added gig', async () => {
+  await assertSucceeds(
+    updateDoc(doc(db(UID.artistA), 'gigs', 'artist-gig-1'), {
+      ...GIG_ARTIST_ADDED,
+      fee: { ...GIG_ARTIST_ADDED.fee, amountCents: 20000 },
+    })
+  );
+});
+
+test('35 — ordinary edit (toggle isPublic) still passes with payment untouched', async () => {
+  // artistA toggles isPublic true — payment unchanged, should succeed
+  await assertSucceeds(
+    updateDoc(doc(db(UID.artistA), 'gigs', 'enq1'), {
+      ...GIG_ENQ1,
+      isPublic: true,
+    })
+  );
+});
+
+test('36 — re-accept cancelled gig with fresh payment: allow when payment was pending', async () => {
+  // Seed a cancelled enquiry gig with pending payment
+  const gigId = 'enq-reaccept-36';
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db2 = ctx.firestore();
+    await db2.collection('inquiries').doc(gigId).set({ ...ENQ1 });
+    await db2.collection('gigs').doc(gigId).set({
+      ...GIG_ENQ1,
+      status:  'cancelled',
+      payment: FRESH_PAYMENT_BEFORE, // status: pending
+    });
+  });
+  await assertSucceeds(
+    updateDoc(doc(db(UID.venueOwner1), 'gigs', gigId), {
+      ...GIG_ENQ1,
+      status:  'confirmed',
+      payment: FRESH_PAYMENT_AFTER, // fresh, new timing
+    })
+  );
+});
+
+test('37 — re-accept cancelled gig: deny when payment was already confirmed', async () => {
+  const gigId = 'enq-reaccept-37';
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const db2 = ctx.firestore();
+    await db2.collection('inquiries').doc(gigId).set({ ...ENQ1 });
+    await db2.collection('gigs').doc(gigId).set({
+      ...GIG_ENQ1,
+      status: 'cancelled',
+      payment: {
+        ...FRESH_PAYMENT_BEFORE,
+        status:               'confirmed',
+        confirmedAmountCents: 40000,
+        confirmedAt:          new Date(),
+        venueConfirm:  { amountCents: 40000, at: new Date(), by: UID.venueOwner1 },
+        artistConfirm: { amountCents: 40000, at: new Date(), by: UID.artistA },
+      },
+    });
+  });
+  await assertFails(
+    updateDoc(doc(db(UID.venueOwner1), 'gigs', gigId), {
+      ...GIG_ENQ1,
+      status:  'confirmed',
+      payment: FRESH_PAYMENT_BEFORE,
+    })
+  );
+});
