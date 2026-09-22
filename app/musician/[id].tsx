@@ -117,6 +117,7 @@ type Musician = {
   upcomingGigs?: GigEntry[];
   feeMin?: number;
   feeMax?: number;
+  payment?: { typicalFee?: string; minimumFee?: string };
   averageDraw?: number;
   backline?: string;
   availability?: string;
@@ -1160,14 +1161,19 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Count confirmed public gigs in the current year
   const gigsThisYear = mergedPublicGigs.filter(pg => pg.startAt && pg.startAt.toDate().getFullYear() === year).length;
 
-  const hasFee = musician.feeMin != null || musician.feeMax != null;
-  const feeStr = hasFee
-    ? (musician.feeMin != null && musician.feeMax != null
-        ? `$${musician.feeMin.toLocaleString()} – $${musician.feeMax.toLocaleString()}`
-        : musician.feeMin != null
-          ? `From $${musician.feeMin.toLocaleString()}`
-          : `Up to $${musician.feeMax!.toLocaleString()}`)
-    : null;
+  const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
+  const minFeeNum = musician.payment?.minimumFee ? parseFloat(musician.payment.minimumFee) : null;
+  const feeStr = typicalFeeText
+    ? typicalFeeText
+    : (musician.feeMin != null || musician.feeMax != null)
+      ? (musician.feeMin != null && musician.feeMax != null
+          ? `$${musician.feeMin.toLocaleString()} – $${musician.feeMax.toLocaleString()}`
+          : musician.feeMin != null
+            ? `From $${musician.feeMin.toLocaleString()}`
+            : `Up to $${musician.feeMax!.toLocaleString()}`)
+      : minFeeNum != null
+        ? `From $${minFeeNum.toLocaleString()}`
+        : null;
 
   const statsItems = [
     musician.averageDraw != null ? { value: String(musician.averageDraw), label: 'TYPICAL DRAW' } : null,

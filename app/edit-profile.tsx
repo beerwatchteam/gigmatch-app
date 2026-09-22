@@ -82,7 +82,7 @@ const ONBOARDING_DATA: Record<number, OnboardingStepData> = {
     title: 'Basic Info',
     body: 'This is what venues see first. Fill it in properly. A half-finished profile gets ignored.',
     fieldsLabel: 'FIELDS TO COMPLETE',
-    fields: ['Stage name', 'Username', 'Act type (solo, duo, band, DJ, etc.)', 'Genres', 'Instruments / What you play', 'Location', 'Contact details', 'Fee range', 'Average draw', 'Social links'],
+    fields: ['Stage name', 'Username', 'Act type (solo, duo, band, DJ, etc.)', 'Genres', 'Instruments / What you play', 'Location', 'Contact details', 'Average draw', 'Social links'],
     nextLabel: 'Next: About',
   },
   3: {
@@ -812,13 +812,6 @@ export default function EditProfileScreen() {
                   <View style={{ marginBottom: 14 }}><Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" /></View>
                 </View>
                 <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Fee Range</Text>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMin} onChangeText={(v: string) => set('feeMin', v)} placeholder="Min" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
-                    <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}><Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text><TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.feeMax} onChangeText={(v: string) => set('feeMax', v)} placeholder="Max" placeholderTextColor={Colors.greyLight} keyboardType="numeric" /></View>
-                  </View>
-                </View>
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.sectionTitle, { color: colors.black }]}>Average Draw Per Show</Text>
                   <Input value={profile.averageDraw} onChangeText={(v: string) => set('averageDraw', v)} placeholder="Avg. audience size (optional), e.g. 120" keyboardType="numeric" />
                 </View>
@@ -1432,35 +1425,6 @@ export default function EditProfileScreen() {
               </View>
               <View style={{ marginBottom: 14 }}>
                 <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" />
-              </View>
-            </View>
-
-            {/* Fee Range */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Fee Range</Text>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
-                  <TextInput
-                    style={[s.prefixTextInput, { color: colors.black }]}
-                    value={profile.feeMin}
-                    onChangeText={(v: string) => set('feeMin', v)}
-                    placeholder="Min"
-                    placeholderTextColor={Colors.greyLight}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={[s.prefixInput, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
-                  <TextInput
-                    style={[s.prefixTextInput, { color: colors.black }]}
-                    value={profile.feeMax}
-                    onChangeText={(v: string) => set('feeMax', v)}
-                    placeholder="Max"
-                    placeholderTextColor={Colors.greyLight}
-                    keyboardType="numeric"
-                  />
-                </View>
               </View>
             </View>
 
