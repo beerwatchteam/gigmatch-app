@@ -12,7 +12,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { Colors } from '@/constants/colors';
-import { Redirect } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { toZonedTime } from 'date-fns-tz';
 import { type Gig } from '@/lib/gig-types';
 import { cancelVenueGig, deleteArtistGig } from '@/lib/useGigs';
@@ -302,6 +302,7 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
   const { user, profile } = useAuth();
   const { colors }        = useTheme();
   const { width }         = useWindowDimensions();
+  const router            = useRouter();
 
   const [gigs, setGigs]               = useState<GigWithId[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -469,6 +470,12 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
                 <Text style={[s.addBtnText, { color: colors.black }]}>Away</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={[s.addBtn, { backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border }]}
+              onPress={() => router.push('/dashboard' as any)}
+            >
+              <Text style={[s.addBtnText, { color: colors.black }]}>Stats</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={s.addBtn}
               onPress={() => { setEditGig(null); if (isArtist) setShowArtistForm(true); else setShowVenueForm(true); }}

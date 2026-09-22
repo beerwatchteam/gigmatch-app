@@ -273,7 +273,11 @@ service cloud.firestore {
           && (p.get('timing', null) == null || p.timing in ['before', 'after']);
       }
 
-      allow read: if isSignedIn() && (isParticipant() || isAdmin());
+      allow read: if isSignedIn() && (
+        isParticipant() || isAdmin()
+        || (resource.data.artistUid != null && isAgentForArtist(resource.data.artistUid))
+        || (resource.data.venueId   != null && isAgentForVenue(resource.data.venueId))
+      );
 
       allow create: if isSignedIn()
         && request.resource.data.createdBy == request.auth.uid

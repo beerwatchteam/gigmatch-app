@@ -13,6 +13,7 @@ export const UID = {
   venueOwner2: 'venueOwner2-uid',
   stranger:    'stranger-uid',
   admin:       'admin-uid',
+  agent1:      'agent1-uid',
 } as const;
 
 // ── Firestore documents ─────────────────────────────────────────────────────
@@ -24,6 +25,27 @@ export const USERS: Record<string, object> = {
   [UID.venueOwner2]: { type: 'venue',   displayName: 'Venue Owner 2', venueId: 'v2' },
   [UID.stranger]:    { type: 'artist',  displayName: 'Stranger' },
   [UID.admin]:       { type: 'admin',   displayName: 'Admin' },
+  [UID.agent1]:      { type: 'agent',   displayName: 'Agent One' },
+};
+
+// ── Agent roster fixtures ────────────────────────────────────────────────────
+
+/** agentRoster doc linking agent1 -> artistA */
+export const AGENT_ROSTER_ARTIST_A = {
+  agentUid:    UID.agent1,
+  agentName:   'Agent One',
+  artistUid:   UID.artistA,
+  artistName:  'Artist A',
+  approvedAt:  '2026-09-01T00:00:00Z',
+};
+
+/** agentVenueRoster doc linking agent1 -> v1 */
+export const AGENT_VENUE_ROSTER_V1 = {
+  agentUid:   UID.agent1,
+  agentName:  'Agent One',
+  venueId:    'v1',
+  venueName:  'Test Venue 1',
+  approvedAt: '2026-09-01T00:00:00Z',
 };
 
 /** Open Friday 8 PM template slot */

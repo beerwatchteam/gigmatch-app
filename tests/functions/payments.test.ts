@@ -458,9 +458,9 @@ describe('updateGigFee', () => {
     expect(data.payment.artistConfirm).toBeNull();
     expect(data.payment.status).toBe('pending');
 
-    const msg = await waitForMessage('enq-ugf-16', '$400');
+    const msg = await waitForMessage('enq-ugf-16', '$450');
     expect(msg).not.toBeNull();
-    expect(msg!.data().text).toContain('$450');
+    expect(msg!.data().text).toContain('$400'); // "from $400 to $450"
   });
 
   test('5.17 — updateGigFee after confirmed → failed-precondition', async () => {

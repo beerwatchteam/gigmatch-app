@@ -584,13 +584,22 @@ function AgentScreen() {
             <Text style={[agentStyles.headerName, { color: colors.black }]}>{profile?.displayName ?? 'Agent'}</Text>
             {profile?.username ? <Text style={[agentStyles.headerHandle, { color: colors.grey }]}>@{profile.username}</Text> : null}
           </View>
-          <TouchableOpacity
-            style={[agentStyles.logoutBtn, { borderColor: colors.border }]}
-            onPress={async () => { await signOut(auth); router.replace('/'); }}
-            activeOpacity={0.75}
-          >
-            <Text style={[agentStyles.logoutBtnText, { color: colors.grey }]}>Log out</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[agentStyles.logoutBtn, { borderColor: colors.border }]}
+              onPress={() => router.push('/dashboard' as any)}
+              activeOpacity={0.75}
+            >
+              <Text style={[agentStyles.logoutBtnText, { color: colors.grey }]}>Dashboard</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[agentStyles.logoutBtn, { borderColor: colors.border }]}
+              onPress={async () => { await signOut(auth); router.replace('/'); }}
+              activeOpacity={0.75}
+            >
+              <Text style={[agentStyles.logoutBtnText, { color: colors.grey }]}>Log out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Claim sent confirmation */}

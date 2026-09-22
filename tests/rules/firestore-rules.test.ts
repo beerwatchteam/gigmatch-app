@@ -20,7 +20,7 @@ import {
   setDoc, doc, getDoc, updateDoc, deleteDoc,
   collection, query, where, getDocs,
 } from 'firebase/firestore';
-import { UID, USERS, GIG_ENQ1, GIG_ARTIST_ADDED, GIG_VENUE_CREATED, ENQ1, FRESH_PAYMENT_BEFORE, FRESH_PAYMENT_AFTER, FRESH_PAYMENT_SINGLE } from '../seed';
+import { UID, USERS, GIG_ENQ1, GIG_ARTIST_ADDED, GIG_VENUE_CREATED, ENQ1, FRESH_PAYMENT_BEFORE, FRESH_PAYMENT_AFTER, FRESH_PAYMENT_SINGLE, AGENT_ROSTER_ARTIST_A, AGENT_VENUE_ROSTER_V1 } from '../seed';
 
 const PROJECT_ID = 'gigmatchweb-aus-test-rules';
 const RULES_PATH = resolve(__dirname, '../../firestore.rules');
@@ -536,4 +536,109 @@ test('37 — re-accept cancelled gig: deny when payment was already confirmed', 
       payment: FRESH_PAYMENT_BEFORE,
     })
   );
+});
+
+// ── Agent gig read access ─────────────────────────────────────────────────────
+//
+// Tests 38–44 cover the agent branches added to the gigs read rule.
+// Roster docs are seeded per-test using withSecurityRulesDisabled so they can
+// be removed precisely to test revocation (test 42).
+
+async function seedAgentArtistRoster(ctx: any) {
+  await ctx.firestore()
+    .collection('agentRoster')
+    .doc(`${UID.agent1}_${UID.artistA}`)
+    .set(AGENT_ROSTER_ARTIST_A);
+}
+
+async function seedAgentVenueRoster(ctx: any) {
+  await ctx.firestore()
+    .collection('agentVenueRoster')
+    .doc(`${UID.agent1}_v1`)
+    .set(AGENT_VENUE_ROSTER_V1);
+}
+
+test('38 — agent1 reads enquiry gig where artistUid == artistA (artist roster)', async () => {
+  await testEnv.withSecurityRulesDisabled(seedAgentArtistRoster);
+  // GIG_ENQ1 has artistUid = artistA
+  await assertSucceeds(getDoc(doc(db(UID.agent1), 'gigs', 'enq1')));
+});
+
+test('39 — stranger denied: reads enquiry gig (no roster link)', async () => {
+  // No roster docs seeded — stranger has no roster link
+  await assertFails(getDoc(doc(db(UID.stranger), 'gigs', 'enq1')));
+});
+
+test('40 — agent1 reads venue_created gig where venueId == v1 (venue roster)', async () => {
+  await testEnv.withSecurityRulesDisabled(seedAgentVenueRoster);
+  // GIG_VENUE_CREATED has venueId = v1
+  await assertSucceeds(getDoc(doc(db(UID.agent1), 'gigs', 'venue-gig-1')));
+});
+
+test('41 — stranger denied: reads venue_created gig (no roster link)', async () => {
+  await assertFails(getDoc(doc(db(UID.stranger), 'gigs', 'venue-gig-1')));
+});
+
+test('42 — removing roster doc revokes agent1 read access to artist gig', async () => {
+  await testEnv.withSecurityRulesDisabled(seedAgentArtistRoster);
+  // Confirm access before removal
+  await assertSucceeds(getDoc(doc(db(UID.agent1), 'gigs', 'enq1')));
+
+  // Remove the roster doc (simulates agent unclaiming artistA)
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore()
+      .collection('agentRoster')
+      .doc(`${UID.agent1}_${UID.artistA}`)
+      .delete();
+  });
+
+  // Access must now be denied
+  await assertFails(getDoc(doc(db(UID.agent1), 'gigs', 'enq1')));
+});
+
+test('43 — agent1 cannot write (update) a gig belonging to their roster client', async () => {
+  await testEnv.withSecurityRulesDisabled(seedAgentArtistRoster);
+  await assertFails(
+    updateDoc(doc(db(UID.agent1), 'gigs', 'enq1'), { title: 'Agent edit attempt' })
+  );
+});
+
+test('44 — agent1 cannot create a gig', async () => {
+  await testEnv.withSecurityRulesDisabled(seedAgentArtistRoster);
+  await assertFails(
+    setDoc(doc(db(UID.agent1), 'gigs', 'agent-create-attempt'), {
+      source:        'artist_added',
+      createdBy:     UID.agent1,
+      artistUid:     UID.artistA,
+      venueUid:      UID.agent1,
+      venueId:       null,
+      participantIds: [UID.agent1],
+      isPublic:      false,
+      status:        'confirmed',
+      payment:       FRESH_PAYMENT_SINGLE,
+    })
+  );
+});
+
+test('45 — agent1 cannot read gigs/{id}/private/{uid} even with artist roster', async () => {
+  // Seed the roster and a private doc for artistA
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await seedAgentArtistRoster(ctx);
+    await ctx.firestore()
+      .collection('gigs').doc('enq1')
+      .collection('private').doc(UID.artistA)
+      .set({ ownerUid: UID.artistA, notes: 'secret notes', docs: [], updatedAt: new Date() });
+  });
+  // Agent can read the parent gig doc
+  await assertSucceeds(getDoc(doc(db(UID.agent1), 'gigs', 'enq1')));
+  // But cannot read the private subcollection
+  await assertFails(
+    getDoc(doc(db(UID.agent1), 'gigs', 'enq1', 'private', UID.artistA))
+  );
+});
+
+test('46 — agent1 reads artist_added gig where artistUid == artistA (no venueId)', async () => {
+  await testEnv.withSecurityRulesDisabled(seedAgentArtistRoster);
+  // GIG_ARTIST_ADDED has artistUid = artistA, venueId = null
+  await assertSucceeds(getDoc(doc(db(UID.agent1), 'gigs', 'artist-gig-1')));
 });
