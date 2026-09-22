@@ -654,13 +654,13 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
 
 // ── Timetable Tab ─────────────────────────────────────────────────
 
-function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [] }: { m: Musician; isOwn: boolean; isMobileLayout: boolean; publicGigs?: any[] }) {
+function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [], awayPeriods = [] }: { m: Musician; isOwn: boolean; isMobileLayout: boolean; publicGigs?: any[]; awayPeriods?: any[] }) {
   const { colors } = useTheme();
   const today = new Date();
   const [filterTab, setFilterTab]   = useState<'all' | 'gigs' | 'away'>('all');
   const [monthOffset, setMonthOffset] = useState(0);
 
-  const allEntries: EntryItem[] = publicGigs
+  const gigEntries: EntryItem[] = publicGigs
     .filter(pg => !!pg.startAt)
     .map(pg => {
       const d = pg.startAt.toDate();
@@ -673,7 +673,15 @@ function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [] }: { m: Musici
         type: 'gig',
       };
       return { date: d, dateISO: isoDate(d), entry };
-    })
+    });
+
+  const awayEntries: EntryItem[] = awayPeriods.map((p: any) => {
+    const d = new Date(p.from + 'T00:00:00');
+    const entry: GigEntry = { date: p.from, type: 'away', endDate: p.to ?? undefined, notes: p.notes ?? undefined };
+    return { date: d, dateISO: p.from, entry };
+  });
+
+  const allEntries: EntryItem[] = [...gigEntries, ...awayEntries]
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
   const windowStart = new Date(today);
@@ -1017,7 +1025,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable' | 'gigs' | 'dashboard'>(
     initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : initialTab === 'dashboard' ? 'dashboard' : 'overview'
   );
-  const [publicGigs, setPublicGigs] = useState<any[]>([]);
+  const [publicGigs, setPublicGigs]         = useState<any[]>([]);
+  const [artistAddedGigs, setArtistAddedGigs] = useState<any[]>([]);
 
   const isOwn = user?.uid === id;
   const { width } = useWindowDimensions();
@@ -1038,6 +1047,23 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
       setPublicGigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }).catch(() => {});
   }, [id]);
+
+  // Also load self-reported gigs so they appear in the public Timetable and Overview
+  useEffect(() => {
+    getDocs(query(
+      collection(db, 'gigs'),
+      where('artistUid', '==', id),
+      where('source', '==', 'artist_added'),
+    )).then(snap => {
+      setArtistAddedGigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }).catch(() => {});
+  }, [id]);
+
+  // Merge publicGigs + artist-added gigs (deduplicate by id)
+  const mergedPublicGigs = (() => {
+    const ids = new Set(publicGigs.map(g => g.id));
+    return [...publicGigs, ...artistAddedGigs.filter(g => !ids.has(g.id))];
+  })();
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
@@ -1078,7 +1104,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
   // Count confirmed public gigs in the current year
-  const gigsThisYear = publicGigs.filter(pg => pg.startAt && pg.startAt.toDate().getFullYear() === year).length;
+  const gigsThisYear = mergedPublicGigs.filter(pg => pg.startAt && pg.startAt.toDate().getFullYear() === year).length;
 
   const hasFee = musician.feeMin != null || musician.feeMax != null;
   const feeStr = hasFee
@@ -1136,8 +1162,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
               { id: 'overview',   label: 'Overview'       },
               { id: 'music',      label: 'Music & Social' },
               { id: 'timetable',  label: 'Timetable'      },
-              { id: 'gigs',       label: 'My Gigs'        },
-              ...(isOwn ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
+              ...(isOwn ? [{ id: 'gigs', label: 'My Gigs' }, { id: 'dashboard', label: 'Dashboard' }] : []),
             ] as const).map((tab: { id: string; label: string }) => (
               <TouchableOpacity
                 key={tab.id}
@@ -1172,10 +1197,10 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={publicGigs} />}
+            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={mergedPublicGigs} />}
             {activeTab === 'music'      && <MusicTab m={musician} />}
-            {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={publicGigs} />}
-            {activeTab === 'gigs'       && <MyGigsContent embedded />}
+            {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={mergedPublicGigs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+            {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -1312,9 +1337,10 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={publicGigs} />}
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} />}
         {activeTab === 'music'      && <MusicTab m={musician} />}
-        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={publicGigs} />}
+        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+        {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
         <View style={{ height: 40 }} />
