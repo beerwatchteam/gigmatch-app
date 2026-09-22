@@ -405,7 +405,7 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { colors, isDark, toggleDark } = useTheme();
-  const { uid: uidParam } = useLocalSearchParams<{ uid?: string }>();
+  const { uid: uidParam, tab: tabParam } = useLocalSearchParams<{ uid?: string; tab?: string }>();
   const uid = uidParam ?? user?.uid ?? '';
 
   const originalUsername = useRef('');
@@ -415,7 +415,7 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState('Settings');
+  const [activeTab, setActiveTab] = useState(tabParam || 'Settings');
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
   const [photoUploading, setPhotoUploading] = useState(false);

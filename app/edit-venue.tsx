@@ -575,7 +575,7 @@ export default function EditVenueScreen() {
   const router = useRouter();
   const { profile } = useAuth();
   const { colors, isDark, toggleDark } = useTheme();
-  const { agentVenueId } = useLocalSearchParams<{ agentVenueId?: string }>();
+  const { agentVenueId, tab: tabParam } = useLocalSearchParams<{ agentVenueId?: string; tab?: string }>();
   const isAgentEdit = !!agentVenueId && profile?.type === 'agent';
   const venueId = (agentVenueId as string) || (profile?.venueId ?? '');
   const activeTabs = isAgentEdit ? TABS.filter(t => t !== 'Settings') : TABS;
@@ -585,7 +585,7 @@ export default function EditVenueScreen() {
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState(isAgentEdit ? 'Basic Info' : 'Settings');
+  const [activeTab, setActiveTab] = useState(tabParam || (isAgentEdit ? 'Basic Info' : 'Settings'));
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);

@@ -133,8 +133,9 @@ type Musician = {
 
 // ── Overview Tab ──────────────────────────────────────────────────
 
-function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMobileLayout: boolean; publicGigs?: any[] }) {
+function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m: Musician; isMobileLayout: boolean; publicGigs?: any[]; isOwn?: boolean }) {
   const { colors } = useTheme();
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [agentName, setAgentName] = useState<string | null>(null);
 
@@ -144,12 +145,12 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
         if (snap.empty) return;
         const data = snap.docs[0].data();
         if (data.agentName) { setAgentName(data.agentName); return; }
-        // Fallback: look up agent display name from users collection
         const userSnap = await getDoc(doc(db, 'users', data.agentUid));
         setAgentName(userSnap.data()?.displayName ?? null);
       })
       .catch(() => {});
   }, [m.id]);
+
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
   const now            = new Date();
@@ -165,12 +166,26 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
   const hasTechDocs    = !!(m.techRiderDocs && m.techRiderDocs.length > 0);
   const hasSidebar     = hasContact || hasSocials || !!m.availability || hasTechRider || hasTechDocs;
 
+  // Inline "Add +" link to edit-profile tab (owner view only)
+  const addBtn = (tab: string) => (
+    <TouchableOpacity onPress={() => router.push(`/edit-profile?tab=${encodeURIComponent(tab)}` as any)} activeOpacity={0.75}>
+      <Text style={{ color: Colors.orange, fontSize: 12, fontWeight: '700' }}>Add +</Text>
+    </TouchableOpacity>
+  );
+
+  // Section heading row: label left, optional Add+ right
+  const secHead = (label: string, isEmpty: boolean, tab: string, labelStyle?: any) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+      <Text style={[labelStyle ?? styles.sectionLabel, { color: colors.black }]}>{label}</Text>
+      {isOwn && isEmpty && addBtn(tab)}
+    </View>
+  );
 
   const sidebar = (
     <View style={!isMobileLayout ? styles.overviewSidebar : styles.mobileSidebar}>
-      {hasContact && (
+      {(hasContact || isOwn) && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Contact</Text>
+          {secHead('Contact', !hasContact, 'Basic Info', styles.sideSectionLabel)}
           {m.email && (
             <TouchableOpacity onPress={() => Linking.openURL(`mailto:${m.email}`)}>
               <Text style={styles.sideLink}>{m.email}</Text>
@@ -183,9 +198,9 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
           )}
         </View>
       )}
-      {hasSocials && (
+      {(hasSocials || isOwn) && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Socials</Text>
+          {secHead('Socials', !hasSocials, 'Basic Info', styles.sideSectionLabel)}
           {socialLinks.map(p => (
             <TouchableOpacity key={p.key} onPress={() => Linking.openURL((m as any)[p.key])}>
               <Text style={styles.sideLink}>{p.label} →</Text>
@@ -198,15 +213,15 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
           ))}
         </View>
       )}
-      {m.availability && (
+      {(m.availability || isOwn) && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Availability</Text>
-          <Text style={[styles.sideBody, { color: colors.black }]}>{m.availability}</Text>
+          {secHead('Availability', !m.availability, 'Basic Info', styles.sideSectionLabel)}
+          {m.availability && <Text style={[styles.sideBody, { color: colors.black }]}>{m.availability}</Text>}
         </View>
       )}
-      {(hasTechRider || hasTechDocs) && (
+      {(hasTechRider || hasTechDocs || isOwn) && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          <Text style={[styles.sideSectionLabel, { color: colors.black }]}>Tech Rider</Text>
+          {secHead('Tech Rider', !hasTechRider && !hasTechDocs, 'Tech Rider', styles.sideSectionLabel)}
           {m.techRider?.monitoring && (
             <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
               <Text style={{ fontWeight: '700' }}>Monitoring: </Text>{m.techRider.monitoring}
@@ -250,58 +265,67 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
       {agentName ? (
         <Text style={[styles.managedBy, { color: colors.grey }]}>Managed by {agentName}</Text>
       ) : null}
-      {about ? (
+
+      {/* About */}
+      {(about || isOwn) ? (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.black }]}>About</Text>
-          <Text style={[styles.body, { color: colors.black }]}>
-            {shouldTruncate && !expanded ? about.slice(0, MAX_DESC) + '…' : about}
-          </Text>
-          {shouldTruncate && (
-            <TouchableOpacity onPress={() => setExpanded(e => !e)}>
-              <Text style={styles.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
-            </TouchableOpacity>
+          {secHead('About', !about, 'About')}
+          {about ? (
+            <>
+              <Text style={[styles.body, { color: colors.black }]}>
+                {shouldTruncate && !expanded ? about.slice(0, MAX_DESC) + '…' : about}
+              </Text>
+              {shouldTruncate && (
+                <TouchableOpacity onPress={() => setExpanded(e => !e)}>
+                  <Text style={styles.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Past Gigs */}
+      {(gigHistory.length > 0 || isOwn) ? (
+        <View style={styles.section}>
+          {secHead('Past Gigs', gigHistory.length === 0, 'Past Gigs')}
+          {gigHistory.length > 0 && (
+            <>
+              <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
+                <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
+                <Text style={[styles.gigColDraw, styles.gigTableHdr, { color: colors.greyLight }]}>DRAW</Text>
+              </View>
+              {gigHistory.map((gig, i) => (
+                <View key={i} style={[styles.gigTableRow, { borderBottomColor: colors.borderFaint }]}>
+                  <Text style={[styles.gigColVenue, styles.gigCellText, { color: colors.black }]} numberOfLines={1}>{gig.venue || '—'}</Text>
+                  <Text style={[styles.gigColSuburb, styles.gigCellText, { color: colors.grey }]} numberOfLines={1}>{gig.suburb || '—'}</Text>
+                  <Text style={[styles.gigColDraw, styles.gigCellText, { color: colors.black }]}>{gig.attendance ?? '—'}</Text>
+                </View>
+              ))}
+            </>
           )}
         </View>
       ) : null}
 
-      {gigHistory.length > 0 && (
+      {/* Instruments */}
+      {((m.instruments && m.instruments.length > 0) || isOwn) ? (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.black }]}>Past Gigs</Text>
-          <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
-            <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
-            <Text style={[styles.gigColDraw, styles.gigTableHdr, { color: colors.greyLight }]}>DRAW</Text>
-          </View>
-          {gigHistory.map((gig, i) => (
-            <View key={i} style={[styles.gigTableRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[styles.gigColVenue, styles.gigCellText, { color: colors.black }]} numberOfLines={1}>
-                {gig.venue || '—'}
-              </Text>
-              <Text style={[styles.gigColSuburb, styles.gigCellText, { color: colors.grey }]} numberOfLines={1}>
-                {gig.suburb || '—'}
-              </Text>
-              <Text style={[styles.gigColDraw, styles.gigCellText, { color: colors.black }]}>
-                {gig.attendance ?? '—'}
-              </Text>
+          {secHead('Instruments', !(m.instruments && m.instruments.length > 0), 'Basic Info')}
+          {m.instruments && m.instruments.length > 0 && (
+            <View style={styles.genres}>
+              {m.instruments.map(inst => (
+                <View key={inst} style={[styles.genrePill, { borderColor: colors.border }]}>
+                  <Text style={[styles.genreText, { color: colors.black }]}>{inst}</Text>
+                </View>
+              ))}
             </View>
-          ))}
+          )}
         </View>
-      )}
+      ) : null}
 
-      {(m.instruments && m.instruments.length > 0) && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.black }]}>Instruments</Text>
-          <View style={styles.genres}>
-            {m.instruments.map(inst => (
-              <View key={inst} style={[styles.genrePill, { borderColor: colors.border }]}>
-                <Text style={[styles.genreText, { color: colors.black }]}>{inst}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {!about && gigHistory.length === 0 && !(m.instruments && m.instruments.length > 0) && (
+      {/* Public empty state (never shown to owner) */}
+      {!isOwn && !about && gigHistory.length === 0 && !(m.instruments && m.instruments.length > 0) && (
         <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
     </View>
@@ -311,7 +335,7 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
     return (
       <>
         <View style={styles.mobileContent}>{main}</View>
-        {hasSidebar && <View style={styles.mobileContent}>{sidebar}</View>}
+        {(hasSidebar || isOwn) && <View style={styles.mobileContent}>{sidebar}</View>}
       </>
     );
   }
@@ -319,15 +343,16 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [] }: { m: Musician; isMo
   return (
     <View style={styles.overviewLayout}>
       {main}
-      {hasSidebar && <View>{sidebar}</View>}
+      {(hasSidebar || isOwn) && <View>{sidebar}</View>}
     </View>
   );
 }
 
 // ── Music & Social Tab ────────────────────────────────────────────
 
-function MusicTab({ m }: { m: Musician }) {
+function MusicTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
   const { colors } = useTheme();
+  const router = useRouter();
   const songs = (m.songs || []).filter(s => s.title);
 
   const spotifyEmbedUrl = toSpotifyEmbedUrl(m.spotify || '');
@@ -336,21 +361,38 @@ function MusicTab({ m }: { m: Musician }) {
   const spHeight        = spotifyEmbedUrl ? spotifyEmbedHeight(spotifyEmbedUrl) : 0;
 
   const linkItems = [
-    m.instagram  ? { label: 'Instagram',   url: m.instagram                 } : null,
-    m.spotify    ? { label: 'Spotify',     url: m.spotify                   } : null,
-    m.appleMusic ? { label: 'Apple Music', url: m.appleMusic                } : null,
-    m.tiktok     ? { label: 'TikTok',      url: m.tiktok                    } : null,
-    m.website    ? { label: 'Website',     url: m.website                   } : null,
-    m.email      ? { label: 'Email',       url: `mailto:${m.email}`         } : null,
+    m.instagram  ? { label: 'Instagram',   url: m.instagram         } : null,
+    m.spotify    ? { label: 'Spotify',     url: m.spotify           } : null,
+    m.appleMusic ? { label: 'Apple Music', url: m.appleMusic        } : null,
+    m.tiktok     ? { label: 'TikTok',      url: m.tiktok            } : null,
+    m.website    ? { label: 'Website',     url: m.website           } : null,
+    m.email      ? { label: 'Email',       url: `mailto:${m.email}` } : null,
     ...(m.customLinks || []).filter(l => l.label && l.url),
   ].filter(Boolean) as { label: string; url: string }[];
+
+  const hasMusic = songs.length > 0 || !!spotifyEmbedUrl;
+  const hasIg    = !!(igPostUrl || igHandle);
+  const hasLinks = linkItems.length > 0;
+
+  const addBtn = (tab: string) => (
+    <TouchableOpacity onPress={() => router.push(`/edit-profile?tab=${encodeURIComponent(tab)}` as any)} activeOpacity={0.75}>
+      <Text style={{ color: Colors.orange, fontSize: 12, fontWeight: '700' }}>Add +</Text>
+    </TouchableOpacity>
+  );
+
+  const secHead = (label: string, isEmpty: boolean, tab: string) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+      <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>{label}</Text>
+      {isOwn && isEmpty && addBtn(tab)}
+    </View>
+  );
 
   return (
     <View style={styles.tabContent}>
 
       {/* TOP TRACKS */}
       <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>TOP TRACKS</Text>
+        {secHead('TOP TRACKS', !hasMusic, 'Music')}
         {spotifyEmbedUrl && (
           <View style={[styles.embedWrap, { borderColor: colors.border, marginBottom: songs.length > 0 ? 16 : 0 }]}>
             <SpotifyEmbed url={spotifyEmbedUrl} height={spHeight} />
@@ -370,69 +412,62 @@ function MusicTab({ m }: { m: Musician }) {
               </View>
               <Text style={[styles.trackTitle, { color: colors.black }]}>{song.title}</Text>
               <View style={styles.trackMeta}>
-                {song.duration
-                  ? <Text style={[styles.trackDuration, { color: colors.grey }]}>{song.duration}</Text>
-                  : null}
-                {song.url && (
-                  <View style={styles.playBtn}>
-                    <Text style={styles.playBtnText}>▶</Text>
-                  </View>
-                )}
+                {song.duration ? <Text style={[styles.trackDuration, { color: colors.grey }]}>{song.duration}</Text> : null}
+                {song.url && <View style={styles.playBtn}><Text style={styles.playBtnText}>▶</Text></View>}
               </View>
             </TouchableOpacity>
           ))
-        ) : !spotifyEmbedUrl ? (
+        ) : !spotifyEmbedUrl && !isOwn ? (
           <Text style={[styles.emptyState, { color: colors.greyLight }]}>No tracks listed yet.</Text>
         ) : null}
       </View>
 
-      {/* Instagram */}
-      {igPostUrl ? (
+      {/* INSTAGRAM */}
+      {(hasIg || isOwn) && (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>INSTAGRAM</Text>
-          <View style={[styles.embedWrap, { borderColor: colors.border }]}>
-            <InstagramPostEmbed postUrl={igPostUrl} />
-          </View>
-        </View>
-      ) : igHandle ? (
-        <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>INSTAGRAM</Text>
-          <TouchableOpacity
-            style={[styles.igCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
-            onPress={() => Linking.openURL(`https://www.instagram.com/${igHandle}`)}
-            activeOpacity={0.75}
-          >
-            <View style={styles.igCardLeft}>
-              <View style={styles.igAvatar}>
-                <Text style={styles.igAvatarText}>IG</Text>
-              </View>
-              <View>
-                <Text style={[styles.igHandle, { color: colors.black }]}>@{igHandle}</Text>
-                <Text style={[styles.igSub, { color: colors.grey }]}>View profile on Instagram</Text>
-              </View>
+          {secHead('INSTAGRAM', !hasIg, 'Basic Info')}
+          {igPostUrl ? (
+            <View style={[styles.embedWrap, { borderColor: colors.border }]}>
+              <InstagramPostEmbed postUrl={igPostUrl} />
             </View>
-            <Text style={[styles.igArrow, { color: Colors.orange }]}>→</Text>
-          </TouchableOpacity>
+          ) : igHandle ? (
+            <TouchableOpacity
+              style={[styles.igCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
+              onPress={() => Linking.openURL(`https://www.instagram.com/${igHandle}`)}
+              activeOpacity={0.75}
+            >
+              <View style={styles.igCardLeft}>
+                <View style={styles.igAvatar}><Text style={styles.igAvatarText}>IG</Text></View>
+                <View>
+                  <Text style={[styles.igHandle, { color: colors.black }]}>@{igHandle}</Text>
+                  <Text style={[styles.igSub, { color: colors.grey }]}>View profile on Instagram</Text>
+                </View>
+              </View>
+              <Text style={[styles.igArrow, { color: Colors.orange }]}>→</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
-      ) : null}
+      )}
 
       {/* LINKS */}
-      {linkItems.length > 0 && (
+      {(hasLinks || isOwn) && (
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>LINKS</Text>
-          <View style={styles.linksGrid}>
-            {linkItems.map((link, i) => (
-              <TouchableOpacity
-                key={i}
-                style={[styles.linkCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
-                onPress={() => Linking.openURL(link.url)}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.linkCardLabel, { color: colors.black }]}>{link.label}</Text>
-                <Text style={[styles.linkCardArrow, { color: Colors.orange }]}>→</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {secHead('LINKS', !hasLinks, 'Basic Info')}
+          {hasLinks && (
+            <View style={styles.linksGrid}>
+              {linkItems.map((link, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.linkCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
+                  onPress={() => Linking.openURL(link.url)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.linkCardLabel, { color: colors.black }]}>{link.label}</Text>
+                  <Text style={[styles.linkCardArrow, { color: Colors.orange }]}>→</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -656,6 +691,7 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
 
 function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [], awayPeriods = [] }: { m: Musician; isOwn: boolean; isMobileLayout: boolean; publicGigs?: any[]; awayPeriods?: any[] }) {
   const { colors } = useTheme();
+  const router = useRouter();
   const today = new Date();
   const [filterTab, setFilterTab]   = useState<'all' | 'gigs' | 'away'>('all');
   const [monthOffset, setMonthOffset] = useState(0);
@@ -784,9 +820,18 @@ function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [], awayPeriods =
           {/* List area */}
           <View style={mt.listArea}>
             {monthGroups.length === 0 ? (
-              <Text style={[mt.emptyText, { color: colors.grey }]}>
-                {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
-              </Text>
+              allEntries.length === 0 && isOwn ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={[mt.emptyText, { color: colors.grey }]}>No schedule yet.</Text>
+                  <TouchableOpacity onPress={() => router.push('/(tabs)/gigs' as any)} activeOpacity={0.75}>
+                    <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>Add +</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={[mt.emptyText, { color: colors.grey }]}>
+                  {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
+                </Text>
+              )
             ) : (
               monthGroups.map(group => {
                 return (
@@ -864,9 +909,18 @@ function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [], awayPeriods =
         </View>
       </View>
       {monthGroups.length === 0 ? (
-        <Text style={[nmt.emptyText, { color: colors.grey }]}>
-          {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
-        </Text>
+        allEntries.length === 0 && isOwn ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 12 }}>
+            <Text style={[nmt.emptyText, { color: colors.grey }]}>No schedule yet.</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/gigs' as any)} activeOpacity={0.75}>
+              <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>Add +</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={[nmt.emptyText, { color: colors.grey }]}>
+            {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
+          </Text>
+        )
       ) : (
         monthGroups.map(group => (
           <View key={`${group.year}-${group.month}`} style={nmt.monthGroup}>
@@ -1217,8 +1271,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={mergedPublicGigs} />}
-            {activeTab === 'music'      && <MusicTab m={musician} />}
+            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={mergedPublicGigs} isOwn={isOwn} />}
+            {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
             {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={mergedPublicGigs} awayPeriods={(musician as any).awayPeriods ?? []} />}
             {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
@@ -1357,8 +1411,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} />}
-        {activeTab === 'music'      && <MusicTab m={musician} />}
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} isOwn={isOwn} />}
+        {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
         {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} awayPeriods={(musician as any).awayPeriods ?? []} />}
         {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}

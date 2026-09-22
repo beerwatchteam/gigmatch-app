@@ -641,7 +641,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           <ScrollView style={vd.main} contentContainerStyle={vd.mainContent}>
             <PendingAgentVenueClaims venueId={id} />
             {activeTab === 'overview' && (
-              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} />
+              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} isMyVenue={isMyVenue} />
             )}
             {activeTab === 'timetable' && (
               <TimetableTab
@@ -651,6 +651,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 userEnquiries={userEnquiries}
                 isMobileLayout={false}
                 onEnquire={enquireHandler}
+                isMyVenue={isMyVenue}
               />
             )}
             {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
@@ -745,7 +746,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
         {/* ── Tab content ── */}
         {activeTab === 'overview' && (
-          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={isMobileLayout} />
+          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={isMobileLayout} isMyVenue={isMyVenue} />
         )}
         {activeTab === 'timetable' && (
           <TimetableTab
@@ -754,6 +755,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             isLoggedIn={!!user}
             userEnquiries={userEnquiries}
             isMobileLayout={isMobileLayout}
+            isMyVenue={isMyVenue}
             onEnquire={(slot, day, dateISO) => {
               if (!user) { router.push('/login'); return; }
               const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
@@ -794,10 +796,11 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
 // ── Overview tab ─────────────────────────────────────────────────────
 
-function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayout }: {
-  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void; isMobileLayout: boolean;
+function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayout, isMyVenue = false }: {
+  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void; isMobileLayout: boolean; isMyVenue?: boolean;
 }) {
   const { colors } = useTheme();
+  const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const desc = venue.description || '';
   const shouldTruncate = desc.length > MAX_DESC;
@@ -818,9 +821,30 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
   const typicalFee = fmtFee(venue.feeMin, venue.feeMax);
 
+  const addBtn = (tab: string) => (
+    <TouchableOpacity onPress={() => router.push(`/edit-venue?tab=${encodeURIComponent(tab)}` as any)} activeOpacity={0.75}>
+      <Text style={{ color: Colors.orange, fontSize: 12, fontWeight: '700' }}>Add +</Text>
+    </TouchableOpacity>
+  );
+
+  const secHead = (label: string, isEmpty: boolean, tab: string, labelStyle?: any) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <Text style={labelStyle ?? [s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2 }]}>{label}</Text>
+      {isMyVenue && isEmpty && addBtn(tab)}
+    </View>
+  );
+
   const sidebar = (
     <View style={!isMobileLayout ? s.overviewSidebar : s.overviewSidebarMobile}>
       {(venue.capacity ?? 0) > 0 && <StatCard num={Number(venue.capacity).toLocaleString()} label="Capacity" />}
+      {isMyVenue && (venue.capacity ?? 0) === 0 && (
+        <View style={[s.statCard, { borderColor: colors.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={[s.statLabel, { color: colors.grey }]}>Capacity</Text>
+            {addBtn('Basic Info')}
+          </View>
+        </View>
+      )}
       {openSlots > 0 && <StatCard num={openSlots} label="Open slots this month" />}
       {recurringSchedule.length > 0 && (
         <View style={[s.thisWeekCard, { borderColor: colors.border }]}>
@@ -843,116 +867,130 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
     </View>
   );
 
+  const hasBookingContact = !!(venue.bookingContact && (venue.bookingContact.name || venue.bookingContact.email || venue.bookingContact.phone));
+  const hasVenueInfo = !!(venue.phone || venue.email || venue.website);
+  const hasPayment = (venue.payment?.models || []).length > 0;
+
   const main = (
     <View style={!isMobileLayout ? s.overviewMain : null}>
 
-      {/* Description */}
-      {desc ? (
+      {/* Description / About */}
+      {(desc || isMyVenue) && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>About</Text>
-          <Text style={[s.body, { color: colors.black }]}>
-            {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '…' : desc}
-          </Text>
-          {shouldTruncate && (
-            <TouchableOpacity onPress={() => setExpanded(e => !e)} style={{ marginTop: 6 }}>
-              <Text style={s.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
-            </TouchableOpacity>
-          )}
+          {secHead('About', !desc, 'Basic Info')}
+          {desc ? (
+            <>
+              <Text style={[s.body, { color: colors.black }]}>
+                {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '…' : desc}
+              </Text>
+              {shouldTruncate && (
+                <TouchableOpacity onPress={() => setExpanded(e => !e)} style={{ marginTop: 6 }}>
+                  <Text style={s.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : null}
         </View>
-      ) : null}
+      )}
+
+      {/* Genre Preferences */}
+      {(genres.length > 0 || isMyVenue) && (
+        <View style={s.section}>
+          {secHead('Genre Preferences', genres.length === 0, 'Basic Info')}
+          {genres.length > 0 && <Text style={s.genreOrangeText}>{genres.join(' · ')}</Text>}
+        </View>
+      )}
 
       {/* Payment */}
-      {(venue.payment?.models || []).length > 0 && (
+      {(hasPayment || isMyVenue) && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Payment</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {Array.from(
-              new Map(
-                (venue.payment!.models!).map((model) => {
-                  const label = /^set.?fee$/i.test(model.trim()) ? 'Flat fee' : model;
-                  return [label, model] as [string, string];
-                })
-              ).entries()
-            ).map(([label, key]) => (
-              <View key={key} style={[s.genrePill, { borderColor: colors.border }]}>
-                <Text style={[s.genreText, { color: colors.black }]}>{label}</Text>
-              </View>
-            ))}
-          </View>
+          {secHead('Payment', !hasPayment, 'Payments')}
+          {hasPayment && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {Array.from(
+                new Map(
+                  (venue.payment!.models!).map((model) => {
+                    const label = /^set.?fee$/i.test(model.trim()) ? 'Flat fee' : model;
+                    return [label, model] as [string, string];
+                  })
+                ).entries()
+              ).map(([label, key]) => (
+                <View key={key} style={[s.genrePill, { borderColor: colors.border }]}>
+                  <Text style={[s.genreText, { color: colors.black }]}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
       {/* Booking Contact */}
-      {venue.bookingContact && (venue.bookingContact.name || venue.bookingContact.email || venue.bookingContact.phone) ? (
+      {(hasBookingContact || isMyVenue) && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.grey }]}>Booking Contact</Text>
-          <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
-            {venue.bookingContact.name ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Name</Text>
-                <Text style={[s.infoValue, { color: colors.black }]}>{venue.bookingContact.name}</Text>
-              </View>
-            ) : null}
-            {venue.bookingContact.email ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.bookingContact!.email}`)}>
-                  <Text style={s.link}>{venue.bookingContact.email}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            {venue.bookingContact.phone ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.bookingContact!.phone}`)}>
-                  <Text style={s.link}>{venue.bookingContact.phone}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
+          {secHead('Booking Contact', !hasBookingContact, 'Basic Info', [s.sectionTitle, { color: colors.grey }])}
+          {hasBookingContact && (
+            <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
+              {venue.bookingContact!.name ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Name</Text>
+                  <Text style={[s.infoValue, { color: colors.black }]}>{venue.bookingContact!.name}</Text>
+                </View>
+              ) : null}
+              {venue.bookingContact!.email ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.bookingContact!.email}`)}>
+                    <Text style={s.link}>{venue.bookingContact!.email}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {venue.bookingContact!.phone ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.bookingContact!.phone}`)}>
+                    <Text style={s.link}>{venue.bookingContact!.phone}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
-      ) : null}
-
-
-      {genres.length > 0 ? (
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Genre Preferences</Text>
-          <Text style={s.genreOrangeText}>{genres.join(' · ')}</Text>
-        </View>
-      ) : null}
+      )}
 
       {/* Venue Info */}
-      {(venue.phone || venue.email || venue.website) ? (
+      {(hasVenueInfo || isMyVenue) && (
         <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Venue Info</Text>
-          <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
-            {venue.phone ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.phone}`)}>
-                  <Text style={s.link}>{venue.phone}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            {venue.email ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.email}`)}>
-                  <Text style={s.link}>{venue.email}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-            {venue.website ? (
-              <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                <Text style={[s.infoLabel, { color: colors.grey }]}>Website</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(venue.website!)}>
-                  <Text style={s.link}>{venue.website}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
+          {secHead('Venue Info', !hasVenueInfo, 'Basic Info')}
+          {hasVenueInfo && (
+            <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
+              {venue.phone ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.phone}`)}>
+                    <Text style={s.link}>{venue.phone}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {venue.email ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.email}`)}>
+                    <Text style={s.link}>{venue.email}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {venue.website ? (
+                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[s.infoLabel, { color: colors.grey }]}>Website</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(venue.website!)}>
+                    <Text style={s.link}>{venue.website}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
-      ) : null}
+      )}
 
       {isMobileLayout && (
         <TouchableOpacity style={s.timetableBtn} onPress={onGoTimetable}>
@@ -981,15 +1019,17 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
 // ── Timetable tab ────────────────────────────────────────────────────
 
-function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, isMobileLayout }: {
+function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, isMobileLayout, isMyVenue = false }: {
   venue: Venue;
   isArtist: boolean;
   isLoggedIn: boolean;
   userEnquiries: Enquiry[];
   onEnquire: (slot: Slot, day: string, dateISO?: string) => void;
   isMobileLayout: boolean;
+  isMyVenue?: boolean;
 }) {
   const { colors } = useTheme();
+  const router = useRouter();
   const today = new Date();
 
   // Web state
@@ -1138,7 +1178,16 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
           {/* Right: slot list */}
           <View style={lv.listArea}>
             {monthGroups.length === 0 ? (
-              <Text style={[lv.emptyText, { color: colors.grey }]}>No slots to show.</Text>
+              allUpcoming.length === 0 && isMyVenue ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={[lv.emptyText, { color: colors.grey }]}>No slots added yet.</Text>
+                  <TouchableOpacity onPress={() => router.push('/edit-venue?tab=Timetable' as any)} activeOpacity={0.75}>
+                    <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>Add +</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={[lv.emptyText, { color: colors.grey }]}>No slots to show.</Text>
+              )
             ) : (
               monthGroups.map(group => {
                 const openCount = group.items.filter(i => i.slot.status === 'open').length;
@@ -1281,9 +1330,18 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
 
       {/* Slot list grouped by month */}
       <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 40 }}>
-        {nativeMonthGroups.length === 0
-          ? <View style={s.noSlots}><Text style={[s.noSlotsText, { color: colors.grey }]}>No slots to show.</Text></View>
-          : nativeMonthGroups.map(group => (
+        {nativeMonthGroups.length === 0 ? (
+          allUpcomingNative.length === 0 && isMyVenue ? (
+            <View style={[s.noSlots, { flexDirection: 'row', alignItems: 'center', gap: 10 }]}>
+              <Text style={[s.noSlotsText, { color: colors.grey }]}>No slots added yet.</Text>
+              <TouchableOpacity onPress={() => router.push('/edit-venue?tab=Timetable' as any)} activeOpacity={0.75}>
+                <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>Add +</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={s.noSlots}><Text style={[s.noSlotsText, { color: colors.grey }]}>No slots to show.</Text></View>
+          )
+        ) : nativeMonthGroups.map(group => (
               <View key={`${group.year}-${group.month}`} style={{ marginBottom: 24 }}>
                 <Text style={[nt.monthLabel, { color: colors.grey }]}>
                   {LONG_MONTHS[group.month].toUpperCase()} {group.year}
