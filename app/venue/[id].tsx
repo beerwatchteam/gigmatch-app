@@ -16,6 +16,7 @@ import { useArtistEnquiries, type Enquiry } from '@/lib/useEnquiries';
 import { useTheme } from '@/lib/theme-context';
 import { STATE_TZ } from '@/lib/gig-types';
 import { DashboardContent } from '@/app/dashboard';
+import { MyGigsContent } from '@/app/(tabs)/gigs';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -471,11 +472,12 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   const [venue, setVenue]               = useState<Venue | null>(null);
   const [loading, setLoading]           = useState(true);
   const [isAgentForVenue, setIsAgentForVenue] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'timetable' | 'rooms' | 'photos' | 'dashboard'>(
-    tabParam === 'timetable'  ? 'timetable'
-    : tabParam === 'rooms'    ? 'rooms'
-    : tabParam === 'photos'   ? 'photos'
+  const [activeTab, setActiveTab] = useState<'overview' | 'timetable' | 'rooms' | 'photos' | 'dashboard' | 'gigs'>(
+    tabParam === 'timetable'   ? 'timetable'
+    : tabParam === 'rooms'     ? 'rooms'
+    : tabParam === 'photos'    ? 'photos'
     : tabParam === 'dashboard' ? 'dashboard'
+    : tabParam === 'gigs'      ? 'gigs'
     : 'overview',
   );
 
@@ -522,6 +524,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
     { id: 'timetable', label: 'Timetable'          },
     { id: 'rooms',     label: 'Rooms & Tech Specs' },
     ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
+    ...(isMyVenue ? [{ id: 'gigs', label: 'My Gigs' }] : []),
   ] as const;
 
   // ── Web desktop dashboard (venue owner only) ──────────────────────
@@ -629,6 +632,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             )}
             {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
             {activeTab === 'photos'    && <PhotosTab venue={venue} />}
+            {activeTab === 'gigs'      && <MyGigsContent embedded />}
             {activeTab === 'dashboard' && <DashboardContent />}
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -664,9 +668,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             </View>
             {isMyVenue ? (
               <View style={{ flexDirection: 'row', gap: 8, marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4, flexWrap: 'wrap' }}>
-                <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
-                  <Text style={s.editProfileBtnText}>My Gigs</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                   <Text style={s.editProfileBtnText}>Edit Profile</Text>
                 </TouchableOpacity>
@@ -701,7 +702,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               { id: 'timetable', label: 'Timetable' },
               { id: 'rooms',     label: 'Rooms & Tech Specs' },
               ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
-              ...(isMyVenue ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
+              ...(isMyVenue ? [{ id: 'gigs', label: 'My Gigs' }, { id: 'dashboard', label: 'Dashboard' }] : []),
             ] as const).map((tab: { id: string; label: string }) => (
               <TouchableOpacity
                 key={tab.id}
@@ -760,6 +761,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
         )}
         {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
         {activeTab === 'photos'    && <PhotosTab venue={venue} />}
+        {activeTab === 'gigs'      && isMyVenue && <MyGigsContent embedded />}
         {activeTab === 'dashboard' && isMyVenue && <DashboardContent />}
 
       </ScrollView>

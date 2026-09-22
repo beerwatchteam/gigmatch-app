@@ -471,12 +471,6 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              style={[s.addBtn, { backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border }]}
-              onPress={() => router.push('/dashboard' as any)}
-            >
-              <Text style={[s.addBtnText, { color: colors.black }]}>Stats</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={s.addBtn}
               onPress={() => { setEditGig(null); if (isArtist) setShowArtistForm(true); else setShowVenueForm(true); }}
             >
@@ -517,7 +511,7 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
             <SectionHeader title="Past" count={past.length} colors={colors} />
             {past.length === 0 ? (
               <Text style={[s.empty, { color: colors.grey }]}>
-                No past gigs yet.{isArtist ? ' Use "+ Add gig" above and pick any past date.' : ''}
+                No past gigs yet. Use "+ Add gig" above and pick any past date.
               </Text>
             ) : (
               past.map(g => (
