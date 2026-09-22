@@ -581,9 +581,32 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               <Text style={[vd.viewPublicText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
 
+            <View style={{ height: 12 }} />
+
+            {([
+              { id: 'overview',  label: 'Overview'           },
+              { id: 'timetable', label: 'Timetable'          },
+              { id: 'rooms',     label: 'Rooms & Tech Specs' },
+              ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
+            ] as const).map((tab: { id: string; label: string }) => (
+              <TouchableOpacity
+                key={tab.id}
+                style={[vd.navItem, activeTab === (tab.id as any) && vd.navItemActive]}
+                onPress={() => setActiveTab(tab.id as any)}
+                activeOpacity={0.75}
+              >
+                <Text style={[vd.navText, { color: activeTab === (tab.id as any) ? Colors.orange : colors.black }]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
             <View style={[vd.divider, { backgroundColor: colors.border }]} />
 
-            {[...venueTabs, { id: 'dashboard', label: 'Dashboard' }].map((tab: { id: string; label: string }) => (
+            {([
+              { id: 'gigs',      label: 'My Gigs'   },
+              { id: 'dashboard', label: 'Dashboard'  },
+            ] as const).map(tab => (
               <TouchableOpacity
                 key={tab.id}
                 style={[vd.navItem, activeTab === (tab.id as any) && vd.navItemActive]}

@@ -1156,6 +1156,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
               <Text style={[dash.viewPublicText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
 
+            <View style={{ height: 12 }} />
+
             {([
               { id: 'overview',   label: 'Overview'       },
               { id: 'music',      label: 'Music & Social' },
