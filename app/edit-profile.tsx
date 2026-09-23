@@ -168,19 +168,52 @@ const BLANK: Profile = {
   settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
 };
 
-function Field({ label, error, children }: { label: string; error?: boolean; children: React.ReactNode }) {
+// ── FieldRow: two-column label + control layout with divider ────────────
+function FieldRow({ label, sublabel, children, last, error }: {
+  label: string; sublabel?: string; children: React.ReactNode; last?: boolean; error?: boolean;
+}) {
+  const { colors } = useTheme();
   return (
-    <View style={f.wrap}>
-      <Text style={[f.label, error && { color: Colors.danger }]}>{label}</Text>
+    <>
+      <View style={fr.row}>
+        <View style={fr.labelCol}>
+          <Text style={[fr.label, { color: error ? Colors.danger : colors.black }]}>{label}</Text>
+          {sublabel ? <Text style={[fr.sublabel, { color: colors.grey }]}>{sublabel}</Text> : null}
+        </View>
+        <View style={fr.controlCol}>{children}</View>
+      </View>
+      {!last && <View style={[fr.divider, { backgroundColor: colors.border }]} />}
+    </>
+  );
+}
+const fr = StyleSheet.create({
+  row:        { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14, alignItems: 'flex-start', gap: 12 },
+  labelCol:   { flex: 2, paddingTop: 2 },
+  label:      { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  sublabel:   { fontSize: 12, lineHeight: 17, marginTop: 3 },
+  controlCol: { flex: 3 },
+  divider:    { height: 1, marginHorizontal: 16 },
+});
+
+// ── SectionCard: bordered card with a titled header ────────────────────
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[sc.card, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+      <View style={[sc.header, { borderBottomColor: colors.border }]}>
+        <Text style={[sc.title, { color: colors.black }]}>{title}</Text>
+      </View>
       {children}
     </View>
   );
 }
-const f = StyleSheet.create({
-  wrap:  { marginBottom: 14 },
-  label: { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+const sc = StyleSheet.create({
+  card:   { borderWidth: 1, borderRadius: 14, marginBottom: 16 },
+  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
+  title:  { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
 });
 
+// ── Input ───────────────────────────────────────────────────────────────
 function Input({ value, onChangeText, placeholder, multiline, keyboardType, error, secureTextEntry }: any) {
   const { colors } = useTheme();
   return (
@@ -200,6 +233,7 @@ function Input({ value, onChangeText, placeholder, multiline, keyboardType, erro
   );
 }
 
+// ── Pills: active pills use a solid dark fill ───────────────────────────
 function Pills({ options, value, onSelect, multi }: { options: string[]; value: string | string[]; onSelect: (v: any) => void; multi?: boolean }) {
   const { colors } = useTheme();
   return (
@@ -207,15 +241,19 @@ function Pills({ options, value, onSelect, multi }: { options: string[]; value: 
       {options.map(opt => {
         const active = multi ? (value as string[]).includes(opt) : value === opt;
         return (
-          <TouchableOpacity key={opt} style={[s.pill, { borderColor: colors.border }, active && s.pillActive]} onPress={() => {
-            if (multi) {
-              const arr = value as string[];
-              onSelect(active ? arr.filter(x => x !== opt) : [...arr, opt]);
-            } else {
-              onSelect(opt);
-            }
-          }}>
-            <Text style={[s.pillText, { color: colors.black }, active && s.pillTextActive]}>{opt}</Text>
+          <TouchableOpacity
+            key={opt}
+            style={[s.pill, { borderColor: active ? colors.black : colors.border, backgroundColor: active ? colors.black : 'transparent' }]}
+            onPress={() => {
+              if (multi) {
+                const arr = value as string[];
+                onSelect(active ? arr.filter(x => x !== opt) : [...arr, opt]);
+              } else {
+                onSelect(opt);
+              }
+            }}
+          >
+            <Text style={[s.pillText, { color: active ? colors.bg : colors.black }]}>{opt}</Text>
           </TouchableOpacity>
         );
       })}
@@ -278,7 +316,6 @@ function SuburbSearch({ value, onChange, error }: { value: string; onChange: (v:
   );
 }
 
-// Cross-platform confirm dialog (Alert.alert is a no-op on web)
 function crossConfirm(title: string, message: string, onConfirm: () => void, destructive = false) {
   if (Platform.OS === 'web') {
     if ((window as any).confirm(`${title}\n\n${message}`)) onConfirm();
@@ -473,14 +510,12 @@ export default function EditProfileScreen() {
     setProfile(prev => ({ ...prev, techRiderBools: { ...prev.techRiderBools, [field]: value } }));
   }
 
-  // ── Songs ──
   function setSong(i: number, field: keyof Song, val: string) {
     setProfile(prev => ({ ...prev, songs: prev.songs.map((s, idx) => idx === i ? { ...s, [field]: val } : s) }));
   }
   function addSong() { setProfile(prev => ({ ...prev, songs: [...prev.songs, { title: '', url: '', notes: '' }] })); }
   function removeSong(i: number) { setProfile(prev => ({ ...prev, songs: prev.songs.filter((_, idx) => idx !== i) })); }
 
-  // ── Photo upload ──
   async function pickBannerPhoto() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (result.canceled || !result.assets[0]) return;
@@ -516,7 +551,6 @@ export default function EditProfileScreen() {
     }
   }
 
-  // ── Document (spec sheet) upload ──
   async function pickDocument() {
     const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf'], copyToCacheDirectory: true });
     if (result.canceled || !result.assets?.[0]) return;
@@ -537,7 +571,6 @@ export default function EditProfileScreen() {
     }
   }
 
-  // ── Stage plot image upload ──
   async function pickStagePlot() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
     if (result.canceled || !result.assets[0]) return;
@@ -557,7 +590,6 @@ export default function EditProfileScreen() {
     }
   }
 
-  // ── Save ──
   async function handleSave() {
     setShowErrors(true);
     const errors: string[] = [];
@@ -573,7 +605,6 @@ export default function EditProfileScreen() {
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
 
-    // Username uniqueness check if it changed
     const newUsername = profile.username.trim().toLowerCase();
     if (newUsername !== originalUsername.current) {
       const [bpSnap, uSnap] = await Promise.all([
@@ -599,7 +630,6 @@ export default function EditProfileScreen() {
         averageDraw: toNum(profile.averageDraw),
       };
       await setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true });
-      // Also update username in users doc
       await updateDoc(doc(db, 'users', uid), { username: newUsername });
       originalUsername.current = newUsername;
       setSaved(profile);
@@ -676,14 +706,617 @@ export default function EditProfileScreen() {
     setOnboardingStep(1);
   }
 
-  const errStyle = (bad: boolean) => bad ? { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' } : {};
   const isWeb = Platform.OS === 'web';
   const { width } = useWindowDimensions();
   const isMobileLayout = !isWeb || width < 768;
 
+  // ── Tab page header meta ─────────────────────────────────────────────
+  const TAB_META: Record<string, { title: string; desc: string }> = {
+    'Settings':   { title: 'Settings',   desc: 'Manage your notifications, account, and privacy.' },
+    'Basic Info': { title: 'Basic info', desc: 'The first thing venues see when they find you. Complete profiles are shown higher in search.' },
+    'About':      { title: 'About',      desc: 'Tell venues who you are, what you sound like, and why they should book you.' },
+    'Music':      { title: 'Music',      desc: 'Add links to your tracks. Venues will listen before they respond.' },
+    'Tech Rider': { title: 'Tech rider', desc: 'Upload your rider and fill in your stage requirements so venues can assess your act before they reply.' },
+    'Payment':    { title: 'Payment',    desc: 'Let venues know how you prefer to be paid. Clear terms save back-and-forth later.' },
+    'Photos':     { title: 'Photos',     desc: 'Upload photos of your act for venues and promotional use.' },
+  };
+
+  // ── Shared tab content renderers ────────────────────────────────────
+
+  function renderPageHeader(tab: string) {
+    const meta = TAB_META[tab];
+    if (!meta) return null;
+    return (
+      <View style={ns.pageHeader}>
+        <Text style={[ns.pageTitle, { color: colors.black }]}>{meta.title}</Text>
+        <Text style={[ns.pageDesc, { color: colors.grey }]}>{meta.desc}</Text>
+      </View>
+    );
+  }
+
+  function renderSettings() {
+    return (
+      <View>
+        {renderPageHeader('Settings')}
+
+        <SectionCard title="Notifications">
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}
+          >
+            <FieldRow label="Enquiry responses" sublabel="Email when a venue responds to an enquiry.">
+              <View style={{ alignItems: 'flex-end' }}>
+                <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnEnquiryResponse && s.checkboxChecked]}>
+                  {profile.settings.emailOnEnquiryResponse && <Text style={s.checkmark}>✓</Text>}
+                </View>
+              </View>
+            </FieldRow>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => set('settings', { ...profile.settings, emailOnNewConnection: !profile.settings.emailOnNewConnection })}
+          >
+            <FieldRow label="New connections" sublabel="Email when you receive a new connection." last>
+              <View style={{ alignItems: 'flex-end' }}>
+                <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>
+                  {profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}
+                </View>
+              </View>
+            </FieldRow>
+          </TouchableOpacity>
+        </SectionCard>
+
+        <CalendarSync />
+
+        <SectionCard title="Account">
+          <FieldRow label="Dark mode" sublabel="Switch between light and dark themes.">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={isDark} onValueChange={toggleDark} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Log out" last>
+            <TouchableOpacity onPress={async () => { await signOut(auth); router.replace('/'); }}>
+              <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '600', textAlign: 'right' }}>Log out</Text>
+            </TouchableOpacity>
+          </FieldRow>
+        </SectionCard>
+
+        <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
+          <Text style={s.dangerTitle}>Danger Zone</Text>
+          <Text style={[s.dangerDesc, { color: colors.black }]}>
+            Deactivating your listing will hide it from all venues browsing the app. This action can be reversed at any time.
+          </Text>
+          <TouchableOpacity
+            style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]}
+            onPress={() => {
+              const willDeactivate = profile.settings.listed;
+              crossConfirm(
+                willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?',
+                willDeactivate
+                  ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
+                  : 'This will make your profile visible to venues again.',
+                async () => {
+                  const uid = user?.uid;
+                  if (!uid) return;
+                  const newListed = !willDeactivate;
+                  await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed });
+                  set('settings', { ...profile.settings, listed: newListed });
+                },
+                willDeactivate,
+              );
+            }}
+          >
+            <Text style={s.dangerBtnText}>
+              {profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>
+            Permanently delete your profile and account. This action cannot be undone.
+          </Text>
+          <TouchableOpacity
+            style={[s.dangerBtn, s.dangerBtnActive]}
+            onPress={() => {
+              crossConfirm(
+                'Delete Account',
+                'This will permanently delete your profile and account from the database. This action cannot be undone.',
+                async () => {
+                  try {
+                    const uid = user?.uid;
+                    if (uid) {
+                      await deleteDoc(doc(db, 'bandProfiles', uid));
+                      await deleteDoc(doc(db, 'users', uid));
+                    }
+                    const cu = auth.currentUser;
+                    if (cu) await deleteUser(cu);
+                  } catch (e: any) {
+                    Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
+                  } finally {
+                    await signOut(auth).catch(() => {});
+                    router.replace('/');
+                  }
+                },
+                true,
+              );
+            }}
+          >
+            <Text style={s.dangerBtnText}>Delete Account</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  function renderBasicInfo() {
+    return (
+      <View>
+        {renderPageHeader('Basic Info')}
+
+        <SectionCard title="Identity">
+          <FieldRow
+            label="Profile photo"
+            sublabel="Square, at least 800x800px."
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              {photoUploading ? (
+                <View style={ns.photoThumb}><ActivityIndicator color={Colors.orange} /></View>
+              ) : profile.photoUrl ? (
+                <Image source={{ uri: profile.photoUrl }} style={ns.photoThumb} resizeMode="cover" />
+              ) : (
+                <View style={[ns.photoThumb, { backgroundColor: colors.bgFaint, alignItems: 'center', justifyContent: 'center' }]}>
+                  <Text style={{ fontSize: 10, color: Colors.greyLight }}>photo</Text>
+                </View>
+              )}
+              <TouchableOpacity style={ns.replaceBtn} onPress={pickBannerPhoto} activeOpacity={0.75}>
+                <Text style={[ns.replaceBtnText, { color: colors.black }]}>Replace</Text>
+              </TouchableOpacity>
+              {profile.photoUrl ? (
+                <TouchableOpacity onPress={() => set('photoUrl', '')}>
+                  <Text style={{ fontSize: 14, color: Colors.grey }}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </FieldRow>
+
+          <FieldRow
+            label="Stage name"
+            sublabel="How venues and fans see you."
+            error={showErrors && !profile.name?.trim()}
+          >
+            <Input
+              value={profile.name}
+              onChangeText={(v: string) => set('name', v)}
+              placeholder="Your stage name"
+              error={showErrors && !profile.name?.trim()}
+            />
+          </FieldRow>
+
+          <FieldRow
+            label="Username"
+            sublabel="Your public profile URL."
+            error={showErrors && !profile.username?.trim()}
+          >
+            <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: showErrors && !profile.username?.trim() ? Colors.danger : colors.border }]}>
+              <Text style={[s.prefixSymbol, { color: colors.grey }]}>gigmatch.app/</Text>
+              <TextInput
+                style={[s.prefixTextInput, { color: colors.black }]}
+                value={profile.username}
+                onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))}
+                placeholder="username"
+                placeholderTextColor={Colors.greyLight}
+                autoCapitalize="none"
+              />
+            </View>
+          </FieldRow>
+
+          <FieldRow label="Act type" error={showErrors && !profile.artistType?.trim()}>
+            <Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} />
+          </FieldRow>
+
+          {profile.artistType === 'Other' && (
+            <FieldRow label="Describe your act" error={showErrors && !profile.otherArtistType?.trim()}>
+              <Input value={profile.otherArtistType} onChangeText={(v: string) => set('otherArtistType', v)} placeholder="e.g. Acapella Group, String Quartet" error={showErrors && !profile.otherArtistType?.trim()} />
+            </FieldRow>
+          )}
+
+          <FieldRow
+            label="Genres"
+            sublabel="Pick up to 3. Used to match you with venues."
+            error={showErrors && !(profile.genre?.length > 0)}
+          >
+            <Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi />
+          </FieldRow>
+
+          {profile.genre?.includes('Other') && (
+            <FieldRow label="Other genres">
+              <Input value={profile.otherGenres} onChangeText={(v: string) => set('otherGenres', v)} placeholder="e.g. Bluegrass, Afrobeat, Cumbia" />
+            </FieldRow>
+          )}
+
+          <FieldRow label="Instruments" sublabel="What the act plays on stage.">
+            <Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi />
+          </FieldRow>
+
+          <FieldRow label="Lineup" sublabel="Number and formation of your act.">
+            <Input value={profile.memberCount} onChangeText={(v: string) => set('memberCount', v)} placeholder="e.g. 4-piece band, Solo + 2 musicians" />
+          </FieldRow>
+
+          <FieldRow label="Set type">
+            <Pills options={SET_TYPES} value={profile.setType} onSelect={(v: string) => set('setType', v)} />
+          </FieldRow>
+
+          <FieldRow label="Age suitability" last>
+            <Pills options={AGE_RESTRICTIONS} value={profile.ageRestriction} onSelect={(v: string) => set('ageRestriction', v)} />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Contact">
+          <FieldRow label="Location" sublabel="Your base suburb or city." error={showErrors && !profile.location?.trim()}>
+            <SuburbSearch value={profile.location} onChange={(v: string) => set('location', v)} error={showErrors && !profile.location?.trim()} />
+          </FieldRow>
+          <FieldRow label="Email" sublabel="For booking enquiries." error={showErrors && !profile.email?.trim()}>
+            <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="your@email.com" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
+          </FieldRow>
+          <FieldRow label="Phone" sublabel="Optional. Not shown publicly." last>
+            <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="+61 4xx xxx xxx" keyboardType="phone-pad" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Social links">
+          {PLATFORMS.map((p, i) => (
+            <FieldRow key={p.key} label={p.label} last={i === PLATFORMS.length - 1 && profile.customLinks.length === 0}>
+              <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} />
+            </FieldRow>
+          ))}
+          {profile.customLinks.map((link, i) => (
+            <FieldRow key={i} label={`Custom link ${i + 1}`} last={i === profile.customLinks.length - 1}>
+              <View style={{ gap: 6 }}>
+                <TextInput
+                  style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+                  value={link.label}
+                  onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))}
+                  placeholder="Label"
+                  placeholderTextColor={Colors.greyLight}
+                />
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, flex: 1 }]}
+                    value={link.url}
+                    onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))}
+                    placeholder="URL"
+                    placeholderTextColor={Colors.greyLight}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}>
+                    <Text style={{ fontSize: 16, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </FieldRow>
+          ))}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+            <TouchableOpacity style={s.addBtn} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}>
+              <Text style={s.addBtnText}>+ Add Link</Text>
+            </TouchableOpacity>
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderAbout() {
+    return (
+      <View>
+        {renderPageHeader('About')}
+        <SectionCard title="Bio">
+          <View style={{ padding: 16 }}>
+            <Input
+              value={profile.about}
+              onChangeText={(v: string) => set('about', v)}
+              placeholder="We're a 4-piece indie rock band from Melbourne's south-east..."
+              multiline
+              error={showErrors && !profile.about?.trim()}
+            />
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderMusic() {
+    return (
+      <View>
+        {renderPageHeader('Music')}
+        {profile.songs.map((song, i) => {
+          const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
+          return (
+            <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Track {i + 1}</Text>
+                <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeSong(i)}>
+                  <Text style={s.removeInlineBtnText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+              <Input value={song.title} onChangeText={(v: string) => setSong(i, 'title', v)} placeholder="Song title *" error={showErrors && !song.title?.trim()} />
+              <View style={{ height: 8 }} />
+              <Input value={song.url} onChangeText={(v: string) => setSong(i, 'url', v)} placeholder="Spotify / stream URL *" error={showErrors && !song.url?.trim()} />
+              <View style={{ height: 8 }} />
+              <Input value={song.notes} onChangeText={(v: string) => setSong(i, 'notes', v)} placeholder="Notes (optional)" />
+            </View>
+          );
+        })}
+        <TouchableOpacity style={s.addBtn} onPress={addSong}>
+          <Text style={s.addBtnText}>+ Add Track</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  function renderTechRider() {
+    return (
+      <View>
+        {renderPageHeader('Tech Rider')}
+
+        <SectionCard title="Documents">
+          <FieldRow label="Rider PDF" sublabel="Upload your full rider if you have one.">
+            <View>
+              {(profile.techRiderDocs || []).map((doc, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
+                  <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}>
+                    <Text style={s.removeInlineBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}>
+                <Text style={s.addBtnText}>{docUploading ? 'Uploading...' : '+ Upload Rider PDF'}</Text>
+              </TouchableOpacity>
+            </View>
+          </FieldRow>
+          <FieldRow label="Stage plot" sublabel="Diagram of your stage setup." last>
+            {profile.techRider?.stagePlotUrl ? (
+              <View>
+                <Image source={{ uri: profile.techRider.stagePlotUrl }} style={{ width: '100%', height: 140, borderRadius: 6, marginBottom: 8 }} resizeMode="contain" />
+                <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRider', { ...profile.techRider, stagePlotUrl: '' })}>
+                  <Text style={s.removeInlineBtnText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={s.addBtn} onPress={pickStagePlot} disabled={stagePlotUploading}>
+                <Text style={s.addBtnText}>{stagePlotUploading ? 'Uploading...' : '+ Upload Stage Plot'}</Text>
+              </TouchableOpacity>
+            )}
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Stage setup">
+          <FieldRow label="Performers" sublabel="Total number on stage.">
+            <Input value={profile.techRider?.performers || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, performers: v })} placeholder="e.g. 5" keyboardType="numeric" />
+          </FieldRow>
+          <FieldRow label="Input list" sublabel="Channels required at the desk.">
+            <Input value={profile.techRider?.inputList || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, inputList: v })} placeholder="e.g. Kick, Snare, 2x Guitar amp, Bass DI, 3x Vocal" multiline />
+          </FieldRow>
+          <FieldRow label="Monitoring">
+            <Input value={profile.techRider?.monitoring || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, monitoring: v })} placeholder="e.g. 3 wedge mixes, no IEM" />
+          </FieldRow>
+          <FieldRow label="Backline needed" sublabel="What you need from the venue.">
+            <Input value={profile.techRider?.backlineNeeded || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineNeeded: v })} placeholder="e.g. Drum kit only" />
+          </FieldRow>
+          <FieldRow label="Backline provided" sublabel="What you bring yourself.">
+            <Input value={profile.techRider?.backlineBrings || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineBrings: v })} placeholder="e.g. Fender Twin, pedalboard, keyboard" />
+          </FieldRow>
+          <FieldRow label="Minimum stage size" last>
+            <Input value={profile.techRider?.stageSize || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, stageSize: v })} placeholder="e.g. 4m x 3m" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Hospitality">
+          <FieldRow label="Meals required">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.mealsRequired || false} onValueChange={(v: boolean) => setRiderBool('mealsRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          {profile.techRiderBools?.mealsRequired && (
+            <FieldRow label="Number of meals">
+              <Input value={profile.techRider?.mealCount || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, mealCount: v })} placeholder="e.g. 5" keyboardType="numeric" />
+            </FieldRow>
+          )}
+          <FieldRow label="Dietary requirements">
+            <Input value={profile.techRider?.dietaryReqs || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, dietaryReqs: v })} placeholder="e.g. 1 vegan, 1 gluten-free" />
+          </FieldRow>
+          <FieldRow label="Drinks / refreshments">
+            <Input value={profile.techRider?.drinks || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, drinks: v })} placeholder="e.g. Water + 2 beers per band member" />
+          </FieldRow>
+          <FieldRow label="Green room required">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.greenRoom || false} onValueChange={(v: boolean) => setRiderBool('greenRoom', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Parking / loading access" last>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.parking || false} onValueChange={(v: boolean) => setRiderBool('parking', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Technical">
+          <FieldRow label="Set length">
+            <Input value={profile.techRider?.setLength || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, setLength: v })} placeholder="e.g. 45 minutes" />
+          </FieldRow>
+          <FieldRow label="Soundcheck time">
+            <Input value={profile.techRider?.soundcheck || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, soundcheck: v })} placeholder="e.g. 30 minutes" />
+          </FieldRow>
+          <FieldRow label="Touring with own PA / engineer">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.ownPA || false} onValueChange={(v: boolean) => setRiderBool('ownPA', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Lighting requirements">
+            <Input value={profile.techRider?.lighting || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, lighting: v })} placeholder="e.g. Standard stage wash is fine" />
+          </FieldRow>
+          <FieldRow label="Power requirements" last>
+            <Input value={profile.techRider?.power || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, power: v })} placeholder="e.g. 4 x 10A power outlets" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Logistics">
+          <FieldRow label="Load-in time">
+            <Input value={profile.techRider?.loadIn || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, loadIn: v })} placeholder="e.g. 1 hour before doors" />
+          </FieldRow>
+          <FieldRow label="Merch table required">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Accommodation required" sublabel="Private. Shared with venue only once a booking is in progress." last>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Additional notes">
+          <View style={{ padding: 16 }}>
+            <Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Anything else the venue's sound team should know" multiline />
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderPayment() {
+    return (
+      <View>
+        {renderPageHeader('Payment')}
+
+        <SectionCard title="Payment preferences">
+          <FieldRow label="Payment methods" sublabel="How you prefer to receive payment.">
+            <Pills options={ARTIST_PAY_METHODS} value={profile.payment.methods} onSelect={(v: string[]) => setPayment('methods', v)} multi />
+          </FieldRow>
+          <FieldRow label="Typical fee" sublabel="What venues can expect to pay." last>
+            <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Tax and invoicing">
+          <FieldRow label="ABN">
+            <Input value={profile.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="e.g. 12 345 678 901" keyboardType="numeric" />
+          </FieldRow>
+          <FieldRow label="GST registered">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Can provide invoice">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.payment.canProvideInvoice} onValueChange={(v: boolean) => setPayment('canProvideInvoice', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Invoicing name" sublabel="If different from your stage name." last>
+            <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="Business or legal name" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Payment logistics">
+          <FieldRow label="Payment timing">
+            <Pills options={ARTIST_PAY_TIMING} value={profile.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
+          </FieldRow>
+          {profile.payment.timing === 'Other' && (
+            <FieldRow label="Timing details">
+              <Input value={profile.payment.timingOther} onChangeText={(v: string) => setPayment('timingOther', v)} placeholder="e.g. invoice within 14 days of performance" />
+            </FieldRow>
+          )}
+          <FieldRow label="Bank transfer note" sublabel="BSB and account numbers are not stored here. Exchange bank details through the message thread once a booking is confirmed." last>
+            <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Legal and compliance">
+          <FieldRow label="Public liability insurance" sublabel="Toggle status is public. Coverage details stay private.">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          {profile.payment.publicLiabilityHeld && (
+            <FieldRow label="Coverage amount">
+              <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
+                <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.publicLiabilityCoverage} onChangeText={(v: string) => setPayment('publicLiabilityCoverage', v)} placeholder="e.g. 10,000,000" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+              </View>
+            </FieldRow>
+          )}
+          <FieldRow label="Certificate available on request" last>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.payment.insuranceCertAvailable} onValueChange={(v: boolean) => setPayment('insuranceCertAvailable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Payment notes">
+          <View style={{ padding: 16 }}>
+            <Input value={profile.payment.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="e.g. Happy to discuss door splits for original shows. Invoice required for corporate bookings." multiline />
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderPhotos() {
+    return (
+      <View>
+        {renderPageHeader('Photos')}
+
+        <SectionCard title="Profile photo">
+          <View style={{ padding: 16 }}>
+            <RepositionablePhoto
+              uri={profile.photoUrl || null}
+              position={profile.photoPosition ?? { x: 50, y: 50 }}
+              onPositionChange={pos => set('photoPosition', pos)}
+              onChangePhoto={pickBannerPhoto}
+              height={200}
+              uploading={photoUploading}
+              placeholderText="Tap to add profile photo"
+            />
+          </View>
+        </SectionCard>
+
+        <SectionCard title="Photo gallery">
+          <View style={{ padding: 16 }}>
+            <View style={s.photoGrid}>
+              {profile.photos.map((url, i) => (
+                <View key={i} style={s.photoItem}>
+                  <Image source={{ uri: url }} style={s.photoImg} />
+                  <TouchableOpacity style={s.photoRemove} onPress={() => set('photos', profile.photos.filter((_, idx) => idx !== i))}>
+                    <Text style={{ color: '#fff', fontSize: 14 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}>
+              <Text style={s.addBtnText}>+ Add Photo</Text>
+            </TouchableOpacity>
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderActiveTab() {
+    switch (activeTab) {
+      case 'Settings':  return renderSettings();
+      case 'Basic Info': return renderBasicInfo();
+      case 'About':     return renderAbout();
+      case 'Music':     return renderMusic();
+      case 'Tech Rider': return renderTechRider();
+      case 'Payment':   return renderPayment();
+      case 'Photos':    return renderPhotos();
+      default:          return null;
+    }
+  }
+
   if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
 
-  // ── Web desktop dashboard layout ────────────────────────────────────
+  // ── Web desktop layout ───────────────────────────────────────────────
   if (isWeb && !isMobileLayout) {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
@@ -757,336 +1390,10 @@ export default function EditProfileScreen() {
                 {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
               </View>
             )}
-
-            {activeTab === 'Settings' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Notification Preferences</Text>
-                <TouchableOpacity style={[s.checkRow, { borderBottomColor: colors.borderFaint }]} onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}>
-                  <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnEnquiryResponse && s.checkboxChecked]}>{profile.settings.emailOnEnquiryResponse && <Text style={s.checkmark}>✓</Text>}</View>
-                  <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry is responded to</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.checkRow, { borderBottomColor: colors.borderFaint }]} onPress={() => set('settings', { ...profile.settings, emailOnNewConnection: !profile.settings.emailOnNewConnection })}>
-                  <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>{profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}</View>
-                  <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
-                </TouchableOpacity>
-                <CalendarSync />
-                <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
-                <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-                  <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
-                  <Switch value={isDark} onValueChange={toggleDark} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
-                </View>
-                <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={async () => { await signOut(auth); router.replace('/'); }}>
-                  <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
-                </TouchableOpacity>
-                <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
-                  <Text style={s.dangerTitle}>Danger Zone</Text>
-                  <Text style={[s.dangerDesc, { color: colors.black }]}>Deactivating your listing will hide it from all venues browsing Twaylo. This action can be reversed at any time.</Text>
-                  <TouchableOpacity style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]} onPress={() => { const willDeactivate = profile.settings.listed; crossConfirm(willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?', willDeactivate ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.' : 'This will make your profile visible to venues again.', async () => { const uid = user?.uid; if (!uid) return; const newListed = !willDeactivate; await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed }); set('settings', { ...profile.settings, listed: newListed }); }, willDeactivate); }}>
-                    <Text style={s.dangerBtnText}>{profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}</Text>
-                  </TouchableOpacity>
-                  <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>Permanently delete your profile and account. This action cannot be undone.</Text>
-                  <TouchableOpacity style={[s.dangerBtn, s.dangerBtnActive]} onPress={() => { crossConfirm('Delete Account', 'This will permanently delete your profile and account from the database. This action cannot be undone.', async () => { try { const uid = user?.uid; if (uid) { await deleteDoc(doc(db, 'bandProfiles', uid)); await deleteDoc(doc(db, 'users', uid)); } const cu = auth.currentUser; if (cu) await deleteUser(cu); } catch (e: any) { Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.'); } finally { await signOut(auth).catch(() => {}); router.replace('/'); } }, true); }}>
-                    <Text style={s.dangerBtnText}>Delete Account</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'Basic Info' && (
-              <View style={s.section}>
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Details</Text>
-                  <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}><Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} /></Field>
-                  <Field label="Username *" error={showErrors && !profile.username?.trim()}>
-                    <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: showErrors && !profile.username?.trim() ? Colors.danger : colors.border }]}>
-                      <Text style={[s.prefixSymbol, { color: colors.grey }]}>@</Text>
-                      <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.username} onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))} placeholder="username" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
-                    </View>
-                  </Field>
-                  <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}><Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} /></Field>
-                  {profile.artistType === 'Other' && (<Field label="Describe your act *" error={showErrors && !profile.otherArtistType?.trim()}><Input value={profile.otherArtistType} onChangeText={(v: string) => set('otherArtistType', v)} placeholder="e.g. Acapella Group, String Quartet" error={showErrors && !profile.otherArtistType?.trim()} /></Field>)}
-                  <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}><Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi /></Field>
-                  {profile.genre?.includes('Other') && (<Field label="Other genres"><Input value={profile.otherGenres} onChangeText={(v: string) => set('otherGenres', v)} placeholder="e.g. Bluegrass, Afrobeat, Cumbia" /></Field>)}
-                  <Field label="Instruments / What You Play"><Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi /></Field>
-                  <Field label="Lineup / Member Count"><Input value={profile.memberCount} onChangeText={(v: string) => set('memberCount', v)} placeholder="e.g. 4-piece band, Solo + 2 musicians" /></Field>
-                  <Field label="Set Type"><Pills options={SET_TYPES} value={profile.setType} onSelect={(v: string) => set('setType', v)} /></Field>
-                  <Field label="Age Suitability"><Pills options={AGE_RESTRICTIONS} value={profile.ageRestriction} onSelect={(v: string) => set('ageRestriction', v)} /></Field>
-                </View>
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
-                  <View style={{ marginBottom: 14 }}><SuburbSearch value={profile.location} onChange={(v: string) => set('location', v)} error={showErrors && !profile.location?.trim()} /></View>
-                  <View style={{ marginBottom: 14 }}><Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} /></View>
-                  <View style={{ marginBottom: 14 }}><Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" /></View>
-                </View>
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Social Links</Text>
-                  {PLATFORMS.map(p => (<Field key={p.key} label={p.label}><Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} /></Field>))}
-                  {profile.customLinks.map((link, i) => (
-                    <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                      <TextInput style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, width: 110 }]} value={link.label} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))} placeholder="Label" placeholderTextColor={Colors.greyLight} />
-                      <TextInput style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, flex: 1 }]} value={link.url} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))} placeholder="URL" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
-                      <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}><Text style={{ fontSize: 18, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text></TouchableOpacity>
-                    </View>
-                  ))}
-                  <TouchableOpacity style={s.addBtn} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}><Text style={s.addBtnText}>+ Add Link</Text></TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'About' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>About *</Text>
-                <Text style={s.hint}>Tell venues who you are, what you play, and how many people you draw.</Text>
-                <Input value={profile.about} onChangeText={(v: string) => set('about', v)} placeholder="We're a 4-piece indie rock band from Melbourne's south-east…" multiline error={showErrors && !profile.about?.trim()} />
-              </View>
-            )}
-
-            {activeTab === 'Music' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Music</Text>
-                <Text style={s.hint}>Add links to your tracks so venues can hear what you sound like before booking. Spotify, SoundCloud, YouTube — whatever best represents your sound.</Text>
-                {profile.songs.map((song, i) => {
-                  const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
-                  return (
-                    <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                      <Input value={song.title} onChangeText={(v: string) => setSong(i, 'title', v)} placeholder="Song title *" error={showErrors && !song.title?.trim()} />
-                      <View style={{ height: 8 }} />
-                      <Input value={song.url} onChangeText={(v: string) => setSong(i, 'url', v)} placeholder="Spotify / stream URL *" error={showErrors && !song.url?.trim()} />
-                      <View style={{ height: 8 }} />
-                      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                        <TextInput style={[s.input, { flex: 1 }]} value={song.notes} onChangeText={v => setSong(i, 'notes', v)} placeholder="Notes" placeholderTextColor={Colors.greyLight} />
-                        <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeSong(i)}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
-                <TouchableOpacity style={s.addBtn} onPress={addSong}><Text style={s.addBtnText}>+ Add Song</Text></TouchableOpacity>
-              </View>
-            )}
-
-            {activeTab === 'Past Gigs' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Past Gigs</Text>
-                <Text style={s.hint}>Your gig history is now managed in My Gigs. Past confirmed gigs appear automatically on your public profile once they have passed.</Text>
-                <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
-                  <Text style={s.addBtnText}>Go to My Gigs</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {activeTab === 'Timetable' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
-                <Text style={s.hint}>Your upcoming gigs are now managed in My Gigs. Confirmed public gigs appear on your profile timetable automatically.</Text>
-                <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
-                  <Text style={s.addBtnText}>Go to My Gigs</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {activeTab === 'Tech Rider' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
-                <Text style={s.hint}>Upload your full rider PDF below if you have one. It can cover most of the questions here, so you may not need to fill in every field.{'\n\n'}Having a rider on your profile lets venues see straight away whether their space can handle your act, so you skip the back-and-forth and only hear from venues that are a real fit.</Text>
-
-                {/* ── Rider PDF ── */}
-                <Field label="Rider Document (PDF)">
-                  {(profile.techRiderDocs || []).map((doc, idx) => (
-                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
-                      <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
-                    </View>
-                  ))}
-                  <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}><Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Rider PDF'}</Text></TouchableOpacity>
-                </Field>
-
-                {/* ── Stage Plot ── */}
-                <Field label="Stage Plot">
-                  {profile.techRider?.stagePlotUrl ? (
-                    <View>
-                      <Image source={{ uri: profile.techRider.stagePlotUrl }} style={{ width: '100%', height: 180, borderRadius: 6, marginBottom: 8 }} resizeMode="contain" />
-                      <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRider', { ...profile.techRider, stagePlotUrl: '' })}><Text style={s.removeInlineBtnText}>Remove</Text></TouchableOpacity>
-                    </View>
-                  ) : (
-                    <TouchableOpacity style={s.addBtn} onPress={pickStagePlot} disabled={stagePlotUploading}><Text style={s.addBtnText}>{stagePlotUploading ? 'Uploading…' : '+ Upload Stage Plot'}</Text></TouchableOpacity>
-                  )}
-                </Field>
-
-                {/* ── Stage Setup ── */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Setup</Text>
-                  <Field label="Number of performers"><Input value={profile.techRider?.performers || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, performers: v })} placeholder="e.g. 5" keyboardType="numeric" /></Field>
-                  <Field label="Input list"><Input value={profile.techRider?.inputList || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, inputList: v })} placeholder="e.g. Kick, Snare, 2x Guitar amp, Bass DI, 3x Vocal" multiline /></Field>
-                  <Field label="Monitoring"><Input value={profile.techRider?.monitoring || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, monitoring: v })} placeholder="e.g. 3 wedge mixes, no IEM" /></Field>
-                  <Field label="Backline needed from venue"><Input value={profile.techRider?.backlineNeeded || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineNeeded: v })} placeholder="e.g. Drum kit only" /></Field>
-                  <Field label="Backline artist brings"><Input value={profile.techRider?.backlineBrings || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineBrings: v })} placeholder="e.g. Fender Twin, pedalboard, keyboard" /></Field>
-                  <Field label="Minimum stage size"><Input value={profile.techRider?.stageSize || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, stageSize: v })} placeholder="e.g. 4m × 3m" /></Field>
-                </View>
-
-                {/* ── Hospitality ── */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Hospitality</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Meals required</Text>
-                    <Switch value={profile.techRiderBools?.mealsRequired || false} onValueChange={(v: boolean) => setRiderBool('mealsRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  {profile.techRiderBools?.mealsRequired && (
-                    <Field label="Number of people"><Input value={profile.techRider?.mealCount || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, mealCount: v })} placeholder="e.g. 5" keyboardType="numeric" /></Field>
-                  )}
-                  <Field label="Dietary requirements"><Input value={profile.techRider?.dietaryReqs || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, dietaryReqs: v })} placeholder="e.g. 1 vegan, 1 gluten-free" /></Field>
-                  <Field label="Drinks / refreshments"><Input value={profile.techRider?.drinks || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, drinks: v })} placeholder="e.g. Water + 2 beers per band member" /></Field>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Green room / private space required</Text>
-                    <Switch value={profile.techRiderBools?.greenRoom || false} onValueChange={(v: boolean) => setRiderBool('greenRoom', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Parking / loading dock access needed</Text>
-                    <Switch value={profile.techRiderBools?.parking || false} onValueChange={(v: boolean) => setRiderBool('parking', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                </View>
-
-                {/* ── Technical / Production ── */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Technical / Production</Text>
-                  <Field label="Set length"><Input value={profile.techRider?.setLength || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, setLength: v })} placeholder="e.g. 45 minutes" /></Field>
-                  <Field label="Soundcheck time required"><Input value={profile.techRider?.soundcheck || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, soundcheck: v })} placeholder="e.g. 30 minutes" /></Field>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Touring with own PA / sound engineer</Text>
-                    <Switch value={profile.techRiderBools?.ownPA || false} onValueChange={(v: boolean) => setRiderBool('ownPA', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <Field label="Lighting requirements (optional)"><Input value={profile.techRider?.lighting || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, lighting: v })} placeholder="e.g. Standard stage wash is fine" /></Field>
-                  <Field label="Power requirements"><Input value={profile.techRider?.power || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, power: v })} placeholder="e.g. 4 x 10A power outlets" /></Field>
-                </View>
-
-                {/* ── Logistics ── */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Logistics</Text>
-                  <Field label="Load-in time needed"><Input value={profile.techRider?.loadIn || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, loadIn: v })} placeholder="e.g. 1 hour before doors" /></Field>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Merch table required</Text>
-                    <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Accommodation required</Text>
-                    <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Private. Shared with venue only once a booking is in progress.</Text>
-                </View>
-
-                {/* ── Notes ── */}
-                <Field label="Additional notes"><Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Anything else the venue's sound team should know" multiline /></Field>
-              </View>
-            )}
-
-            {activeTab === 'Payment' && (
-              <View style={s.section}>
-
-                {/* Payment Preferences */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Preferences</Text>
-                  <Field label="Preferred Payment Method/s">
-                    <Pills options={ARTIST_PAY_METHODS} value={profile.payment.methods} onSelect={(v: string[]) => setPayment('methods', v)} multi />
-                  </Field>
-                  <Field label="Typical Fee Expectation">
-                    <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
-                  </Field>
-                </View>
-
-                {/* Tax & Invoicing */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Tax and Invoicing</Text>
-                  <Field label="ABN">
-                    <Input value={profile.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="e.g. 12 345 678 901" keyboardType="numeric" />
-                  </Field>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>GST Registered</Text>
-                    <Switch value={profile.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Can Provide Invoice</Text>
-                    <Switch value={profile.payment.canProvideInvoice} onValueChange={(v: boolean) => setPayment('canProvideInvoice', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <Field label="Business / Invoicing Name">
-                    <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="If different from your stage name" />
-                  </Field>
-                </View>
-
-                {/* Payment Logistics */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Logistics</Text>
-                  <Field label="Payment Timing Expectation">
-                    <Pills options={ARTIST_PAY_TIMING} value={profile.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
-                  </Field>
-                  {profile.payment.timing === 'Other' && (
-                    <Field label="Timing Details">
-                      <Input value={profile.payment.timingOther} onChangeText={(v: string) => setPayment('timingOther', v)} placeholder="e.g. invoice within 14 days of performance" />
-                    </Field>
-                  )}
-                  <Field label="Bank Transfer">
-                    <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the Twaylo message thread.</Text>
-                    <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
-                  </Field>
-                </View>
-
-                {/* Legal / Compliance */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Legal and Compliance</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Public Liability Insurance Held</Text>
-                    <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                  <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Toggle status is public. Coverage amount and certificate details stay private.</Text>
-                  {profile.payment.publicLiabilityHeld && (
-                    <Field label="Coverage Amount (optional)">
-                      <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                        <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
-                        <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.publicLiabilityCoverage} onChangeText={(v: string) => setPayment('publicLiabilityCoverage', v)} placeholder="e.g. 10,000,000" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-                      </View>
-                    </Field>
-                  )}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                    <Text style={{ fontSize: 14, color: colors.black }}>Certificate of Insurance Available on Request</Text>
-                    <Switch value={profile.payment.insuranceCertAvailable} onValueChange={(v: boolean) => setPayment('insuranceCertAvailable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                  </View>
-                </View>
-
-                {/* Notes */}
-                <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Notes</Text>
-                  <Input value={profile.payment.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="e.g. Happy to discuss door splits for original shows. Invoice required for corporate bookings." multiline />
-                </View>
-
-              </View>
-            )}
-
-            {activeTab === 'Photos' && (
-              <View style={s.section}>
-                <Text style={[s.sectionTitle, { color: colors.black }]}>Profile Photo</Text>
-                <RepositionablePhoto
-                  uri={profile.photoUrl || null}
-                  position={profile.photoPosition ?? { x: 50, y: 50 }}
-                  onPositionChange={pos => set('photoPosition', pos)}
-                  onChangePhoto={pickBannerPhoto}
-                  height={200}
-                  uploading={photoUploading}
-                  placeholderText="Tap to add profile photo"
-                />
-                <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Photo Gallery</Text>
-                <View style={s.photoGrid}>
-                  {profile.photos.map((url, i) => (
-                    <View key={i} style={s.photoItem}>
-                      <Image source={{ uri: url }} style={s.photoImg} />
-                      <TouchableOpacity style={s.photoRemove} onPress={() => set('photos', profile.photos.filter((_, idx) => idx !== i))}><Text style={{ color: '#fff', fontSize: 14 }}>✕</Text></TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-                <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}><Text style={s.addBtnText}>+ Add Photo</Text></TouchableOpacity>
-              </View>
-            )}
-
+            {renderActiveTab()}
           </ScrollView>
 
-          {/* ── Onboarding side panel (steps 2-8) ── */}
+          {/* Onboarding side panel (steps 2-9) */}
           {onboardingStep >= 2 && onboardingStep <= 9 && (() => {
             const data = ONBOARDING_DATA[onboardingStep];
             return (
@@ -1130,7 +1437,7 @@ export default function EditProfileScreen() {
 
         </View>
 
-        {/* ── Step 1: Welcome modal ── */}
+        {/* Step 1: Welcome modal */}
         {onboardingStep === 1 && (
           <View style={epd.modalOverlay}>
             <View style={[epd.welcomeCard, { backgroundColor: colors.bg }]}>
@@ -1150,7 +1457,7 @@ export default function EditProfileScreen() {
           </View>
         )}
 
-        {/* ── Step 10: Go Live card (bottom-left) ── */}
+        {/* Step 10: Go Live card */}
         {onboardingStep === 10 && (
           <View style={epd.goLiveCard}>
             <View style={[epd.goLiveCardInner, { backgroundColor: colors.bg }]}>
@@ -1176,7 +1483,7 @@ export default function EditProfileScreen() {
           </View>
         )}
 
-        {/* ── Replay setup tour button ── */}
+        {/* Replay setup tour button */}
         {onboardingStep === 0 && onboardingComplete && (
           <TouchableOpacity style={epd.replayBtn} onPress={replayOnboarding} activeOpacity={0.8}>
             <Text style={epd.replayBtnText}>Replay setup tour</Text>
@@ -1187,6 +1494,7 @@ export default function EditProfileScreen() {
     );
   }
 
+  // ── Mobile layout ────────────────────────────────────────────────────
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
       <ScrollView
@@ -1198,7 +1506,7 @@ export default function EditProfileScreen() {
         scrollEventThrottle={100}
       >
 
-        {/* ── Banner + title bar + tab errors ── */}
+        {/* Banner + title bar */}
         <View>
           <View style={{ marginTop: 20 }}>
             <RepositionablePhoto
@@ -1220,14 +1528,14 @@ export default function EditProfileScreen() {
           >
             <View style={{ flex: 1 }}>
               <Text style={[s.headerTitle, { color: colors.black }]}>Edit Profile</Text>
-              <Text style={[s.headerSub, { color: colors.black }]}>{profile.name || '—'}</Text>
+              <Text style={[s.headerSub, { color: colors.black }]}>{profile.name || '-'}</Text>
             </View>
             <View style={s.headerBtns}>
               <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
                 <Text style={[s.backBtnInlineText, { color: colors.black }]}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.saveBtn, saving && { opacity: 0.6 }, justSaved && { backgroundColor: '#22c55e' }]} onPress={handleSave} disabled={saving}>
-                <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
+                <Text style={s.saveBtnText}>{saving ? 'Saving...' : justSaved ? 'Saved ✓' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1240,7 +1548,7 @@ export default function EditProfileScreen() {
           )}
         </View>
 
-        {/* ── Tab bar (sticky) ── */}
+        {/* Tab bar (sticky) */}
         <View style={{ backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { borderBottomWidth: 0 }]} contentContainerStyle={s.tabBarContent}>
             {TABS.map(tab => (
@@ -1255,529 +1563,17 @@ export default function EditProfileScreen() {
               onPress={handleSave}
               disabled={saving}
             >
-              <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
+              <Text style={s.saveBtnText}>{saving ? 'Saving...' : justSaved ? 'Saved ✓' : 'Save'}</Text>
             </TouchableOpacity>
           )}
         </View>
 
         <View style={s.body}>
-
-        {/* ── SETTINGS ── */}
-        {activeTab === 'Settings' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Notification Preferences</Text>
-            <TouchableOpacity
-              style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}
-            >
-              <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnEnquiryResponse && s.checkboxChecked]}>
-                {profile.settings.emailOnEnquiryResponse && <Text style={s.checkmark}>✓</Text>}
-              </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when an enquiry is responded to</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.checkRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => set('settings', { ...profile.settings, emailOnNewConnection: !profile.settings.emailOnNewConnection })}
-            >
-              <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>
-                {profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}
-              </View>
-              <Text style={[s.checkLabel, { color: colors.black }]}>Email me when a new connection is received</Text>
-            </TouchableOpacity>
-
-            <CalendarSync />
-            <Text style={[s.sectionTitle, { color: colors.black, marginTop: 24 }]}>Account</Text>
-            <View style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]}>
-              <Text style={[s.toggleLabel, { color: colors.black }]}>Dark Mode</Text>
-              <Switch
-                value={isDark}
-                onValueChange={toggleDark}
-                trackColor={{ false: '#e0e0e0', true: Colors.orange }}
-                thumbColor="#ffffff"
-              />
-            </View>
-            <TouchableOpacity style={[s.toggleRow, { borderBottomColor: colors.borderFaint }]} onPress={async () => { await signOut(auth); router.replace('/'); }}>
-              <Text style={[s.toggleLabel, { color: Colors.danger }]}>Log out</Text>
-            </TouchableOpacity>
-
-            <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
-              <Text style={s.dangerTitle}>Danger Zone</Text>
-              <Text style={[s.dangerDesc, { color: colors.black }]}>
-                Deactivating your listing will hide it from all venues browsing Twaylo. This action can be reversed at any time.
-              </Text>
-              <TouchableOpacity
-                style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]}
-                onPress={() => {
-                  const willDeactivate = profile.settings.listed;
-                  crossConfirm(
-                    willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?',
-                    willDeactivate
-                      ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
-                      : 'This will make your profile visible to venues again.',
-                    async () => {
-                      const uid = user?.uid;
-                      if (!uid) return;
-                      const newListed = !willDeactivate;
-                      await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed });
-                      set('settings', { ...profile.settings, listed: newListed });
-                    },
-                    willDeactivate,
-                  );
-                }}
-              >
-                <Text style={s.dangerBtnText}>
-                  {profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}
-                </Text>
-              </TouchableOpacity>
-
-              <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>
-                Permanently delete your profile and account. This action cannot be undone.
-              </Text>
-              <TouchableOpacity
-                style={[s.dangerBtn, s.dangerBtnActive]}
-                onPress={() => {
-                  crossConfirm(
-                    'Delete Account',
-                    'This will permanently delete your profile and account from the database. This action cannot be undone.',
-                    async () => {
-                      try {
-                        const uid = user?.uid;
-                        if (uid) {
-                          await deleteDoc(doc(db, 'bandProfiles', uid));
-                          await deleteDoc(doc(db, 'users', uid));
-                        }
-                        const cu = auth.currentUser;
-                        if (cu) await deleteUser(cu);
-                      } catch (e: any) {
-                        Alert.alert('Error', e.message ?? 'Could not delete account. Please try again.');
-                      } finally {
-                        await signOut(auth).catch(() => {});
-                        router.replace('/');
-                      }
-                    },
-                    true,
-                  );
-                }}
-              >
-                <Text style={s.dangerBtnText}>Delete Account</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* ── BASIC INFO ── */}
-        {activeTab === 'Basic Info' && (
-          <View style={s.section}>
-
-            {/* Stage Details */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Details</Text>
-              <Field label="Stage Name *" error={showErrors && !profile.name?.trim()}>
-                <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="Your stage name" error={showErrors && !profile.name?.trim()} />
-              </Field>
-              <Field label="Username *" error={showErrors && !profile.username?.trim()}>
-                <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: showErrors && !profile.username?.trim() ? Colors.danger : colors.border }]}>
-                  <Text style={[s.prefixSymbol, { color: colors.grey }]}>@</Text>
-                  <TextInput
-                    style={[s.prefixTextInput, { color: colors.black }]}
-                    value={profile.username}
-                    onChangeText={(v: string) => set('username', v.toLowerCase().replace(/\s/g, ''))}
-                    placeholder="username"
-                    placeholderTextColor={Colors.greyLight}
-                    autoCapitalize="none"
-                  />
-                </View>
-              </Field>
-              <Field label="Act Type *" error={showErrors && !profile.artistType?.trim()}>
-                <Pills options={ACT_TYPES} value={profile.artistType} onSelect={(v: string) => set('artistType', v)} />
-              </Field>
-              {profile.artistType === 'Other' && (
-                <Field label="Describe your act *" error={showErrors && !profile.otherArtistType?.trim()}>
-                  <Input value={profile.otherArtistType} onChangeText={(v: string) => set('otherArtistType', v)} placeholder="e.g. Acapella Group, String Quartet" error={showErrors && !profile.otherArtistType?.trim()} />
-                </Field>
-              )}
-              <Field label="Genres *" error={showErrors && !(profile.genre?.length > 0)}>
-                <Pills options={GENRES} value={profile.genre} onSelect={(v: string[]) => set('genre', v)} multi />
-              </Field>
-              {profile.genre?.includes('Other') && (
-                <Field label="Other genres">
-                  <Input
-                    value={profile.otherGenres}
-                    onChangeText={(v: string) => set('otherGenres', v)}
-                    placeholder="e.g. Bluegrass, Afrobeat, Cumbia"
-                  />
-                </Field>
-              )}
-              <Field label="Instruments / What You Play">
-                <Pills options={INSTRUMENTS} value={profile.instruments || []} onSelect={(v: string[]) => set('instruments', v)} multi />
-              </Field>
-              <Field label="Lineup / Member Count">
-                <Input value={profile.memberCount} onChangeText={(v: string) => set('memberCount', v)} placeholder="e.g. 4-piece band, Solo + 2 musicians" />
-              </Field>
-              <Field label="Set Type">
-                <Pills options={SET_TYPES} value={profile.setType} onSelect={(v: string) => set('setType', v)} />
-              </Field>
-              <Field label="Age Suitability">
-                <Pills options={AGE_RESTRICTIONS} value={profile.ageRestriction} onSelect={(v: string) => set('ageRestriction', v)} />
-              </Field>
-            </View>
-
-            {/* Contact */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Contact</Text>
-              <View style={{ marginBottom: 14 }}>
-                <SuburbSearch value={profile.location} onChange={(v: string) => set('location', v)} error={showErrors && !profile.location?.trim()} />
-              </View>
-              <View style={{ marginBottom: 14 }}>
-                <Input value={profile.email} onChangeText={(v: string) => set('email', v)} placeholder="Email *" keyboardType="email-address" error={showErrors && !profile.email?.trim()} />
-              </View>
-              <View style={{ marginBottom: 14 }}>
-                <Input value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone" keyboardType="phone-pad" />
-              </View>
-            </View>
-
-            {/* Social Links */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Social Links</Text>
-              {PLATFORMS.map(p => (
-                <Field key={p.key} label={p.label}>
-                  <Input value={(profile as any)[p.key] || ''} onChangeText={(v: string) => set(p.key as any, v)} placeholder={p.placeholder} />
-                </Field>
-              ))}
-              {profile.customLinks.map((link, i) => (
-                <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                  <TextInput
-                    style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, width: 110 }]}
-                    value={link.label}
-                    onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))}
-                    placeholder="Label"
-                    placeholderTextColor={Colors.greyLight}
-                  />
-                  <TextInput
-                    style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, flex: 1 }]}
-                    value={link.url}
-                    onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))}
-                    placeholder="URL"
-                    placeholderTextColor={Colors.greyLight}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}>
-                    <Text style={{ fontSize: 18, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity style={s.addBtn} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}>
-                <Text style={s.addBtnText}>+ Add Link</Text>
-              </TouchableOpacity>
-            </View>
-
-          </View>
-        )}
-
-        {/* ── ABOUT ── */}
-        {activeTab === 'About' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>About *</Text>
-            <Text style={s.hint}>Tell venues who you are, what you play, and how many people you draw.</Text>
-            <Input value={profile.about} onChangeText={(v: string) => set('about', v)} placeholder="We're a 4-piece indie rock band from Melbourne's south-east…" multiline error={showErrors && !profile.about?.trim()} />
-          </View>
-        )}
-
-        {/* ── MUSIC ── */}
-        {activeTab === 'Music' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Music</Text>
-            <Text style={s.hint}>Add links to your tracks so venues can hear what you sound like before booking. Spotify, SoundCloud, YouTube — whatever best represents your sound.</Text>
-            {profile.songs.map((song, i) => {
-              const hasError = showErrors && (!song.title?.trim() || !song.url?.trim());
-              return (
-                <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-                  <Input value={song.title} onChangeText={(v: string) => setSong(i, 'title', v)} placeholder="Song title *" error={showErrors && !song.title?.trim()} />
-                  <View style={{ height: 8 }} />
-                  <Input value={song.url} onChangeText={(v: string) => setSong(i, 'url', v)} placeholder="Spotify / stream URL *" error={showErrors && !song.url?.trim()} />
-                  <View style={{ height: 8 }} />
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <TextInput
-                      style={[s.input, { flex: 1 }]}
-                      value={song.notes}
-                      onChangeText={v => setSong(i, 'notes', v)}
-                      placeholder="Notes"
-                      placeholderTextColor={Colors.greyLight}
-                    />
-                    <TouchableOpacity style={s.removeInlineBtn} onPress={() => removeSong(i)}>
-                      <Text style={s.removeInlineBtnText}>Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-            <TouchableOpacity style={s.addBtn} onPress={addSong}>
-              <Text style={s.addBtnText}>+ Add Song</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── GIG HISTORY ── */}
-        {activeTab === 'Past Gigs' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Past Gigs</Text>
-            <Text style={s.hint}>Your gig history is now managed in My Gigs. Past confirmed gigs appear automatically on your public profile once they have passed.</Text>
-            <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
-              <Text style={s.addBtnText}>Go to My Gigs</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── UPCOMING ── */}
-        {activeTab === 'Timetable' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Timetable</Text>
-            <Text style={s.hint}>Your upcoming gigs are now managed in My Gigs. Confirmed public gigs appear on your profile timetable automatically.</Text>
-            <TouchableOpacity style={s.addBtn} onPress={() => router.push('/(tabs)/gigs' as any)}>
-              <Text style={s.addBtnText}>Go to My Gigs</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── TECH RIDER ── */}
-        {activeTab === 'Tech Rider' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Tech Rider</Text>
-            <Text style={s.hint}>Upload your full rider PDF below if you have one. It can cover most of the questions here, so you may not need to fill in every field.{'\n\n'}Having a rider on your profile lets venues see straight away whether their space can handle your act, so you skip the back-and-forth and only hear from venues that are a real fit.</Text>
-
-            {/* ── Rider PDF ── */}
-            <Field label="Rider Document (PDF)">
-              {(profile.techRiderDocs || []).map((doc, idx) => (
-                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name}</Text>
-                  <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRiderDocs', (profile.techRiderDocs || []).filter((_, i) => i !== idx))}>
-                    <Text style={s.removeInlineBtnText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity style={s.addBtn} onPress={pickDocument} disabled={docUploading}>
-                <Text style={s.addBtnText}>{docUploading ? 'Uploading…' : '+ Upload Rider PDF'}</Text>
-              </TouchableOpacity>
-            </Field>
-
-            {/* ── Stage Plot ── */}
-            <Field label="Stage Plot">
-              {profile.techRider?.stagePlotUrl ? (
-                <View>
-                  <Image source={{ uri: profile.techRider.stagePlotUrl }} style={{ width: '100%', height: 200, borderRadius: 6, marginBottom: 8 }} resizeMode="contain" />
-                  <TouchableOpacity style={s.removeInlineBtn} onPress={() => set('techRider', { ...profile.techRider, stagePlotUrl: '' })}>
-                    <Text style={s.removeInlineBtnText}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity style={s.addBtn} onPress={pickStagePlot} disabled={stagePlotUploading}>
-                  <Text style={s.addBtnText}>{stagePlotUploading ? 'Uploading…' : '+ Upload Stage Plot'}</Text>
-                </TouchableOpacity>
-              )}
-            </Field>
-
-            {/* ── Stage Setup ── */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Stage Setup</Text>
-              <Field label="Number of performers">
-                <Input value={profile.techRider?.performers || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, performers: v })} placeholder="e.g. 5" keyboardType="numeric" />
-              </Field>
-              <Field label="Input list">
-                <Input value={profile.techRider?.inputList || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, inputList: v })} placeholder="e.g. Kick, Snare, 2x Guitar amp, Bass DI, 3x Vocal" multiline />
-              </Field>
-              <Field label="Monitoring">
-                <Input value={profile.techRider?.monitoring || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, monitoring: v })} placeholder="e.g. 3 wedge mixes, no IEM" />
-              </Field>
-              <Field label="Backline needed from venue">
-                <Input value={profile.techRider?.backlineNeeded || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineNeeded: v })} placeholder="e.g. Drum kit only" />
-              </Field>
-              <Field label="Backline artist brings">
-                <Input value={profile.techRider?.backlineBrings || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, backlineBrings: v })} placeholder="e.g. Fender Twin, pedalboard, keyboard" />
-              </Field>
-              <Field label="Minimum stage size">
-                <Input value={profile.techRider?.stageSize || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, stageSize: v })} placeholder="e.g. 4m × 3m" />
-              </Field>
-            </View>
-
-            {/* ── Hospitality ── */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Hospitality</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Meals required</Text>
-                <Switch value={profile.techRiderBools?.mealsRequired || false} onValueChange={(v: boolean) => setRiderBool('mealsRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              {profile.techRiderBools?.mealsRequired && (
-                <Field label="Number of people">
-                  <Input value={profile.techRider?.mealCount || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, mealCount: v })} placeholder="e.g. 5" keyboardType="numeric" />
-                </Field>
-              )}
-              <Field label="Dietary requirements">
-                <Input value={profile.techRider?.dietaryReqs || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, dietaryReqs: v })} placeholder="e.g. 1 vegan, 1 gluten-free" />
-              </Field>
-              <Field label="Drinks / refreshments">
-                <Input value={profile.techRider?.drinks || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, drinks: v })} placeholder="e.g. Water + 2 beers per band member" />
-              </Field>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Green room / private space required</Text>
-                <Switch value={profile.techRiderBools?.greenRoom || false} onValueChange={(v: boolean) => setRiderBool('greenRoom', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Parking / loading dock access needed</Text>
-                <Switch value={profile.techRiderBools?.parking || false} onValueChange={(v: boolean) => setRiderBool('parking', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-            </View>
-
-            {/* ── Technical / Production ── */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Technical / Production</Text>
-              <Field label="Set length">
-                <Input value={profile.techRider?.setLength || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, setLength: v })} placeholder="e.g. 45 minutes" />
-              </Field>
-              <Field label="Soundcheck time required">
-                <Input value={profile.techRider?.soundcheck || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, soundcheck: v })} placeholder="e.g. 30 minutes" />
-              </Field>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Touring with own PA / sound engineer</Text>
-                <Switch value={profile.techRiderBools?.ownPA || false} onValueChange={(v: boolean) => setRiderBool('ownPA', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <Field label="Lighting requirements (optional)">
-                <Input value={profile.techRider?.lighting || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, lighting: v })} placeholder="e.g. Standard stage wash is fine" />
-              </Field>
-              <Field label="Power requirements">
-                <Input value={profile.techRider?.power || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, power: v })} placeholder="e.g. 4 x 10A power outlets" />
-              </Field>
-            </View>
-
-            {/* ── Logistics ── */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Logistics</Text>
-              <Field label="Load-in time needed">
-                <Input value={profile.techRider?.loadIn || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, loadIn: v })} placeholder="e.g. 1 hour before doors" />
-              </Field>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Merch table required</Text>
-                <Switch value={profile.techRiderBools?.merchTable || false} onValueChange={(v: boolean) => setRiderBool('merchTable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Accommodation required</Text>
-                <Switch value={profile.techRiderBools?.accommodation || false} onValueChange={(v: boolean) => setRiderBool('accommodation', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Private. Shared with venue only once a booking is in progress.</Text>
-            </View>
-
-            {/* ── Notes ── */}
-            <Field label="Additional notes">
-              <Input value={profile.techRider?.notes || ''} onChangeText={(v: string) => set('techRider', { ...profile.techRider, notes: v })} placeholder="Anything else the venue's sound team should know" multiline />
-            </Field>
-          </View>
-        )}
-
-        {/* ── PAYMENT ── */}
-        {activeTab === 'Payment' && (
-          <View style={s.section}>
-
-            {/* Payment Preferences */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Preferences</Text>
-              <Field label="Preferred Payment Method/s">
-                <Pills options={ARTIST_PAY_METHODS} value={profile.payment.methods} onSelect={(v: string[]) => setPayment('methods', v)} multi />
-              </Field>
-              <Field label="Typical Fee Expectation">
-                <Input value={profile.payment.typicalFee} onChangeText={(v: string) => setPayment('typicalFee', v)} placeholder="e.g. $200-$400, or negotiable for door deals" />
-              </Field>
-            </View>
-
-            {/* Tax & Invoicing */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Tax and Invoicing</Text>
-              <Field label="ABN">
-                <Input value={profile.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="e.g. 12 345 678 901" keyboardType="numeric" />
-              </Field>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>GST Registered</Text>
-                <Switch value={profile.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Can Provide Invoice</Text>
-                <Switch value={profile.payment.canProvideInvoice} onValueChange={(v: boolean) => setPayment('canProvideInvoice', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <Field label="Business / Invoicing Name">
-                <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="If different from your stage name" />
-              </Field>
-            </View>
-
-            {/* Payment Logistics */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Logistics</Text>
-              <Field label="Payment Timing Expectation">
-                <Pills options={ARTIST_PAY_TIMING} value={profile.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
-              </Field>
-              {profile.payment.timing === 'Other' && (
-                <Field label="Timing Details">
-                  <Input value={profile.payment.timingOther} onChangeText={(v: string) => setPayment('timingOther', v)} placeholder="e.g. invoice within 14 days of performance" />
-                </Field>
-              )}
-              <Field label="Bank Transfer">
-                <Text style={{ fontSize: 12, color: Colors.grey, marginBottom: 8, lineHeight: 17 }}>BSB and account numbers are not stored here. Once a booking is confirmed, exchange bank details directly through the Twaylo message thread.</Text>
-                <Input value={profile.payment.bankTransferNote} onChangeText={(v: string) => setPayment('bankTransferNote', v)} placeholder="e.g. Bank transfer details provided on confirmation" />
-              </Field>
-            </View>
-
-            {/* Legal / Compliance */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Legal and Compliance</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Public Liability Insurance Held</Text>
-                <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-              <Text style={{ fontSize: 11, color: Colors.grey, marginBottom: 14 }}>Toggle status is public. Coverage amount and certificate details stay private.</Text>
-              {profile.payment.publicLiabilityHeld && (
-                <Field label="Coverage Amount (optional)">
-                  <View style={[s.prefixInput, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                    <Text style={[s.prefixSymbol, { color: colors.grey }]}>$</Text>
-                    <TextInput style={[s.prefixTextInput, { color: colors.black }]} value={profile.payment.publicLiabilityCoverage} onChangeText={(v: string) => setPayment('publicLiabilityCoverage', v)} placeholder="e.g. 10,000,000" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-                  </View>
-                </Field>
-              )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <Text style={{ fontSize: 14, color: colors.black }}>Certificate of Insurance Available on Request</Text>
-                <Switch value={profile.payment.insuranceCertAvailable} onValueChange={(v: boolean) => setPayment('insuranceCertAvailable', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-              </View>
-            </View>
-
-            {/* Notes */}
-            <View style={[s.sectionBox, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-              <Text style={[s.sectionTitle, { color: colors.black }]}>Payment Notes</Text>
-              <Input value={profile.payment.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="e.g. Happy to discuss door splits for original shows. Invoice required for corporate bookings." multiline />
-            </View>
-
-          </View>
-        )}
-
-        {/* ── PHOTOS ── */}
-        {activeTab === 'Photos' && (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Photo Gallery</Text>
-            <View style={s.photoGrid}>
-              {profile.photos.map((url, i) => (
-                <View key={i} style={s.photoItem}>
-                  <Image source={{ uri: url }} style={s.photoImg} />
-                  <TouchableOpacity style={s.photoRemove} onPress={() => set('photos', profile.photos.filter((_, idx) => idx !== i))}>
-                    <Text style={{ color: '#fff', fontSize: 14 }}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}>
-              <Text style={s.addBtnText}>+ Add Photo</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
+          {renderActiveTab()}
         </View>
       </ScrollView>
 
-      {/* ── Mobile onboarding overlay ── */}
+      {/* Mobile onboarding overlay */}
       {onboardingStep >= 1 && onboardingStep <= 10 && (() => {
         const data = ONBOARDING_DATA[onboardingStep];
         const isFirst = onboardingStep === 1;
@@ -1826,6 +1622,16 @@ export default function EditProfileScreen() {
   );
 }
 
+// ── New section/page styles ────────────────────────────────────────────
+const ns = StyleSheet.create({
+  pageHeader:    { marginBottom: 24 },
+  pageTitle:     { fontSize: 26, fontWeight: '800', letterSpacing: -0.5, lineHeight: 32 },
+  pageDesc:      { fontSize: 14, lineHeight: 21, marginTop: 8 },
+  photoThumb:    { width: 56, height: 56, borderRadius: 8, overflow: 'hidden' },
+  replaceBtn:    { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  replaceBtnText:{ fontSize: 13, fontWeight: '600' },
+});
+
 const s = StyleSheet.create({
   safe:               { flex: 1, backgroundColor: Colors.bg },
   titleBar:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
@@ -1846,59 +1652,33 @@ const s = StyleSheet.create({
   tabText:            { fontSize: 13, color: Colors.grey, fontWeight: '500' },
   tabTextActive:      { color: Colors.orange, fontWeight: '700' },
   body:               { padding: 20, paddingHorizontal: Platform.OS === 'web' ? 40 : 20, paddingTop: 24, paddingBottom: 60 },
-  banner:             { width: '100%', height: 220, overflow: 'hidden', backgroundColor: Colors.bgFaint },
-  bannerError:        { borderWidth: 2, borderColor: Colors.danger },
-  bannerImg:          { width: '100%', height: '100%' },
-  bannerPlaceholder:  { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  bannerPlaceholderText: { fontSize: 14, color: Colors.greyLight },
-  bannerEditBadge:    { position: 'absolute', bottom: 10, left: 12, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
-  bannerEditBadgeText:{ color: '#fff', fontSize: 12, fontWeight: '600' },
-  section:            { gap: 4 },
-  sectionBlock:       { paddingVertical: 20, borderTopWidth: 1, borderTopColor: 'transparent' },
-  sectionBox:         { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 12 },
-  prefixInput:        { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
-  prefixSymbol:       { fontSize: 14, fontWeight: '600', marginRight: 4 },
-  prefixTextInput:    { flex: 1, fontSize: 14, padding: 0 },
-  sectionTitle:       { fontSize: 16, fontWeight: '700', letterSpacing: -0.2, marginBottom: 16 },
-  hint:               { fontSize: 13, color: Colors.grey, fontStyle: 'italic', marginBottom: 12 },
   input:              { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.black },
   textarea:           { minHeight: 120, textAlignVertical: 'top' },
   inputError:         { borderColor: Colors.danger, backgroundColor: 'rgba(233,69,96,0.04)' },
+  prefixInput:        { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12 },
+  prefixSymbol:       { fontSize: 13, fontWeight: '500', marginRight: 2, flexShrink: 0 },
+  prefixTextInput:    { flex: 1, fontSize: 14, padding: 0 },
   pill:               { borderWidth: 1, borderColor: Colors.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  pillActive:         { borderColor: Colors.orange, backgroundColor: 'rgba(250,131,12,0.08)' },
-  pillText:           { fontSize: 13, color: Colors.grey },
-  pillTextActive:     { color: Colors.orange, fontWeight: '700' },
-  toggleRow:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.borderFaint },
-  toggleLabel:        { fontSize: 14, color: Colors.black, flex: 1 },
-  card:               { backgroundColor: Colors.bgFaint, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 14, marginBottom: 12 },
+  pillText:           { fontSize: 13 },
+  card:               { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 },
   cardError:          { borderColor: Colors.danger },
   addBtn:             { borderWidth: 1, borderColor: 'rgba(250,131,12,0.4)', borderStyle: 'dashed', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 8 },
   addBtnText:         { fontSize: 14, color: Colors.orange, fontWeight: '600' },
-  removeBtn:          { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 10, alignItems: 'center' as const },
-  removeBtnText:      { fontSize: 13, color: Colors.grey },
-  itemBtnRow:         { flexDirection: 'row', gap: 8, marginTop: 8 },
-  itemSaveBtn:        { flex: 1, backgroundColor: Colors.orange, borderRadius: 8, padding: 10, alignItems: 'center' },
-  itemSaveBtnText:    { fontSize: 13, color: Colors.black, fontWeight: '600' },
-  removeInlineBtn:    { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, flexShrink: 0 },
+  removeInlineBtn:    { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, flexShrink: 0 },
   removeInlineBtnText:{ fontSize: 12, color: Colors.grey },
   photoGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
   photoItem:          { width: '47%', aspectRatio: 4/3, borderRadius: 10, overflow: 'hidden' },
   photoImg:           { width: '100%', height: '100%' },
   photoRemove:        { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  // Checkbox row
-  checkRow:           { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1 },
   checkbox:           { width: 20, height: 20, borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   checkboxChecked:    { backgroundColor: Colors.orange, borderColor: Colors.orange },
   checkmark:          { fontSize: 13, color: '#fff', fontWeight: '700', lineHeight: 16 },
-  checkLabel:         { fontSize: 14, flex: 1 },
-  // Danger zone
   dangerSection:      { marginTop: 32, borderWidth: 1, borderRadius: 12, padding: 16 },
   dangerTitle:        { fontSize: 11, fontWeight: '700', color: Colors.danger, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
   dangerDesc:         { fontSize: 14, lineHeight: 21, marginBottom: 16 },
   dangerBtn:          { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 18, alignSelf: 'flex-start', opacity: 0.5 },
   dangerBtnActive:    { opacity: 1 },
   dangerBtnText:      { fontSize: 14, fontWeight: '600', color: Colors.danger },
-  // Mobile onboarding modal
   mobileOnboardingOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   mobileOnboardingCard:    { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 28, paddingBottom: 40, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20, shadowOffset: { width: 0, height: -4 } },
 });
@@ -1923,7 +1703,6 @@ const epd = StyleSheet.create({
   backBtnText:   { fontSize: 13, fontWeight: '600' },
   main:          { flex: 1 },
   mainContent:   { paddingHorizontal: 40, paddingVertical: 32, paddingBottom: 60 },
-  // Onboarding panel (right column, steps 2-8)
   onboardingPanel:      { width: 248, borderLeftWidth: 1, paddingTop: 32 },
   onboardingPanelInner: { paddingHorizontal: 24, paddingBottom: 32 },
   onboardingStepRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
@@ -1941,13 +1720,10 @@ const epd = StyleSheet.create({
   onboardingNextBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16 },
   onboardingNextBtnText:{ fontSize: 13, fontWeight: '700', color: '#ffffff' },
   onboardingBackText:   { fontSize: 13, color: Colors.grey, fontWeight: '600' },
-  // Welcome modal overlay (step 1)
   modalOverlay:         { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   welcomeCard:          { width: 400, borderRadius: 16, padding: 32, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
-  // Go Live card (step 10, bottom-left)
   goLiveCard:           { position: 'absolute', bottom: 32, left: 244, zIndex: 100 },
   goLiveCardInner:      { width: 320, borderRadius: 14, padding: 24, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 4 } },
-  // Replay button (bottom-right)
   replayBtn:            { position: 'absolute', bottom: 24, right: 24, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, zIndex: 50 },
   replayBtnText:        { fontSize: 13, fontWeight: '600', color: '#ffffff' },
 });
