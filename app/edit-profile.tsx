@@ -12,7 +12,7 @@ import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { db, storage, auth } from '@/lib/firebase';
-import { signOut, deleteUser } from 'firebase/auth';
+import { signOut, deleteUser, sendPasswordResetEmail } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -154,7 +154,7 @@ type Profile = {
   techRiderBools: Record<string, boolean>;
   photos: string[]; videos: string[];
   payment: ArtistPayment;
-  settings: { emailOnEnquiryResponse: boolean; emailOnNewConnection: boolean; listed: boolean };
+  settings: { emailOnEnquiryResponse: boolean; emailOnNewMessages: boolean; emailOnNewConnection: boolean; listed: boolean };
 };
 
 const BLANK: Profile = {
@@ -165,7 +165,7 @@ const BLANK: Profile = {
   customLinks: [], songs: [],
   techRider: {}, techRiderDocs: [], techRiderBools: {}, photos: [], videos: [],
   payment: { ...BLANK_ARTIST_PAYMENT },
-  settings: { emailOnEnquiryResponse: true, emailOnNewConnection: false, listed: true },
+  settings: { emailOnEnquiryResponse: true, emailOnNewMessages: true, emailOnNewConnection: false, listed: true },
 };
 
 // ── FieldRow: two-column label + control layout with divider ────────────
@@ -445,7 +445,7 @@ function DatePicker({ value, onChange, placeholder }: { value: string; onChange:
 export default function EditProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { colors, isDark, toggleDark } = useTheme();
+  const { colors, themeMode, setThemeMode } = useTheme();
   const { uid: uidParam, tab: tabParam } = useLocalSearchParams<{ uid?: string; tab?: string }>();
   const uid = uidParam ?? user?.uid ?? '';
 
@@ -485,7 +485,7 @@ export default function EditProfileScreen() {
       d.techRiderDocs = d.techRiderDocs || [];
       d.techRiderBools = d.techRiderBools || {};
       d.customLinks = d.customLinks || [];
-      d.settings    = d.settings    || BLANK.settings;
+      d.settings    = { ...BLANK.settings, ...(d.settings || {}) };
       d.payment     = d.payment     ? { ...BLANK_ARTIST_PAYMENT, ...d.payment } : { ...BLANK_ARTIST_PAYMENT };
       originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
@@ -739,93 +739,119 @@ export default function EditProfileScreen() {
       <View>
         {renderPageHeader('Settings')}
 
-        <SectionCard title="Notifications">
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => set('settings', { ...profile.settings, emailOnEnquiryResponse: !profile.settings.emailOnEnquiryResponse })}
-          >
-            <FieldRow label="Enquiry responses" sublabel="Email when a venue responds to an enquiry.">
-              <View style={{ alignItems: 'flex-end' }}>
-                <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnEnquiryResponse && s.checkboxChecked]}>
-                  {profile.settings.emailOnEnquiryResponse && <Text style={s.checkmark}>✓</Text>}
-                </View>
-              </View>
-            </FieldRow>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => set('settings', { ...profile.settings, emailOnNewConnection: !profile.settings.emailOnNewConnection })}
-          >
-            <FieldRow label="New connections" sublabel="Email when you receive a new connection." last>
-              <View style={{ alignItems: 'flex-end' }}>
-                <View style={[s.checkbox, { borderColor: colors.border }, profile.settings.emailOnNewConnection && s.checkboxChecked]}>
-                  {profile.settings.emailOnNewConnection && <Text style={s.checkmark}>✓</Text>}
-                </View>
-              </View>
-            </FieldRow>
-          </TouchableOpacity>
+        {/* Email notifications */}
+        <SectionCard title="Email notifications">
+          <FieldRow label="Enquiry responses" sublabel="When a venue accepts, declines or replies to your enquiry.">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch
+                value={profile.settings.emailOnEnquiryResponse}
+                onValueChange={v => set('settings', { ...profile.settings, emailOnEnquiryResponse: v })}
+                trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                thumbColor="#ffffff"
+              />
+            </View>
+          </FieldRow>
+          <FieldRow label="New messages" sublabel="When a venue messages you directly.">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch
+                value={profile.settings.emailOnNewMessages}
+                onValueChange={v => set('settings', { ...profile.settings, emailOnNewMessages: v })}
+                trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                thumbColor="#ffffff"
+              />
+            </View>
+          </FieldRow>
+          <FieldRow label="New connections" sublabel="When a venue connects with you." last>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch
+                value={profile.settings.emailOnNewConnection}
+                onValueChange={v => set('settings', { ...profile.settings, emailOnNewConnection: v })}
+                trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                thumbColor="#ffffff"
+              />
+            </View>
+          </FieldRow>
         </SectionCard>
 
         <CalendarSync />
 
-        <SectionCard title="Account">
-          <FieldRow label="Dark mode" sublabel="Switch between light and dark themes.">
+        {/* Appearance */}
+        <SectionCard title="Appearance">
+          <FieldRow label="Theme" last>
             <View style={{ alignItems: 'flex-end' }}>
-              <Switch value={isDark} onValueChange={toggleDark} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+              <View style={[ss.segmented, { borderColor: colors.border }]}>
+                {(['Light', 'Dark', 'System'] as const).map((label, i) => {
+                  const key = label.toLowerCase() as 'light' | 'dark' | 'system';
+                  const active = themeMode === key;
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      onPress={() => setThemeMode(key)}
+                      style={[
+                        ss.segmentBtn,
+                        { backgroundColor: active ? colors.black : 'transparent' },
+                        i < 2 && { borderRightWidth: 1, borderRightColor: colors.border },
+                      ]}
+                    >
+                      <Text style={[ss.segmentText, { color: active ? '#fff' : colors.black }]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </FieldRow>
-          <FieldRow label="Log out" last>
-            <TouchableOpacity onPress={async () => { await signOut(auth); router.replace('/'); }}>
-              <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '600', textAlign: 'right' }}>Log out</Text>
-            </TouchableOpacity>
           </FieldRow>
         </SectionCard>
 
-        <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
-          <Text style={s.dangerTitle}>Danger Zone</Text>
-          <Text style={[s.dangerDesc, { color: colors.black }]}>
-            Deactivating your listing will hide it from all venues browsing the app. This action can be reversed at any time.
-          </Text>
-          <TouchableOpacity
-            style={[s.dangerBtn, profile.settings.listed ? {} : s.dangerBtnActive]}
-            onPress={() => {
-              const willDeactivate = profile.settings.listed;
-              crossConfirm(
-                willDeactivate ? 'Deactivate Musician Listing?' : 'Reactivate Musician Listing?',
-                willDeactivate
-                  ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
-                  : 'This will make your profile visible to venues again.',
-                async () => {
-                  const uid = user?.uid;
-                  if (!uid) return;
-                  const newListed = !willDeactivate;
-                  await updateDoc(doc(db, 'bandProfiles', uid), { 'settings.listed': newListed });
-                  set('settings', { ...profile.settings, listed: newListed });
-                },
-                willDeactivate,
-              );
-            }}
-          >
-            <Text style={s.dangerBtnText}>
-              {profile.settings.listed ? 'Deactivate Musician Listing' : 'Reactivate Musician Listing'}
-            </Text>
-          </TouchableOpacity>
+        {/* Sign-in */}
+        <SectionCard title="Sign-in">
+          <FieldRow label="Login email" sublabel={user?.email ?? ''}>
+            <View style={{ alignItems: 'flex-end' }}>
+              <TouchableOpacity
+                onPress={() => Alert.alert('Change email', 'To change your login email, please contact support.')}
+                style={[ss.outlineBtn, { borderColor: colors.border }]}
+              >
+                <Text style={[ss.outlineBtnText, { color: colors.black }]}>Change</Text>
+              </TouchableOpacity>
+            </View>
+          </FieldRow>
+          <FieldRow label="Password" sublabel="Send a password reset link to your email." last>
+            <View style={{ alignItems: 'flex-end' }}>
+              <TouchableOpacity
+                style={[ss.outlineBtn, { borderColor: colors.border }]}
+                onPress={async () => {
+                  if (!user?.email) return;
+                  try {
+                    await sendPasswordResetEmail(auth, user.email);
+                    Alert.alert('Email sent', 'Check your inbox for a password reset link.');
+                  } catch (e: any) {
+                    Alert.alert('Error', e.message ?? 'Could not send reset email.');
+                  }
+                }}
+              >
+                <Text style={[ss.outlineBtnText, { color: colors.black }]}>Update</Text>
+              </TouchableOpacity>
+            </View>
+          </FieldRow>
+        </SectionCard>
 
-          <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>
-            Permanently delete your profile and account. This action cannot be undone.
+        {/* Delete account */}
+        <View style={[ss.deleteCard, { borderColor: Colors.danger + '55', backgroundColor: colors.bg }]}>
+          <Text style={[ss.deleteTitle, { color: colors.black }]}>Delete account</Text>
+          <Text style={[ss.deleteDesc, { color: colors.grey }]}>
+            Permanently removes your profile, enquiries and messages. To take a break instead, turn off Listed in Discover.
           </Text>
           <TouchableOpacity
-            style={[s.dangerBtn, s.dangerBtnActive]}
+            style={ss.deleteBtn}
             onPress={() => {
               crossConfirm(
                 'Delete Account',
                 'This will permanently delete your profile and account from the database. This action cannot be undone.',
                 async () => {
                   try {
-                    const uid = user?.uid;
-                    if (uid) {
-                      await deleteDoc(doc(db, 'bandProfiles', uid));
-                      await deleteDoc(doc(db, 'users', uid));
+                    const currentUid = user?.uid;
+                    if (currentUid) {
+                      await deleteDoc(doc(db, 'bandProfiles', currentUid));
+                      await deleteDoc(doc(db, 'users', currentUid));
                     }
                     const cu = auth.currentUser;
                     if (cu) await deleteUser(cu);
@@ -840,7 +866,7 @@ export default function EditProfileScreen() {
               );
             }}
           >
-            <Text style={s.dangerBtnText}>Delete Account</Text>
+            <Text style={ss.deleteBtnText}>Delete account</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1681,6 +1707,19 @@ const s = StyleSheet.create({
   dangerBtnText:      { fontSize: 14, fontWeight: '600', color: Colors.danger },
   mobileOnboardingOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   mobileOnboardingCard:    { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 28, paddingBottom: 40, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20, shadowOffset: { width: 0, height: -4 } },
+});
+
+const ss = StyleSheet.create({
+  segmented:      { flexDirection: 'row', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  segmentBtn:     { paddingVertical: 7, paddingHorizontal: 14 },
+  segmentText:    { fontSize: 13, fontWeight: '500' },
+  outlineBtn:     { borderWidth: 1, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 14 },
+  outlineBtnText: { fontSize: 13, fontWeight: '600' },
+  deleteCard:     { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  deleteTitle:    { fontSize: 14, fontWeight: '700', marginBottom: 6 },
+  deleteDesc:     { fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  deleteBtn:      { borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 16, alignSelf: 'flex-start' },
+  deleteBtnText:  { fontSize: 13, fontWeight: '600', color: Colors.danger },
 });
 
 const epd = StyleSheet.create({
