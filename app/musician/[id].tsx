@@ -126,13 +126,31 @@ type Musician = {
   backline?: string;
   availability?: string;
   techRider?: {
+    // Stage
+    stageWidth?: string;
+    stageDepth?: string;
+    monitoringType?: string;
     monitoring?: string;
+    // Production
+    ownPA?: boolean;
+    lighting?: string;
+    power?: string;
+    // Timings
+    loadIn?: string;
+    soundcheck?: string;
+    // Stage plot
+    stagePlotUrl?: string;
+    // Notes
+    notes?: string;
+    // Legacy fields (kept for backwards compat)
     backlineNeeded?: string;
     stageSize?: string;
-    soundcheck?: string;
-    notes?: string;
   };
   techRiderDocs?: { url: string; name: string }[];
+  techRiderBools?: Record<string, boolean>;
+  backlineFromVenue?: string[];
+  backlineBring?: string[];
+  inputChannels?: { source?: string; micDi?: string }[];
   instruments?: string[];
 };
 
@@ -185,7 +203,12 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
   const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
   const hasContact     = !!(m.email || m.phone);
   const hasSocials     = socialLinks.length > 0 || customLinks.length > 0;
-  const hasTechRider   = !!(m.techRider && Object.values(m.techRider).some(v => v));
+  const hasTechRider   = !!(
+    (m.techRider && Object.values(m.techRider).some(v => v)) ||
+    (m.backlineFromVenue && m.backlineFromVenue.length > 0) ||
+    (m.backlineBring && m.backlineBring.length > 0) ||
+    m.techRiderBools?.ownPA
+  );
   const hasTechDocs    = !!(m.techRiderDocs && m.techRiderDocs.length > 0);
   const hasSidebar     = hasContact || hasSocials || !!m.availability || hasTechRider || hasTechDocs;
 
@@ -245,31 +268,99 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
       {(hasTechRider || hasTechDocs || isOwn) && (
         <View style={[styles.sideCard, { borderColor: colors.border }]}>
           {secHead('Tech Rider', !hasTechRider && !hasTechDocs, 'Tech Rider', styles.sideSectionLabel)}
-          {m.techRider?.monitoring && (
+
+          {/* Stage size */}
+          {(m.techRider?.stageWidth || m.techRider?.stageDepth || m.techRider?.stageSize) && (
             <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Monitoring: </Text>{m.techRider.monitoring}
+              <Text style={{ fontWeight: '700' }}>Min stage: </Text>
+              {m.techRider.stageWidth && m.techRider.stageDepth
+                ? `${m.techRider.stageWidth}m × ${m.techRider.stageDepth}m`
+                : m.techRider.stageSize}
             </Text>
           )}
-          {m.techRider?.backlineNeeded && (
+
+          {/* Monitoring */}
+          {(m.techRider?.monitoringType || m.techRider?.monitoring) && (
             <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Backline: </Text>{m.techRider.backlineNeeded}
+              <Text style={{ fontWeight: '700' }}>Monitoring: </Text>
+              {[m.techRider.monitoringType, m.techRider.monitoring].filter(Boolean).join(' · ')}
             </Text>
           )}
-          {m.techRider?.stageSize && (
+
+          {/* Backline from venue */}
+          {((m.backlineFromVenue && m.backlineFromVenue.length > 0) || m.techRider?.backlineNeeded) && (
             <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Stage: </Text>{m.techRider.stageSize}
+              <Text style={{ fontWeight: '700' }}>Needs from venue: </Text>
+              {m.backlineFromVenue && m.backlineFromVenue.length > 0
+                ? m.backlineFromVenue.join(', ')
+                : m.techRider!.backlineNeeded}
             </Text>
           )}
+
+          {/* Backline they bring */}
+          {m.backlineBring && m.backlineBring.length > 0 && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Brings own: </Text>{m.backlineBring.join(', ')}
+            </Text>
+          )}
+
+          {/* Own PA */}
+          {(m.techRiderBools?.ownPA || (m as any).techRider?.ownPA) && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>PA: </Text>Touring with own PA and engineer
+            </Text>
+          )}
+
+          {/* Soundcheck */}
           {m.techRider?.soundcheck && (
             <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
               <Text style={{ fontWeight: '700' }}>Soundcheck: </Text>{m.techRider.soundcheck}
             </Text>
           )}
-          {m.techRider?.notes && (
-            <Text style={[styles.sideBody, { color: colors.greyLight, marginTop: 4, marginBottom: hasTechDocs ? 8 : 0 }]}>{m.techRider.notes}</Text>
+
+          {/* Load-in */}
+          {m.techRider?.loadIn && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Load-in: </Text>{m.techRider.loadIn}
+            </Text>
           )}
+
+          {/* Lighting */}
+          {m.techRider?.lighting && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Lighting: </Text>{m.techRider.lighting}
+            </Text>
+          )}
+
+          {/* Power */}
+          {m.techRider?.power && (
+            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>Power: </Text>{m.techRider.power}
+            </Text>
+          )}
+
+          {/* Notes */}
+          {m.techRider?.notes && (
+            <Text style={[styles.sideBody, { color: colors.greyLight, marginTop: 4, marginBottom: hasTechDocs ? 8 : 0 }]}>
+              {m.techRider.notes}
+            </Text>
+          )}
+
+          {/* Stage plot */}
+          {m.techRider?.stagePlotUrl && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Stage Plot</Text>
+              <Image
+                source={{ uri: m.techRider.stagePlotUrl }}
+                style={{ width: '100%', height: 120, borderRadius: 8 }}
+                resizeMode="contain"
+              />
+            </View>
+          )}
+
+          {/* Spec sheets / rider PDFs */}
           {hasTechDocs && (
-            <View style={{ marginTop: hasTechRider ? 10 : 0 }}>
+            <View style={{ marginTop: 10 }}>
               <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Spec Sheets</Text>
               {(m.techRiderDocs || []).map((doc, i) => (
                 <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
