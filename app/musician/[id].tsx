@@ -1218,12 +1218,16 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
-  // gigsPlayed/averageDraw are server-computed aggregates (a Cloud Function
-  // trigger on the gigs collection) from every one of the artist's confirmed
-  // gigs, regardless of that gig's own public-profile toggle: these are
-  // credibility numbers, same as fee range, not per-gig details.
-  const completedGigs   = musician.gigsPlayed ?? 0;
-  const liveAverageDraw = musician.averageDraw ?? null;
+  // Compute stats live from actual past gig data rather than relying on
+  // server-computed aggregates stored on the profile document.
+  const confirmedPastGigs   = gigsForTabs.filter(
+    g => g.startAt && (g.status == null || g.status === 'confirmed') && g.startAt.toDate() < now
+  );
+  const gigsWithAttendance  = confirmedPastGigs.filter(g => g.attendance != null && g.attendance > 0);
+  const liveAverageDraw     = gigsWithAttendance.length > 0
+    ? Math.round(gigsWithAttendance.reduce((sum: number, g: any) => sum + g.attendance, 0) / gigsWithAttendance.length)
+    : null;
+  const gigsThisYear        = confirmedPastGigs.filter(g => g.startAt.toDate().getFullYear() === year).length;
 
   const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
   const feeStr = typicalFeeText
@@ -1239,7 +1243,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Top header stats: the primary credibility trio (plus lineup/act size/backline).
   const statsItems = [
     musician.memberCount              ? { value: musician.memberCount,                        label: 'LINEUP'           } : null,
-    completedGigs > 0                 ? { value: String(completedGigs),                       label: 'GIGS PLAYED'      } : null,
+    gigsThisYear > 0                  ? { value: String(gigsThisYear),                        label: `GIGS ${year}`     } : null,
     liveAverageDraw != null           ? { value: `~${liveAverageDraw}`,                        label: 'AVG DRAW'         } : null,
     feeStr                            ? { value: feeStr,                                      label: 'FEE'              } : null,
     musician.actSize                  ? { value: musician.actSize,                            label: 'ACT SIZE'         } : null,
