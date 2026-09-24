@@ -1376,7 +1376,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             <TouchableOpacity
               style={[dash.viewPublicBtn, { borderColor: colors.border }]}
-              onPress={() => router.push(`/musician/${id}?preview=1` as any)}
+              onPress={() => router.push(`/musician/${id}` as any)}
               activeOpacity={0.8}
             >
               <Text style={[dash.viewPublicText, { color: colors.black }]}>View public profile</Text>
