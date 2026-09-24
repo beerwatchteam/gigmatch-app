@@ -316,38 +316,7 @@ export default function EnquireScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── Band row ──────────────────────────────────────────── */}
-        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-          {band.photoUrl ? (
-            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
-          ) : (
-            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
-              <Text style={s.bandPhotoLabel}>photo</Text>
-            </View>
-          )}
-          <View style={{ flex: 1, gap: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
-                {band.name || profile?.displayName || 'Your Band'}
-              </Text>
-              {band.artistType ? (
-                <View style={s.typeBadge}>
-                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
-              {[
-                genres.slice(0, 3).join(' · '),
-                band.location,
-                computedDraw != null ? `~${computedDraw} draw` : null,
-                (band.feeMin != null && band.feeMax != null) ? `$${band.feeMin}-$${band.feeMax}` : null,
-              ].filter(Boolean).join(' · ')}
-            </Text>
-          </View>
-        </View>
-
-{/* ── Set Details ───────────────────────────────────────── */}
+        {/* ── Set Details ───────────────────────────────────────── */}
         <View style={s.setDetailsBlock}>
           <Text style={[s.setDetailsHeading, { color: colors.grey }]}>SET DETAILS</Text>
           <View style={s.setDetailRow}>
@@ -443,6 +412,37 @@ export default function EnquireScreen() {
             ) : null}
           </View>
         ) : null}
+
+        {/* ── Band row ──────────────────────────────────────────── */}
+        <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+          {band.photoUrl ? (
+            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
+          ) : (
+            <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
+              <Text style={s.bandPhotoLabel}>photo</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <Text style={[s.bandName, { color: colors.black }]} numberOfLines={1}>
+                {band.name || profile?.displayName || 'Your Band'}
+              </Text>
+              {band.artistType ? (
+                <View style={s.typeBadge}>
+                  <Text style={s.typeBadgeText}>{(band.artistType || '').toUpperCase()}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[s.bandMeta, { color: colors.grey }]} numberOfLines={1}>
+              {[
+                genres.slice(0, 3).join(' · '),
+                band.location,
+                computedDraw != null ? `~${computedDraw} draw` : null,
+                (band.feeMin != null && band.feeMax != null) ? `$${band.feeMin}-$${band.feeMax}` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        </View>
 
         {/* ── What you're sending ───────────────────────────────── */}
         <View style={s.sectionsBlock}>
