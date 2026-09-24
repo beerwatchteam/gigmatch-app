@@ -167,10 +167,13 @@ export default function EnquireScreen() {
           setLength,
         },
         sharedSections: sections,
-        genre:      band.genre,
-        location:   band.location,
-        artistType: band.artistType,
-        photoUrl:   sections.photos ? band.photoUrl : undefined,
+        genre:       band.genre,
+        location:    band.location,
+        artistType:  band.artistType,
+        photoUrl:    sections.photos ? band.photoUrl : undefined,
+        feeMin:      band.feeMin,
+        feeMax:      band.feeMax,
+        averageDraw: band.averageDraw,
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
@@ -280,7 +283,10 @@ export default function EnquireScreen() {
               {[
                 genres.slice(0, 3).join(' · '),
                 band.location,
-                band.drawSize ? `${band.drawSize} draw` : null,
+                band.averageDraw ? `${band.averageDraw} draw` : null,
+                (band.feeMin != null || band.feeMax != null)
+                  ? `$${band.feeMin ?? '?'}–$${band.feeMax ?? '?'}`
+                  : null,
               ].filter(Boolean).join(' · ')}
             </Text>
           </View>

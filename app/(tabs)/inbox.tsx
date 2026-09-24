@@ -1857,6 +1857,18 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
             <Text style={[eq.meta, { color: dimColor }]}>{enquiry.location}</Text>
           ) : null}
 
+          {/* Fee range + draw */}
+          {(enquiry.feeMin != null || enquiry.feeMax != null || enquiry.averageDraw) ? (
+            <Text style={[eq.meta, { color: dimColor }]}>
+              {[
+                (enquiry.feeMin != null || enquiry.feeMax != null)
+                  ? `$${enquiry.feeMin ?? '?'}–$${enquiry.feeMax ?? '?'}`
+                  : null,
+                enquiry.averageDraw ? `${enquiry.averageDraw} draw` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          ) : null}
+
           {/* About */}
           {enquiry.about ? (
             <Section label="ABOUT" sectionRef={profileRef}>
