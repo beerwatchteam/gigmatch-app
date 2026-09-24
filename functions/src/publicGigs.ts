@@ -115,14 +115,53 @@ function buildPublicGig(gigId: string, data: GigData): PublicGigDoc | null {
   };
 }
 
+// ── Aggregate musician stats ──────────────────────────────────────────────────
+//
+// GIGS PLAYED, GIGS THIS YEAR and AVG DRAW are public credibility numbers,
+// same as fee range already is, so they count every confirmed gig regardless
+// of that gig's own "show on public profile" toggle. Only the aggregate
+// (counts/average) is exposed this way; individual venue/date details still
+// come from publicGigs, which stays gated on isPublic.
+
+type StatsGig = { status: string; startAt: FirebaseFirestore.Timestamp; endAt: FirebaseFirestore.Timestamp | null; attendance?: number | null };
+
+function computeAggregateStats(gigs: StatsGig[]): { gigsPlayed: number; gigsThisYear: number; averageDraw: number | null } {
+  const now  = new Date();
+  const year = now.getFullYear();
+  const confirmed = gigs.filter(g => g.status === 'confirmed');
+
+  const endOf = (g: StatsGig) => (g.endAt ?? Timestamp.fromDate(new Date(g.startAt.toDate().getTime() + 3_600_000))).toDate();
+
+  const gigsPlayed   = confirmed.filter(g => endOf(g) < now).length;
+  const gigsThisYear = confirmed.filter(g => g.startAt.toDate().getFullYear() === year).length;
+
+  const attendances = confirmed
+    .filter(g => endOf(g) < now && typeof g.attendance === 'number' && g.attendance > 0)
+    .map(g => g.attendance as number);
+  const averageDraw = attendances.length > 0
+    ? Math.round(attendances.reduce((s, a) => s + a, 0) / attendances.length)
+    : null;
+
+  return { gigsPlayed, gigsThisYear, averageDraw };
+}
+
+async function syncAggregateStats(db: FirebaseFirestore.Firestore, artistUid: string): Promise<void> {
+  const snap  = await db.collection('gigs').where('artistUid', '==', artistUid).get();
+  const stats = computeAggregateStats(snap.docs.map(d => d.data() as StatsGig));
+  await db.collection('bandProfiles').doc(artistUid).set(stats, { merge: true });
+}
+
 // ── Trigger ──────────────────────────────────────────────────────────────────
 
 /**
- * Keeps publicGigs in sync with the gigs collection.
+ * Keeps publicGigs and each artist's aggregate stats in sync with the gigs
+ * collection.
  *
- * - Gig deleted              → delete publicGigs/{gigId}
+ * - Gig deleted              → delete publicGigs/{gigId}, resync stats
  * - isPublic true + confirmed + artistUid set → set projection
  * - Otherwise                → delete publicGigs/{gigId} if it exists
+ * - Any write with an artistUid → recompute gigsPlayed/gigsThisYear/averageDraw
+ *   on bandProfiles/{artistUid} from every one of that artist's gigs
  *
  * Runs in australia-southeast1 (same region as Firestore).
  * Typical propagation delay: 1-5 seconds after the gig write lands.
@@ -137,6 +176,8 @@ export const syncPublicGig = onDocumentWritten('gigs/{gigId}', async (event) => 
     if (!event.data?.after?.exists) {
       await pubRef.delete();
       console.log(`[syncPublicGig] deleted publicGigs/${gigId}`);
+      const before = event.data?.before?.data() as GigData | undefined;
+      if (before?.artistUid) await syncAggregateStats(db, before.artistUid);
       return;
     }
 
@@ -155,6 +196,8 @@ export const syncPublicGig = onDocumentWritten('gigs/{gigId}', async (event) => 
       await pubRef.delete();
       console.log(`[syncPublicGig] removed publicGigs/${gigId} (not eligible)`);
     }
+
+    if (after.artistUid) await syncAggregateStats(db, after.artistUid);
   } catch (err) {
     console.error(`[syncPublicGig] error for gigs/${gigId}:`, err);
   }
@@ -183,6 +226,7 @@ export const resyncPublicGigs = onCall(async (request) => {
   const batch = db2.batch();
   let  synced = 0;
   let  removed = 0;
+  const gigsByArtist: Record<string, GigData[]> = {};
 
   for (const gigDoc of gigs.docs) {
     const gigId     = gigDoc.id;
@@ -197,9 +241,15 @@ export const resyncPublicGigs = onCall(async (request) => {
       batch.delete(pubRef);
       removed++;
     }
+
+    if (data.artistUid) (gigsByArtist[data.artistUid] ??= []).push(data);
+  }
+
+  for (const [artistUid, artistGigs] of Object.entries(gigsByArtist)) {
+    batch.set(db2.collection('bandProfiles').doc(artistUid), computeAggregateStats(artistGigs), { merge: true });
   }
 
   await batch.commit();
-  console.log(`[resyncPublicGigs] synced=${synced} removed=${removed}`);
-  return { synced, removed };
+  console.log(`[resyncPublicGigs] synced=${synced} removed=${removed} artists=${Object.keys(gigsByArtist).length}`);
+  return { synced, removed, artists: Object.keys(gigsByArtist).length };
 });

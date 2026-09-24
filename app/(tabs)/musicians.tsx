@@ -11,7 +11,6 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { searchSuburbs, type AreaResult } from '@/lib/suburbSearch';
-import { computeMusicianGigStats } from '@/lib/gig-types';
 import { useTheme } from '@/lib/theme-context';
 import { useAuth } from '@/lib/auth-context';
 import { SlidersHorizontal } from 'phosphor-react-native';
@@ -37,6 +36,7 @@ type Musician = {
   location?: string; genre?: string[]; about?: string;
   photoUrl?: string; photoPosition?: { x: number; y: number };
   feeMin?: number; feeMax?: number;
+  averageDraw?: number; gigsThisYear?: number;
   settings?: { listed?: boolean };
 };
 
@@ -74,7 +74,6 @@ export default function MusiciansScreen() {
   const { width: windowWidth } = useWindowDimensions();
 
   const [musicians, setMusicians]   = useState<Musician[]>([]);
-  const [gigsByArtist, setGigsByArtist] = useState<Record<string, any[]>>({});
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -93,20 +92,9 @@ export default function MusiciansScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const [profilesSnap, gigsSnap] = await Promise.all([
-        getDocs(collection(db, 'bandProfiles')),
-        getDocs(collection(db, 'publicGigs')),
-      ]);
-      const data = profilesSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Musician[];
+      const snap = await getDocs(collection(db, 'bandProfiles'));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Musician[];
       setMusicians(data.filter(m => m.settings?.listed !== false));
-
-      const byArtist: Record<string, any[]> = {};
-      gigsSnap.docs.forEach(d => {
-        const g = d.data();
-        if (!g.artistUid) return;
-        (byArtist[g.artistUid] ??= []).push(g);
-      });
-      setGigsByArtist(byArtist);
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -366,13 +354,12 @@ export default function MusiciansScreen() {
       : item.artistType;
     const metaParts = [item.location].filter(Boolean);
     const yearShort = String(new Date().getFullYear()).slice(2);
-    const { gigsThisYear, averageDraw } = computeMusicianGigStats(gigsByArtist[item.id] ?? []);
     const feeStr = item.feeMin != null && item.feeMax != null
       ? `$${item.feeMin}–$${item.feeMax}`
       : item.feeMin != null ? `$${item.feeMin}+` : null;
     const stats = [
-      averageDraw != null       ? { value: String(averageDraw),        label: 'DRAW'               } : null,
-      gigsThisYear > 0          ? { value: String(gigsThisYear),       label: `GIGS '${yearShort}` } : null,
+      item.averageDraw != null   ? { value: String(item.averageDraw),  label: 'DRAW'               } : null,
+      (item.gigsThisYear ?? 0) > 0 ? { value: String(item.gigsThisYear), label: `GIGS '${yearShort}` } : null,
       feeStr                    ? { value: feeStr,                     label: 'FEE'                } : null,
     ].filter(Boolean) as { value: string; label: string }[];
 

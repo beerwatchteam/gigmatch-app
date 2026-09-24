@@ -20,7 +20,7 @@ import { doc, getDoc, collection, getDocs, query, where, Timestamp } from 'fireb
 import { db } from '@/lib/firebase';
 import {
   createArtistGig, updateArtistGig, setGigPublic, savePrivateGigData,
-  uploadGigDoc, recomputeAverageDraw, type ArtistGigInput, type UploadProgress,
+  uploadGigDoc, type ArtistGigInput, type UploadProgress,
 } from '@/lib/useGigs';
 import {
   STATE_TZ, dollarsToCents, type Gig, type GigPrivateDoc,
@@ -378,11 +378,6 @@ export default function ArtistGigForm({
           notes: privateNotes,
           docs:  privateDocs,
         });
-      }
-
-      // Recompute average draw from all past gigs with attendance logged
-      if (attendanceVal != null) {
-        recomputeAverageDraw(artistUid).catch(() => {});
       }
 
       onSaved(savedGigId);

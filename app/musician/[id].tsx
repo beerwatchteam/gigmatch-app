@@ -16,7 +16,6 @@ import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
-import { computeMusicianGigStats } from '@/lib/gig-types';
 
 const isWeb = Platform.OS === 'web';
 
@@ -120,6 +119,7 @@ type Musician = {
   feeMax?: number;
   payment?: { typicalFee?: string; minimumFee?: string; publicLiabilityHeld?: boolean };
   averageDraw?: number;
+  gigsPlayed?: number;
   memberCount?: string;
   setType?: string;
   ageRestriction?: string;
@@ -1131,7 +1131,6 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : initialTab === 'dashboard' ? 'dashboard' : 'overview'
   );
   const [publicGigs, setPublicGigs]         = useState<any[]>([]);
-  const [artistAddedGigs, setArtistAddedGigs] = useState<any[]>([]);
   const [ownGigs, setOwnGigs]               = useState<any[]>([]);
 
   const isOwn = !isPublicPreview && user?.uid === id;
@@ -1154,26 +1153,11 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     }).catch(() => {});
   }, [id]);
 
-  // Also load self-reported gigs so they appear in the public Timetable and Overview
-  useEffect(() => {
-    getDocs(query(
-      collection(db, 'gigs'),
-      where('artistUid', '==', id),
-      where('source', '==', 'artist_added'),
-    )).then(snap => {
-      setArtistAddedGigs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }).catch(() => {});
-  }, [id]);
-
-  // Merge publicGigs + artist-added gigs (deduplicate by id)
-  const mergedPublicGigs = (() => {
-    const ids = new Set(publicGigs.map(g => g.id));
-    return [...publicGigs, ...artistAddedGigs.filter(g => !ids.has(g.id))];
-  })();
-
   // Owner's own gigs, any source or visibility (private Twaylo bookings
-  // included). Used instead of mergedPublicGigs for Overview and Timetable
-  // when isOwn, since that only ever carries public/self-added gigs.
+  // included). Used instead of publicGigs for Overview and Timetable when
+  // isOwn (never in public preview, since isOwn is forced false there), so a
+  // real third party, and a preview of one, only ever see publicGigs, the
+  // properly isPublic-gated projection.
   useEffect(() => {
     if (!isOwn) return;
     getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', id)))
@@ -1181,7 +1165,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
       .catch(() => {});
   }, [isOwn, id]);
 
-  const gigsForTabs = isOwn ? ownGigs : mergedPublicGigs;
+  const gigsForTabs = isOwn ? ownGigs : publicGigs;
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
@@ -1221,9 +1205,12 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
-  // Live stats from actual gig data, not the cached bandProfile field, so
-  // they never drift out of sync with what's actually been played.
-  const { gigsPlayed: completedGigs, averageDraw: liveAverageDraw } = computeMusicianGigStats(gigsForTabs);
+  // gigsPlayed/averageDraw are server-computed aggregates (a Cloud Function
+  // trigger on the gigs collection) from every one of the artist's confirmed
+  // gigs, regardless of that gig's own public-profile toggle: these are
+  // credibility numbers, same as fee range, not per-gig details.
+  const completedGigs   = musician.gigsPlayed ?? 0;
+  const liveAverageDraw = musician.averageDraw ?? null;
 
   const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
   const feeStr = typicalFeeText

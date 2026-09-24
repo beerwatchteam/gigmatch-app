@@ -10,7 +10,6 @@ import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
-import { computeMusicianGigStats } from '@/lib/gig-types';
 
 const ADMIN_EMAIL = 'beerwatchbusiness@gmail.com';
 const isWeb = Platform.OS === 'web';
@@ -31,6 +30,7 @@ type MusicianData = {
   location?: string; genre?: string[];
   photoUrl?: string;
   feeMin?: number; feeMax?: number;
+  averageDraw?: number; gigsThisYear?: number;
   settings?: { listed?: boolean };
 };
 type OpenSlotItem = { venue: VenueData; date: Date; day: string; slot: Slot };
@@ -235,7 +235,7 @@ const vc = StyleSheet.create({
 
 // ── ArtistCard (For Venues section) ───────────────────────────────
 
-function ArtistCard({ musician, gigs = [] }: { musician: MusicianData; gigs?: any[] }) {
+function ArtistCard({ musician }: { musician: MusicianData }) {
   const photo   = musician.photoUrl;
   const actType = Array.isArray(musician.artistType) ? musician.artistType[0] : musician.artistType;
   const genres  = (musician.genre ?? []).slice(0, 3).join(' · ');
@@ -244,8 +244,9 @@ function ArtistCard({ musician, gigs = [] }: { musician: MusicianData; gigs?: an
       ? `$${musician.feeMin}-${musician.feeMax}`
       : `$${musician.feeMin}+`
     : null;
-  const year = new Date().getFullYear();
-  const { gigsThisYear, averageDraw } = computeMusicianGigStats(gigs);
+  const year          = new Date().getFullYear();
+  const gigsThisYear  = musician.gigsThisYear ?? 0;
+  const averageDraw   = musician.averageDraw ?? null;
 
   return (
     <View style={ac.card}>
@@ -348,7 +349,6 @@ export default function HomeScreen() {
   const [musicians,     setMusicians]     = useState<MusicianData[]>([]);
   const [musicianCount, setMusicianCount] = useState<number>(0);
   const [heroImageUrl,  setHeroImageUrl]  = useState<string | null>(null);
-  const [gigsByArtist,  setGigsByArtist]  = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'homepage'), snap => {
@@ -376,16 +376,6 @@ export default function HomeScreen() {
           ? featured.slice(0, 2)
           : all.filter(m => m.settings?.listed !== false && m.name).slice(0, 2)
       );
-    }).catch(console.error);
-
-    getDocs(collection(db, 'publicGigs')).then(snap => {
-      const byArtist: Record<string, any[]> = {};
-      snap.docs.forEach(d => {
-        const g = d.data();
-        if (!g.artistUid) return;
-        (byArtist[g.artistUid] ??= []).push(g);
-      });
-      setGigsByArtist(byArtist);
     }).catch(console.error);
   }, []);
 
@@ -637,7 +627,7 @@ export default function HomeScreen() {
             <View style={[s.forVenuesGrid, isWide && s.forVenuesGridWide]}>
               {musicians.map(m => (
                 <View key={m.id} style={[s.forVenuesCardWrap, isWide && { flex: 1 }]}>
-                  <ArtistCard musician={m} gigs={gigsByArtist[m.id] ?? []} />
+                  <ArtistCard musician={m} />
                 </View>
               ))}
               {/* Dark CTA card */}
