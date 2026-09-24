@@ -138,7 +138,7 @@ type Musician = {
 
 // ── Overview Tab ──────────────────────────────────────────────────
 
-function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m: Musician; isMobileLayout: boolean; publicGigs?: any[]; isOwn?: boolean }) {
+function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraStats = [] }: { m: Musician; isMobileLayout: boolean; publicGigs?: any[]; isOwn?: boolean; extraStats?: { value: string; label: string }[] }) {
   const { colors } = useTheme();
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -288,6 +288,25 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
       {agentName ? (
         <Text style={[styles.managedBy, { color: colors.grey }]}>Managed by {agentName}</Text>
       ) : null}
+
+      {/* Set type / suitability / public liability, same tile style as the header stats */}
+      {extraStats.length > 0 && (
+        <View style={[styles.statsRow, { borderBottomColor: colors.border, marginBottom: 20 }]}>
+          {extraStats.map((stat, i) => (
+            <View
+              key={stat.label}
+              style={[
+                styles.statCell,
+                { borderRightColor: colors.border },
+                i === extraStats.length - 1 && { borderRightWidth: 0 },
+              ]}
+            >
+              <Text style={[styles.statValue, { color: colors.black }]}>{stat.value}</Text>
+              <Text style={[styles.statLabel, { color: colors.greyLight }]}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
       {/* About */}
       {(about || isOwn) ? (
@@ -1223,16 +1242,21 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             : `Up to $${musician.feeMax!.toLocaleString()}`)
       : null;
 
+  // Top header stats: the primary credibility trio (plus lineup/act size/backline).
   const statsItems = [
     musician.memberCount              ? { value: musician.memberCount,                        label: 'LINEUP'           } : null,
     completedGigs > 0                 ? { value: String(completedGigs),                       label: 'GIGS PLAYED'      } : null,
     liveAverageDraw != null           ? { value: `~${liveAverageDraw}`,                        label: 'AVG DRAW'         } : null,
     feeStr                            ? { value: feeStr,                                      label: 'FEE'              } : null,
-    musician.setType                  ? { value: musician.setType,                            label: 'SET TYPE'         } : null,
-    musician.ageRestriction           ? { value: musician.ageRestriction,                     label: 'SUITABILITY'      } : null,
-    musician.payment?.publicLiabilityHeld ? { value: 'Insured',                               label: 'PUBLIC LIABILITY' } : null,
     musician.actSize                  ? { value: musician.actSize,                            label: 'ACT SIZE'         } : null,
     musician.backline                 ? { value: musician.backline,                           label: 'BACKLINE'         } : null,
+  ].filter(Boolean) as { value: string; label: string }[];
+
+  // Moved into the Overview tab itself (not the header, per Darcy), same tile style.
+  const overviewStatsItems = [
+    musician.setType                      ? { value: musician.setType,        label: 'SET TYPE'         } : null,
+    musician.ageRestriction               ? { value: musician.ageRestriction, label: 'SUITABILITY'      } : null,
+    musician.payment?.publicLiabilityHeld ? { value: 'Insured',               label: 'PUBLIC LIABILITY' } : null,
   ].filter(Boolean) as { value: string; label: string }[];
 
   // ── Web desktop dashboard (own profile only) ──────────────────────
@@ -1329,7 +1353,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={gigsForTabs} isOwn={isOwn} />}
+            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
             {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
             {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
             {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
@@ -1477,7 +1501,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} isOwn={isOwn} />}
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
         {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
         {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
         {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
