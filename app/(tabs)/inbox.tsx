@@ -1837,9 +1837,9 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
   );
   const hasDownloads = !!(techRider?.stagePlotUrl || techRider?.inputListUrl || techRiderDocs.length > 0);
 
-  const textColor = isMine ? '#ffffff' : '#111111';
-  const dimColor  = isMine ? 'rgba(255,255,255,0.55)' : '#888888';
-  const divColor  = isMine ? 'rgba(255,255,255,0.15)' : '#e8e8e8';
+  const textColor = '#111111';
+  const dimColor  = '#888888';
+  const divColor  = isMine ? '#ddd6cc' : '#e8e8e8';
 
   function Section({ label, sectionKey, children, sectionRef }: { label: string; sectionKey: string; children: React.ReactNode; sectionRef?: React.RefObject<View> }) {
     const isOpen = openSections.has(sectionKey);
@@ -2718,10 +2718,10 @@ const tp = StyleSheet.create({
   msgCol:        { maxWidth: '72%' },
   msgColMine:    { alignItems: 'flex-end' },
   bubble:        { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9 },
-  bubbleMine:    { backgroundColor: Colors.orange, borderBottomRightRadius: 4 },
+  bubbleMine:    { backgroundColor: '#f2ede4', borderBottomRightRadius: 4 },
   bubbleTheirs:  { backgroundColor: '#f0ede8', borderBottomLeftRadius: 4 },
   bubbleText:    { fontSize: 15, color: '#111111', lineHeight: 22 },
-  bubbleTextMine:{ color: '#ffffff' },
+  bubbleTextMine:{ color: '#111111' },
   msgTime:        { fontSize: 10, color: '#bbbbbb', marginTop: 3, marginLeft: 2 },
   msgTimeRight:   { textAlign: 'right', marginLeft: 0, marginRight: 2 },
   systemMsgRow:   { alignItems: 'center', marginVertical: 10 },
@@ -3107,10 +3107,10 @@ const dmp = StyleSheet.create({
   msgCol:        { maxWidth: '72%' },
   msgColMine:    { alignItems: 'flex-end' },
   bubble:        { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9 },
-  bubbleMine:    { backgroundColor: Colors.orange, borderBottomRightRadius: 4 },
+  bubbleMine:    { backgroundColor: '#f2ede4', borderBottomRightRadius: 4 },
   bubbleTheirs:  { backgroundColor: '#f0ede8', borderBottomLeftRadius: 4 },
   bubbleText:    { fontSize: 15, color: '#111111', lineHeight: 22 },
-  bubbleTextMine:{ color: '#ffffff' },
+  bubbleTextMine:{ color: '#111111' },
   time:          { fontSize: 10, color: '#bbbbbb', marginTop: 3, marginLeft: 2 },
   timeRight:     { textAlign: 'right', marginLeft: 0, marginRight: 2 },
   requestBanner: { borderTopWidth: 1, padding: 20, paddingHorizontal: isWeb ? 24 : 16, gap: 14, alignItems: 'center' },
