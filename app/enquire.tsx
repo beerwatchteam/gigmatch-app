@@ -18,14 +18,13 @@ const isWeb = Platform.OS === 'web';
 const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SLOT_PREFS = ['Headline', 'Support', 'Open Mic', 'Other'] as const;
 
-type SectionKey = 'about' | 'music' | 'socials' | 'techRider' | 'photos' | 'contact';
+type SectionKey = 'about' | 'music' | 'socials' | 'techRider' | 'contact';
 
 const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'about',     label: 'About'          },
   { key: 'music',     label: 'Music'          },
   { key: 'socials',   label: 'Socials'        },
   { key: 'techRider', label: 'Tech rider'     },
-  { key: 'photos',    label: 'Photos & videos'},
   { key: 'contact',   label: 'Contact'        },
 ];
 
@@ -57,7 +56,7 @@ export default function EnquireScreen() {
   const [otherNote, setOtherNote] = useState('');
   const [note, setNote]           = useState('');
   const [sections, setSections]   = useState<Record<SectionKey, boolean>>({
-    about: true, music: true, socials: true, techRider: true, photos: true, contact: true,
+    about: true, music: true, socials: true, techRider: true, contact: true,
   });
   const [availConfirmed, setAvailConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +102,7 @@ export default function EnquireScreen() {
   }
 
   function selectAll() {
-    setSections({ about: true, music: true, socials: true, techRider: true, photos: true, contact: true });
+    setSections({ about: true, music: true, socials: true, techRider: true, contact: true });
   }
 
   function sectionPreview(key: SectionKey): string {
@@ -125,7 +124,6 @@ export default function EnquireScreen() {
         if (pages.length === 0) return 'None listed';
         return `${pages.length} item${pages.length > 1 ? 's' : ''} included`;
       }
-      case 'photos':  return band.photoUrl ? 'Profile photo included' : 'No photos uploaded yet';
       case 'contact': {
         const parts: string[] = [];
         if (band.email) parts.push('Email');
@@ -167,10 +165,13 @@ export default function EnquireScreen() {
           setLength,
         },
         sharedSections: sections,
-        genre:      band.genre,
-        location:   band.location,
-        artistType: band.artistType,
-        photoUrl:   sections.photos ? band.photoUrl : undefined,
+        genre:       band.genre,
+        location:    band.location,
+        artistType:  band.artistType,
+        photoUrl:    band.photoUrl,
+        feeMin:      band.feeMin,
+        feeMax:      band.feeMax,
+        averageDraw: band.averageDraw,
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
@@ -280,7 +281,8 @@ export default function EnquireScreen() {
               {[
                 genres.slice(0, 3).join(' · '),
                 band.location,
-                band.drawSize ? `${band.drawSize} draw` : null,
+                band.averageDraw != null ? `~${band.averageDraw} draw` : null,
+                (band.feeMin != null && band.feeMax != null) ? `$${band.feeMin}-$${band.feeMax}` : null,
               ].filter(Boolean).join(' · ')}
             </Text>
           </View>

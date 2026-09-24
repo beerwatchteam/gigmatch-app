@@ -50,6 +50,9 @@ export type Enquiry = {
   artistType?: string;
   about?: string;
   photoUrl?: string;
+  feeMin?: number;
+  feeMax?: number;
+  averageDraw?: number;
   // scheduling
   loadInTime?: string;
   soundCheckTime?: string;
