@@ -383,6 +383,24 @@ export async function sendMessage(inquiryId: string, sender: string, text: strin
   ]);
 }
 
+/** Send a structured profile-section card into the thread (musician to venue). */
+export async function sendProfileSection(
+  inquiryId: string,
+  sender: string,
+  sectionKey: string,
+  sectionLabel: string,
+  data: Record<string, any>,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await Promise.all([
+    addDoc(collection(db, 'messages'), {
+      inquiryId, sender, text: '', timestamp: now,
+      type: 'profileSection', sectionKey, sectionLabel, data,
+    }),
+    updateDoc(doc(db, 'inquiries', inquiryId), { lastMessageAt: now }),
+  ]);
+}
+
 /** Post a system event message (e.g. "X added Y to the gig") — no sender, rendered inline */
 export async function postSystemMessage(enquiryId: string, text: string): Promise<void> {
   const now = new Date().toISOString();

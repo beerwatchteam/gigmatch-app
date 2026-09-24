@@ -18,7 +18,7 @@ import {
   useArtistEnquiries, useVenueEnquiries, useMessages, useSupportEnquiries, useAgentEnquiries,
   type RosterEntry,
   useParticipants,
-  updateEnquiryStatus, sendMessage, cancelEnquiry, archiveEnquiry,
+  updateEnquiryStatus, sendMessage, sendProfileSection, cancelEnquiry, archiveEnquiry,
   bookSlotOnTimetable, markEnquiryRead,
   inviteParticipants, leaveGig, removeParticipantFromGig,
   ensureVenueParticipant,
@@ -1794,6 +1794,234 @@ const tt = StyleSheet.create({
   rosterLabelText:{ fontSize: 12, fontWeight: '700', color: Colors.orange },
 });
 
+// ── Profile section sharing ────────────────────────────────────────────────
+
+const SHARE_SECTIONS = [
+  { key: 'basicInfo',   label: 'Basic Info'   },
+  { key: 'about',       label: 'About'        },
+  { key: 'music',       label: 'Music'        },
+  { key: 'socials',     label: 'Socials'      },
+  { key: 'rates',       label: 'Rates'        },
+  { key: 'techRider',   label: 'Tech Rider'   },
+  { key: 'hospitality', label: 'Hospitality'  },
+  { key: 'invoicing',   label: 'Invoicing'    },
+] as const;
+
+/** Extracts the relevant data for a given section key. Returns null if nothing is saved. */
+function extractSectionData(p: Record<string, any>, key: string): Record<string, any> | null {
+  switch (key) {
+    case 'basicInfo': {
+      const has = p.name || p.artistType || p.location || p.genre?.length || p.feeMin != null || p.email || p.phone;
+      return has ? { name: p.name, artistType: p.artistType, location: p.location, genre: p.genre,
+                     feeMin: p.feeMin, feeMax: p.feeMax, averageDraw: p.averageDraw, email: p.email, phone: p.phone } : null;
+    }
+    case 'about':
+      return p.about ? { about: p.about } : null;
+    case 'music':
+      return (p.songs?.length || p.spotify || p.appleMusic)
+        ? { songs: p.songs, spotify: p.spotify, appleMusic: p.appleMusic } : null;
+    case 'socials':
+      return (p.instagram || p.tiktok || p.facebook || p.customLinks?.length)
+        ? { instagram: p.instagram, tiktok: p.tiktok, facebook: p.facebook, customLinks: p.customLinks } : null;
+    case 'rates':
+      return (p.feeMin != null || p.averageDraw != null)
+        ? { feeMin: p.feeMin, feeMax: p.feeMax, averageDraw: p.averageDraw } : null;
+    case 'techRider': {
+      const tr = p.techRider && typeof p.techRider === 'object' ? p.techRider : null;
+      const has = tr || p.backlineFromVenue?.length || p.backlineBring?.length || p.techRiderBools?.ownPA || p.inputChannels?.length || p.techRiderDocs?.length;
+      return has ? { techRider: p.techRider, backlineFromVenue: p.backlineFromVenue, backlineBring: p.backlineBring,
+                     techRiderBools: p.techRiderBools, inputChannels: p.inputChannels, techRiderDocs: p.techRiderDocs } : null;
+    }
+    case 'hospitality':
+      return p.hospitality && Object.keys(p.hospitality).length ? p.hospitality : null;
+    case 'invoicing':
+      return p.invoicing && Object.keys(p.invoicing).length ? p.invoicing : null;
+    default:
+      return null;
+  }
+}
+
+function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boolean }) {
+  const { sectionKey, sectionLabel, data = {} } = message;
+  const bg     = isMine ? '#111111' : '#f0ede8';
+  const fg     = isMine ? '#ffffff' : '#111111';
+  const dim    = isMine ? 'rgba(255,255,255,0.55)' : '#888888';
+  const divC   = isMine ? 'rgba(255,255,255,0.15)' : '#dedede';
+
+  function Row({ label, value }: { label: string; value: string }) {
+    return (
+      <View style={ps.row}>
+        <Text style={[ps.rowKey, { color: dim }]}>{label}</Text>
+        <Text style={[ps.rowVal, { color: fg }]}>{value}</Text>
+      </View>
+    );
+  }
+  function Download({ name, url }: { name: string; url: string }) {
+    return (
+      <TouchableOpacity onPress={() => Linking.openURL(url)} style={ps.downloadRow}>
+        <Text style={[ps.downloadText, { color: fg }]}>↓ {name}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  let content: React.ReactNode;
+
+  switch (sectionKey) {
+    case 'basicInfo': {
+      const genres: string[] = data.genre ?? [];
+      content = <>
+        {data.name        && <Row label="Stage name"    value={data.name} />}
+        {data.artistType  && <Row label="Act type"      value={data.artistType} />}
+        {data.location    && <Row label="Location"      value={data.location} />}
+        {genres.length > 0 && <Row label="Genres"       value={genres.join(', ')} />}
+        {data.feeMin != null && data.feeMax != null && <Row label="Fee range" value={`$${data.feeMin}–$${data.feeMax}`} />}
+        {data.averageDraw != null && <Row label="Average draw" value={`~${data.averageDraw} people`} />}
+        {data.email       && <Row label="Email"         value={data.email} />}
+        {data.phone       && <Row label="Phone"         value={data.phone} />}
+      </>;
+      break;
+    }
+    case 'about':
+      content = <Text style={[ps.bodyText, { color: fg }]}>{data.about || 'No bio saved.'}</Text>;
+      break;
+    case 'music': {
+      const songs: any[] = data.songs ?? [];
+      content = <>
+        {songs.map((s: any, i: number) => (
+          <Row key={i} label={s.title || `Track ${i + 1}`} value={[s.url, s.notes].filter(Boolean).join(' · ') || '—'} />
+        ))}
+        {data.spotify    && <Row label="Spotify"     value={data.spotify} />}
+        {data.appleMusic && <Row label="Apple Music" value={data.appleMusic} />}
+        {!songs.length && !data.spotify && !data.appleMusic && (
+          <Text style={[ps.emptyText, { color: dim }]}>No music saved.</Text>
+        )}
+      </>;
+      break;
+    }
+    case 'socials': {
+      const links: any[] = data.customLinks ?? [];
+      content = <>
+        {data.instagram && <Row label="Instagram" value={data.instagram} />}
+        {data.tiktok    && <Row label="TikTok"    value={data.tiktok} />}
+        {data.facebook  && <Row label="Facebook"  value={data.facebook} />}
+        {links.filter((l: any) => l.label && l.url).map((l: any, i: number) => (
+          <Row key={i} label={l.label} value={l.url} />
+        ))}
+      </>;
+      break;
+    }
+    case 'rates':
+      content = <>
+        {data.feeMin != null && data.feeMax != null && <Row label="Fee range"    value={`$${data.feeMin}–$${data.feeMax}`} />}
+        {data.averageDraw != null                    && <Row label="Average draw" value={`~${data.averageDraw} people`} />}
+        {data.feeMin == null && data.averageDraw == null && (
+          <Text style={[ps.emptyText, { color: dim }]}>No rate info saved.</Text>
+        )}
+      </>;
+      break;
+    case 'techRider': {
+      const tr   = data.techRider && typeof data.techRider === 'object' ? data.techRider as Record<string, any> : null;
+      const bfv: string[] = Array.isArray(data.backlineFromVenue) ? data.backlineFromVenue : [];
+      const bb: string[]  = Array.isArray(data.backlineBring)     ? data.backlineBring     : [];
+      const trb           = data.techRiderBools || {};
+      const chs: any[]    = Array.isArray(data.inputChannels)     ? data.inputChannels     : [];
+      const trDocs: any[] = Array.isArray(data.techRiderDocs)     ? data.techRiderDocs     : [];
+      content = <>
+        {(tr?.stageWidth || tr?.stageDepth) && (
+          <Row label="Min stage" value={
+            tr.stageWidth && tr.stageDepth ? `${tr.stageWidth}m × ${tr.stageDepth}m`
+              : tr.stageWidth || tr.stageDepth
+          } />
+        )}
+        {(tr?.monitoringType || tr?.monitoring) && (
+          <Row label="Monitoring" value={[tr.monitoringType, tr.monitoring].filter(Boolean).join(' · ')} />
+        )}
+        {bfv.length > 0  && <Row label="Needs from venue"      value={bfv.join(', ')} />}
+        {bb.length > 0   && <Row label="Brings own"            value={bb.join(', ')} />}
+        {trb.ownPA       && <Row label="Touring with own PA"   value="Yes" />}
+        {tr?.soundcheck  && <Row label="Soundcheck"            value={tr.soundcheck} />}
+        {tr?.loadIn      && <Row label="Load-in"               value={tr.loadIn} />}
+        {tr?.lighting    && <Row label="Lighting"              value={tr.lighting} />}
+        {tr?.power       && <Row label="Power"                 value={tr.power} />}
+        {chs.length > 0 && (
+          <View style={{ marginTop: 6 }}>
+            <Text style={[ps.rowKey, { color: dim }]}>Input list ({chs.length} ch)</Text>
+            {chs.map((ch: any, i: number) => (
+              <Text key={i} style={[ps.channelRow, { color: fg }]}>
+                {String(i + 1).padStart(2, '0')} · {ch.source || '—'}{ch.micDi ? ` / ${ch.micDi}` : ''}
+              </Text>
+            ))}
+          </View>
+        )}
+        {tr?.notes && <Text style={[ps.notesText, { color: dim }]}>{tr.notes}</Text>}
+        {tr?.stagePlotUrl  && <Download name="Stage Plot"                       url={tr.stagePlotUrl} />}
+        {tr?.inputListUrl  && <Download name={tr.inputListName || 'Input List'} url={tr.inputListUrl} />}
+        {trDocs.map((d: any, i: number) => <Download key={i} name={d.name} url={d.url} />)}
+      </>;
+      break;
+    }
+    case 'hospitality': {
+      const h = data;
+      const hasData = Object.keys(h).some(k => h[k] != null && h[k] !== '' && h[k] !== false);
+      content = !hasData
+        ? <Text style={[ps.emptyText, { color: dim }]}>No hospitality info saved yet.</Text>
+        : <>
+          {h.accommodation != null && <Row label="Accommodation" value={typeof h.accommodation === 'boolean' ? (h.accommodation ? 'Yes' : 'No') : h.accommodation} />}
+          {h.meals         != null && <Row label="Meals"         value={typeof h.meals         === 'boolean' ? (h.meals         ? 'Yes' : 'No') : h.meals} />}
+          {h.drinks        != null && <Row label="Drinks"        value={typeof h.drinks        === 'boolean' ? (h.drinks        ? 'Yes' : 'No') : h.drinks} />}
+          {h.parking       != null && <Row label="Parking"       value={typeof h.parking       === 'boolean' ? (h.parking       ? 'Yes' : 'No') : h.parking} />}
+          {h.notes                 && <Row label="Notes"         value={h.notes} />}
+          {Array.isArray(h.docs) && h.docs.map((d: any, i: number) => <Download key={i} name={d.name} url={d.url} />)}
+        </>;
+      break;
+    }
+    case 'invoicing': {
+      const inv = data;
+      const hasData = Object.keys(inv).some(k => inv[k] != null && inv[k] !== '' && inv[k] !== false);
+      content = !hasData
+        ? <Text style={[ps.emptyText, { color: dim }]}>No invoicing info saved yet.</Text>
+        : <>
+          {inv.canProvideInvoice != null && <Row label="Can provide invoice" value={inv.canProvideInvoice ? 'Yes' : 'No'} />}
+          {inv.abn           && <Row label="ABN"             value={inv.abn} />}
+          {inv.businessName  && <Row label="Business name"   value={inv.businessName} />}
+          {inv.bsb           && <Row label="BSB"             value={inv.bsb} />}
+          {inv.accountNumber && <Row label="Account number"  value={inv.accountNumber} />}
+          {inv.paymentMethod && <Row label="Payment method"  value={inv.paymentMethod} />}
+          {inv.paymentTerms  && <Row label="Payment terms"   value={inv.paymentTerms} />}
+          {inv.notes         && <Row label="Notes"           value={inv.notes} />}
+        </>;
+      break;
+    }
+    default:
+      content = <Text style={[ps.emptyText, { color: dim }]}>No data.</Text>;
+  }
+
+  return (
+    <View style={[ps.bubble, { backgroundColor: bg }]}>
+      <View style={[ps.header, { borderBottomColor: divC }]}>
+        <Text style={[ps.headerLabel, { color: dim }]}>{(sectionLabel as string).toUpperCase()}</Text>
+      </View>
+      <View style={ps.body}>{content}</View>
+    </View>
+  );
+}
+
+const ps = StyleSheet.create({
+  bubble:      { borderRadius: 14, overflow: 'hidden' as const, maxWidth: isWeb ? 480 : '90%' },
+  header:      { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1 },
+  headerLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
+  body:        { paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
+  row:         { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
+  rowKey:      { fontSize: 12, fontWeight: '600', width: 120, flexShrink: 0, lineHeight: 18 },
+  rowVal:      { fontSize: 12, flex: 1, lineHeight: 18 },
+  bodyText:    { fontSize: 13, lineHeight: 19 },
+  emptyText:   { fontSize: 12, fontStyle: 'italic' },
+  channelRow:  { fontSize: 11, lineHeight: 17, marginLeft: 4 },
+  notesText:   { fontSize: 12, fontStyle: 'italic', marginTop: 4 },
+  downloadRow: { marginTop: 4 },
+  downloadText:{ fontSize: 12, textDecorationLine: 'underline' as const },
+});
+
 // ── Enquiry details bubble (expandable from header, venue view) ────────────
 
 function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
@@ -2135,6 +2363,30 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
   const [toastVisible,  setToastVisible]  = useState(false);
   const [toastMsg,      setToastMsg]      = useState('');
   const [undoData,      setUndoData]      = useState<{ participantId: string; uid: string } | null>(null);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const [artistProfile, setArtistProfile] = useState<Record<string, any> | null>(null);
+
+  // Load the musician's own profile so they can share sections mid-conversation
+  useEffect(() => {
+    if (isVenue || !user?.uid) return;
+    return onSnapshot(doc(db, 'bandProfiles', user.uid), snap => {
+      if (snap.exists()) setArtistProfile(snap.data());
+    });
+  }, [isVenue, user?.uid]);
+
+  async function handleSendSection(sectionKey: string, sectionLabel: string) {
+    if (!user || !artistProfile) return;
+    setShareMenuOpen(false);
+    const data = extractSectionData(artistProfile, sectionKey);
+    if (!data) return;
+    setSubmitting(true);
+    try {
+      await sendProfileSection(enquiry.id, user.uid, sectionKey, sectionLabel, data);
+    } catch (e) {
+      console.error('sendProfileSection:', e);
+    }
+    setSubmitting(false);
+  }
 
   const who = isVenue ? enquiry.bandName : enquiry.venueName;
   const venueThreadPhoto = useVenuePhoto(!isVenue ? enquiry.venueId : null);
@@ -2399,9 +2651,13 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
                         : <View style={{ width: 28 }} />
                     )}
                     <View style={[tp.msgCol, mine && tp.msgColMine]}>
-                      <View style={[tp.bubble, mine ? tp.bubbleMine : tp.bubbleTheirs]}>
-                        <Text style={[tp.bubbleText, mine && tp.bubbleTextMine]}>{m.text}</Text>
-                      </View>
+                      {(m as any).type === 'profileSection' ? (
+                        <ProfileSectionBubble message={m} isMine={mine} />
+                      ) : (
+                        <View style={[tp.bubble, mine ? tp.bubbleMine : tp.bubbleTheirs]}>
+                          <Text style={[tp.bubbleText, mine && tp.bubbleTextMine]}>{m.text}</Text>
+                        </View>
+                      )}
                       {showTimestamp && (
                         <Text style={[tp.msgTime, mine && tp.msgTimeRight]}>{fmtMsgTime(m.timestamp)}</Text>
                       )}
@@ -2443,6 +2699,39 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         onUndo={undoData ? handleUndoLeave : undefined}
         onDismiss={() => { setToastVisible(false); setUndoData(null); }}
       />
+
+      {/* ── Share profile section menu ──────────────────────────────── */}
+      <Modal
+        visible={shareMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShareMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={() => setShareMenuOpen(false)}
+        />
+        <View style={sm.sheet} pointerEvents="box-none">
+          <View style={sm.menu}>
+            <Text style={sm.menuTitle}>SHARE SECTION</Text>
+            {SHARE_SECTIONS.map(sec => {
+              const hasData = !!artistProfile && !!extractSectionData(artistProfile, sec.key);
+              return (
+                <TouchableOpacity
+                  key={sec.key}
+                  style={[sm.item, !hasData && sm.itemDisabled]}
+                  onPress={() => hasData ? handleSendSection(sec.key, sec.label) : undefined}
+                  activeOpacity={hasData ? 0.65 : 1}
+                >
+                  <Text style={[sm.itemLabel, !hasData && sm.itemLabelDim]}>{sec.label}</Text>
+                  {!hasData && <Text style={sm.itemHint}>Nothing saved yet</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Bottom action area ─────────────────────────────────────── */}
       <View>
@@ -2633,6 +2922,9 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
             <AddToCalendarFromEnquiry enquiry={enquiry} />
           </View>
           <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+            <TouchableOpacity style={ci.shareBtn} onPress={() => setShareMenuOpen(v => !v)} activeOpacity={0.7}>
+              <Text style={ci.shareBtnText}>+</Text>
+            </TouchableOpacity>
             <TextInput
               style={[ci.input, { color: colors.black }]}
               placeholder="Message…"
@@ -2658,6 +2950,11 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         // ── Default: chat input (artist discussing, or non-pending states)
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
           <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
+            {!isVenue && (
+              <TouchableOpacity style={ci.shareBtn} onPress={() => setShareMenuOpen(v => !v)} activeOpacity={0.7}>
+                <Text style={ci.shareBtnText}>+</Text>
+              </TouchableOpacity>
+            )}
             <TextInput
               style={[ci.input, { color: colors.black }]}
               placeholder="Message…"
@@ -2739,12 +3036,36 @@ const vp = StyleSheet.create({
 
 // Chat input styles
 const ci = StyleSheet.create({
-  wrap:        { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: isWeb ? 20 : 14, paddingVertical: 10, borderTopWidth: 1 },
-  input:       { flex: 1, borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, maxHeight: 120, backgroundColor: '#ffffff' },
-  send:        { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  sendOff:     { backgroundColor: '#e0e0e0' },
-  sendText:    { fontSize: 18, fontWeight: '700', color: '#ffffff', lineHeight: 20, marginTop: -1 },
-  sendTextOff: { color: '#bbbbbb' },
+  wrap:         { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: isWeb ? 20 : 14, paddingVertical: 10, borderTopWidth: 1 },
+  input:        { flex: 1, borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, fontSize: 15, maxHeight: 120, backgroundColor: '#ffffff' },
+  send:         { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  sendOff:      { backgroundColor: '#e0e0e0' },
+  sendText:     { fontSize: 18, fontWeight: '700', color: '#ffffff', lineHeight: 20, marginTop: -1 },
+  sendTextOff:  { color: '#bbbbbb' },
+  shareBtn:     { width: 38, height: 38, borderRadius: 19, backgroundColor: '#f0ede8', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  shareBtnText: { fontSize: 20, fontWeight: '400', color: '#555555', lineHeight: 22, marginTop: -1 },
+});
+
+// Share section menu styles
+const sm = StyleSheet.create({
+  sheet:        { flex: 1, justifyContent: 'flex-end', paddingBottom: 24 },
+  menu:         {
+    marginHorizontal: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    paddingBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  menuTitle:    { fontSize: 10, fontWeight: '800', color: '#aaaaaa', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
+  item:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13, borderTopWidth: 1, borderTopColor: '#f2f2f2' },
+  itemDisabled: { opacity: 0.45 },
+  itemLabel:    { fontSize: 15, fontWeight: '600', color: '#111111' },
+  itemLabelDim: { color: '#888888' },
+  itemHint:     { fontSize: 11, color: '#aaaaaa' },
 });
 
 // Thread panel shared styles
