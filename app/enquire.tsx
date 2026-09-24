@@ -6,7 +6,7 @@ import {
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
@@ -128,6 +128,23 @@ export default function EnquireScreen() {
       }
     }).catch(() => {});
   }, [user?.uid, params.venueId, params.date]);
+
+  // Subscribe to the venue doc so slot info (payment, notes) stays current while the form is open.
+  const [liveSlot, setLiveSlot] = useState<Record<string, any> | null>(null);
+  useEffect(() => {
+    if (!params.venueId || !params.day || !params.time) return;
+    return onSnapshot(doc(db, 'venues', params.venueId), snap => {
+      if (!snap.exists()) return;
+      const daySlots: any[] = snap.data().slots?.[params.day] ?? [];
+      const normRoom = (params.room || '').toLowerCase().trim();
+      // Prefer a date-specific slot matching params.date, fall back to the recurring template.
+      const match =
+        daySlots.find((s: any) => s.time === params.time && (s.room || '').toLowerCase().trim() === normRoom && s.date === params.date) ??
+        daySlots.find((s: any) => s.time === params.time && (s.room || '').toLowerCase().trim() === normRoom && !s.date) ??
+        daySlots.find((s: any) => s.time === params.time && (s.room || '').toLowerCase().trim() === normRoom);
+      if (match) setLiveSlot(match);
+    });
+  }, [params.venueId, params.day, params.time, params.room, params.date]);
 
   // Merge Twaylo confirmed gigs + manually entered profile gigs, deduplicated, max 3 by date desc
   const displayGigHistory = (() => {
@@ -261,12 +278,16 @@ export default function EnquireScreen() {
     }
   }
 
-  // ── Payment info (from venue slot) ─────────────────────────────────────────
-  const paymentModels: string[] = params.paymentModels
-    ? params.paymentModels.split(',').map(s => s.trim()).filter(Boolean)
-    : [];
-  const feeMin = params.feeMin ? Number(params.feeMin) : null;
-  const feeMax = params.feeMax ? Number(params.feeMax) : null;
+  // ── Payment / slot info (from venue slot, live if available) ─────────────────
+  const paymentModels: string[] = liveSlot
+    ? (liveSlot.paymentModels?.length ? liveSlot.paymentModels : liveSlot.paymentModel ? [liveSlot.paymentModel] : [])
+    : (params.paymentModels ? params.paymentModels.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+  const feeMin          = liveSlot ? (liveSlot.feeMin    ?? null) : (params.feeMin    ? Number(params.feeMin)    : null);
+  const feeMax          = liveSlot ? (liveSlot.feeMax    ?? null) : (params.feeMax    ? Number(params.feeMax)    : null);
+  const paymentMethod   = liveSlot ? (liveSlot.paymentMethod ?? null) : (params.paymentMethod ?? null);
+  const minNotice       = liveSlot ? (liveSlot.minNotice ?? null) : (params.minNotice ?? null);
+  const slotNote        = liveSlot ? (liveSlot.notes     ?? null) : (params.slotNote  ?? null);
+  const slotName        = liveSlot ? (liveSlot.name      ?? null) : (params.slotName  ?? null);
   const hasPayment = paymentModels.length > 0;
 
   const genres: string[] = band.genre ?? [];
@@ -322,8 +343,8 @@ export default function EnquireScreen() {
           <View style={{ flex: 1 }}>
             <Text style={s.enquiryLabel}>ENQUIRY</Text>
             <Text style={[s.venueName, { color: colors.black }]}>{params.venueName}</Text>
-            {params.slotName ? (
-              <Text style={[s.slotName, { color: colors.grey }]}>{params.slotName}</Text>
+            {slotName ? (
+              <Text style={[s.slotName, { color: colors.grey }]}>{slotName}</Text>
             ) : null}
             <Text style={s.slotDetail}>{slotParts.join(' · ')}</Text>
           </View>
@@ -392,7 +413,7 @@ export default function EnquireScreen() {
         </View>
 
         {/* ── Slot info rows ────────────────────────────────────── */}
-        {(hasPayment || params.paymentMethod || params.minNotice || params.slotNote) ? (
+        {(hasPayment || paymentMethod || minNotice || slotNote) ? (
           <View style={[s.slotInfoBlock, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
             {paymentModels.map((model, idx) => {
               const isFirst = idx === 0;
@@ -408,22 +429,22 @@ export default function EnquireScreen() {
                 </View>
               );
             })}
-            {params.paymentMethod ? (
+            {paymentMethod ? (
               <View style={[s.slotInfoRow, hasPayment ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
                 <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Via</Text>
-                <Text style={[s.slotInfoText, { color: colors.black }]}>{params.paymentMethod}</Text>
+                <Text style={[s.slotInfoText, { color: colors.black }]}>{paymentMethod}</Text>
               </View>
             ) : null}
-            {params.minNotice ? (
-              <View style={[s.slotInfoRow, (hasPayment || params.paymentMethod) ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
+            {minNotice ? (
+              <View style={[s.slotInfoRow, (hasPayment || paymentMethod) ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
                 <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Min. notice</Text>
-                <Text style={[s.slotInfoText, { color: colors.black }]}>{params.minNotice}</Text>
+                <Text style={[s.slotInfoText, { color: colors.black }]}>{minNotice}</Text>
               </View>
             ) : null}
-            {params.slotNote ? (
-              <View style={[s.slotInfoRow, (hasPayment || params.paymentMethod || params.minNotice) ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
+            {slotNote ? (
+              <View style={[s.slotInfoRow, (hasPayment || paymentMethod || minNotice) ? { borderTopWidth: 1, borderTopColor: colors.border } : null]}>
                 <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Venue notes</Text>
-                <Text style={[s.slotInfoText, { color: colors.black }]}>{params.slotNote}</Text>
+                <Text style={[s.slotInfoText, { color: colors.black }]}>{slotNote}</Text>
               </View>
             ) : null}
           </View>

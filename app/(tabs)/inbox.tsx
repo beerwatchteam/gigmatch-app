@@ -1803,7 +1803,6 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
   const { day, date, time, room, slotType, setLength } = enquiry.requestedSlot;
   const dateStr  = date ? fmtSlotDate(date) : '';
   const slotStr  = [day, dateStr, time, room, slotType, setLength].filter(Boolean).join(' · ');
-  const genres: string[] = enquiry.genre ?? [];
   const sentLabel = isVenue ? enquiry.bandName : 'You';
   const sentDate  = formatTileDate(enquiry.submittedAt);
 
@@ -1811,7 +1810,9 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
   // Artist views: they sent this (dark mine bubble)
   const isMine = !isVenue;
 
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [openSections, setOpenSections] = useState<Set<string>>(
+    new Set(isVenue ? ['about', 'music', 'gigHistory'] : [])
+  );
   function toggleSection(key: string) {
     setOpenSections(prev => {
       const next = new Set(prev);
@@ -1820,16 +1821,56 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
     });
   }
 
-  const songs: any[]             = Array.isArray(enquiry.songs)          ? enquiry.songs          : [];
-  const gigHistory: any[]        = Array.isArray(enquiry.gigHistory)      ? enquiry.gigHistory      : [];
-  const upcoming: any[]          = Array.isArray(enquiry.upcomingGigs)    ? enquiry.upcomingGigs    : [];
-  const techRider                = enquiry.techRider && typeof enquiry.techRider === 'object' ? enquiry.techRider as Record<string, any> : null;
-  const backlineFromVenue: string[] = Array.isArray((enquiry as any).backlineFromVenue) ? (enquiry as any).backlineFromVenue : [];
-  const backlineBring: string[]     = Array.isArray((enquiry as any).backlineBring)     ? (enquiry as any).backlineBring     : [];
-  const techRiderBools              = (enquiry as any).techRiderBools && typeof (enquiry as any).techRiderBools === 'object' ? (enquiry as any).techRiderBools as Record<string, boolean> : {};
-  const inputChannels: any[]        = Array.isArray((enquiry as any).inputChannels)     ? (enquiry as any).inputChannels     : [];
-  const techRiderDocs: any[]        = Array.isArray((enquiry as any).techRiderDocs)     ? (enquiry as any).techRiderDocs     : [];
-  const customLinks: any[]          = Array.isArray(enquiry.customLinks)                ? enquiry.customLinks                : [];
+  // For non-confirmed enquiries, subscribe to the musician's live profile so the
+  // venue always sees current info. Confirmed enquiries stay as the original snapshot.
+  const isConfirmed = normalizeEnquiryStatus(enquiry.status) === 'confirmed';
+  const [liveProfile, setLiveProfile] = useState<Record<string, any> | null>(null);
+
+  useEffect(() => {
+    if (isConfirmed || !enquiry.createdBy) return;
+    return onSnapshot(doc(db, 'bandProfiles', enquiry.createdBy), snap => {
+      if (snap.exists()) setLiveProfile(snap.data());
+    });
+  }, [enquiry.createdBy, isConfirmed]);
+
+  // sharedSections gates which profile sections were originally included.
+  // If absent (legacy enquiry), treat all sections as shared.
+  const ss = (enquiry as any).sharedSections as Record<string, boolean> | undefined;
+  const hasSection = (key: string) => (ss ? !!ss[key] : true);
+
+  const src: typeof enquiry = (!isConfirmed && liveProfile) ? {
+    ...enquiry,
+    genre:      liveProfile.genre      ?? enquiry.genre,
+    location:   liveProfile.location   ?? enquiry.location,
+    artistType: liveProfile.artistType ?? enquiry.artistType,
+    feeMin:     liveProfile.feeMin     ?? enquiry.feeMin,
+    feeMax:     liveProfile.feeMax     ?? enquiry.feeMax,
+    ...(hasSection('about')     && { about: liveProfile.about }),
+    ...(hasSection('music')     && { songs: liveProfile.songs, spotify: liveProfile.spotify, appleMusic: liveProfile.appleMusic }),
+    ...(hasSection('socials')   && { instagram: liveProfile.instagram, tiktok: liveProfile.tiktok, facebook: liveProfile.facebook, customLinks: liveProfile.customLinks }),
+    ...(hasSection('techRider') && {
+      techRider:         liveProfile.techRider,
+      backlineFromVenue: liveProfile.backlineFromVenue,
+      backlineBring:     liveProfile.backlineBring,
+      techRiderBools:    liveProfile.techRiderBools,
+      inputChannels:     liveProfile.inputChannels,
+      techRiderDocs:     liveProfile.techRiderDocs,
+    }),
+    ...(hasSection('gigs')    && { gigHistory: liveProfile.gigHistory }),
+    ...(hasSection('contact') && { email: liveProfile.email, phone: liveProfile.phone }),
+  } : enquiry;
+
+  const genres: string[]            = src.genre ?? [];
+  const songs: any[]                = Array.isArray(src.songs)              ? src.songs              : [];
+  const gigHistory: any[]           = Array.isArray(src.gigHistory)          ? src.gigHistory          : [];
+  const upcoming: any[]             = Array.isArray(src.upcomingGigs)        ? src.upcomingGigs        : [];
+  const techRider                   = src.techRider && typeof src.techRider === 'object' ? src.techRider as Record<string, any> : null;
+  const backlineFromVenue: string[] = Array.isArray((src as any).backlineFromVenue) ? (src as any).backlineFromVenue : [];
+  const backlineBring: string[]     = Array.isArray((src as any).backlineBring)     ? (src as any).backlineBring     : [];
+  const techRiderBools              = (src as any).techRiderBools && typeof (src as any).techRiderBools === 'object' ? (src as any).techRiderBools as Record<string, boolean> : {};
+  const inputChannels: any[]        = Array.isArray((src as any).inputChannels)     ? (src as any).inputChannels     : [];
+  const techRiderDocs: any[]        = Array.isArray((src as any).techRiderDocs)     ? (src as any).techRiderDocs     : [];
+  const customLinks: any[]          = Array.isArray(src.customLinks)                ? src.customLinks                : [];
 
   const hasTechRider = !!(
     (techRider && Object.entries(techRider).some(([k, v]) => v && !['stagePlotUrl','inputListUrl','inputListName'].includes(k))) ||
@@ -1862,11 +1903,11 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
         <View style={[eq.bubble, isMine ? tp.bubbleMine : tp.bubbleTheirs]}>
 
           {/* Artist type + genres */}
-          {(enquiry.artistType || genres.length > 0) ? (
+          {(src.artistType || genres.length > 0) ? (
             <View style={[eq.pillsRow]}>
-              {enquiry.artistType ? (
+              {src.artistType ? (
                 <View style={[eq.typePill, { borderColor: isMine ? 'rgba(255,255,255,0.35)' : Colors.orange + '55', backgroundColor: isMine ? 'rgba(255,255,255,0.12)' : Colors.orange + '18' }]}>
-                  <Text style={[eq.typeText, { color: isMine ? '#ffffff' : Colors.orange }]}>{enquiry.artistType}</Text>
+                  <Text style={[eq.typeText, { color: isMine ? '#ffffff' : Colors.orange }]}>{src.artistType}</Text>
                 </View>
               ) : null}
               {genres.map(g => (
@@ -1878,20 +1919,20 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
           ) : null}
 
           {/* Location, draw, fee range */}
-          {(enquiry.location || enquiry.averageDraw != null || (enquiry.feeMin != null && enquiry.feeMax != null)) ? (
+          {(src.location || enquiry.averageDraw != null || (src.feeMin != null && src.feeMax != null)) ? (
             <Text style={[eq.meta, { color: dimColor }]}>
               {[
-                enquiry.location,
+                src.location,
                 enquiry.averageDraw != null ? `~${enquiry.averageDraw} draw` : null,
-                (enquiry.feeMin != null && enquiry.feeMax != null) ? `$${enquiry.feeMin}-$${enquiry.feeMax}` : null,
+                (src.feeMin != null && src.feeMax != null) ? `$${src.feeMin}-$${src.feeMax}` : null,
               ].filter(Boolean).join(' · ')}
             </Text>
           ) : null}
 
           {/* About */}
-          {enquiry.about ? (
+          {src.about ? (
             <Section label="ABOUT" sectionKey="about" sectionRef={profileRef}>
-              <Text style={[eq.body, { color: textColor }]}>{enquiry.about}</Text>
+              <Text style={[eq.body, { color: textColor }]}>{src.about}</Text>
             </Section>
           ) : null}
 
@@ -1929,12 +1970,12 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
           ) : null}
 
           {/* Socials */}
-          {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic || customLinks.length > 0) ? (
+          {(src.instagram || src.tiktok || src.spotify || src.appleMusic || customLinks.length > 0) ? (
             <Section label="SOCIALS" sectionKey="socials">
-              {enquiry.instagram  ? <Text style={[eq.body, { color: textColor }]}>Instagram: {enquiry.instagram}</Text>   : null}
-              {enquiry.tiktok     ? <Text style={[eq.body, { color: textColor }]}>TikTok: {enquiry.tiktok}</Text>         : null}
-              {enquiry.spotify    ? <Text style={[eq.body, { color: textColor }]}>Spotify: {enquiry.spotify}</Text>       : null}
-              {enquiry.appleMusic ? <Text style={[eq.body, { color: textColor }]}>Apple Music: {enquiry.appleMusic}</Text>: null}
+              {src.instagram  ? <Text style={[eq.body, { color: textColor }]}>Instagram: {src.instagram}</Text>   : null}
+              {src.tiktok     ? <Text style={[eq.body, { color: textColor }]}>TikTok: {src.tiktok}</Text>         : null}
+              {src.spotify    ? <Text style={[eq.body, { color: textColor }]}>Spotify: {src.spotify}</Text>       : null}
+              {src.appleMusic ? <Text style={[eq.body, { color: textColor }]}>Apple Music: {src.appleMusic}</Text>: null}
               {customLinks.filter((l: any) => l.label && l.url).map((l: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>{l.label}: {l.url}</Text>
               ))}
