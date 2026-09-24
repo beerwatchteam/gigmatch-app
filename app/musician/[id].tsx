@@ -294,29 +294,6 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
         </View>
       ) : null}
 
-      {/* Past Gigs */}
-      {(gigHistory.length > 0 || isOwn) ? (
-        <View style={styles.section}>
-          {secHead('Past Gigs', gigHistory.length === 0, 'Past Gigs')}
-          {gigHistory.length > 0 && (
-            <>
-              <View style={[styles.gigTableHeader, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.gigColVenue, styles.gigTableHdr, { color: colors.greyLight }]}>VENUE</Text>
-                <Text style={[styles.gigColSuburb, styles.gigTableHdr, { color: colors.greyLight }]}>SUBURB</Text>
-                <Text style={[styles.gigColDraw, styles.gigTableHdr, { color: colors.greyLight }]}>DRAW</Text>
-              </View>
-              {gigHistory.map((gig, i) => (
-                <View key={i} style={[styles.gigTableRow, { borderBottomColor: colors.borderFaint }]}>
-                  <Text style={[styles.gigColVenue, styles.gigCellText, { color: colors.black }]} numberOfLines={1}>{gig.venue || '—'}</Text>
-                  <Text style={[styles.gigColSuburb, styles.gigCellText, { color: colors.grey }]} numberOfLines={1}>{gig.suburb || '—'}</Text>
-                  <Text style={[styles.gigColDraw, styles.gigCellText, { color: colors.black }]}>{gig.attendance ?? '—'}</Text>
-                </View>
-              ))}
-            </>
-          )}
-        </View>
-      ) : null}
-
       {/* Instruments */}
       {((m.instruments && m.instruments.length > 0) || isOwn) ? (
         <View style={styles.section}>
@@ -330,6 +307,29 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
               ))}
             </View>
           )}
+        </View>
+      ) : null}
+
+      {/* My Gigs: the owner sees the full My Gigs management view, everyone
+          else sees a read-only summary built from the same past-gig data */}
+      {isOwn ? (
+        <View style={styles.section}>
+          <MyGigsContent embedded />
+        </View>
+      ) : gigHistory.length > 0 ? (
+        <View style={styles.section}>
+          {secHead('My Gigs', false, 'My Gigs')}
+          {gigHistory.map((gig, i) => (
+            <View key={i} style={[styles.gigCard, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+              <Text style={[styles.gigCardTitle, { color: colors.black }]} numberOfLines={1}>{gig.venue || 'Unknown venue'}</Text>
+              <Text style={[styles.gigCardSub, { color: colors.grey }]} numberOfLines={1}>
+                {[gig.suburb, gig.date].filter(Boolean).join(' · ')}
+              </Text>
+              {gig.attendance != null ? (
+                <Text style={[styles.gigCardDraw, { color: colors.grey }]}>~{gig.attendance} draw</Text>
+              ) : null}
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -1549,17 +1549,11 @@ const styles = StyleSheet.create({
   sideLink: { fontSize: 14, color: Colors.orange, fontWeight: '500', marginBottom: 6 },
   sideBody: { fontSize: 14, lineHeight: 20 },
 
-  // Gig history table
-  gigTableHeader: {
-    flexDirection: 'row', paddingBottom: 8,
-    borderBottomWidth: 1, marginBottom: 2,
-  },
-  gigTableRow:   { flexDirection: 'row', paddingVertical: 10, borderBottomWidth: 1 },
-  gigTableHdr:   { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
-  gigCellText:   { fontSize: 14 },
-  gigColVenue:   { flex: 2, paddingRight: 8 },
-  gigColSuburb:  { flex: 1.5, paddingRight: 8 },
-  gigColDraw:    { width: 48, textAlign: 'right' },
+  // My Gigs: public read-only cards
+  gigCard:      { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 10 },
+  gigCardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  gigCardSub:   { fontSize: 13, marginBottom: 3 },
+  gigCardDraw:  { fontSize: 12 },
 
   // Music tab — tracks
   trackRow: {
