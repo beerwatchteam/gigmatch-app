@@ -142,7 +142,6 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [agentName, setAgentName] = useState<string | null>(null);
-  const [ownGigs, setOwnGigs] = useState<any[]>([]);
 
   useEffect(() => {
     getDocs(query(collection(db, 'agentRoster'), where('artistUid', '==', m.id)))
@@ -156,21 +155,15 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
       .catch(() => {});
   }, [m.id]);
 
-  // Owner's own gigs, any source or visibility. Public viewers only ever see
-  // publicGigs (already scoped server-side to isPublic + confirmed).
-  useEffect(() => {
-    if (!isOwn) return;
-    getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', m.id)))
-      .then(snap => setOwnGigs(snap.docs.map(d => d.data())))
-      .catch(() => {});
-  }, [isOwn, m.id]);
-
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
   const now            = new Date();
 
-  const gigSource      = isOwn ? ownGigs : publicGigs;
-  const confirmedGigs  = gigSource.filter(g => g.status === 'confirmed' && g.startAt && g.venueName);
+  // publicGigs is the owner's full gig list (any source/visibility) when
+  // isOwn, or the public-only projection otherwise, decided by the parent.
+  // Public projections never carry a status field (they only ever exist
+  // while confirmed); raw gigs docs (owner's own view) do, so check it there.
+  const confirmedGigs  = publicGigs.filter(g => g.startAt && g.venueName && (g.status == null || g.status === 'confirmed'));
   const upcomingGigs   = confirmedGigs
     .filter(g => g.startAt.toDate() >= now)
     .sort((a, b) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime())
@@ -750,7 +743,9 @@ function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [], awayPeriods =
   const [monthOffset, setMonthOffset] = useState(0);
 
   const gigEntries: EntryItem[] = publicGigs
-    .filter(pg => !!pg.startAt)
+    // publicGigs projections never carry a status field (they only ever exist
+    // while confirmed); raw gigs docs (owner's own view) do, so check it there.
+    .filter(pg => !!pg.startAt && pg.venueName && (pg.status == null || pg.status === 'confirmed'))
     .map(pg => {
       const d = pg.startAt.toDate();
       const entry: GigEntry = {
@@ -1135,6 +1130,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   );
   const [publicGigs, setPublicGigs]         = useState<any[]>([]);
   const [artistAddedGigs, setArtistAddedGigs] = useState<any[]>([]);
+  const [ownGigs, setOwnGigs]               = useState<any[]>([]);
 
   const isOwn = user?.uid === id;
   const { width } = useWindowDimensions();
@@ -1172,6 +1168,18 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     const ids = new Set(publicGigs.map(g => g.id));
     return [...publicGigs, ...artistAddedGigs.filter(g => !ids.has(g.id))];
   })();
+
+  // Owner's own gigs, any source or visibility (private Twaylo bookings
+  // included). Used instead of mergedPublicGigs for Overview and Timetable
+  // when isOwn, since that only ever carries public/self-added gigs.
+  useEffect(() => {
+    if (!isOwn) return;
+    getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', id)))
+      .then(snap => setOwnGigs(snap.docs.map(d => d.data())))
+      .catch(() => {});
+  }, [isOwn, id]);
+
+  const gigsForTabs = isOwn ? ownGigs : mergedPublicGigs;
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
@@ -1212,7 +1220,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
   // Count confirmed public gigs that have already happened
-  const completedGigs = mergedPublicGigs.filter(pg => pg.startAt && pg.startAt.toDate() < now).length;
+  const completedGigs = gigsForTabs.filter(pg => pg.startAt && pg.startAt.toDate() < now).length;
 
   const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
   const feeStr = typicalFeeText
@@ -1331,9 +1339,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={mergedPublicGigs} isOwn={isOwn} />}
+            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={gigsForTabs} isOwn={isOwn} />}
             {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
-            {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={mergedPublicGigs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+            {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
             {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
@@ -1471,9 +1479,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} isOwn={isOwn} />}
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} isOwn={isOwn} />}
         {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
-        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={mergedPublicGigs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
         {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
