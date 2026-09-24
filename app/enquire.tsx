@@ -129,6 +129,28 @@ export default function EnquireScreen() {
     }).catch(() => {});
   }, [user?.uid, params.venueId, params.date]);
 
+  // Merge Twaylo confirmed gigs + manually entered profile gigs, deduplicated, max 3 by date desc
+  const displayGigHistory = (() => {
+    const manual: typeof gigHistory = ((band.gigHistory ?? []) as any[])
+      .filter((g: any) => g.date && (g.venue || g.suburb))
+      .map((g: any) => ({
+        venue:      g.venue ?? null,
+        suburb:     g.suburb ?? null,
+        date:       typeof g.date === 'string' ? g.date : '',
+        attendance: g.attendance ?? null,
+      }));
+    const seen = new Set<string>();
+    return [...gigHistory, ...manual]
+      .filter(g => {
+        const key = `${g.venue ?? ''}|${g.date}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 3);
+  })();
+
   function toggleSection(key: SectionKey) {
     setSections(prev => ({ ...prev, [key]: !prev[key] }));
   }
@@ -157,8 +179,8 @@ export default function EnquireScreen() {
         return `${pages.length} item${pages.length > 1 ? 's' : ''} included`;
       }
       case 'gigs':
-        return gigHistory.length > 0
-          ? gigHistory.map(g => g.venue).filter(Boolean).join(' · ')
+        return displayGigHistory.length > 0
+          ? displayGigHistory.map(g => g.venue).filter(Boolean).join(' · ')
           : 'None listed';
       case 'contact': {
         const parts: string[] = [];
@@ -208,7 +230,7 @@ export default function EnquireScreen() {
         feeMin:      band.feeMin,
         feeMax:      band.feeMax,
         averageDraw: computedDraw ?? undefined,
-        ...(sections.gigs && gigHistory.length > 0 && { gigHistory }),
+        ...(sections.gigs && displayGigHistory.length > 0 && { gigHistory: displayGigHistory }),
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
@@ -326,12 +348,12 @@ export default function EnquireScreen() {
         </View>
 
         {/* ── Recent gigs ───────────────────────────────────────── */}
-        {sections.gigs && gigHistory.length > 0 ? (
+        {sections.gigs && displayGigHistory.length > 0 ? (
           <View style={[s.slotInfoBlock, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
             <View style={s.slotInfoRow}>
               <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Recent gigs</Text>
               <View style={{ flex: 1, gap: 4 }}>
-                {gigHistory.map((g, i) => (
+                {displayGigHistory.map((g, i) => (
                   <Text key={i} style={[s.slotInfoText, { color: colors.black }]}>
                     {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
                   </Text>
