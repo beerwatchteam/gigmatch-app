@@ -1,5 +1,5 @@
 import {
-  doc, runTransaction, Timestamp, collection, writeBatch,
+  doc, runTransaction, Timestamp, collection, writeBatch, setDoc,
   updateDoc, getDocs, query, where,
 } from 'firebase/firestore';
 import { ref as sRef, deleteObject, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -733,10 +733,11 @@ export async function createArtistGig({
     updatedAt: now,
   };
 
-  const batch = writeBatch(db);
-  batch.set(gigRef, gigData);
-  batch.set(privateRef, privateData);
-  await batch.commit();
+  // Sequential, not batched: the private doc's security rule reads the parent
+  // gig's participantIds via get(), which only sees committed documents. In a
+  // batch, the sibling gig write isn't visible yet, so the rule denies the write.
+  await setDoc(gigRef, gigData);
+  await setDoc(privateRef, privateData);
 
   return gigId;
 }
