@@ -142,6 +142,7 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [agentName, setAgentName] = useState<string | null>(null);
+  const [ownGigs, setOwnGigs] = useState<any[]>([]);
 
   useEffect(() => {
     getDocs(query(collection(db, 'agentRoster'), where('artistUid', '==', m.id)))
@@ -155,18 +156,37 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
       .catch(() => {});
   }, [m.id]);
 
+  // Owner's own gigs, any source or visibility. Public viewers only ever see
+  // publicGigs (already scoped server-side to isPublic + confirmed).
+  useEffect(() => {
+    if (!isOwn) return;
+    getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', m.id)))
+      .then(snap => setOwnGigs(snap.docs.map(d => d.data())))
+      .catch(() => {});
+  }, [isOwn, m.id]);
+
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
   const now            = new Date();
-  const gigHistory     = publicGigs
-    .filter(pg => pg.startAt && pg.startAt.toDate() < now && pg.venueName)
+
+  const gigSource      = isOwn ? ownGigs : publicGigs;
+  const confirmedGigs  = gigSource.filter(g => g.status === 'confirmed' && g.startAt && g.venueName);
+  const upcomingGigs   = confirmedGigs
+    .filter(g => g.startAt.toDate() >= now)
+    .sort((a, b) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime())
+    .map(g => ({ venue: g.venueName, suburb: g.locationText, date: isoDate(g.startAt.toDate()) } as GigEntry));
+  const gigHistory     = confirmedGigs
+    .filter(g => g.startAt.toDate() < now)
     .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
-    .map(pg => ({
-      venue:      pg.venueName,
-      suburb:     pg.locationText,
-      date:       isoDate(pg.startAt.toDate()),
-      attendance: pg.attendance,
+    .map(g => ({
+      venue:      g.venueName,
+      suburb:     g.locationText,
+      date:       isoDate(g.startAt.toDate()),
+      attendance: g.attendance,
     } as GigEntry));
+  const awayPeriods    = ((m as any).awayPeriods ?? []) as { from: string; to?: string; notes?: string }[];
+  const hasGigsSummary = upcomingGigs.length > 0 || gigHistory.length > 0 || awayPeriods.length > 0;
+  const gigsSectionTitle = isOwn ? 'My Gigs' : `${m.name || 'Artist'} Gigs`;
   const socialLinks    = PLATFORMS.filter(p => (m as any)[p.key]);
   const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
   const hasContact     = !!(m.email || m.phone);
@@ -310,31 +330,49 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
         </View>
       ) : null}
 
-      {/* My Gigs: the owner sees the full My Gigs management view, everyone
-          else sees a read-only summary built from the same past-gig data */}
-      {isOwn ? (
+      {/* Gigs: a lightweight summary reading from the same data as My Gigs.
+          Never shows fee or payment status here, that's for My Gigs itself. */}
+      {(hasGigsSummary || isOwn) ? (
         <View style={styles.section}>
-          <MyGigsContent embedded />
-        </View>
-      ) : gigHistory.length > 0 ? (
-        <View style={styles.section}>
-          {secHead('My Gigs', false, 'My Gigs')}
-          {gigHistory.map((gig, i) => (
-            <View key={i} style={[styles.gigCard, { borderColor: colors.border, backgroundColor: colors.bg }]}>
-              <Text style={[styles.gigCardTitle, { color: colors.black }]} numberOfLines={1}>{gig.venue || 'Unknown venue'}</Text>
-              <Text style={[styles.gigCardSub, { color: colors.grey }]} numberOfLines={1}>
-                {[gig.suburb, gig.date].filter(Boolean).join(' · ')}
-              </Text>
-              {gig.attendance != null ? (
-                <Text style={[styles.gigCardDraw, { color: colors.grey }]}>~{gig.attendance} draw</Text>
-              ) : null}
+          {secHead(gigsSectionTitle, !hasGigsSummary, 'My Gigs')}
+
+          {upcomingGigs.length > 0 && (
+            <View style={styles.gigGroup}>
+              <Text style={[styles.gigGroupLabel, { color: colors.greyLight }]}>UPCOMING</Text>
+              {upcomingGigs.map((gig, i) => (
+                <Text key={i} style={[styles.gigLine, { color: colors.black }]} numberOfLines={1}>
+                  {gig.venue}{gig.suburb ? `, ${gig.suburb}` : ''}{gig.date ? ` · ${gig.date}` : ''}
+                </Text>
+              ))}
             </View>
-          ))}
+          )}
+
+          {gigHistory.length > 0 && (
+            <View style={styles.gigGroup}>
+              <Text style={[styles.gigGroupLabel, { color: colors.greyLight }]}>PAST</Text>
+              {gigHistory.map((gig, i) => (
+                <Text key={i} style={[styles.gigLine, { color: colors.black }]} numberOfLines={1}>
+                  {gig.venue}{gig.suburb ? `, ${gig.suburb}` : ''}{gig.date ? ` · ${gig.date}` : ''}{gig.attendance != null ? ` · ~${gig.attendance} draw` : ''}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {awayPeriods.length > 0 && (
+            <View style={styles.gigGroup}>
+              <Text style={[styles.gigGroupLabel, { color: colors.greyLight }]}>AWAY</Text>
+              {awayPeriods.map((p, i) => (
+                <Text key={i} style={[styles.gigLine, { color: colors.black }]} numberOfLines={1}>
+                  {p.to && p.to !== p.from ? `${prettyAwayDate(p.from)} to ${prettyAwayDate(p.to)}` : prettyAwayDate(p.from)}
+                </Text>
+              ))}
+            </View>
+          )}
         </View>
       ) : null}
 
       {/* Public empty state (never shown to owner) */}
-      {!isOwn && !about && gigHistory.length === 0 && !(m.instruments && m.instruments.length > 0) && (
+      {!isOwn && !about && !hasGigsSummary && !(m.instruments && m.instruments.length > 0) && (
         <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
     </View>
@@ -490,6 +528,12 @@ const LONG_MO  = ['January','February','March','April','May','June','July','Augu
 
 function isoDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function prettyAwayDate(iso: string): string {
+  const [y, mo, d] = iso.split('-').map(Number);
+  if (!y || !mo || !d) return iso;
+  return `${d} ${SHORT_MO[mo - 1]} ${y}`;
 }
 
 type EntryItem = { date: Date; dateISO: string; entry: GigEntry };
@@ -1549,11 +1593,10 @@ const styles = StyleSheet.create({
   sideLink: { fontSize: 14, color: Colors.orange, fontWeight: '500', marginBottom: 6 },
   sideBody: { fontSize: 14, lineHeight: 20 },
 
-  // My Gigs: public read-only cards
-  gigCard:      { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 10 },
-  gigCardTitle: { fontSize: 15, fontWeight: '700', marginBottom: 3 },
-  gigCardSub:   { fontSize: 13, marginBottom: 3 },
-  gigCardDraw:  { fontSize: 12 },
+  // Gigs summary (Overview): plain lines grouped by Upcoming/Past/Away
+  gigGroup:      { marginBottom: 12 },
+  gigGroupLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 6 },
+  gigLine:       { fontSize: 14, lineHeight: 20, marginBottom: 3 },
 
   // Music tab — tracks
   trackRow: {
