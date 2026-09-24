@@ -289,25 +289,6 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
         <Text style={[styles.managedBy, { color: colors.grey }]}>Managed by {agentName}</Text>
       ) : null}
 
-      {/* Set type / suitability / public liability, same tile style as the header stats */}
-      {extraStats.length > 0 && (
-        <View style={[styles.statsRow, { borderBottomColor: colors.border, marginBottom: 20 }]}>
-          {extraStats.map((stat, i) => (
-            <View
-              key={stat.label}
-              style={[
-                styles.statCell,
-                { borderRightColor: colors.border },
-                i === extraStats.length - 1 && { borderRightWidth: 0 },
-              ]}
-            >
-              <Text style={[styles.statValue, { color: colors.black }]}>{stat.value}</Text>
-              <Text style={[styles.statLabel, { color: colors.greyLight }]}>{stat.label}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
       {/* About */}
       {(about || isOwn) ? (
         <View style={styles.section}>
@@ -384,8 +365,21 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
         </View>
       ) : null}
 
+      {/* More info */}
+      {(extraStats.length > 0 || isOwn) ? (
+        <View style={styles.section}>
+          {secHead('More info', extraStats.length === 0, 'Basic Info')}
+          {extraStats.map(stat => (
+            <Text key={stat.label} style={[styles.body, { color: colors.black, marginBottom: 4 }]}>
+              <Text style={{ fontWeight: '700' }}>{stat.label.charAt(0) + stat.label.slice(1).toLowerCase()}: </Text>
+              {stat.value}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       {/* Public empty state (never shown to owner) */}
-      {!isOwn && !about && !hasGigsSummary && !(m.instruments && m.instruments.length > 0) && (
+      {!isOwn && !about && !hasGigsSummary && extraStats.length === 0 && !(m.instruments && m.instruments.length > 0) && (
         <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
     </View>
