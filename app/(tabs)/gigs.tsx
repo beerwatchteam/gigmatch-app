@@ -80,6 +80,23 @@ const badge = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
 });
 
+// ── Add draw chip ─────────────────────────────────────────────────────────────
+// Same treatment as PaymentDueChip: a passive nudge on the collapsed row, not
+// its own tap target. The user expands the row and hits Edit to fill it in.
+
+function AddDrawChip({ colors }: { colors: any }) {
+  return (
+    <View style={[drawChip.wrap, { backgroundColor: Colors.orange + '20', borderColor: Colors.orange + '60' }]}>
+      <Text style={[drawChip.text, { color: Colors.orange }]}>Add draw</Text>
+    </View>
+  );
+}
+
+const drawChip = StyleSheet.create({
+  wrap: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, alignSelf: 'flex-start' },
+  text: { fontSize: 11, fontWeight: '700' },
+});
+
 // ── Gig row ───────────────────────────────────────────────────────────────────
 
 function GigRow({
@@ -127,15 +144,20 @@ function GigRow({
         </View>
       </View>
 
-      {/* Payment due chip on the collapsed row */}
+      {/* Payment due / add draw chips on the collapsed row */}
       {!expanded && !cancelled && gig.status === 'confirmed' && (() => {
         const ps = (gig as any).payment?.status;
-        if (!ps || ps === 'not_applicable' || ps === 'confirmed' || ps === 'self_reported') return null;
-        const active = isPaymentActive(gig as any, new Date());
-        if (!active) return null;
-        const exp = paymentExpectation(gig.fee);
-        if (exp.mode === 'none') return null;
-        return <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}><PaymentDueChip colors={colors} /></View>;
+        const paymentDue = !!ps && ps !== 'not_applicable' && ps !== 'confirmed' && ps !== 'self_reported'
+          && isPaymentActive(gig as any, new Date())
+          && paymentExpectation(gig.fee).mode !== 'none';
+        const needsDraw = isArtist && completed && gig.attendance == null;
+        if (!paymentDue && !needsDraw) return null;
+        return (
+          <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 10 }}>
+            {paymentDue && <PaymentDueChip colors={colors} />}
+            {needsDraw && <AddDrawChip colors={colors} />}
+          </View>
+        );
       })()}
 
       {/* Expanded detail */}
