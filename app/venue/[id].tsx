@@ -467,9 +467,10 @@ const pvac = StyleSheet.create({
 // ── Main screen ───────────────────────────────────────────────────────
 
 export default function VenueScreen({ _overrideId }: { _overrideId?: string } = {}) {
-  const { id: paramId, tab: tabParam } = useLocalSearchParams<{ id: string; tab?: string }>();
+  const { id: paramId, tab: tabParam, preview } = useLocalSearchParams<{ id: string; tab?: string; preview?: string }>();
   const id = _overrideId ?? String(paramId);
   const isProfileTab = !!_overrideId;
+  const isPublicPreview = !!preview;
   const router = useRouter();
   const { profile, user } = useAuth();
   const { colors } = useTheme();
@@ -531,7 +532,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
     </SafeAreaView>
   );
 
-  const isMyVenue = profile?.type === 'venue' && profile?.venueId === id;
+  const isMyVenue = !isPublicPreview && profile?.type === 'venue' && profile?.venueId === id;
   const genres    = venue.genre || venue.genres || [];
   const address   = [venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ');
   const photo     = venue.photoUrl || (venue.photos && venue.photos[0]);
@@ -592,7 +593,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
             <TouchableOpacity
               style={[vd.viewPublicBtn, { borderColor: colors.border }]}
-              onPress={() => router.push(`/venue/${id}` as any)}
+              onPress={() => router.push(`/venue/${id}?preview=1` as any)}
               activeOpacity={0.8}
             >
               <Text style={[vd.viewPublicText, { color: colors.black }]}>View public profile</Text>
@@ -685,6 +686,14 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
+      {isPublicPreview && (
+        <View style={[s.previewBanner, { backgroundColor: colors.black }]}>
+          <Text style={s.previewBannerText}>Previewing as the public would see this profile</Text>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/profile' as any)} activeOpacity={0.75}>
+            <Text style={s.previewBannerExit}>Exit preview</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <ScrollView stickyHeaderIndices={[1]}>
 
         {/* ── Banner ── */}
@@ -2121,6 +2130,9 @@ const s = StyleSheet.create({
   bannerPlaceholderText: { color: '#999999', fontSize: 14 },
   backOverlay:        { position: 'absolute', top: 16, left: 16, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   backOverlayText:    { fontSize: 14, fontWeight: '600', color: '#111111' },
+  previewBanner:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 16 },
+  previewBannerText:  { fontSize: 12, fontWeight: '600', color: '#ffffff' },
+  previewBannerExit:  { fontSize: 12, fontWeight: '700', color: Colors.orange },
   backText:           { fontSize: 15, color: Colors.orange, fontWeight: '600', padding: 20 },
   notFound:           { textAlign: 'center', color: '#888888', marginTop: 40, fontSize: 15 },
 

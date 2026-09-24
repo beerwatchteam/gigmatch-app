@@ -1112,9 +1112,10 @@ const pac = StyleSheet.create({
 // ── Main Screen ───────────────────────────────────────────────────
 
 export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
-  const { id: paramId, tab: initialTab } = useLocalSearchParams<{ id: string; tab?: string }>();
-  const id           = _overrideId ?? String(paramId);
-  const isProfileTab = !!_overrideId;
+  const { id: paramId, tab: initialTab, preview } = useLocalSearchParams<{ id: string; tab?: string; preview?: string }>();
+  const id             = _overrideId ?? String(paramId);
+  const isProfileTab   = !!_overrideId;
+  const isPublicPreview = !!preview;
   const router       = useRouter();
   const { user }     = useAuth();
   const { colors }   = useTheme();
@@ -1132,7 +1133,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const [artistAddedGigs, setArtistAddedGigs] = useState<any[]>([]);
   const [ownGigs, setOwnGigs]               = useState<any[]>([]);
 
-  const isOwn = user?.uid === id;
+  const isOwn = !isPublicPreview && user?.uid === id;
   const { width } = useWindowDimensions();
   const isMobileLayout = !isWeb || width < 768;
 
@@ -1272,7 +1273,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             <TouchableOpacity
               style={[dash.viewPublicBtn, { borderColor: colors.border }]}
-              onPress={() => router.push(`/musician/${id}` as any)}
+              onPress={() => router.push(`/musician/${id}?preview=1` as any)}
               activeOpacity={0.8}
             >
               <Text style={[dash.viewPublicText, { color: colors.black }]}>View public profile</Text>
@@ -1354,6 +1355,14 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges ?? ['bottom']}>
+      {isPublicPreview && (
+        <View style={[styles.previewBanner, { backgroundColor: colors.black }]}>
+          <Text style={styles.previewBannerText}>Previewing as the public would see this profile</Text>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/profile' as any)} activeOpacity={0.75}>
+            <Text style={styles.previewBannerExit}>Exit preview</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <ScrollView>
 
         {/* Hero banner */}
@@ -1507,6 +1516,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   backOverlayText: { fontSize: 14, fontWeight: '600', color: Colors.black },
+  previewBanner:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 16 },
+  previewBannerText: { fontSize: 12, fontWeight: '600', color: '#ffffff' },
+  previewBannerExit: { fontSize: 12, fontWeight: '700', color: Colors.orange },
   backBtn:         { padding: 20 },
   backText:        { fontSize: 15, color: Colors.orange, fontWeight: '600' },
   notFound:        { textAlign: 'center', marginTop: 40, fontSize: 15 },

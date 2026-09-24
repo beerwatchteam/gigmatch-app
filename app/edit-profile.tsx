@@ -1475,7 +1475,7 @@ export default function EditProfileScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
-            <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/musician/${uid}` as any)}>
+            <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/musician/${uid}?preview=1` as any)}>
               <Text style={[pd.outlineBtnText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
             <View style={[pd.avatarCircle, { backgroundColor: colors.border }]}>
