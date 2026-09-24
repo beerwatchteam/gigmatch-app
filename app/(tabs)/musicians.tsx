@@ -92,8 +92,38 @@ export default function MusiciansScreen() {
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
-      const snap = await getDocs(collection(db, 'bandProfiles'));
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Musician[];
+      const [profileSnap, gigSnap] = await Promise.all([
+        getDocs(collection(db, 'bandProfiles')),
+        getDocs(collection(db, 'publicGigs')),
+      ]);
+
+      const now = new Date();
+      const thisYear = now.getFullYear();
+
+      // Group confirmed past gigs by artistUid, computing attendance and year count
+      const gigsByArtist = new Map<string, { attendance: number[]; thisYear: number }>();
+      for (const d of gigSnap.docs) {
+        const g = d.data();
+        if (!g.artistUid || !g.startAt) continue;
+        if (g.status != null && g.status !== 'confirmed') continue;
+        const date: Date = g.startAt.toDate();
+        if (date >= now) continue;
+        if (!gigsByArtist.has(g.artistUid)) gigsByArtist.set(g.artistUid, { attendance: [], thisYear: 0 });
+        const entry = gigsByArtist.get(g.artistUid)!;
+        if (g.attendance != null && g.attendance > 0) entry.attendance.push(g.attendance);
+        if (date.getFullYear() === thisYear) entry.thisYear += 1;
+      }
+
+      const data = profileSnap.docs.map(d => {
+        const m = { id: d.id, ...d.data() } as Musician;
+        const entry = gigsByArtist.get(d.id);
+        m.gigsThisYear = entry && entry.thisYear > 0 ? entry.thisYear : undefined;
+        m.averageDraw  = entry && entry.attendance.length > 0
+          ? Math.round(entry.attendance.reduce((s, v) => s + v, 0) / entry.attendance.length)
+          : undefined;
+        return m;
+      });
+
       setMusicians(data.filter(m => m.settings?.listed !== false));
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
@@ -358,9 +388,9 @@ export default function MusiciansScreen() {
       ? `$${item.feeMin}–$${item.feeMax}`
       : item.feeMin != null ? `$${item.feeMin}+` : null;
     const stats = [
-      item.averageDraw != null   ? { value: String(item.averageDraw),  label: 'DRAW'               } : null,
+      item.averageDraw != null     ? { value: `~${item.averageDraw}`,   label: 'AVG DRAW'           } : null,
       (item.gigsThisYear ?? 0) > 0 ? { value: String(item.gigsThisYear), label: `GIGS '${yearShort}` } : null,
-      feeStr                    ? { value: feeStr,                     label: 'FEE'                } : null,
+      feeStr                       ? { value: feeStr,                   label: 'FEE'                } : null,
     ].filter(Boolean) as { value: string; label: string }[];
 
     return (
