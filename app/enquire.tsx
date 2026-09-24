@@ -347,23 +347,7 @@ export default function EnquireScreen() {
           </View>
         </View>
 
-        {/* ── Recent gigs ───────────────────────────────────────── */}
-        {sections.gigs && displayGigHistory.length > 0 ? (
-          <View style={[s.slotInfoBlock, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-            <View style={s.slotInfoRow}>
-              <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Recent gigs</Text>
-              <View style={{ flex: 1, gap: 4 }}>
-                {displayGigHistory.map((g, i) => (
-                  <Text key={i} style={[s.slotInfoText, { color: colors.black }]}>
-                    {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          </View>
-        ) : null}
-
-        {/* ── Set Details ───────────────────────────────────────── */}
+{/* ── Set Details ───────────────────────────────────────── */}
         <View style={s.setDetailsBlock}>
           <Text style={[s.setDetailsHeading, { color: colors.grey }]}>SET DETAILS</Text>
           <View style={s.setDetailRow}>
