@@ -548,61 +548,82 @@ export default function HomeScreen() {
                 </Text>
               </View>
               {/* Right: static form preview */}
-              <View style={[s.enquiryCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-                {/* Header */}
-                <View style={{ marginBottom: 14 }}>
-                  <Text style={s.enqEyebrow}>ENQUIRY</Text>
-                  <Text style={[s.enqVenueName, { color: colors.black }]}>The Tote Hotel</Text>
-                  <Text style={[s.enqMeta, { color: colors.grey }]}>Friday · 7:00 PM · Band Room</Text>
-                </View>
-                {/* Artist pill */}
-                <View style={[s.enqArtistPill, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                  <View style={s.enqArtistAvatar} />
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={[s.enqArtistName, { color: colors.black }]}>The Dahlias</Text>
-                      <View style={[s.enqBadge, { borderColor: colors.border }]}>
-                        <Text style={[s.enqBadgeText, { color: colors.grey }]}>BAND</Text>
-                      </View>
+              {(() => {
+                const mockArtist = musicians.find(m => m.id === user?.uid);
+                const artistName = mockArtist?.name || 'The Dahlias';
+                const artistType = Array.isArray(mockArtist?.artistType) ? mockArtist.artistType[0] : (mockArtist?.artistType || 'Band');
+                const artistGenres = (mockArtist?.genre ?? ['Indie', 'Rock']).slice(0, 3).join(' · ');
+                const artistLocation = mockArtist?.location || 'Mount Eliza, VIC';
+                const artistPhoto = mockArtist?.photoUrl ?? null;
+                return (
+                  <View style={[s.enquiryCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                    {/* Header */}
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={s.enqEyebrow}>ENQUIRY</Text>
+                      <Text style={[s.enqVenueName, { color: colors.black }]}>The Venue</Text>
+                      <Text style={[s.enqMeta, { color: colors.grey }]}>Friday · 7:00 PM · Band Room</Text>
                     </View>
-                    <Text style={[s.enqArtistMeta, { color: colors.grey }]}>Indie · Rock · Mount Eliza, VIC</Text>
-                  </View>
-                </View>
-                {/* Set details */}
-                <View style={[s.enqSection, { borderTopColor: colors.border }]}>
-                  <Text style={s.enqSectionLabel}>SET DETAILS</Text>
-                  <View style={{ flexDirection: 'row', gap: 24 }}>
-                    <View>
-                      <Text style={[s.enqDetailKey, { color: colors.black }]}>Duration</Text>
-                      <Text style={[s.enqDetailVal, { color: colors.grey }]}>45 min</Text>
-                    </View>
-                    <View>
-                      <Text style={[s.enqDetailKey, { color: colors.black }]}>Slot Type</Text>
-                      <Text style={[s.enqDetailVal, { color: colors.grey }]}>Headline</Text>
-                    </View>
-                  </View>
-                </View>
-                {/* What you're sending */}
-                <View style={[s.enqSection, { borderTopColor: colors.border }]}>
-                  <Text style={s.enqSectionLabel}>WHAT YOU'RE SENDING</Text>
-                  <View style={s.enqCheckGrid}>
-                    {['About', 'Music', 'Gig history', 'Upcoming gigs', 'Socials', 'Tech rider'].map(item => (
-                      <View key={item} style={[s.enqCheckItem, { borderColor: Colors.orange, backgroundColor: 'rgba(250,131,12,0.07)' }]}>
-                        <View style={s.enqCheckbox}>
-                          <Text style={s.enqCheckmark}>✓</Text>
+                    {/* Set details */}
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={s.enqSectionLabel}>SET DETAILS</Text>
+                      <View style={{ flexDirection: 'row', gap: 24 }}>
+                        <View>
+                          <Text style={[s.enqDetailKey, { color: colors.black }]}>Duration</Text>
+                          <Text style={[s.enqDetailVal, { color: colors.grey }]}>45 min</Text>
                         </View>
-                        <Text style={[s.enqCheckLabel, { color: colors.black }]}>{item}</Text>
+                        <View>
+                          <Text style={[s.enqDetailKey, { color: colors.black }]}>Slot Type</Text>
+                          <Text style={[s.enqDetailVal, { color: colors.grey }]}>Headline</Text>
+                        </View>
+                        <View>
+                          <Text style={[s.enqDetailKey, { color: colors.black }]}>Fee Type</Text>
+                          <Text style={[s.enqDetailVal, { color: colors.grey }]}>Door Split</Text>
+                        </View>
                       </View>
-                    ))}
+                    </View>
+                    {/* Divider */}
+                    <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
+                    {/* Artist pill */}
+                    <View style={[s.enqArtistPill, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginBottom: 16 }]}>
+                      {artistPhoto
+                        ? <Image source={{ uri: artistPhoto }} style={s.enqArtistAvatar} resizeMode="cover" />
+                        : <View style={s.enqArtistAvatar} />
+                      }
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={[s.enqArtistName, { color: colors.black }]}>{artistName}</Text>
+                          <View style={[s.enqBadge, { borderColor: colors.border }]}>
+                            <Text style={[s.enqBadgeText, { color: colors.grey }]}>{artistType.toUpperCase()}</Text>
+                          </View>
+                        </View>
+                        <Text style={[s.enqArtistMeta, { color: colors.grey }]}>{artistGenres} · {artistLocation}</Text>
+                      </View>
+                    </View>
+                    {/* Divider */}
+                    <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
+                    {/* What you're sending */}
+                    <View>
+                      <Text style={s.enqSectionLabel}>WHAT YOU'RE SENDING</Text>
+                      <View style={s.enqCheckGrid}>
+                        {['About', 'Music', 'Socials', 'Tech rider', 'My Gigs', 'Contact'].map(label => (
+                          <View key={label} style={[s.enqCheckItem, { borderColor: Colors.orange, backgroundColor: 'rgba(250,131,12,0.07)' }]}>
+                            <View style={s.enqCheckbox}>
+                              <Text style={s.enqCheckmark}>✓</Text>
+                            </View>
+                            <Text style={[s.enqCheckLabel, { color: colors.black }]}>{label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Text style={[s.enqCount, { color: colors.grey }]}>6 of 6 profile sections included</Text>
+                    </View>
+                    {/* Fade + CTA */}
+                    <View style={s.enqFadeOverlay} pointerEvents="none" />
+                    <TouchableOpacity style={s.enqSendBtn} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
+                      <Text style={s.enqSendBtnText}>Sign up to send an enquiry</Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={[s.enqCount, { color: colors.grey }]}>6 of 6 profile sections included</Text>
-                </View>
-                {/* Fade + CTA */}
-                <View style={s.enqFadeOverlay} pointerEvents="none" />
-                <TouchableOpacity style={s.enqSendBtn} onPress={() => router.push('/login?mode=signup&tab=artist' as any)}>
-                  <Text style={s.enqSendBtnText}>Sign up to send an enquiry</Text>
-                </TouchableOpacity>
-              </View>
+                );
+              })()}
             </View>
           </View>
         )}
@@ -758,7 +779,7 @@ const s = StyleSheet.create({
   desktopHint:  { fontSize: 12, color: '#666666', marginTop: 3, fontStyle: 'italic' },
 
   // Fortnight panel
-  fortnightPanel:      { backgroundColor: '#f2ede4', borderRadius: 14, overflow: 'hidden' },
+  fortnightPanel:      { backgroundColor: '#ffffff', borderRadius: 14, overflow: 'hidden' },
   fortnightPanelWide:  { flex: 1, maxWidth: 440, alignSelf: 'flex-start' },
   panelHeader:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
   panelHeaderLabel:    { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', color: '#888888' },
