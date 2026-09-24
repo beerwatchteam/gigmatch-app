@@ -421,6 +421,7 @@ export default function EditProfileScreen() {
   const [photoUploading,     setPhotoUploading]     = useState(false);
   const [docUploading,       setDocUploading]       = useState(false);
   const [stagePlotUploading, setStagePlotUploading] = useState(false);
+  const [inputListUploading, setInputListUploading] = useState(false);
   const [onboardingStep,     setOnboardingStep]     = useState(0);
   const [onboardingVisited,  setOnboardingVisited]  = useState<string[]>([]);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -549,6 +550,22 @@ export default function EditProfileScreen() {
       set('techRiderDocs', [...(profile.techRiderDocs || []), { url: await getDownloadURL(ref), name: asset.name }]);
     } catch (e) { Alert.alert('Upload failed', String(e)); }
     finally { setDocUploading(false); }
+  }
+
+  async function pickInputList() {
+    const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    setInputListUploading(true);
+    try {
+      const asset = result.assets[0];
+      const ext   = asset.name.split('.').pop() || 'pdf';
+      const blob  = await (await fetch(asset.uri)).blob();
+      const ref   = sRef(storage, `riders/${uid}/input-list.${ext}`);
+      await uploadBytes(ref, blob);
+      setRider('inputListUrl',  await getDownloadURL(ref));
+      setRider('inputListName', asset.name);
+    } catch (e) { Alert.alert('Upload failed', String(e)); }
+    finally { setInputListUploading(false); }
   }
 
   async function pickStagePlot() {
@@ -1143,6 +1160,24 @@ export default function EditProfileScreen() {
             ))}
             {profile.inputChannels.length === 0 && (
               <Text style={{ fontSize: 14, color: colors.grey, padding: 16 }}>No channels added yet.</Text>
+            )}
+          </View>
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.border, padding: 16, gap: 8 }}>
+            <Text style={{ fontSize: 13, color: colors.grey, fontWeight: '600' }}>Upload input list</Text>
+            <Text style={{ fontSize: 12, color: colors.greyLight }}>PDF or image. Downloadable from your profile and any enquiry.</Text>
+            {profile.techRider?.inputListUrl ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 13, color: colors.black, flex: 1 }} numberOfLines={1}>
+                  {profile.techRider.inputListName || 'Input list'}
+                </Text>
+                <TouchableOpacity onPress={() => { setRider('inputListUrl', ''); setRider('inputListName', ''); }}>
+                  <Text style={{ fontSize: 13, color: Colors.danger }}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border, alignSelf: 'flex-start' }]} onPress={pickInputList} disabled={inputListUploading}>
+                <Text style={[pd.outlineBtnText, { color: colors.black }]}>{inputListUploading ? 'Uploading...' : 'Upload file'}</Text>
+              </TouchableOpacity>
             )}
           </View>
         </SectionCard>

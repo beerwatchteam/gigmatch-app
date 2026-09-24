@@ -140,6 +140,9 @@ type Musician = {
     soundcheck?: string;
     // Stage plot
     stagePlotUrl?: string;
+    // Input list
+    inputListUrl?: string;
+    inputListName?: string;
     // Notes
     notes?: string;
     // Legacy fields (kept for backwards compat)
@@ -346,13 +349,18 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
             </Text>
           )}
 
-          {/* Downloads: stage plot + spec sheets */}
-          {(m.techRider?.stagePlotUrl || hasTechDocs) && (
+          {/* Downloads: stage plot, input list + spec sheets */}
+          {(m.techRider?.stagePlotUrl || m.techRider?.inputListUrl || hasTechDocs) && (
             <View style={{ marginTop: 10 }}>
               <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Downloads</Text>
               {m.techRider?.stagePlotUrl && (
                 <TouchableOpacity onPress={() => Linking.openURL(m.techRider!.stagePlotUrl!)}>
                   <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ Stage Plot</Text>
+                </TouchableOpacity>
+              )}
+              {m.techRider?.inputListUrl && (
+                <TouchableOpacity onPress={() => Linking.openURL(m.techRider!.inputListUrl!)}>
+                  <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {m.techRider.inputListName || 'Input List'}</Text>
                 </TouchableOpacity>
               )}
               {(m.techRiderDocs || []).map((doc, i) => (
