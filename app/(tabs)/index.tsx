@@ -275,8 +275,8 @@ function ArtistCard({ musician }: { musician: MusicianData }) {
         <View style={ac.statsRow}>
           {averageDraw != null && (
             <View style={ac.stat}>
-              <Text style={ac.statNum}>{averageDraw}</Text>
-              <Text style={ac.statLabel}>DRAW</Text>
+              <Text style={ac.statNum}>~{averageDraw}</Text>
+              <Text style={ac.statLabel}>AVG DRAW</Text>
             </View>
           )}
           {feeLabel ? (
@@ -363,9 +363,36 @@ export default function HomeScreen() {
       setVenues(all.filter(v => v.settings?.listed !== false));
     }).catch(console.error);
 
-    getDocs(collection(db, 'bandProfiles')).then(snap => {
-      const all = snap.docs
-        .map(d => ({ id: d.id, ...d.data() })) as MusicianData[];
+    Promise.all([
+      getDocs(collection(db, 'bandProfiles')),
+      getDocs(collection(db, 'publicGigs')),
+    ]).then(([profileSnap, gigSnap]) => {
+      const now = new Date();
+      const thisYear = now.getFullYear();
+
+      const gigsByArtist = new Map<string, { attendance: number[]; thisYear: number }>();
+      for (const d of gigSnap.docs) {
+        const g = d.data();
+        if (!g.artistUid || !g.startAt) continue;
+        if (g.status != null && g.status !== 'confirmed') continue;
+        const date: Date = g.startAt.toDate();
+        if (date >= now) continue;
+        if (!gigsByArtist.has(g.artistUid)) gigsByArtist.set(g.artistUid, { attendance: [], thisYear: 0 });
+        const entry = gigsByArtist.get(g.artistUid)!;
+        if (g.attendance != null && g.attendance > 0) entry.attendance.push(g.attendance);
+        if (date.getFullYear() === thisYear) entry.thisYear += 1;
+      }
+
+      const all = profileSnap.docs.map(d => {
+        const m = { id: d.id, ...d.data() } as MusicianData;
+        const entry = gigsByArtist.get(d.id);
+        m.gigsThisYear = entry && entry.thisYear > 0 ? entry.thisYear : undefined;
+        m.averageDraw  = entry && entry.attendance.length > 0
+          ? Math.round(entry.attendance.reduce((s, v) => s + v, 0) / entry.attendance.length)
+          : undefined;
+        return m;
+      });
+
       setMusicianCount(all.filter(m => m.settings?.listed !== false && m.name).length);
       const featured = all.filter(m =>
         m.name?.toLowerCase().includes('dahlias') ||
