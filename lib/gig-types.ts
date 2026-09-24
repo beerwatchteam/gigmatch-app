@@ -284,3 +284,44 @@ export function validateFee(fee: GigFee): string | null {
   }
   return null;
 }
+
+/**
+ * Live musician gig stats, computed directly from gig docs rather than a
+ * cached bandProfile field, which can drift out of sync with what actually
+ * happened at gigs.
+ *
+ * gigsPlayed:  every confirmed gig that has already ended
+ * gigsThisYear: every confirmed gig starting in the current calendar year,
+ *               past or upcoming
+ * averageDraw: mean attendance across past confirmed gigs with attendance
+ *              logged, rounded to the nearest whole person; null if none
+ *
+ * A doc missing a status field (public gig projections) is treated as
+ * confirmed, since those only ever exist while confirmed.
+ */
+export function computeMusicianGigStats(
+  gigs: { startAt?: Timestamp | null; endAt?: Timestamp | null; status?: string | null; attendance?: number | null }[],
+): { gigsPlayed: number; gigsThisYear: number; averageDraw: number | null } {
+  const now  = new Date();
+  const year = now.getFullYear();
+  const confirmed = gigs.filter(g => g.startAt && (g.status == null || g.status === 'confirmed'));
+
+  const gigsPlayed = confirmed.filter(g => {
+    const endAt = g.endAt?.toDate() ?? new Date(g.startAt!.toDate().getTime() + 3_600_000);
+    return endAt < now;
+  }).length;
+
+  const gigsThisYear = confirmed.filter(g => g.startAt!.toDate().getFullYear() === year).length;
+
+  const attendances = confirmed
+    .filter(g => {
+      const endAt = g.endAt?.toDate() ?? new Date(g.startAt!.toDate().getTime() + 3_600_000);
+      return endAt < now && typeof g.attendance === 'number' && g.attendance > 0;
+    })
+    .map(g => g.attendance as number);
+  const averageDraw = attendances.length > 0
+    ? Math.round(attendances.reduce((s, a) => s + a, 0) / attendances.length)
+    : null;
+
+  return { gigsPlayed, gigsThisYear, averageDraw };
+}

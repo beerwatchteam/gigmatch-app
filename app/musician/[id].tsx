@@ -16,6 +16,7 @@ import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { computeMusicianGigStats } from '@/lib/gig-types';
 
 const isWeb = Platform.OS === 'web';
 
@@ -1220,8 +1221,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
   const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
 
-  // Count confirmed public gigs that have already happened
-  const completedGigs = gigsForTabs.filter(pg => pg.startAt && pg.startAt.toDate() < now).length;
+  // Live stats from actual gig data, not the cached bandProfile field, so
+  // they never drift out of sync with what's actually been played.
+  const { gigsPlayed: completedGigs, averageDraw: liveAverageDraw } = computeMusicianGigStats(gigsForTabs);
 
   const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
   const feeStr = typicalFeeText
@@ -1237,7 +1239,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const statsItems = [
     musician.memberCount              ? { value: musician.memberCount,                        label: 'LINEUP'           } : null,
     completedGigs > 0                 ? { value: String(completedGigs),                       label: 'GIGS PLAYED'      } : null,
-    musician.averageDraw != null      ? { value: `~${musician.averageDraw}`,                  label: 'AVG DRAW'         } : null,
+    liveAverageDraw != null           ? { value: `~${liveAverageDraw}`,                        label: 'AVG DRAW'         } : null,
     feeStr                            ? { value: feeStr,                                      label: 'FEE'              } : null,
     musician.setType                  ? { value: musician.setType,                            label: 'SET TYPE'         } : null,
     musician.ageRestriction           ? { value: musician.ageRestriction,                     label: 'SUITABILITY'      } : null,

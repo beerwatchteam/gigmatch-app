@@ -8,7 +8,7 @@ import { type Enquiry, sendMessage, postSystemMessage, confirmHeadliner } from '
 import {
   type GigFee, type GigSource, type GigStatus, type Gig,
   type GigPrivateDoc, type GigDocKind, type GigPayment, type PaymentTiming,
-  toStartAt, STATE_TZ,
+  toStartAt, STATE_TZ, computeMusicianGigStats,
 } from './gig-types';
 
 // ── SlotConflictError ────────────────────────────────────────────────────────
@@ -801,20 +801,11 @@ export async function recomputeAverageDraw(artistUid: string): Promise<void> {
       where('artistUid', '==', artistUid),
       where('status', '==', 'confirmed'),
     ));
-    const now = new Date();
-    const values: number[] = [];
-    snap.docs.forEach(d => {
-      const g = d.data() as Gig;
-      const endAt = g.endAt?.toDate() ?? new Date(g.startAt.toDate().getTime() + 3_600_000);
-      if (endAt < now && typeof g.attendance === 'number' && g.attendance > 0) {
-        values.push(g.attendance);
-      }
-    });
-    if (values.length === 0) return;
-    const avg = Math.round(values.reduce((s, v) => s + v, 0) / values.length);
-    await updateDoc(doc(db, 'bandProfiles', artistUid), { averageDraw: avg });
+    const { averageDraw } = computeMusicianGigStats(snap.docs.map(d => d.data() as Gig));
+    if (averageDraw == null) return;
+    await updateDoc(doc(db, 'bandProfiles', artistUid), { averageDraw });
   } catch {
-    // silent — non-critical
+    // silent, non-critical
   }
 }
 
