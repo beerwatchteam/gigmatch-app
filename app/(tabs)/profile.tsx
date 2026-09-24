@@ -12,7 +12,8 @@ import { Text } from '@/components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import app, { auth } from '@/lib/firebase';
 import {
   addDoc,
   collection,
@@ -1105,6 +1106,24 @@ function AdminScreen() {
   const router = useRouter();
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelMounted, setPanelMounted] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
+  const [resyncResult, setResyncResult] = useState<string | null>(null);
+
+  async function handleResyncPublicGigs() {
+    setResyncing(true);
+    setResyncResult(null);
+    try {
+      const fns    = getFunctions(app, 'australia-southeast1');
+      const fn     = httpsCallable<void, { synced: number; removed: number; artists: number }>(fns, 'resyncPublicGigs');
+      const result = await fn();
+      const { synced, removed, artists } = result.data;
+      setResyncResult(`Synced ${synced}, removed ${removed}, updated ${artists} artist${artists === 1 ? '' : 's'}.`);
+    } catch (e: any) {
+      setResyncResult(`Failed: ${e.message ?? 'unknown error'}`);
+    } finally {
+      setResyncing(false);
+    }
+  }
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
@@ -1118,6 +1137,19 @@ function AdminScreen() {
         >
           <Text style={styles.adminBtnText}>Open Venue Claims</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.adminBtn, { marginTop: 12 }, resyncing && { opacity: 0.6 }]}
+          onPress={handleResyncPublicGigs}
+          disabled={resyncing}
+          activeOpacity={0.85}
+        >
+          {resyncing
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Text style={styles.adminBtnText}>Resync public gigs & stats</Text>}
+        </TouchableOpacity>
+        {resyncResult ? (
+          <Text style={[styles.adminSub, { color: colors.grey, marginTop: 12, marginBottom: 0 }]}>{resyncResult}</Text>
+        ) : null}
         <View style={styles.adminDivider} />
         <TouchableOpacity
           style={[styles.adminLogoutBtn, { borderColor: colors.border }]}
