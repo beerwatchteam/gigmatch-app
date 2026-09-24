@@ -18,13 +18,14 @@ const isWeb = Platform.OS === 'web';
 const SET_LENGTHS = ['30 min', '45 min', '60 min', '90 min'];
 const SLOT_PREFS = ['Headline', 'Support', 'Open Mic', 'Other'] as const;
 
-type SectionKey = 'about' | 'music' | 'socials' | 'techRider' | 'contact';
+type SectionKey = 'about' | 'music' | 'socials' | 'techRider' | 'gigs' | 'contact';
 
 const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'about',     label: 'About'          },
   { key: 'music',     label: 'Music'          },
   { key: 'socials',   label: 'Socials'        },
   { key: 'techRider', label: 'Tech rider'     },
+  { key: 'gigs',      label: 'My Gigs'        },
   { key: 'contact',   label: 'Contact'        },
 ];
 
@@ -57,7 +58,7 @@ export default function EnquireScreen() {
   const [otherNote, setOtherNote] = useState('');
   const [note, setNote]           = useState('');
   const [sections, setSections]   = useState<Record<SectionKey, boolean>>({
-    about: true, music: true, socials: true, techRider: true, contact: true,
+    about: true, music: true, socials: true, techRider: true, gigs: true, contact: true,
   });
   const [availConfirmed, setAvailConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -127,7 +128,7 @@ export default function EnquireScreen() {
   }
 
   function selectAll() {
-    setSections({ about: true, music: true, socials: true, techRider: true, contact: true });
+    setSections({ about: true, music: true, socials: true, techRider: true, gigs: true, contact: true });
   }
 
   function sectionPreview(key: SectionKey): string {
@@ -149,6 +150,10 @@ export default function EnquireScreen() {
         if (pages.length === 0) return 'None listed';
         return `${pages.length} item${pages.length > 1 ? 's' : ''} included`;
       }
+      case 'gigs':
+        return gigHistory.length > 0
+          ? gigHistory.map(g => g.venue).filter(Boolean).join(' · ')
+          : 'None listed';
       case 'contact': {
         const parts: string[] = [];
         if (band.email) parts.push('Email');
@@ -197,7 +202,7 @@ export default function EnquireScreen() {
         feeMin:      band.feeMin,
         feeMax:      band.feeMax,
         averageDraw: band.averageDraw,
-        ...(gigHistory.length > 0 && { gigHistory }),
+        ...(sections.gigs && gigHistory.length > 0 && { gigHistory }),
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
@@ -315,7 +320,7 @@ export default function EnquireScreen() {
         </View>
 
         {/* ── Recent gigs ───────────────────────────────────────── */}
-        {gigHistory.length > 0 ? (
+        {sections.gigs && gigHistory.length > 0 ? (
           <View style={[s.slotInfoBlock, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
             <View style={s.slotInfoRow}>
               <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Recent gigs</Text>
