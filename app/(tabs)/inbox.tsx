@@ -1811,20 +1811,45 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
   // Artist views: they sent this (dark mine bubble)
   const isMine = !isVenue;
 
-  const songs: any[]      = Array.isArray(enquiry.songs) ? enquiry.songs : [];
-  const gigHistory: any[] = Array.isArray(enquiry.gigHistory) ? enquiry.gigHistory : [];
-  const upcoming: any[]   = Array.isArray(enquiry.upcomingGigs) ? enquiry.upcomingGigs : [];
-  const techRider         = enquiry.techRider && typeof enquiry.techRider === 'object' ? enquiry.techRider : null;
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  function toggleSection(key: string) {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  const songs: any[]             = Array.isArray(enquiry.songs)          ? enquiry.songs          : [];
+  const gigHistory: any[]        = Array.isArray(enquiry.gigHistory)      ? enquiry.gigHistory      : [];
+  const upcoming: any[]          = Array.isArray(enquiry.upcomingGigs)    ? enquiry.upcomingGigs    : [];
+  const techRider                = enquiry.techRider && typeof enquiry.techRider === 'object' ? enquiry.techRider as Record<string, any> : null;
+  const backlineFromVenue: string[] = Array.isArray((enquiry as any).backlineFromVenue) ? (enquiry as any).backlineFromVenue : [];
+  const backlineBring: string[]     = Array.isArray((enquiry as any).backlineBring)     ? (enquiry as any).backlineBring     : [];
+  const techRiderBools              = (enquiry as any).techRiderBools && typeof (enquiry as any).techRiderBools === 'object' ? (enquiry as any).techRiderBools as Record<string, boolean> : {};
+  const inputChannels: any[]        = Array.isArray((enquiry as any).inputChannels)     ? (enquiry as any).inputChannels     : [];
+  const techRiderDocs: any[]        = Array.isArray((enquiry as any).techRiderDocs)     ? (enquiry as any).techRiderDocs     : [];
+  const customLinks: any[]          = Array.isArray(enquiry.customLinks)                ? enquiry.customLinks                : [];
+
+  const hasTechRider = !!(
+    (techRider && Object.entries(techRider).some(([k, v]) => v && !['stagePlotUrl','inputListUrl','inputListName'].includes(k))) ||
+    backlineFromVenue.length > 0 || backlineBring.length > 0 || techRiderBools.ownPA || inputChannels.length > 0
+  );
+  const hasDownloads = !!(techRider?.stagePlotUrl || techRider?.inputListUrl || techRiderDocs.length > 0);
 
   const textColor = isMine ? '#ffffff' : '#111111';
   const dimColor  = isMine ? 'rgba(255,255,255,0.55)' : '#888888';
   const divColor  = isMine ? 'rgba(255,255,255,0.15)' : '#e8e8e8';
 
-  function Section({ label, children, sectionRef }: { label: string; children: React.ReactNode; sectionRef?: React.RefObject<View> }) {
+  function Section({ label, sectionKey, children, sectionRef }: { label: string; sectionKey: string; children: React.ReactNode; sectionRef?: React.RefObject<View> }) {
+    const isOpen = openSections.has(sectionKey);
     return (
       <View ref={sectionRef as any} style={[eq.section, { borderTopColor: divColor }]}>
-        <Text style={[eq.sectionLabel, { color: dimColor }]}>{label}</Text>
-        {children}
+        <TouchableOpacity onPress={() => toggleSection(sectionKey)} style={eq.sectionHeader} activeOpacity={0.7}>
+          <Text style={[eq.sectionLabel, { color: dimColor }]}>{label}</Text>
+          <Text style={[eq.sectionChevron, { color: dimColor }]}>{isOpen ? '▾' : '▸'}</Text>
+        </TouchableOpacity>
+        {isOpen ? <View style={{ paddingTop: 4 }}>{children}</View> : null}
       </View>
     );
   }
@@ -1865,14 +1890,14 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
 
           {/* About */}
           {enquiry.about ? (
-            <Section label="ABOUT" sectionRef={profileRef}>
+            <Section label="ABOUT" sectionKey="about" sectionRef={profileRef}>
               <Text style={[eq.body, { color: textColor }]}>{enquiry.about}</Text>
             </Section>
           ) : null}
 
           {/* Music */}
           {songs.length > 0 ? (
-            <Section label="MUSIC" sectionRef={musicRef}>
+            <Section label="MUSIC" sectionKey="music" sectionRef={musicRef}>
               {songs.map((s: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>
                   {s.title}{s.url ? ` — ${s.url}` : ''}{s.notes ? ` (${s.notes})` : ''}
@@ -1883,7 +1908,7 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
 
           {/* Gig history */}
           {gigHistory.length > 0 ? (
-            <Section label="GIG HISTORY">
+            <Section label="GIG HISTORY" sectionKey="gigHistory">
               {gigHistory.map((g: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>
                   {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}{g.notes ? ` (${g.notes})` : ''}
@@ -1894,7 +1919,7 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
 
           {/* Upcoming gigs */}
           {upcoming.length > 0 ? (
-            <Section label="UPCOMING GIGS">
+            <Section label="UPCOMING GIGS" sectionKey="upcomingGigs">
               {upcoming.map((g: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>
                   {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.notes ? ` — ${g.notes}` : ''}
@@ -1904,27 +1929,110 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
           ) : null}
 
           {/* Socials */}
-          {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic) ? (
-            <Section label="SOCIALS">
-              {enquiry.instagram  ? <Text style={[eq.body, { color: textColor }]}>Instagram: {enquiry.instagram}</Text>  : null}
-              {enquiry.tiktok     ? <Text style={[eq.body, { color: textColor }]}>TikTok: {enquiry.tiktok}</Text>        : null}
-              {enquiry.spotify    ? <Text style={[eq.body, { color: textColor }]}>Spotify: {enquiry.spotify}</Text>      : null}
-              {enquiry.appleMusic ? <Text style={[eq.body, { color: textColor }]}>Apple Music: {enquiry.appleMusic}</Text> : null}
+          {(enquiry.instagram || enquiry.tiktok || enquiry.spotify || enquiry.appleMusic || customLinks.length > 0) ? (
+            <Section label="SOCIALS" sectionKey="socials">
+              {enquiry.instagram  ? <Text style={[eq.body, { color: textColor }]}>Instagram: {enquiry.instagram}</Text>   : null}
+              {enquiry.tiktok     ? <Text style={[eq.body, { color: textColor }]}>TikTok: {enquiry.tiktok}</Text>         : null}
+              {enquiry.spotify    ? <Text style={[eq.body, { color: textColor }]}>Spotify: {enquiry.spotify}</Text>       : null}
+              {enquiry.appleMusic ? <Text style={[eq.body, { color: textColor }]}>Apple Music: {enquiry.appleMusic}</Text>: null}
+              {customLinks.filter((l: any) => l.label && l.url).map((l: any, i: number) => (
+                <Text key={i} style={[eq.body, { color: textColor }]}>{l.label}: {l.url}</Text>
+              ))}
             </Section>
           ) : null}
 
           {/* Tech rider */}
-          {techRider && Object.keys(techRider).length > 0 ? (
-            <Section label="TECH RIDER" sectionRef={techRef}>
-              {Object.entries(techRider).map(([k, v]: [string, any]) => (
-                <Text key={k} style={[eq.body, { color: textColor }]}>{k}: {String(v)}</Text>
+          {hasTechRider ? (
+            <Section label="TECH RIDER" sectionKey="techRider" sectionRef={techRef}>
+              {(techRider?.stageWidth || techRider?.stageDepth) ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Min stage: </Text>
+                  {techRider?.stageWidth && techRider?.stageDepth
+                    ? `${techRider.stageWidth}m × ${techRider.stageDepth}m`
+                    : techRider?.stageWidth || techRider?.stageDepth}
+                </Text>
+              ) : null}
+              {(techRider?.monitoringType || techRider?.monitoring) ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Monitoring: </Text>
+                  {[techRider?.monitoringType, techRider?.monitoring].filter(Boolean).join(' · ')}
+                </Text>
+              ) : null}
+              {backlineFromVenue.length > 0 ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Needs from venue: </Text>{backlineFromVenue.join(', ')}
+                </Text>
+              ) : null}
+              {backlineBring.length > 0 ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Brings own: </Text>{backlineBring.join(', ')}
+                </Text>
+              ) : null}
+              {techRiderBools.ownPA ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>PA: </Text>Touring with own PA and engineer
+                </Text>
+              ) : null}
+              {techRider?.soundcheck ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Soundcheck: </Text>{techRider.soundcheck}
+                </Text>
+              ) : null}
+              {techRider?.loadIn ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Load-in: </Text>{techRider.loadIn}
+                </Text>
+              ) : null}
+              {techRider?.lighting ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Lighting: </Text>{techRider.lighting}
+                </Text>
+              ) : null}
+              {techRider?.power ? (
+                <Text style={[eq.body, { color: textColor }]}>
+                  <Text style={eq.riderKey}>Power: </Text>{techRider.power}
+                </Text>
+              ) : null}
+              {inputChannels.length > 0 ? (
+                <View style={{ marginTop: 6, gap: 2 }}>
+                  <Text style={[eq.riderKey, { color: dimColor }]}>Input list ({inputChannels.length} ch)</Text>
+                  {inputChannels.map((ch: any, i: number) => (
+                    <Text key={i} style={[eq.body, { color: textColor }]}>
+                      {String(i + 1).padStart(2, '0')} · {ch.source || '—'}{ch.micDi ? ` / ${ch.micDi}` : ''}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+              {techRider?.notes ? (
+                <Text style={[eq.body, { color: dimColor, marginTop: 4 }]}>{techRider.notes}</Text>
+              ) : null}
+            </Section>
+          ) : null}
+
+          {/* Downloads */}
+          {hasDownloads ? (
+            <Section label="DOWNLOADS" sectionKey="downloads">
+              {techRider?.stagePlotUrl ? (
+                <TouchableOpacity onPress={() => Linking.openURL(techRider!.stagePlotUrl)}>
+                  <Text style={[eq.link, { color: textColor }]}>↓ Stage Plot</Text>
+                </TouchableOpacity>
+              ) : null}
+              {techRider?.inputListUrl ? (
+                <TouchableOpacity onPress={() => Linking.openURL(techRider!.inputListUrl)}>
+                  <Text style={[eq.link, { color: textColor }]}>↓ {techRider.inputListName || 'Input List'}</Text>
+                </TouchableOpacity>
+              ) : null}
+              {techRiderDocs.map((doc: any, i: number) => (
+                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
+                  <Text style={[eq.link, { color: textColor }]}>↓ {doc.name}</Text>
+                </TouchableOpacity>
               ))}
             </Section>
           ) : null}
 
           {/* Additional info */}
           {enquiry.additionalInfo ? (
-            <Section label="ADDITIONAL INFO">
+            <Section label="NOTE TO VENUE" sectionKey="additionalInfo">
               <Text style={[eq.body, { color: textColor }]}>{enquiry.additionalInfo}</Text>
             </Section>
           ) : null}
@@ -1945,9 +2053,13 @@ const eq = StyleSheet.create({
   genrePill:    { borderRadius: 20, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },
   genreText:    { fontSize: 11 },
   meta:         { fontSize: 12, marginBottom: 4 },
-  section:      { borderTopWidth: 1, paddingTop: 8, marginTop: 8, gap: 3 },
-  sectionLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 0.7, marginBottom: 2, textTransform: 'uppercase' as const },
-  body:         { fontSize: 13, lineHeight: 19 },
+  section:        { borderTopWidth: 1, paddingTop: 8, marginTop: 8, gap: 3 },
+  sectionHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionLabel:   { fontSize: 9, fontWeight: '800', letterSpacing: 0.7, marginBottom: 2, textTransform: 'uppercase' as const },
+  sectionChevron: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
+  body:           { fontSize: 13, lineHeight: 19 },
+  riderKey:       { fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  link:           { fontSize: 13, lineHeight: 22, textDecorationLine: 'underline' as const },
 });
 
 // ── Thread panel ───────────────────────────────────────────────────────────

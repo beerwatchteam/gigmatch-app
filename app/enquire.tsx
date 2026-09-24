@@ -174,9 +174,18 @@ export default function EnquireScreen() {
       }
       case 'techRider': {
         const tr = band.techRider || {};
-        const pages = [band.stagePlot, band.inputList, tr.monitoring, tr.backlineNeeded].filter(Boolean);
-        if (pages.length === 0) return 'None listed';
-        return `${pages.length} item${pages.length > 1 ? 's' : ''} included`;
+        const items = [
+          (tr.stageWidth || tr.stageDepth)                    ? 'Stage size'        : null,
+          (tr.monitoringType || tr.monitoring)                 ? 'Monitoring'        : null,
+          (band.backlineFromVenue || []).length > 0            ? 'Backline'          : null,
+          band.techRiderBools?.ownPA                           ? 'Own PA'            : null,
+          (band.inputChannels || []).length > 0                ? 'Input list'        : null,
+          tr.stagePlotUrl                                      ? 'Stage plot'        : null,
+          tr.inputListUrl                                      ? 'Input list file'   : null,
+          (band.techRiderDocs || []).length > 0
+            ? `${band.techRiderDocs.length} rider doc${band.techRiderDocs.length > 1 ? 's' : ''}` : null,
+        ].filter(Boolean) as string[];
+        return items.length > 0 ? items.join(' · ') : 'None listed';
       }
       case 'gigs':
         return displayGigHistory.length > 0
@@ -234,7 +243,14 @@ export default function EnquireScreen() {
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
-        ...(sections.techRider    && { techRider: band.techRider, stagePlot: band.stagePlot, inputList: band.inputList }),
+        ...(sections.techRider    && {
+          techRider:        band.techRider,
+          backlineFromVenue: band.backlineFromVenue,
+          backlineBring:    band.backlineBring,
+          techRiderBools:   band.techRiderBools,
+          inputChannels:    band.inputChannels,
+          techRiderDocs:    band.techRiderDocs,
+        }),
         ...(sections.contact      && { email: band.email, phone: band.phone }),
       }) as any);
       setSubmitted(true);
