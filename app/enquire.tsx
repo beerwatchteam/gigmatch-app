@@ -51,8 +51,9 @@ export default function EnquireScreen() {
   const lockedDuration = params.duration ? `${params.duration} min` : null;
   const lockedSlotType = (['Headline', 'Support', 'Open Mic', 'Other'] as string[]).includes(params.slotType ?? '') ? params.slotType! : null;
 
-  const [band, setBand]           = useState<Record<string, any>>({});
+  const [band, setBand]             = useState<Record<string, any>>({});
   const [gigHistory, setGigHistory] = useState<{ venue: string | null; suburb: string | null; date: string; attendance: number | null }[]>([]);
+  const [computedDraw, setComputedDraw] = useState<number | null>(null);
   const [setLength, setSetLength] = useState(lockedDuration || '45 min');
   const [slotPref,  setSlotPref]  = useState<string>(lockedSlotType || 'Headline');
   const [otherNote, setOtherNote] = useState('');
@@ -80,7 +81,7 @@ export default function EnquireScreen() {
     }).catch(() => {});
   }, [user?.uid]);
 
-  // Last 3 past confirmed gigs, most recent first: shown in the modal and sent with the enquiry
+  // Past confirmed gigs: last 3 shown in the preview, full set used to compute average draw
   useEffect(() => {
     if (!user) return;
     getDocs(query(
@@ -92,15 +93,20 @@ export default function EnquireScreen() {
       const past = snap.docs
         .map(d => d.data() as any)
         .filter(g => g.startAt?.toDate?.() < now)
-        .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
-        .slice(0, 3)
-        .map(g => ({
-          venue:      g.venueName ?? null,
-          suburb:     g.locationText ?? null,
-          date:       g.startAt.toDate().toISOString().slice(0, 10),
-          attendance: g.attendance ?? null,
-        }));
-      setGigHistory(past);
+        .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime());
+
+      const withAttendance = past.filter(g => g.attendance != null && g.attendance > 0);
+      if (withAttendance.length > 0) {
+        const avg = Math.round(withAttendance.reduce((s: number, g: any) => s + g.attendance, 0) / withAttendance.length);
+        setComputedDraw(avg);
+      }
+
+      setGigHistory(past.slice(0, 3).map(g => ({
+        venue:      g.venueName ?? null,
+        suburb:     g.locationText ?? null,
+        date:       g.startAt.toDate().toISOString().slice(0, 10),
+        attendance: g.attendance ?? null,
+      })));
     }).catch(() => {});
   }, [user?.uid]);
 
@@ -201,7 +207,7 @@ export default function EnquireScreen() {
         photoUrl:    band.photoUrl,
         feeMin:      band.feeMin,
         feeMax:      band.feeMax,
-        averageDraw: band.averageDraw,
+        averageDraw: computedDraw ?? undefined,
         ...(sections.gigs && gigHistory.length > 0 && { gigHistory }),
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
@@ -312,7 +318,7 @@ export default function EnquireScreen() {
               {[
                 genres.slice(0, 3).join(' · '),
                 band.location,
-                band.averageDraw != null ? `~${band.averageDraw} draw` : null,
+                computedDraw != null ? `~${computedDraw} draw` : null,
                 (band.feeMin != null && band.feeMax != null) ? `$${band.feeMin}-$${band.feeMax}` : null,
               ].filter(Boolean).join(' · ')}
             </Text>
