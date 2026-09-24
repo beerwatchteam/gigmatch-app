@@ -346,22 +346,15 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
             </Text>
           )}
 
-          {/* Stage plot */}
-          {m.techRider?.stagePlotUrl && (
+          {/* Downloads: stage plot + spec sheets */}
+          {(m.techRider?.stagePlotUrl || hasTechDocs) && (
             <View style={{ marginTop: 10 }}>
-              <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Stage Plot</Text>
-              <Image
-                source={{ uri: m.techRider.stagePlotUrl }}
-                style={{ width: '100%', height: 120, borderRadius: 8 }}
-                resizeMode="contain"
-              />
-            </View>
-          )}
-
-          {/* Spec sheets / rider PDFs */}
-          {hasTechDocs && (
-            <View style={{ marginTop: 10 }}>
-              <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Spec Sheets</Text>
+              <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Downloads</Text>
+              {m.techRider?.stagePlotUrl && (
+                <TouchableOpacity onPress={() => Linking.openURL(m.techRider!.stagePlotUrl!)}>
+                  <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ Stage Plot</Text>
+                </TouchableOpacity>
+              )}
               {(m.techRiderDocs || []).map((doc, i) => (
                 <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
                   <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {doc.name}</Text>
