@@ -1800,7 +1800,6 @@ const SHARE_SECTIONS = [
   { key: 'basicInfo',   label: 'Basic Info'   },
   { key: 'about',       label: 'About'        },
   { key: 'music',       label: 'Music'        },
-  { key: 'socials',     label: 'Socials'      },
   { key: 'rates',       label: 'Rates'        },
   { key: 'techRider',   label: 'Tech Rider'   },
   { key: 'hospitality', label: 'Hospitality'  },
@@ -1811,21 +1810,27 @@ const SHARE_SECTIONS = [
 function extractSectionData(p: Record<string, any>, key: string): Record<string, any> | null {
   switch (key) {
     case 'basicInfo': {
-      const has = p.name || p.artistType || p.location || p.genre?.length || p.feeMin != null || p.email || p.phone;
+      const has = p.name || p.artistType || p.location || p.genre?.length || p.feeMin != null || p.email || p.phone
+        || p.instagram || p.tiktok || p.youtube || p.spotify || p.appleMusic || p.customLinks?.length;
       return has ? { name: p.name, artistType: p.artistType, location: p.location, genre: p.genre,
-                     feeMin: p.feeMin, feeMax: p.feeMax, averageDraw: p.averageDraw, email: p.email, phone: p.phone } : null;
+                     feeMin: p.feeMin, feeMax: p.feeMax, email: p.email, phone: p.phone,
+                     instagram: p.instagram, tiktok: p.tiktok, youtube: p.youtube,
+                     spotify: p.spotify, appleMusic: p.appleMusic, customLinks: p.customLinks } : null;
     }
     case 'about':
       return p.about ? { about: p.about } : null;
     case 'music':
       return (p.songs?.length || p.spotify || p.appleMusic)
         ? { songs: p.songs, spotify: p.spotify, appleMusic: p.appleMusic } : null;
-    case 'socials':
-      return (p.instagram || p.tiktok || p.facebook || p.customLinks?.length)
-        ? { instagram: p.instagram, tiktok: p.tiktok, facebook: p.facebook, customLinks: p.customLinks } : null;
-    case 'rates':
-      return (p.feeMin != null || p.averageDraw != null)
-        ? { feeMin: p.feeMin, feeMax: p.feeMax, averageDraw: p.averageDraw } : null;
+    case 'rates': {
+      const gigs: any[] = Array.isArray(p.gigHistory) ? p.gigHistory : [];
+      const withAtt = gigs.filter((g: any) => g.attendance != null && Number(g.attendance) > 0);
+      const computedDraw = withAtt.length > 0
+        ? Math.round(withAtt.reduce((s: number, g: any) => s + Number(g.attendance), 0) / withAtt.length)
+        : (p.averageDraw ?? null);
+      const has = p.feeMin != null || computedDraw != null || p.travel;
+      return has ? { feeMin: p.feeMin, feeMax: p.feeMax, averageDraw: computedDraw, travel: p.travel } : null;
+    }
     case 'techRider': {
       const tr = p.techRider && typeof p.techRider === 'object' ? p.techRider : null;
       const has = tr || p.backlineFromVenue?.length || p.backlineBring?.length || p.techRiderBools?.ownPA || p.inputChannels?.length || p.techRiderDocs?.length;
@@ -1834,8 +1839,13 @@ function extractSectionData(p: Record<string, any>, key: string): Record<string,
     }
     case 'hospitality':
       return p.hospitality && Object.keys(p.hospitality).length ? p.hospitality : null;
-    case 'invoicing':
-      return p.invoicing && Object.keys(p.invoicing).length ? p.invoicing : null;
+    case 'invoicing': {
+      const pay = p.payment;
+      if (!pay) return null;
+      const hasInv = pay.invoicingName || pay.abn || pay.canProvideInvoice || pay.gstRegistered
+        || pay.methods?.length || pay.timing || pay.paymentNotes;
+      return hasInv ? pay : null;
+    }
     default:
       return null;
   }
@@ -1850,16 +1860,16 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
 
   function Row({ label, value }: { label: string; value: string }) {
     return (
-      <View style={ps.row}>
-        <Text style={[ps.rowKey, { color: dim }]}>{label}</Text>
-        <Text style={[ps.rowVal, { color: fg }]}>{value}</Text>
+      <View style={bs.row}>
+        <Text style={[bs.rowKey, { color: dim }]}>{label}</Text>
+        <Text style={[bs.rowVal, { color: fg }]}>{value}</Text>
       </View>
     );
   }
   function Download({ name, url }: { name: string; url: string }) {
     return (
-      <TouchableOpacity onPress={() => Linking.openURL(url)} style={ps.downloadRow}>
-        <Text style={[ps.downloadText, { color: fg }]}>↓ {name}</Text>
+      <TouchableOpacity onPress={() => Linking.openURL(url)} style={bs.downloadRow}>
+        <Text style={[bs.downloadText, { color: fg }]}>↓ {name}</Text>
       </TouchableOpacity>
     );
   }
@@ -1869,6 +1879,7 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
   switch (sectionKey) {
     case 'basicInfo': {
       const genres: string[] = data.genre ?? [];
+      const customLinks: any[] = data.customLinks ?? [];
       content = <>
         {data.name        && <Row label="Stage name"    value={data.name} />}
         {data.artistType  && <Row label="Act type"      value={data.artistType} />}
@@ -1878,11 +1889,19 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
         {data.averageDraw != null && <Row label="Average draw" value={`~${data.averageDraw} people`} />}
         {data.email       && <Row label="Email"         value={data.email} />}
         {data.phone       && <Row label="Phone"         value={data.phone} />}
+        {data.instagram   && <Row label="Instagram"    value={data.instagram} />}
+        {data.tiktok      && <Row label="TikTok"       value={data.tiktok} />}
+        {data.youtube     && <Row label="YouTube"      value={data.youtube} />}
+        {data.spotify     && <Row label="Spotify"      value={data.spotify} />}
+        {data.appleMusic  && <Row label="Apple Music"  value={data.appleMusic} />}
+        {customLinks.filter((l: any) => l.label && l.url).map((l: any, i: number) => (
+          <Row key={i} label={l.label} value={l.url} />
+        ))}
       </>;
       break;
     }
     case 'about':
-      content = <Text style={[ps.bodyText, { color: fg }]}>{data.about || 'No bio saved.'}</Text>;
+      content = <Text style={[bs.bodyText, { color: fg }]}>{data.about || 'No bio saved.'}</Text>;
       break;
     case 'music': {
       const songs: any[] = data.songs ?? [];
@@ -1893,20 +1912,8 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
         {data.spotify    && <Row label="Spotify"     value={data.spotify} />}
         {data.appleMusic && <Row label="Apple Music" value={data.appleMusic} />}
         {!songs.length && !data.spotify && !data.appleMusic && (
-          <Text style={[ps.emptyText, { color: dim }]}>No music saved.</Text>
+          <Text style={[bs.emptyText, { color: dim }]}>No music saved.</Text>
         )}
-      </>;
-      break;
-    }
-    case 'socials': {
-      const links: any[] = data.customLinks ?? [];
-      content = <>
-        {data.instagram && <Row label="Instagram" value={data.instagram} />}
-        {data.tiktok    && <Row label="TikTok"    value={data.tiktok} />}
-        {data.facebook  && <Row label="Facebook"  value={data.facebook} />}
-        {links.filter((l: any) => l.label && l.url).map((l: any, i: number) => (
-          <Row key={i} label={l.label} value={l.url} />
-        ))}
       </>;
       break;
     }
@@ -1914,8 +1921,9 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
       content = <>
         {data.feeMin != null && data.feeMax != null && <Row label="Fee range"    value={`$${data.feeMin}–$${data.feeMax}`} />}
         {data.averageDraw != null                    && <Row label="Average draw" value={`~${data.averageDraw} people`} />}
-        {data.feeMin == null && data.averageDraw == null && (
-          <Text style={[ps.emptyText, { color: dim }]}>No rate info saved.</Text>
+        {data.travel                                 && <Row label="Travel"       value={data.travel} />}
+        {data.feeMin == null && data.averageDraw == null && !data.travel && (
+          <Text style={[bs.emptyText, { color: dim }]}>No rate info saved.</Text>
         )}
       </>;
       break;
@@ -1945,15 +1953,15 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
         {tr?.power       && <Row label="Power"                 value={tr.power} />}
         {chs.length > 0 && (
           <View style={{ marginTop: 6 }}>
-            <Text style={[ps.rowKey, { color: dim }]}>Input list ({chs.length} ch)</Text>
+            <Text style={[bs.rowKey, { color: dim }]}>Input list ({chs.length} ch)</Text>
             {chs.map((ch: any, i: number) => (
-              <Text key={i} style={[ps.channelRow, { color: fg }]}>
+              <Text key={i} style={[bs.channelRow, { color: fg }]}>
                 {String(i + 1).padStart(2, '0')} · {ch.source || '—'}{ch.micDi ? ` / ${ch.micDi}` : ''}
               </Text>
             ))}
           </View>
         )}
-        {tr?.notes && <Text style={[ps.notesText, { color: dim }]}>{tr.notes}</Text>}
+        {tr?.notes && <Text style={[bs.notesText, { color: dim }]}>{tr.notes}</Text>}
         {tr?.stagePlotUrl  && <Download name="Stage Plot"                       url={tr.stagePlotUrl} />}
         {tr?.inputListUrl  && <Download name={tr.inputListName || 'Input List'} url={tr.inputListUrl} />}
         {trDocs.map((d: any, i: number) => <Download key={i} name={d.name} url={d.url} />)}
@@ -1962,51 +1970,50 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
     }
     case 'hospitality': {
       const h = data;
-      const hasData = Object.keys(h).some(k => h[k] != null && h[k] !== '' && h[k] !== false);
+      const hasData = h.mealsRequired || h.dietaryReqs || h.drinks || h.greenRoom || h.merchTable || h.parkingLoading || h.accommodation;
       content = !hasData
-        ? <Text style={[ps.emptyText, { color: dim }]}>No hospitality info saved yet.</Text>
+        ? <Text style={[bs.emptyText, { color: dim }]}>No hospitality info saved yet.</Text>
         : <>
-          {h.accommodation != null && <Row label="Accommodation" value={typeof h.accommodation === 'boolean' ? (h.accommodation ? 'Yes' : 'No') : h.accommodation} />}
-          {h.meals         != null && <Row label="Meals"         value={typeof h.meals         === 'boolean' ? (h.meals         ? 'Yes' : 'No') : h.meals} />}
-          {h.drinks        != null && <Row label="Drinks"        value={typeof h.drinks        === 'boolean' ? (h.drinks        ? 'Yes' : 'No') : h.drinks} />}
-          {h.parking       != null && <Row label="Parking"       value={typeof h.parking       === 'boolean' ? (h.parking       ? 'Yes' : 'No') : h.parking} />}
-          {h.notes                 && <Row label="Notes"         value={h.notes} />}
-          {Array.isArray(h.docs) && h.docs.map((d: any, i: number) => <Download key={i} name={d.name} url={d.url} />)}
+          {h.mealsRequired  && <Row label="Meals required"  value="Yes" />}
+          {h.mealCount      && <Row label="Meal count"      value={h.mealCount} />}
+          {h.dietaryReqs    && <Row label="Dietary reqs"    value={h.dietaryReqs} />}
+          {h.drinks         && <Row label="Drinks"          value={h.drinks} />}
+          {h.greenRoom      && <Row label="Green room"      value="Yes" />}
+          {h.merchTable     && <Row label="Merch table"     value="Yes" />}
+          {h.parkingLoading && <Row label="Parking"         value={h.parkingLoading} />}
+          {h.accommodation  && <Row label="Accommodation"   value="Yes" />}
         </>;
       break;
     }
     case 'invoicing': {
       const inv = data;
-      const hasData = Object.keys(inv).some(k => inv[k] != null && inv[k] !== '' && inv[k] !== false);
-      content = !hasData
-        ? <Text style={[ps.emptyText, { color: dim }]}>No invoicing info saved yet.</Text>
-        : <>
-          {inv.canProvideInvoice != null && <Row label="Can provide invoice" value={inv.canProvideInvoice ? 'Yes' : 'No'} />}
-          {inv.abn           && <Row label="ABN"             value={inv.abn} />}
-          {inv.businessName  && <Row label="Business name"   value={inv.businessName} />}
-          {inv.bsb           && <Row label="BSB"             value={inv.bsb} />}
-          {inv.accountNumber && <Row label="Account number"  value={inv.accountNumber} />}
-          {inv.paymentMethod && <Row label="Payment method"  value={inv.paymentMethod} />}
-          {inv.paymentTerms  && <Row label="Payment terms"   value={inv.paymentTerms} />}
-          {inv.notes         && <Row label="Notes"           value={inv.notes} />}
-        </>;
+      const timingVal = inv.timing === 'Other' && inv.timingOther ? inv.timingOther : inv.timing;
+      content = <>
+        {inv.invoicingName     && <Row label="Invoicing name"      value={inv.invoicingName} />}
+        {inv.abn               && <Row label="ABN"                 value={inv.abn} />}
+        {inv.gstRegistered != null && <Row label="Registered for GST" value={inv.gstRegistered ? 'Yes' : 'No'} />}
+        {inv.canProvideInvoice != null && <Row label="Can provide invoice" value={inv.canProvideInvoice ? 'Yes' : 'No'} />}
+        {Array.isArray(inv.methods) && inv.methods.length > 0 && <Row label="Accepted methods" value={inv.methods.join(', ')} />}
+        {timingVal             && <Row label="Payment timing"      value={timingVal} />}
+        {inv.paymentNotes      && <Row label="Notes"               value={inv.paymentNotes} />}
+      </>;
       break;
     }
     default:
-      content = <Text style={[ps.emptyText, { color: dim }]}>No data.</Text>;
+      content = <Text style={[bs.emptyText, { color: dim }]}>No data.</Text>;
   }
 
   return (
-    <View style={[ps.bubble, { backgroundColor: bg }]}>
-      <View style={[ps.header, { borderBottomColor: divC }]}>
-        <Text style={[ps.headerLabel, { color: dim }]}>{(sectionLabel as string).toUpperCase()}</Text>
+    <View style={[bs.bubble, { backgroundColor: bg }]}>
+      <View style={[bs.header, { borderBottomColor: divC }]}>
+        <Text style={[bs.headerLabel, { color: dim }]}>{(sectionLabel as string).toUpperCase()}</Text>
       </View>
-      <View style={ps.body}>{content}</View>
+      <View style={bs.body}>{content}</View>
     </View>
   );
 }
 
-const ps = StyleSheet.create({
+const bs = StyleSheet.create({
   bubble:      { borderRadius: 14, overflow: 'hidden' as const, maxWidth: isWeb ? 480 : '90%' },
   header:      { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1 },
   headerLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
@@ -2075,7 +2082,7 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
     feeMax:     liveProfile.feeMax     ?? enquiry.feeMax,
     ...(hasSection('about')     && { about: liveProfile.about }),
     ...(hasSection('music')     && { songs: liveProfile.songs, spotify: liveProfile.spotify, appleMusic: liveProfile.appleMusic }),
-    ...(hasSection('socials')   && { instagram: liveProfile.instagram, tiktok: liveProfile.tiktok, facebook: liveProfile.facebook, customLinks: liveProfile.customLinks }),
+    ...(hasSection('socials')   && { instagram: liveProfile.instagram, tiktok: liveProfile.tiktok, youtube: liveProfile.youtube, customLinks: liveProfile.customLinks }),
     ...(hasSection('techRider') && {
       techRider:         liveProfile.techRider,
       backlineFromVenue: liveProfile.backlineFromVenue,
@@ -2198,12 +2205,11 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
           ) : null}
 
           {/* Socials */}
-          {(src.instagram || src.tiktok || src.spotify || src.appleMusic || customLinks.length > 0) ? (
+          {(src.instagram || src.tiktok || (src as any).youtube || customLinks.length > 0) ? (
             <Section label="SOCIALS" sectionKey="socials">
-              {src.instagram  ? <Text style={[eq.body, { color: textColor }]}>Instagram: {src.instagram}</Text>   : null}
-              {src.tiktok     ? <Text style={[eq.body, { color: textColor }]}>TikTok: {src.tiktok}</Text>         : null}
-              {src.spotify    ? <Text style={[eq.body, { color: textColor }]}>Spotify: {src.spotify}</Text>       : null}
-              {src.appleMusic ? <Text style={[eq.body, { color: textColor }]}>Apple Music: {src.appleMusic}</Text>: null}
+              {src.instagram          ? <Text style={[eq.body, { color: textColor }]}>Instagram: {src.instagram}</Text>    : null}
+              {src.tiktok             ? <Text style={[eq.body, { color: textColor }]}>TikTok: {src.tiktok}</Text>          : null}
+              {(src as any).youtube   ? <Text style={[eq.body, { color: textColor }]}>YouTube: {(src as any).youtube}</Text> : null}
               {customLinks.filter((l: any) => l.label && l.url).map((l: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>{l.label}: {l.url}</Text>
               ))}

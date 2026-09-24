@@ -677,7 +677,7 @@ export default function EditProfileScreen() {
     { label: 'Location',      done: !!profile.location?.trim() },
     { label: 'Music tracks',  done: profile.songs?.length > 0 },
     { label: 'Fee range',     done: !!profile.feeMin && !!profile.feeMax },
-    { label: 'Average draw',  done: !!profile.averageDraw },
+    { label: 'Average draw',  done: ((profile as any).gigHistory ?? []).some((g: any) => g.attendance != null && g.attendance > 0) },
     { label: 'Travel',        done: !!profile.travel },
   ];
   const doneCount    = completionFields.filter(f => f.done).length;
@@ -804,6 +804,39 @@ export default function EditProfileScreen() {
               <TextInput style={[pd.prefixInput, { color: colors.black }]} value={profile.phone} onChangeText={(v: string) => set('phone', v)} placeholder="412 345 678" placeholderTextColor={Colors.greyLight} keyboardType="phone-pad" />
             </View>
           </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Social links">
+          {[
+            { key: 'instagram',  label: 'Instagram',    prefix: 'instagram.com/' },
+            { key: 'tiktok',     label: 'TikTok',       prefix: 'tiktok.com/@' },
+            { key: 'spotify',    label: 'Spotify',      prefix: 'open.spotify.com/artist/' },
+            { key: 'appleMusic', label: 'Apple Music',  prefix: 'music.apple.com/' },
+            { key: 'youtube',    label: 'YouTube',      prefix: 'youtube.com/@' },
+          ].map((p, i, arr) => (
+            <FieldRow key={p.key} label={p.label} last={i === arr.length - 1 && profile.customLinks.length === 0}>
+              <View style={[pd.prefixRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                <Text style={[pd.prefixText, { color: colors.grey, fontSize: 12 }]}>{p.prefix}</Text>
+                <TextInput style={[pd.prefixInput, { color: colors.black }]} value={(profile as any)[p.key] || ''} onChangeText={v => set(p.key as any, v)} placeholder="username" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
+              </View>
+            </FieldRow>
+          ))}
+          {profile.customLinks.map((link, i) => (
+            <FieldRow key={i} label="Custom link" last={i === profile.customLinks.length - 1}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TextInput style={[sh.input, { width: 110, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]} value={link.label} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))} placeholder="Label" placeholderTextColor={Colors.greyLight} />
+                <TextInput style={[sh.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]} value={link.url} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))} placeholder="https://..." placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
+                <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}>
+                  <Text style={{ fontSize: 18, color: colors.grey }}>×</Text>
+                </TouchableOpacity>
+              </View>
+            </FieldRow>
+          ))}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+            <TouchableOpacity style={[pd.addBtn, { borderColor: colors.border }]} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}>
+              <Text style={{ fontSize: 14, color: colors.grey }}>+ Add link</Text>
+            </TouchableOpacity>
+          </View>
         </SectionCard>
       </View>
     );
@@ -1007,45 +1040,21 @@ export default function EditProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Audience & travel">
-          <FieldRow label="Average draw" sublabel="Typical headcount you bring to a show.">
-            <SelectField value={profile.averageDraw} options={AVERAGE_DRAW_OPTS} onChange={v => set('averageDraw', v)} placeholder="Select" />
+          <FieldRow label="Average draw" sublabel="Computed from attendance logged in your past gigs.">
+            {(() => {
+              const gigs: any[] = (profile as any).gigHistory ?? [];
+              const withAtt = gigs.filter((g: any) => g.attendance != null && Number(g.attendance) > 0);
+              const avg = withAtt.length > 0
+                ? Math.round(withAtt.reduce((s: number, g: any) => s + Number(g.attendance), 0) / withAtt.length)
+                : null;
+              return avg != null
+                ? <Text style={{ fontSize: 14, color: colors.black }}>~{avg} people</Text>
+                : <Text style={{ fontSize: 13, color: colors.grey }}>Add attendance to your past gigs to see your average.</Text>;
+            })()}
           </FieldRow>
           <FieldRow label="Travel" sublabel="How far you'll go for a gig." last>
             <SelectField value={profile.travel} options={TRAVEL_OPTS} onChange={v => set('travel', v)} placeholder="Select" />
           </FieldRow>
-        </SectionCard>
-
-        <SectionCard title="Social links">
-          {[
-            { key: 'instagram',  label: 'Instagram',    prefix: 'instagram.com/' },
-            { key: 'tiktok',     label: 'TikTok',       prefix: 'tiktok.com/@' },
-            { key: 'spotify',    label: 'Spotify',      prefix: 'open.spotify.com/artist/' },
-            { key: 'appleMusic', label: 'Apple Music',  prefix: 'music.apple.com/' },
-            { key: 'youtube',    label: 'YouTube',      prefix: 'youtube.com/@' },
-          ].map((p, i, arr) => (
-            <FieldRow key={p.key} label={p.label} last={i === arr.length - 1 && profile.customLinks.length === 0}>
-              <View style={[pd.prefixRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <Text style={[pd.prefixText, { color: colors.grey, fontSize: 12 }]}>{p.prefix}</Text>
-                <TextInput style={[pd.prefixInput, { color: colors.black }]} value={(profile as any)[p.key] || ''} onChangeText={v => set(p.key as any, v)} placeholder="username" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
-              </View>
-            </FieldRow>
-          ))}
-          {profile.customLinks.map((link, i) => (
-            <FieldRow key={i} label="Custom link" last={i === profile.customLinks.length - 1}>
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <TextInput style={[sh.input, { width: 110, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]} value={link.label} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, label: v } : l))} placeholder="Label" placeholderTextColor={Colors.greyLight} />
-                <TextInput style={[sh.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]} value={link.url} onChangeText={v => set('customLinks', profile.customLinks.map((l, idx) => idx === i ? { ...l, url: v } : l))} placeholder="https://..." placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
-                <TouchableOpacity onPress={() => set('customLinks', profile.customLinks.filter((_, idx) => idx !== i))}>
-                  <Text style={{ fontSize: 18, color: colors.grey }}>×</Text>
-                </TouchableOpacity>
-              </View>
-            </FieldRow>
-          ))}
-          <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-            <TouchableOpacity style={[pd.addBtn, { borderColor: colors.border }]} onPress={() => set('customLinks', [...profile.customLinks, { label: '', url: '' }])}>
-              <Text style={{ fontSize: 14, color: colors.grey }}>+ Add link</Text>
-            </TouchableOpacity>
-          </View>
         </SectionCard>
 
         <SectionCard title="Insurance">
