@@ -25,6 +25,7 @@ type GigData = {
   room:             string | null;
   fee:              { ticketUrl?: string | null; ticketPriceCents?: number | null };
   participantIds:   string[];
+  attendance:       number | null;
 };
 
 type PublicGigDoc = {
@@ -44,6 +45,7 @@ type PublicGigDoc = {
   description:      string | null;
   ticketUrl:        string | null;
   ticketPriceCents: number | null;
+  attendance:       number | null;
   source:           'enquiry' | 'artist_added';
 };
 
@@ -108,6 +110,7 @@ function buildPublicGig(gigId: string, data: GigData): PublicGigDoc | null {
     description:      data.description ?? null,
     ticketUrl:        data.fee?.ticketUrl        ?? null,
     ticketPriceCents: data.fee?.ticketPriceCents ?? null,
+    attendance:       data.attendance ?? null,
     source:           data.source as 'enquiry' | 'artist_added',
   };
 }

@@ -51,6 +51,7 @@ export default function EnquireScreen() {
   const lockedSlotType = (['Headline', 'Support', 'Open Mic', 'Other'] as string[]).includes(params.slotType ?? '') ? params.slotType! : null;
 
   const [band, setBand]           = useState<Record<string, any>>({});
+  const [gigHistory, setGigHistory] = useState<{ venue: string | null; suburb: string | null; date: string; attendance: number | null }[]>([]);
   const [setLength, setSetLength] = useState(lockedDuration || '45 min');
   const [slotPref,  setSlotPref]  = useState<string>(lockedSlotType || 'Headline');
   const [otherNote, setOtherNote] = useState('');
@@ -75,6 +76,30 @@ export default function EnquireScreen() {
     if (!user) return;
     getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
       if (snap.exists()) setBand(snap.data());
+    }).catch(() => {});
+  }, [user?.uid]);
+
+  // Last 3 past confirmed gigs, most recent first: shown in the modal and sent with the enquiry
+  useEffect(() => {
+    if (!user) return;
+    getDocs(query(
+      collection(db, 'gigs'),
+      where('artistUid', '==', user.uid),
+      where('status', '==', 'confirmed'),
+    )).then(snap => {
+      const now = new Date();
+      const past = snap.docs
+        .map(d => d.data() as any)
+        .filter(g => g.startAt?.toDate?.() < now)
+        .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
+        .slice(0, 3)
+        .map(g => ({
+          venue:      g.venueName ?? null,
+          suburb:     g.locationText ?? null,
+          date:       g.startAt.toDate().toISOString().slice(0, 10),
+          attendance: g.attendance ?? null,
+        }));
+      setGigHistory(past);
     }).catch(() => {});
   }, [user?.uid]);
 
@@ -172,6 +197,7 @@ export default function EnquireScreen() {
         feeMin:      band.feeMin,
         feeMax:      band.feeMax,
         averageDraw: band.averageDraw,
+        ...(gigHistory.length > 0 && { gigHistory }),
         ...(sections.about        && { about:       band.about }),
         ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
         ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
@@ -287,6 +313,22 @@ export default function EnquireScreen() {
             </Text>
           </View>
         </View>
+
+        {/* ── Recent gigs ───────────────────────────────────────── */}
+        {gigHistory.length > 0 ? (
+          <View style={[s.slotInfoBlock, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+            <View style={s.slotInfoRow}>
+              <Text style={[s.slotInfoLabel, { color: colors.grey }]}>Recent gigs</Text>
+              <View style={{ flex: 1, gap: 4 }}>
+                {gigHistory.map((g, i) => (
+                  <Text key={i} style={[s.slotInfoText, { color: colors.black }]}>
+                    {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          </View>
+        ) : null}
 
         {/* ── Set Details ───────────────────────────────────────── */}
         <View style={s.setDetailsBlock}>

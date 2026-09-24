@@ -53,6 +53,7 @@ export type Enquiry = {
   feeMin?: number;
   feeMax?: number;
   averageDraw?: number;
+  gigHistory?: { venue?: string | null; suburb?: string | null; date?: string; attendance?: number | null }[];
   // scheduling
   loadInTime?: string;
   soundCheckTime?: string;

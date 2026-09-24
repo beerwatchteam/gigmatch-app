@@ -1886,7 +1886,7 @@ function EnquiryBubble({ enquiry, isVenue, profileRef, musicRef, techRef }: {
             <Section label="GIG HISTORY">
               {gigHistory.map((g: any, i: number) => (
                 <Text key={i} style={[eq.body, { color: textColor }]}>
-                  {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.notes ? ` — ${g.notes}` : ''}
+                  {g.venue}{g.suburb ? `, ${g.suburb}` : ''}{g.date ? ` · ${g.date}` : ''}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}{g.notes ? ` (${g.notes})` : ''}
                 </Text>
               ))}
             </Section>

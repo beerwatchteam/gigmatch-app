@@ -161,7 +161,12 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false }: { m:
   const gigHistory     = publicGigs
     .filter(pg => pg.startAt && pg.startAt.toDate() < now && pg.venueName)
     .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
-    .map(pg => ({ venue: pg.venueName, date: isoDate(pg.startAt.toDate()) } as GigEntry));
+    .map(pg => ({
+      venue:      pg.venueName,
+      suburb:     pg.locationText,
+      date:       isoDate(pg.startAt.toDate()),
+      attendance: pg.attendance,
+    } as GigEntry));
   const socialLinks    = PLATFORMS.filter(p => (m as any)[p.key]);
   const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
   const hasContact     = !!(m.email || m.phone);
