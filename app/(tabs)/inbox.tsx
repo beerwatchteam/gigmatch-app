@@ -1254,15 +1254,21 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       setLengthDebounce.current = null;
       const setLen = setLengthRef.current.trim();
       if (!setLen) return;
-      await updateDoc(doc(db, 'inquiries', enquiry.id), {
-        'requestedSlot.setLength': setLen,
-      }).catch(() => {});
+      const oldLen = enquiry.requestedSlot.setLength ?? '';
+      const resetGigDetails = stageIsConfirmedByMe('gigDetails');
+      const update: Record<string, any> = { 'requestedSlot.setLength': setLen };
+      if (resetGigDetails) Object.assign(update, buildStageReset('gigDetails'));
+      await updateDoc(doc(db, 'inquiries', enquiry.id), update).catch(() => {});
       const gigId = (enquiry as any).gigId as string | undefined;
       if (gigId) {
         const mins = parseInt(setLen.replace(/\D/g, ''), 10);
         if (!isNaN(mins)) {
           await updateDoc(doc(db, 'gigs', gigId), { setLengthMinutes: mins }).catch(() => {});
         }
+      }
+      if (resetGigDetails && oldLen !== setLen) {
+        const party = isVenue ? 'Venue' : 'Artist';
+        postSystemMessage(enquiry.id, `Set length updated (${oldLen || 'not set'} to ${setLen}). ${party} confirmation for Gig Details cleared.`).catch(() => {});
       }
     }, 800);
   }
@@ -1271,9 +1277,16 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     if (loadInDebounce.current) clearTimeout(loadInDebounce.current);
     loadInDebounce.current = setTimeout(async () => {
       loadInDebounce.current = null;
-      await updateDoc(doc(db, 'inquiries', enquiry.id), {
-        loadInTime: loadInRef.current.trim(),
-      }).catch(() => {});
+      const newVal = loadInRef.current.trim();
+      const oldVal = enquiry.loadInTime ?? '';
+      const resetSetTimes = stageIsConfirmedByMe('setTimesLocked');
+      const update: Record<string, any> = { loadInTime: newVal };
+      if (resetSetTimes) Object.assign(update, buildStageReset('setTimesLocked'));
+      await updateDoc(doc(db, 'inquiries', enquiry.id), update).catch(() => {});
+      if (resetSetTimes && oldVal !== newVal) {
+        const party = isVenue ? 'Venue' : 'Artist';
+        postSystemMessage(enquiry.id, `Load-in updated (${oldVal || 'not set'} to ${newVal || 'not set'}). ${party} confirmation for Set Times cleared.`).catch(() => {});
+      }
     }, 800);
   }
 
@@ -1281,9 +1294,16 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     if (soundCheckDebounce.current) clearTimeout(soundCheckDebounce.current);
     soundCheckDebounce.current = setTimeout(async () => {
       soundCheckDebounce.current = null;
-      await updateDoc(doc(db, 'inquiries', enquiry.id), {
-        soundCheckTime: soundCheckRef.current.trim(),
-      }).catch(() => {});
+      const newVal = soundCheckRef.current.trim();
+      const oldVal = enquiry.soundCheckTime ?? '';
+      const resetSetTimes = stageIsConfirmedByMe('setTimesLocked');
+      const update: Record<string, any> = { soundCheckTime: newVal };
+      if (resetSetTimes) Object.assign(update, buildStageReset('setTimesLocked'));
+      await updateDoc(doc(db, 'inquiries', enquiry.id), update).catch(() => {});
+      if (resetSetTimes && oldVal !== newVal) {
+        const party = isVenue ? 'Venue' : 'Artist';
+        postSystemMessage(enquiry.id, `Sound check updated (${oldVal || 'not set'} to ${newVal || 'not set'}). ${party} confirmation for Set Times cleared.`).catch(() => {});
+      }
     }, 800);
   }
 
@@ -1294,19 +1314,22 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     }, 800);
   }
 
-  /** Returns true if either party has confirmed the given stage (and it hasn't been skipped). */
-  function stageIsConfirmedByAny(key: StageKey): boolean {
+  /** Returns true if the current user has confirmed the given stage (or it was skipped). */
+  function stageIsConfirmedByMe(key: StageKey): boolean {
     const map = (enquiry as any).stages as Record<string, StageData> | undefined;
     const d = map?.[key];
-    return !!d && !d.skipped && !!(d.venueConfirmed || d.artistConfirmed);
+    if (!d) return false;
+    if (d.skipped) return true;
+    return isVenue ? !!d.venueConfirmed : !!d.artistConfirmed;
   }
 
-  /** Returns the Firestore dot-path update fields to fully reset a stage. */
+  /** Returns the Firestore dot-path update fields to clear the current user's side of a stage.
+   *  The other party's confirmation is left intact — they will need to re-review. */
   function buildStageReset(key: StageKey): Record<string, any> {
+    const myKey = isVenue ? 'venueConfirmed' : 'artistConfirmed';
     return {
-      [`stages.${key}.venueConfirmed`]:  false,
-      [`stages.${key}.artistConfirmed`]: false,
-      [`stages.${key}.skipped`]:         false,
+      [`stages.${key}.${myKey}`]: false,
+      [`stages.${key}.skipped`]:  false,
     };
   }
 
@@ -1318,7 +1341,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       const ef = (enquiry as any).enquiryFee as Partial<EnquiryFee> | null | undefined;
       const oldValue = ef?.[key as keyof EnquiryFee] ?? null;
       const owned = (FEE_FIELD_STAGE[key] ?? []) as StageKey[];
-      const stagesToReset = owned.filter(sk => stageIsConfirmedByAny(sk));
+      const stagesToReset = owned.filter(sk => stageIsConfirmedByMe(sk));
       feeEditStateMap.current.set(key, { oldValue, stagesToReset });
     }
 
@@ -1342,8 +1365,9 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
         const label    = FEE_FIELD_LABELS[key] ?? key;
         const oldStr   = formatFeeFieldValue(key, editState?.oldValue ?? null);
         const newStr   = formatFeeFieldValue(key, newValue);
+        const party    = isVenue ? 'Venue' : 'Artist';
         const stages   = stagesToReset.map(() => 'Payment Terms').join(' and ');
-        postSystemMessage(enquiry.id, `${label} changed (${oldStr} to ${newStr}). ${stages} reset.`).catch(() => {});
+        postSystemMessage(enquiry.id, `${label} changed (${oldStr} to ${newStr}). ${party} confirmation for ${stages} cleared.`).catch(() => {});
       }
     }, 800);
 
@@ -1415,8 +1439,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       }
     }
 
-    // Reset Payment Terms if either party confirmed it
-    const termsConfirmed = stageIsConfirmedByAny('paymentTermsSet');
+    // Clear my confirmation for Payment Terms if I had confirmed it
+    const termsConfirmed = stageIsConfirmedByMe('paymentTermsSet');
     if (termsConfirmed) Object.assign(update, buildStageReset('paymentTermsSet'));
 
     await updateDoc(doc(db, 'inquiries', enquiry.id), update).catch(() => {});
@@ -1427,9 +1451,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
         flat: 'Flat fee', door_split: 'Door split', guarantee_vs_door: 'Guarantee + door',
         ticket_split: 'Ticket split', unpaid: 'Unpaid', other: 'Other',
       };
+      const party     = isVenue ? 'Venue' : 'Artist';
       const fromLabel = oldFt ? (FEE_LABELS[oldFt] ?? oldFt) : 'none';
       const toLabel   = FEE_LABELS[ft] ?? ft;
-      const suffix = termsConfirmed ? '. Payment Terms reset.' : '.';
+      const suffix = termsConfirmed ? `. ${party} confirmation for Payment Terms cleared.` : '.';
       postSystemMessage(enquiry.id, `Payment method changed from ${fromLabel} to ${toLabel}${suffix}`).catch(() => {});
     }
   }
