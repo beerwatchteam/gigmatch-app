@@ -15,6 +15,7 @@ import { useTheme } from '@/lib/theme-context';
 import { Colors } from '@/constants/colors';
 import { type Enquiry } from '@/lib/useEnquiries';
 import { type GigFee, type FeeType, type PaymentTiming, STATE_TZ, dollarsToCents } from '@/lib/gig-types';
+import { type EnquiryFee } from '@/lib/enquiry-fee';
 import { confirmGigFromEnquiry, upgradeGigToBooked, SlotConflictError } from '@/lib/useGigs';
 import { fromZonedTime } from 'date-fns-tz';
 import { AddToCalendarButton } from '@/components/AddToCalendarButton';
@@ -42,8 +43,6 @@ const DAY_DOW: Record<string, number> = {
   Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
   Thursday: 4, Friday: 5, Saturday: 6,
 };
-
-const SET_LENGTH_OPTIONS = [30, 45, 60, 75, 90, 120];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -265,25 +264,46 @@ export default function ConfirmGigScreen() {
         if (enq.loadInTime)     setLoadInTime(enq.loadInTime);
         if (enq.soundCheckTime) setSoundCheckTime(enq.soundCheckTime);
 
-        // Prefill fee type and all amount fields from the saved GigFee object
-        const enqAny  = enq as any;
+        // Prefill fee type and all amount fields.
+        // Priority: confirmed GigFee (savedFee) > negotiated enquiryFee > nothing.
+        const enqAny   = enq as any;
         const savedFee = enqAny.fee as GigFee | null | undefined;
+        const ef       = enqAny.enquiryFee as Partial<EnquiryFee> | null | undefined;
+
         const feeTypeVal: string | undefined = enqAny.feeType ?? savedFee?.type;
         if (feeTypeVal) {
           const ft = FEE_TYPES.find(f => f.value === feeTypeVal);
           if (ft) setFeeType(ft.value);
         }
-        if (savedFee?.amountCents != null) {
-          const dollars = savedFee.amountCents / 100;
-          setAmountStr(Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2));
+
+        // Amount
+        const amountCents = savedFee?.amountCents ?? ef?.amountCents ?? null;
+        if (amountCents != null) {
+          const d = amountCents / 100;
+          setAmountStr(Number.isInteger(d) ? String(d) : d.toFixed(2));
         }
-        if (savedFee?.doorPercent != null) setDoorPercent(String(savedFee.doorPercent));
-        if (savedFee?.ticketPriceCents != null) {
-          const tp = savedFee.ticketPriceCents / 100;
+        // Door %
+        const doorPct = savedFee?.doorPercent ?? ef?.doorPercent ?? null;
+        if (doorPct != null) setDoorPercent(String(doorPct));
+        // Ticket price
+        const ticketCents = savedFee?.ticketPriceCents ?? ef?.ticketPriceCents ?? null;
+        if (ticketCents != null) {
+          const tp = ticketCents / 100;
           setTicketPriceStr(Number.isInteger(tp) ? String(tp) : tp.toFixed(2));
         }
         if (savedFee?.ticketUrl) setTicketUrl(savedFee.ticketUrl);
         if (savedFee?.notes)     setFeeNotes(savedFee.notes);
+
+        // GST — prefer confirmed savedFee, fall back to enquiryFee.gstApplies
+        if (savedFee?.includesGst != null) {
+          setIncludesGst(savedFee.includesGst);
+        } else if (ef?.gstApplies != null) {
+          setIncludesGst(ef.gstApplies);
+        }
+
+        // Payment timing — enquiryFee.dueTiming 'on_night' = after, 'within_days' = after.
+        // Only override if explicitly set to 'before' elsewhere; both enquiryFee options are 'after'.
+        // (Default is already 'after', so no change needed here.)
 
         // Load venue
         const venueSnap = await getDoc(doc(db, 'venues', enq.venueId));
@@ -687,7 +707,7 @@ export default function ConfirmGigScreen() {
           <Text style={[cs.label, { color: colors.grey }]}>FEE NOTES</Text>
           <TextInput
             style={[cs.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
-            placeholder="Any payment terms or conditions..."
+            placeholder="Any additional notes about this fee..."
             placeholderTextColor={Colors.greyLight}
             value={feeNotes}
             onChangeText={setFeeNotes}
