@@ -241,9 +241,9 @@ type StageDef     = { key: StageKey; label: string; control: StageControl };
 const BOOKING_STAGES: StageDef[] = [
   { key: 'enquirySent',          label: 'Enquiry Sent',           control: 'auto'   },
   { key: 'discussing',           label: 'Discussing',             control: 'auto'   },
-  { key: 'gigDetails',           label: 'General Gig Details',    control: 'venue'  },
+  { key: 'gigDetails',           label: 'General Gig Details',    control: 'both'   },
   { key: 'techRiderReviewed',    label: 'Tech Rider Reviewed',    control: 'venue'  },
-  { key: 'supportActsConfirmed', label: 'Support Acts Confirmed', control: 'venue'  },
+  { key: 'supportActsConfirmed', label: 'Support Acts Confirmed', control: 'both'   },
   { key: 'setTimesLocked',       label: 'Set Times Locked',       control: 'both'   },
   { key: 'paymentTermsSet',      label: 'Payment Terms Set',      control: 'both'   },
   { key: 'feeAgreed',            label: 'Fee Agreed',             control: 'both'   },
@@ -261,6 +261,17 @@ function computeStageStatus(
   enquiry: Enquiry,
 ): StageStatus {
   if (data?.skipped) return 'skipped';
+  // gigDetails: both parties default to confirmed unless they have explicitly set false.
+  // Sending the enquiry implies agreement on date/time, so no action is needed unless
+  // someone actively undoes it.
+  if (key === 'gigDetails') {
+    const vc = data?.venueConfirmed  !== false;
+    const ac = data?.artistConfirmed !== false;
+    if (vc && ac)   return 'complete';
+    if (vc && !ac)  return 'waiting_artist';
+    if (!vc && ac)  return 'waiting_venue';
+    return 'pending';
+  }
   if (control === 'auto') {
     const norm = normalizeEnquiryStatus(enquiry.status);
     if (key === 'enquirySent')      return 'complete';
@@ -608,25 +619,24 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [notes,            setNotes]            = useState<string>((enquiry as any).importantNotes ?? '');
-  const [notesEdited,      setNotesEdited]      = useState(false);
-  const [notesSaving,      setNotesSaving]      = useState(false);
   const [paymentInfo,      setPaymentInfo]      = useState<string>((enquiry as any).paymentInfo ?? '');
-  const [paymentInfoEdited,setPaymentInfoEdited]= useState(false);
-  const [paymentInfoSaving,setPaymentInfoSaving]= useState(false);
   const [notesDoc,         setNotesDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
   const [notesDocUploading,setNotesDocUploading]= useState(false);
   const [loadInTime,       setLoadInTime]       = useState<string>(enquiry.loadInTime ?? '');
   const [soundCheckTime,   setSoundCheckTime]   = useState<string>(enquiry.soundCheckTime ?? '');
-  const [scheduleEdited,   setScheduleEdited]   = useState(false);
-  const [scheduleSaving,   setScheduleSaving]   = useState(false);
-  const [gigEditing,       setGigEditing]       = useState(false);
   const [editSetLength,    setEditSetLength]     = useState<string>(enquiry.requestedSlot.setLength ?? '');
   const [postGigNotes,     setPostGigNotes]     = useState<string>((enquiry as any).postGigNotes ?? '');
   const [postGigAttendance,setPostGigAttendance]= useState<string>((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
-  const [postGigEdited,    setPostGigEdited]    = useState(false);
-  const [postGigSaving,    setPostGigSaving]    = useState(false);
-  // Snapshots of field values taken when Edit is pressed — used to revert on Cancel
-  const editSnapshot = useRef<{ loadIn: string; soundCheck: string; setLength: string } | null>(null);
+  // Refs for debounced auto-save
+  const setLengthRef       = useRef(enquiry.requestedSlot.setLength ?? '');
+  const loadInRef          = useRef(enquiry.loadInTime ?? '');
+  const soundCheckRef      = useRef(enquiry.soundCheckTime ?? '');
+  const postGigNotesRef    = useRef((enquiry as any).postGigNotes ?? '');
+  const postGigAttRef      = useRef((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
+  const scheduleDebounce   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesDebounce      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paymentInfoDebounce= useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postGigDebounce    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
 
@@ -674,35 +684,52 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     });
   }
 
-  async function saveGigInfo() {
-    setScheduleSaving(true);
-    const updates: Record<string, any> = {
-      loadInTime: loadInTime.trim(),
-      soundCheckTime: soundCheckTime.trim(),
-    };
-    if (editSetLength.trim()) {
-      updates['requestedSlot.setLength'] = editSetLength.trim();
-    }
-    await updateDoc(doc(db, 'inquiries', enquiry.id), updates);
-    // If gig is confirmed and has a gigId, also update the gig doc
-    const gigId = (enquiry as any).gigId as string | undefined;
-    if (gigId && editSetLength.trim()) {
-      const mins = parseInt(editSetLength.replace(/\D/g, ''), 10);
-      if (!isNaN(mins)) {
-        await updateDoc(doc(db, 'gigs', gigId), { setLengthMinutes: mins }).catch(() => {});
+  function autoSaveSchedule() {
+    if (scheduleDebounce.current) clearTimeout(scheduleDebounce.current);
+    scheduleDebounce.current = setTimeout(async () => {
+      const setLen     = setLengthRef.current;
+      const loadIn     = loadInRef.current;
+      const soundCheck = soundCheckRef.current;
+      const updates: Record<string, any> = {
+        loadInTime: loadIn.trim(),
+        soundCheckTime: soundCheck.trim(),
+      };
+      if (setLen.trim()) updates['requestedSlot.setLength'] = setLen.trim();
+      await updateDoc(doc(db, 'inquiries', enquiry.id), updates).catch(() => {});
+      const gigId = (enquiry as any).gigId as string | undefined;
+      if (gigId && setLen.trim()) {
+        const mins = parseInt(setLen.replace(/\D/g, ''), 10);
+        if (!isNaN(mins)) {
+          await updateDoc(doc(db, 'gigs', gigId), { setLengthMinutes: mins }).catch(() => {});
+        }
       }
-    }
-    setScheduleEdited(false);
-    setGigEditing(false);
-    editSnapshot.current = null;
-    setScheduleSaving(false);
+    }, 800);
   }
 
-  async function saveNotes() {
-    setNotesSaving(true);
-    await updateDoc(doc(db, 'inquiries', enquiry.id), { importantNotes: notes.trim() });
-    setNotesEdited(false);
-    setNotesSaving(false);
+  function autoSaveNotes(val: string) {
+    if (notesDebounce.current) clearTimeout(notesDebounce.current);
+    notesDebounce.current = setTimeout(() => {
+      updateDoc(doc(db, 'inquiries', enquiry.id), { importantNotes: val.trim() }).catch(() => {});
+    }, 800);
+  }
+
+  function autoSavePaymentInfo(val: string) {
+    if (paymentInfoDebounce.current) clearTimeout(paymentInfoDebounce.current);
+    paymentInfoDebounce.current = setTimeout(() => {
+      updateDoc(doc(db, 'inquiries', enquiry.id), { paymentInfo: val.trim() }).catch(() => {});
+    }, 800);
+  }
+
+  function autoSavePostGig() {
+    if (postGigDebounce.current) clearTimeout(postGigDebounce.current);
+    postGigDebounce.current = setTimeout(async () => {
+      const notes = postGigNotesRef.current;
+      const att   = postGigAttRef.current;
+      const updates: Record<string, any> = { postGigNotes: notes.trim() };
+      const attNum = parseInt(att, 10);
+      if (!isNaN(attNum)) updates.postGigAttendance = attNum;
+      await updateDoc(doc(db, 'inquiries', enquiry.id), updates).catch(() => {});
+    }, 800);
   }
 
   async function pickNotesDocument() {
@@ -810,98 +837,43 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Time</Text>
                   <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{setStr}</Text>
                 </View>
-                <View style={eh.drawerInfoRow}>
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Slot</Text>
                   <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{billing}</Text>
                 </View>
-                <StageConfirmRow stage={BOOKING_STAGES[2]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-              </View>
-
-              {/* Set Times */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 8 }}>
-                <Text style={[eh.drawerSectionLabel, { color: colors.black, marginTop: 0, marginBottom: 0 }]}>Set Times</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (gigEditing) {
-                      if (editSnapshot.current) {
-                        setLoadInTime(editSnapshot.current.loadIn);
-                        setSoundCheckTime(editSnapshot.current.soundCheck);
-                        setEditSetLength(editSnapshot.current.setLength);
-                        editSnapshot.current = null;
-                      }
-                      setScheduleEdited(false);
-                      setGigEditing(false);
-                    } else {
-                      editSnapshot.current = {
-                        loadIn:     loadInTime,
-                        soundCheck: soundCheckTime,
-                        setLength:  editSetLength,
-                      };
-                      setGigEditing(true);
-                    }
-                  }}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>
-                    {gigEditing ? 'Cancel' : 'Edit'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Length</Text>
-                  {gigEditing ? (
-                    <TextInput
-                      style={[eh.drawerInlineInput, { color: colors.black }]}
-                      value={editSetLength}
-                      onChangeText={t => { setEditSetLength(t); setScheduleEdited(true); }}
-                      placeholder="e.g. 45 min"
-                      placeholderTextColor="#aaaaaa"
-                    />
-                  ) : (
-                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{editSetLength || '—'}</Text>
-                  )}
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={editSetLength}
+                    onChangeText={t => { setEditSetLength(t); setLengthRef.current = t; autoSaveSchedule(); }}
+                    placeholder="e.g. 45 min"
+                    placeholderTextColor="#aaaaaa"
+                  />
                 </View>
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Load In</Text>
-                  {gigEditing ? (
-                    <TextInput
-                      style={[eh.drawerInlineInput, { color: colors.black }]}
-                      value={loadInTime}
-                      onChangeText={t => { setLoadInTime(t); setScheduleEdited(true); }}
-                      placeholder="e.g. 4:00 PM"
-                      placeholderTextColor="#aaaaaa"
-                    />
-                  ) : (
-                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{loadInTime || '—'}</Text>
-                  )}
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={loadInTime}
+                    onChangeText={t => { setLoadInTime(t); loadInRef.current = t; autoSaveSchedule(); }}
+                    placeholder="e.g. 4:00 PM"
+                    placeholderTextColor="#aaaaaa"
+                  />
                 </View>
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Sound Check</Text>
-                  {gigEditing ? (
-                    <TextInput
-                      style={[eh.drawerInlineInput, { color: colors.black }]}
-                      value={soundCheckTime}
-                      onChangeText={t => { setSoundCheckTime(t); setScheduleEdited(true); }}
-                      placeholder="e.g. 5:00 PM"
-                      placeholderTextColor="#aaaaaa"
-                    />
-                  ) : (
-                    <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{soundCheckTime || '—'}</Text>
-                  )}
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={soundCheckTime}
+                    onChangeText={t => { setSoundCheckTime(t); soundCheckRef.current = t; autoSaveSchedule(); }}
+                    placeholder="e.g. 5:00 PM"
+                    placeholderTextColor="#aaaaaa"
+                  />
                 </View>
+                <StageConfirmRow stage={BOOKING_STAGES[2]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                 <StageConfirmRow stage={BOOKING_STAGES[5]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
-              {gigEditing && scheduleEdited && (
-                <View style={eh.drawerNotesBtns}>
-                  <TouchableOpacity style={eh.drawerSaveBtn} onPress={saveGigInfo} disabled={scheduleSaving}>
-                    {scheduleSaving
-                      ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={eh.drawerSaveBtnText}>Save changes</Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              )}
 
               {/* Participants — always shown for venues; also shown when participants exist */}
               {(isVenue || (participants && participants.length > 0)) && onInvite && (() => {
@@ -957,19 +929,138 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 );
               })()}
 
+              {/* Tech Rider */}
+              {(() => {
+                const tr    = (enquiry as any).techRider && typeof (enquiry as any).techRider === 'object' ? (enquiry as any).techRider as Record<string, any> : null;
+                const bfv: string[] = Array.isArray((enquiry as any).backlineFromVenue) ? (enquiry as any).backlineFromVenue : [];
+                const bb: string[]  = Array.isArray((enquiry as any).backlineBring)     ? (enquiry as any).backlineBring     : [];
+                const trb           = (enquiry as any).techRiderBools && typeof (enquiry as any).techRiderBools === 'object' ? (enquiry as any).techRiderBools as Record<string, boolean> : {};
+                const chs: any[]    = Array.isArray((enquiry as any).inputChannels)     ? (enquiry as any).inputChannels     : [];
+                const trDocs: any[] = Array.isArray((enquiry as any).techRiderDocs)     ? (enquiry as any).techRiderDocs     : [];
+                const hasTR = !!(tr || bfv.length || bb.length || trb.ownPA || chs.length);
+                const techSpecLink = quickLinks.find(l => l.label === 'Tech Specs');
+                const rows: { label: string; value: string }[] = [];
+                if (tr?.stageWidth || tr?.stageDepth)
+                  rows.push({ label: 'Min stage', value: tr.stageWidth && tr.stageDepth ? `${tr.stageWidth}m × ${tr.stageDepth}m` : tr.stageWidth || tr.stageDepth });
+                if (tr?.monitoringType || tr?.monitoring)
+                  rows.push({ label: 'Monitoring', value: [tr.monitoringType, tr.monitoring].filter(Boolean).join(' · ') });
+                if (bfv.length)     rows.push({ label: 'Needs from venue', value: bfv.join(', ') });
+                if (bb.length)      rows.push({ label: 'Brings own',       value: bb.join(', ') });
+                if (trb.ownPA)      rows.push({ label: 'PA',               value: 'Touring with own PA and engineer' });
+                if (tr?.soundcheck) rows.push({ label: 'Soundcheck',       value: tr.soundcheck });
+                if (tr?.loadIn)     rows.push({ label: 'Load-in',          value: tr.loadIn });
+                if (tr?.lighting)   rows.push({ label: 'Lighting',         value: tr.lighting });
+                if (tr?.power)      rows.push({ label: 'Power',            value: tr.power });
+                if (chs.length)     rows.push({ label: 'Input channels',   value: `${chs.length} ch` });
+                return (
+                  <>
+                    <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Tech Rider</Text>
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      {rows.map((r, i) => (
+                        <View key={r.label} style={[eh.drawerInfoRow, i < rows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{r.label}</Text>
+                          <Text style={[eh.drawerInfoVal, { color: colors.black }]} numberOfLines={2}>{r.value}</Text>
+                        </View>
+                      ))}
+                      {!hasTR && (
+                        <View style={eh.drawerInfoRow}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Tech Rider</Text>
+                          {techSpecLink
+                            ? <TouchableOpacity onPress={() => closeDetails(techSpecLink.onPress ?? undefined)} activeOpacity={0.7}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View →</Text>
+                              </TouchableOpacity>
+                            : <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Not shared</Text>
+                          }
+                        </View>
+                      )}
+                      {hasTR && techSpecLink ? (
+                        <View style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Full rider</Text>
+                          <TouchableOpacity onPress={() => closeDetails(techSpecLink.onPress ?? undefined)} activeOpacity={0.7}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View →</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                      {tr?.notes ? (
+                        <View style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Notes</Text>
+                          <Text style={[eh.drawerInfoVal, { color: colors.black, flexShrink: 1 }]} numberOfLines={3}>{tr.notes}</Text>
+                        </View>
+                      ) : null}
+                      {(tr?.stagePlotUrl || tr?.inputListUrl || trDocs.length > 0) ? (
+                        <View style={[eh.drawerInfoRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 6, borderTopWidth: 1, borderTopColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Downloads</Text>
+                          {tr?.stagePlotUrl ? (
+                            <TouchableOpacity onPress={() => Linking.openURL(tr!.stagePlotUrl)}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>↓ Stage Plot</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {tr?.inputListUrl ? (
+                            <TouchableOpacity onPress={() => Linking.openURL(tr!.inputListUrl)}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>↓ {tr.inputListName || 'Input List'}</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {trDocs.map((d: any, idx: number) => (
+                            <TouchableOpacity key={idx} onPress={() => Linking.openURL(d.url)}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>↓ {d.name}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
+                      <StageConfirmRow stage={BOOKING_STAGES[3]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                    </View>
+                  </>
+                );
+              })()}
+
               {/* Hospitality */}
-              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Hospitality</Text>
-              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                <View style={eh.drawerInfoRow}>
-                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Artist requirements</Text>
-                  <TouchableOpacity onPress={onScrollToProfile ? () => { closeDetails(); onScrollToProfile?.(); } : undefined} activeOpacity={onScrollToProfile ? 0.7 : 1}>
-                    <Text style={[eh.drawerInfoVal, { color: onScrollToProfile ? Colors.orange : colors.black }]}>
-                      {onScrollToProfile ? 'View profile →' : 'See enquiry'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <StageConfirmRow stage={BOOKING_STAGES[8]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-              </View>
+              {(() => {
+                const h = (enquiry as any).hospitality && typeof (enquiry as any).hospitality === 'object' ? (enquiry as any).hospitality as Record<string, any> : null;
+                const hasH = !!(h && (h.mealsRequired || h.dietaryReqs || h.drinks || h.greenRoom || h.merchTable || h.parkingLoading || h.accommodation || h.mealCount));
+                const profileLink = onScrollToProfile;
+                const rows: { label: string; value: string }[] = [];
+                if (h?.mealsRequired) rows.push({ label: 'Meals',         value: 'Required' });
+                if (h?.mealCount)     rows.push({ label: 'Meal count',    value: String(h.mealCount) });
+                if (h?.dietaryReqs)   rows.push({ label: 'Dietary',       value: h.dietaryReqs });
+                if (h?.drinks)        rows.push({ label: 'Drinks',        value: h.drinks });
+                if (h?.greenRoom)     rows.push({ label: 'Green room',    value: 'Required' });
+                if (h?.merchTable)    rows.push({ label: 'Merch table',   value: 'Required' });
+                if (h?.parkingLoading) rows.push({ label: 'Parking',     value: h.parkingLoading });
+                if (h?.accommodation) rows.push({ label: 'Accommodation', value: h.accommodation });
+                return (
+                  <>
+                    <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Hospitality</Text>
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      {rows.map((r, i) => (
+                        <View key={r.label} style={[eh.drawerInfoRow, i < rows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{r.label}</Text>
+                          <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{r.value}</Text>
+                        </View>
+                      ))}
+                      {!hasH && (
+                        <View style={eh.drawerInfoRow}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Requirements</Text>
+                          {profileLink
+                            ? <TouchableOpacity onPress={() => { closeDetails(); profileLink(); }} activeOpacity={0.7}>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View profile →</Text>
+                              </TouchableOpacity>
+                            : <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Not shared</Text>
+                          }
+                        </View>
+                      )}
+                      {hasH && profileLink ? (
+                        <View style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                          <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Full details</Text>
+                          <TouchableOpacity onPress={() => { closeDetails(); profileLink(); }} activeOpacity={0.7}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View profile →</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+                      <StageConfirmRow stage={BOOKING_STAGES[8]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                    </View>
+                  </>
+                );
+              })()}
 
               {/* Payment method */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
@@ -1013,7 +1104,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 <TextInput
                   style={{ padding: 14, fontSize: 14, minHeight: 72, lineHeight: 21, color: colors.black }}
                   value={paymentInfo}
-                  onChangeText={t => { setPaymentInfo(t); setPaymentInfoEdited(true); }}
+                  onChangeText={t => { setPaymentInfo(t); autoSavePaymentInfo(t); }}
                   placeholder="Agreed amount, payment timing, special terms..."
                   placeholderTextColor="#aaaaaa"
                   multiline
@@ -1021,31 +1112,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 />
                 <StageConfirmRow stage={BOOKING_STAGES[7]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
-              {paymentInfoEdited && (
-                <View style={eh.drawerNotesBtns}>
-                  <TouchableOpacity
-                    style={eh.drawerCancelBtn}
-                    onPress={() => { setPaymentInfo((enquiry as any).paymentInfo ?? ''); setPaymentInfoEdited(false); }}
-                  >
-                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={eh.drawerSaveBtn}
-                    onPress={async () => {
-                      setPaymentInfoSaving(true);
-                      await updateDoc(doc(db, 'inquiries', enquiry.id), { paymentInfo: paymentInfo.trim() });
-                      setPaymentInfoEdited(false);
-                      setPaymentInfoSaving(false);
-                    }}
-                    disabled={paymentInfoSaving}
-                  >
-                    {paymentInfoSaving
-                      ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              )}
 
               {/* Confirmed fee summary — shown when gig is confirmed and fee was saved */}
               {savedFee && (normalizeEnquiryStatus(enquiry.status) === 'confirmed') && (
@@ -1103,64 +1169,17 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                })()
               }
 
-              {/* Quick links */}
-              {quickLinks.length > 0 && (
-                <>
-                  <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Quick View</Text>
-                  <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                    {quickLinks.map((l, i, arr) => (
-                      <TouchableOpacity
-                        key={l.label}
-                        style={[eh.drawerInfoRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                        onPress={() => closeDetails(l.onPress ?? undefined)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.orange }}>{l.label}</Text>
-                        <Text style={{ fontSize: 14, color: Colors.orange }}>→</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
-              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                <View style={eh.drawerInfoRow}>
-                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Tech Rider</Text>
-                  {quickLinks.find(l => l.label === 'Tech Specs') ? (
-                    <TouchableOpacity onPress={() => closeDetails(quickLinks.find(l => l.label === 'Tech Specs')!.onPress ?? undefined)} activeOpacity={0.7}>
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View →</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-                <StageConfirmRow stage={BOOKING_STAGES[3]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-              </View>
-
               {/* Important Notes */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Important Notes</Text>
               <TextInput
                 style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border }]}
                 value={notes}
-                onChangeText={t => { setNotes(t); setNotesEdited(true); }}
+                onChangeText={t => { setNotes(t); autoSaveNotes(t); }}
                 placeholder="Add key details, agreements, requirements, anything worth pinning..."
                 placeholderTextColor="#aaaaaa"
                 multiline
                 textAlignVertical="top"
               />
-              {notesEdited && (
-                <View style={eh.drawerNotesBtns}>
-                  <TouchableOpacity
-                    style={eh.drawerCancelBtn}
-                    onPress={() => { setNotes((enquiry as any).importantNotes ?? ''); setNotesEdited(false); }}
-                  >
-                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={eh.drawerSaveBtn} onPress={saveNotes} disabled={notesSaving}>
-                    {notesSaving
-                      ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              )}
 
               {/* Notes document */}
               {notesDoc ? (
@@ -1198,7 +1217,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   <TextInput
                     style={[eh.drawerInlineInput, { color: colors.black }]}
                     value={postGigAttendance}
-                    onChangeText={t => { setPostGigAttendance(t.replace(/[^0-9]/g, '')); setPostGigEdited(true); }}
+                    onChangeText={t => { const v = t.replace(/[^0-9]/g, ''); setPostGigAttendance(v); postGigAttRef.current = v; autoSavePostGig(); }}
                     placeholder="e.g. 120"
                     placeholderTextColor="#aaaaaa"
                     keyboardType="number-pad"
@@ -1210,44 +1229,12 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
               <TextInput
                 style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
                 value={postGigNotes}
-                onChangeText={t => { setPostGigNotes(t); setPostGigEdited(true); }}
+                onChangeText={t => { setPostGigNotes(t); postGigNotesRef.current = t; autoSavePostGig(); }}
                 placeholder="How did it go? Attendance, crowd response, any notes for next time..."
                 placeholderTextColor="#aaaaaa"
                 multiline
                 textAlignVertical="top"
               />
-              {postGigEdited && (
-                <View style={eh.drawerNotesBtns}>
-                  <TouchableOpacity
-                    style={eh.drawerCancelBtn}
-                    onPress={() => {
-                      setPostGigNotes((enquiry as any).postGigNotes ?? '');
-                      setPostGigAttendance((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
-                      setPostGigEdited(false);
-                    }}
-                  >
-                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={eh.drawerSaveBtn}
-                    onPress={async () => {
-                      setPostGigSaving(true);
-                      const updates: Record<string, any> = { postGigNotes: postGigNotes.trim() };
-                      const att = parseInt(postGigAttendance, 10);
-                      if (!isNaN(att)) updates.postGigAttendance = att;
-                      await updateDoc(doc(db, 'inquiries', enquiry.id), updates);
-                      setPostGigEdited(false);
-                      setPostGigSaving(false);
-                    }}
-                    disabled={postGigSaving}
-                  >
-                    {postGigSaving
-                      ? <ActivityIndicator color="#111111" size="small" />
-                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
-                    }
-                  </TouchableOpacity>
-                </View>
-              )}
 
               {/* Delete conversation */}
               {onDelete && (
@@ -1355,7 +1342,7 @@ const sdi = StyleSheet.create({
   check:  { fontSize: 11, fontWeight: '800', color: '#ffffff', lineHeight: 14 },
 });
 
-function StageDropdownList({ item }: { item: Enquiry; isVenue: boolean }) {
+function StageDropdownList({ item, isVenue }: { item: Enquiry; isVenue: boolean }) {
   const { colors } = useTheme();
   const map = (item as any).stages as Record<string, StageData> | undefined;
   return (
@@ -1365,6 +1352,10 @@ function StageDropdownList({ item }: { item: Enquiry; isVenue: boolean }) {
         const status = computeStageStatus(stage.key, stage.control, data, item);
         const isLast = i === BOOKING_STAGES.length - 1;
         const isWait = status === 'waiting_venue' || status === 'waiting_artist';
+        let waitLabel = '';
+        if (status === 'waiting_venue')  waitLabel = isVenue  ? 'Waiting on You' : 'Waiting on Venue';
+        if (status === 'waiting_artist') waitLabel = !isVenue ? 'Waiting on You' : 'Waiting on Artist';
+        const isWaitingOnMe = (status === 'waiting_venue' && isVenue) || (status === 'waiting_artist' && !isVenue);
         return (
           <View key={stage.key} style={[sdl.row, !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
             <StageIndicator status={status} />
@@ -1376,8 +1367,8 @@ function StageDropdownList({ item }: { item: Enquiry; isVenue: boolean }) {
               {stage.label}
             </Text>
             {isWait && (
-              <Text style={sdl.waitText}>
-                Waiting on {status === 'waiting_venue' ? 'venue' : 'artist'}
+              <Text style={[sdl.waitText, isWaitingOnMe && sdl.waitTextYou]}>
+                {waitLabel}
               </Text>
             )}
           </View>
@@ -1393,6 +1384,7 @@ const sdl = StyleSheet.create({
   label:       { flex: 1, fontSize: 13, fontWeight: '600' },
   labelStrike: { textDecorationLine: 'line-through' as const, opacity: 0.5 },
   waitText:    { fontSize: 11, color: '#888888', flexShrink: 0 },
+  waitTextYou: { color: Colors.orange, fontWeight: '700' },
 });
 
 function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
@@ -1401,13 +1393,16 @@ function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
   isVenue: boolean;
   colors: any;
 }) {
-  const [saving, setSaving] = useState(false);
   const map  = (enquiry as any).stages as Record<string, StageData> | undefined;
   const data: StageData = map?.[stage.key] ?? {};
 
-  const venueConfirmed  = !!data.venueConfirmed;
-  const artistConfirmed = !!data.artistConfirmed;
-  const skipped         = !!data.skipped;
+  // Optimistic local state so UI updates immediately on confirm/skip.
+  // gigDetails: confirmed unless explicitly set to false (mirrors computeStageStatus logic).
+  const isGigDetails = stage.key === 'gigDetails';
+  const [venueConfirmed,  setVenueConfirmed]  = useState(isGigDetails ? data.venueConfirmed  !== false : !!data.venueConfirmed);
+  const [artistConfirmed, setArtistConfirmed] = useState(isGigDetails ? data.artistConfirmed !== false : !!data.artistConfirmed);
+  const [skipped,         setSkipped]         = useState(!!data.skipped);
+  const [saving,          setSaving]          = useState(false);
 
   const myConfirmed    = isVenue ? venueConfirmed  : artistConfirmed;
   const theirConfirmed = isVenue ? artistConfirmed : venueConfirmed;
@@ -1426,21 +1421,28 @@ function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
   const acPath   = 'stages.' + stage.key + '.artistConfirmed';
 
   async function doConfirm() {
+    if (isVenue) setVenueConfirmed(true); else setArtistConfirmed(true);
+    setSkipped(false);
     setSaving(true);
     await updateDoc(doc(db, 'inquiries', enquiry.id), { [myPath]: true, [skipPath]: false }).catch(() => {});
     setSaving(false);
   }
   async function doUnconfirm() {
+    if (isVenue) setVenueConfirmed(false); else setArtistConfirmed(false);
     setSaving(true);
     await updateDoc(doc(db, 'inquiries', enquiry.id), { [myPath]: false }).catch(() => {});
     setSaving(false);
   }
   async function doSkip() {
+    setSkipped(true);
+    setVenueConfirmed(false);
+    setArtistConfirmed(false);
     setSaving(true);
     await updateDoc(doc(db, 'inquiries', enquiry.id), { [skipPath]: true, [vcPath]: false, [acPath]: false }).catch(() => {});
     setSaving(false);
   }
   async function doUnskip() {
+    setSkipped(false);
     setSaving(true);
     await updateDoc(doc(db, 'inquiries', enquiry.id), { [skipPath]: false }).catch(() => {});
     setSaving(false);
@@ -3294,8 +3296,20 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         </SafeAreaView>
 
       ) : !isVenue && (enquiry.status === 'confirmed' || enquiry.status === 'accepted') ? (
-        // ── Artist confirmed: add-to-calendar strip above chat input
+        // ── Artist confirmed: booking status pill + add-to-calendar strip
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: colors.bgFaint }}>
+          <View style={[vp.confirmedStrip, { borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+            <View style={[tp.timetablePill, enquiry.listAsBooked ? tp.timetablePillBooked : tp.timetablePillPending]}>
+              <Text style={[tp.timetablePillText, enquiry.listAsBooked ? { color: '#ffffff' } : { color: '#555555' }]}>
+                {enquiry.listAsBooked ? 'Booked' : 'Pending'}
+              </Text>
+            </View>
+            <Text style={[vp.confirmStripLabel, { color: colors.grey, flex: 1 }]}>
+              {enquiry.listAsBooked
+                ? `${enquiry.venueName} has listed this gig as booked`
+                : `${enquiry.venueName} has confirmed — awaiting final listing`}
+            </Text>
+          </View>
           <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
             <AddToCalendarFromEnquiry enquiry={enquiry} />
           </View>

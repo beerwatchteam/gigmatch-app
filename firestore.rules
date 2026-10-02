@@ -293,15 +293,15 @@ service cloud.firestore {
               && request.resource.data.participantIds == [request.auth.uid]
               && request.resource.data.isPublic == false
               && getUserData().venueId == request.resource.data.venueId)
-          // enquiry: exactly [artist, venue], both verified against the enquiry
+          // enquiry: exactly [artist, venue], both verified against the enquiry doc
           || (request.resource.data.source == 'enquiry'
               && request.resource.data.venueUid == request.auth.uid
               && request.resource.data.participantIds.size() == 2
               && request.resource.data.artistUid in request.resource.data.participantIds
               && request.resource.data.venueUid in request.resource.data.participantIds
               && getUserData().venueId == request.resource.data.venueId
-              && get(/databases/$(database)/documents/inquiries/$(gigId)).data.venueId == request.resource.data.venueId
-              && get(/databases/$(database)/documents/inquiries/$(gigId)).data.createdBy == request.resource.data.artistUid)
+              && get(/databases/$(database)/documents/inquiries/$(request.resource.data.enquiryId)).data.venueId == request.resource.data.venueId
+              && get(/databases/$(database)/documents/inquiries/$(request.resource.data.enquiryId)).data.createdBy == request.resource.data.artistUid)
         );
 
       allow update: if isSignedIn() && (isParticipant() || isAdmin())
