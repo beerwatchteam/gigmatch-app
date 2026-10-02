@@ -6,6 +6,9 @@ import {
   ScrollView, Image, Linking, useWindowDimensions, Modal, Animated, Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { LegalIdentity, BLANK_LEGAL } from '@/lib/legalIdentity';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Text } from '@/components/Text';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -126,6 +129,137 @@ function fmtSlotDateFull(date?: string | null): string {
   if (!date) return '';
   const d = new Date(date);
   return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function buildContractHtml(
+  enquiry: Enquiry,
+  myLegal: LegalIdentity,
+  isVenue: boolean,
+  setLength: string,
+  loadIn: string,
+  soundCheck: string,
+): string {
+  const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const gigDate = enquiry.requestedSlot.date
+    ? new Date(enquiry.requestedSlot.date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : enquiry.requestedSlot.day || '—';
+
+  const fee = (enquiry as any).fee as { type?: string; amountCents?: number; doorPercent?: number; ticketPrice?: number; notes?: string } | null | undefined;
+  const paymentInfo = (enquiry as any).paymentInfo as string | undefined;
+  const feeLabel: Record<string, string> = {
+    flat: 'Flat fee', door_split: 'Door split',
+    guarantee_vs_door: 'Guarantee + door', ticket_split: 'Ticket split',
+    unpaid: 'Unpaid', other: 'Other',
+  };
+  const feeRows: string[] = [];
+  if (fee?.type) feeRows.push(`<tr><td>Fee type</td><td>${feeLabel[fee.type] ?? fee.type}</td></tr>`);
+  if (fee?.amountCents != null) {
+    const d = fee.amountCents / 100;
+    feeRows.push(`<tr><td>${fee.type === 'guarantee_vs_door' ? 'Guarantee' : 'Amount'}</td><td>$${Number.isInteger(d) ? d : d.toFixed(2)}</td></tr>`);
+  }
+  if (fee?.doorPercent != null) feeRows.push(`<tr><td>Door split</td><td>${fee.doorPercent}%</td></tr>`);
+  if (fee?.notes) feeRows.push(`<tr><td>Fee notes</td><td>${fee.notes}</td></tr>`);
+  if (paymentInfo) feeRows.push(`<tr><td>Payment terms</td><td>${paymentInfo}</td></tr>`);
+
+  const myPartyLabel  = isVenue ? 'Venue' : 'Artist';
+  const otherLabel    = isVenue ? 'Artist' : 'Venue';
+  const myName        = myLegal.legalName || (isVenue ? enquiry.venueName : enquiry.bandName);
+  const otherName     = isVenue ? enquiry.bandName : enquiry.venueName;
+  const myAbn         = (enquiry as any)[isVenue ? 'venueAbn' : 'artistAbn'] as string | undefined;
+  const myAddress     = [myLegal.addressLine, myLegal.suburb, myLegal.state, myLegal.postcode].filter(Boolean).join(', ');
+  const acnDisplay    = myLegal.acn ? ` &nbsp; ACN: ${myLegal.acn}` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; font-size: 13px; color: #111; padding: 48px; line-height: 1.65; max-width: 720px; margin: auto; }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
+  h2 { font-size: 12px; font-weight: 400; color: #555; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 32px; }
+  h3 { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #555; margin: 28px 0 10px; }
+  .divider { border: none; border-top: 1px solid #ddd; margin: 24px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 7px 0; vertical-align: top; }
+  td:first-child { color: #666; width: 38%; font-size: 12px; }
+  td:last-child { font-weight: 500; }
+  .party-block { border: 1px solid #e0e0e0; border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; }
+  .party-block strong { display: block; font-size: 14px; margin-bottom: 4px; }
+  .party-block span { font-size: 12px; color: #555; }
+  .notice { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #92400e; margin: 20px 0; }
+  .sig-block { border-top: 1px solid #ccc; margin-top: 48px; padding-top: 20px; display: flex; gap: 40px; flex-wrap: wrap; }
+  .sig { flex: 1; min-width: 200px; }
+  .sig-line { border-top: 1px solid #111; margin-top: 48px; padding-top: 6px; font-size: 11px; color: #555; }
+  .watermark { text-align: center; margin-top: 40px; font-size: 10px; color: #bbb; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<h1>Performance Agreement</h1>
+<h2>Draft &nbsp;·&nbsp; Generated ${today}</h2>
+
+<h3>Parties</h3>
+<div class="party-block">
+  <strong>${myName}</strong>
+  <span>${myPartyLabel}${myLegal.entityType ? ' &nbsp;·&nbsp; ' + myLegal.entityType : ''}${myAbn ? ' &nbsp;·&nbsp; ABN: ' + myAbn : ''}${acnDisplay}</span>
+  ${myAddress ? `<span style="display:block;margin-top:4px">${myAddress}</span>` : ''}
+</div>
+<div class="party-block">
+  <strong>${otherName}</strong>
+  <span>${otherLabel} &nbsp;·&nbsp; Details to be confirmed by counterparty</span>
+</div>
+
+<hr class="divider">
+
+<h3>Performance Details</h3>
+<table>
+  <tr><td>Date</td><td>${gigDate}</td></tr>
+  <tr><td>Venue</td><td>${enquiry.venueName}</td></tr>
+  <tr><td>Billing</td><td>${enquiry.requestedSlot.slotType || '—'}</td></tr>
+  <tr><td>Set time</td><td>${enquiry.requestedSlot.time || '—'}</td></tr>
+  <tr><td>Set length</td><td>${setLength || enquiry.requestedSlot.setLength || '—'}</td></tr>
+  ${loadIn ? `<tr><td>Load in</td><td>${loadIn}</td></tr>` : ''}
+  ${soundCheck ? `<tr><td>Soundcheck</td><td>${soundCheck}</td></tr>` : ''}
+</table>
+
+<hr class="divider">
+
+<h3>Fee and Payment</h3>
+<table>
+  ${feeRows.length > 0 ? feeRows.join('\n  ') : '<tr><td colspan="2" style="color:#999">No fee details recorded.</td></tr>'}
+</table>
+
+<hr class="divider">
+
+<h3>Standard Terms</h3>
+<p style="font-size:12px;color:#444;line-height:1.7">
+  1. The Artist agrees to perform at the Venue on the date and time specified above.<br>
+  2. The Venue agrees to pay the Artist the fee specified above, in the agreed manner and timing.<br>
+  3. Either party may cancel with a minimum of 14 days notice. Cancellations within 7 days may incur a cancellation fee as agreed.<br>
+  4. The Artist is responsible for providing their own required equipment unless otherwise agreed in the Tech Rider.<br>
+  5. This agreement is governed by the laws of Australia.
+</p>
+
+<div class="notice">
+  This is a draft contract generated by Twaylo. Both parties should review all details and obtain independent legal advice before signing. Counterparty details have not been verified by Twaylo.
+</div>
+
+<h3>Signatures</h3>
+<div class="sig-block">
+  <div class="sig">
+    <div class="sig-line">${isVenue ? enquiry.venueName : enquiry.bandName}<br>${myLegal.signatoryName ? myLegal.signatoryName + ', ' + myLegal.signatoryRole : 'Authorised representative'}</div>
+  </div>
+  <div class="sig">
+    <div class="sig-line">${isVenue ? enquiry.bandName : enquiry.venueName}<br>Authorised representative</div>
+  </div>
+</div>
+
+<div class="watermark">TWAYLO &nbsp;·&nbsp; DRAFT &nbsp;·&nbsp; NOT LEGALLY BINDING UNTIL SIGNED BY BOTH PARTIES</div>
+
+</body>
+</html>`;
 }
 
 function getDateLabel(iso: string): string {
@@ -685,7 +819,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const dateStr    = date ? fmtSlotDate(date) : '';
   const dateStrFull = date ? fmtSlotDateFull(date) : (day || '—');
   const slotStr    = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
-  const setStr     = [time, setLength].filter(Boolean).join(' · ') || '—';
+  const timeStr    = time || '—';
   const venueTzLbl = tzLabel(getVenueTz(enquiry));
   const billing    = slotType || '—';
   const savedFee   = (enquiry as any).fee as { type?: string; amountCents?: number; doorPercent?: number; ticketPrice?: number; notes?: string } | null | undefined;
@@ -697,6 +831,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [paymentInfo,      setPaymentInfo]      = useState<string>((enquiry as any).paymentInfo ?? '');
   const [notesDoc,         setNotesDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
   const [notesDocUploading,setNotesDocUploading]= useState(false);
+  const [contractLoading,  setContractLoading]  = useState(false);
   const [loadInTime,       setLoadInTime]       = useState<string>(enquiry.loadInTime ?? '');
   const [soundCheckTime,   setSoundCheckTime]   = useState<string>(enquiry.soundCheckTime ?? '');
   const [editSetLength,    setEditSetLength]     = useState<string>(enquiry.requestedSlot.setLength ?? '');
@@ -708,10 +843,39 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const soundCheckRef      = useRef(enquiry.soundCheckTime ?? '');
   const postGigNotesRef    = useRef((enquiry as any).postGigNotes ?? '');
   const postGigAttRef      = useRef((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
-  const scheduleDebounce   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // One debounce ref per field so a pending edit in one field does not block
+  // external sync for the other two.
+  const setLengthDebounce  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadInDebounce     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soundCheckDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesDebounce      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const paymentInfoDebounce= useRef<ReturnType<typeof setTimeout> | null>(null);
   const postGigDebounce    = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync editable schedule fields when Firestore updates them externally
+  // (e.g. the venue edits a recurring gig's slot details from another session).
+  // Each effect guards only against its own in-flight save.
+  useEffect(() => {
+    if (setLengthDebounce.current) return;
+    const v = enquiry.requestedSlot.setLength ?? '';
+    setEditSetLength(v);
+    setLengthRef.current = v;
+  }, [enquiry.requestedSlot.setLength]);
+
+  useEffect(() => {
+    if (loadInDebounce.current) return;
+    const v = enquiry.loadInTime ?? '';
+    setLoadInTime(v);
+    loadInRef.current = v;
+  }, [enquiry.loadInTime]);
+
+  useEffect(() => {
+    if (soundCheckDebounce.current) return;
+    const v = enquiry.soundCheckTime ?? '';
+    setSoundCheckTime(v);
+    soundCheckRef.current = v;
+  }, [enquiry.soundCheckTime]);
+
   const slideAnim = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
 
@@ -759,25 +923,42 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     });
   }
 
-  function autoSaveSchedule() {
-    if (scheduleDebounce.current) clearTimeout(scheduleDebounce.current);
-    scheduleDebounce.current = setTimeout(async () => {
-      const setLen     = setLengthRef.current;
-      const loadIn     = loadInRef.current;
-      const soundCheck = soundCheckRef.current;
-      const updates: Record<string, any> = {
-        loadInTime: loadIn.trim(),
-        soundCheckTime: soundCheck.trim(),
-      };
-      if (setLen.trim()) updates['requestedSlot.setLength'] = setLen.trim();
-      await updateDoc(doc(db, 'inquiries', enquiry.id), updates).catch(() => {});
+  function autoSaveSetLength() {
+    if (setLengthDebounce.current) clearTimeout(setLengthDebounce.current);
+    setLengthDebounce.current = setTimeout(async () => {
+      setLengthDebounce.current = null;
+      const setLen = setLengthRef.current.trim();
+      if (!setLen) return;
+      await updateDoc(doc(db, 'inquiries', enquiry.id), {
+        'requestedSlot.setLength': setLen,
+      }).catch(() => {});
       const gigId = (enquiry as any).gigId as string | undefined;
-      if (gigId && setLen.trim()) {
+      if (gigId) {
         const mins = parseInt(setLen.replace(/\D/g, ''), 10);
         if (!isNaN(mins)) {
           await updateDoc(doc(db, 'gigs', gigId), { setLengthMinutes: mins }).catch(() => {});
         }
       }
+    }, 800);
+  }
+
+  function autoSaveLoadIn() {
+    if (loadInDebounce.current) clearTimeout(loadInDebounce.current);
+    loadInDebounce.current = setTimeout(async () => {
+      loadInDebounce.current = null;
+      await updateDoc(doc(db, 'inquiries', enquiry.id), {
+        loadInTime: loadInRef.current.trim(),
+      }).catch(() => {});
+    }, 800);
+  }
+
+  function autoSaveSoundCheck() {
+    if (soundCheckDebounce.current) clearTimeout(soundCheckDebounce.current);
+    soundCheckDebounce.current = setTimeout(async () => {
+      soundCheckDebounce.current = null;
+      await updateDoc(doc(db, 'inquiries', enquiry.id), {
+        soundCheckTime: soundCheckRef.current.trim(),
+      }).catch(() => {});
     }, 800);
   }
 
@@ -805,6 +986,35 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       if (!isNaN(attNum)) updates.postGigAttendance = attNum;
       await updateDoc(doc(db, 'inquiries', enquiry.id), updates).catch(() => {});
     }, 800);
+  }
+
+  async function generateContract() {
+    if (!currentUserUid) return;
+    setContractLoading(true);
+    try {
+      // Read the current user's legal identity from private subcollection
+      let myLegal: LegalIdentity = { ...BLANK_LEGAL };
+      const legalPath = isVenue
+        ? doc(db, 'venues', enquiry.venueId, 'private', 'legal')
+        : doc(db, 'bandProfiles', currentUserUid, 'private', 'legal');
+      const lSnap = await getDoc(legalPath);
+      if (lSnap.exists()) myLegal = { ...BLANK_LEGAL, ...lSnap.data() } as LegalIdentity;
+
+      const html = buildContractHtml(enquiry, myLegal, isVenue, editSetLength, loadInTime, soundCheckTime);
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([html], { type: 'text/html' });
+        const url  = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      } else {
+        const { uri } = await Print.printToFileAsync({ html, base64: false });
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: '.pdf', dialogTitle: 'Save Contract PDF' });
+      }
+    } catch (e: any) {
+      Alert.alert('Could not generate contract', e.message);
+    } finally {
+      setContractLoading(false);
+    }
   }
 
   async function pickNotesDocument() {
@@ -910,7 +1120,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 </View>
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Time</Text>
-                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{setStr}</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{timeStr}</Text>
                 </View>
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Slot</Text>
@@ -921,7 +1131,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   <TextInput
                     style={[eh.drawerInlineInput, { color: colors.black }]}
                     value={editSetLength}
-                    onChangeText={t => { setEditSetLength(t); setLengthRef.current = t; autoSaveSchedule(); }}
+                    onChangeText={t => { setEditSetLength(t); setLengthRef.current = t; autoSaveSetLength(); }}
                     placeholder="e.g. 45 min"
                     placeholderTextColor="#aaaaaa"
                   />
@@ -931,7 +1141,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   <TextInput
                     style={[eh.drawerInlineInput, { color: colors.black }]}
                     value={loadInTime}
-                    onChangeText={t => { setLoadInTime(t); loadInRef.current = t; autoSaveSchedule(); }}
+                    onChangeText={t => { setLoadInTime(t); loadInRef.current = t; autoSaveLoadIn(); }}
                     placeholder="e.g. 4:00 PM"
                     placeholderTextColor="#aaaaaa"
                   />
@@ -941,7 +1151,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   <TextInput
                     style={[eh.drawerInlineInput, { color: colors.black }]}
                     value={soundCheckTime}
-                    onChangeText={t => { setSoundCheckTime(t); soundCheckRef.current = t; autoSaveSchedule(); }}
+                    onChangeText={t => { setSoundCheckTime(t); soundCheckRef.current = t; autoSaveSoundCheck(); }}
                     placeholder="e.g. 5:00 PM"
                     placeholderTextColor="#aaaaaa"
                   />
@@ -1310,6 +1520,75 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 multiline
                 textAlignVertical="top"
               />
+
+              {/* Contract */}
+              {(() => {
+                const stageMap = (enquiry as any).stages as Record<string, { venueConfirmed?: boolean; artistConfirmed?: boolean; skipped?: boolean }> | undefined;
+                const CONTRACT_GATES: { key: StageKey; label: string }[] = [
+                  { key: 'gigDetails',      label: 'General Gig Details' },
+                  { key: 'setTimesLocked',  label: 'Set Times Locked' },
+                  { key: 'paymentTermsSet', label: 'Payment Terms Set' },
+                  { key: 'feeAgreed',       label: 'Fee Agreed' },
+                ];
+                const gateStatuses = CONTRACT_GATES.map(g => {
+                  const stage = BOOKING_STAGES.find(s => s.key === g.key)!;
+                  return computeStageStatus(g.key, stage.control, stageMap?.[g.key], enquiry) === 'complete';
+                });
+                const contractReady = gateStatuses.every(Boolean);
+
+                return (
+                  <>
+                    <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Contract</Text>
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      {CONTRACT_GATES.map((g, i) => {
+                        const done = gateStatuses[i];
+                        const isLast = i === CONTRACT_GATES.length - 1;
+                        return (
+                          <View
+                            key={g.key}
+                            style={[
+                              eh.drawerInfoRow,
+                              !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                            ]}
+                          >
+                            <Text style={[eh.drawerInfoKey, { color: done ? colors.black : colors.grey }]}>{g.label}</Text>
+                            <Text style={{ fontSize: 15, color: done ? '#22c55e' : colors.greyLight }}>
+                              {done ? '✓' : '○'}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 8,
+                        paddingVertical: 13,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: contractReady ? Colors.orange : colors.border,
+                        alignItems: 'center',
+                        backgroundColor: contractReady ? Colors.orange + '12' : colors.bgFaint,
+                        opacity: contractLoading ? 0.6 : 1,
+                      }}
+                      onPress={generateContract}
+                      disabled={!contractReady || contractLoading}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{
+                        fontSize: 13, fontWeight: '700',
+                        color: contractReady ? Colors.orange : colors.greyLight,
+                      }}>
+                        {contractLoading ? 'Generating…' : contractReady ? 'Download Contract PDF' : 'Contract not ready yet'}
+                      </Text>
+                      {!contractReady && (
+                        <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 3 }}>
+                          All 4 stages above must be confirmed by both sides.
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                );
+              })()}
 
               {/* Extra */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Extra</Text>

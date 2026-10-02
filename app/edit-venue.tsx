@@ -6,7 +6,7 @@ import {
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import SuburbSearch from '@/components/SuburbSearch';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,10 +18,14 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 import { CalendarSync } from '@/components/CalendarSync';
+import { isValidABN, formatABN } from '@/lib/abn';
+import { isValidACN, formatACN } from '@/lib/acn';
+import { LegalIdentity, LegalEntityType, BLANK_LEGAL, isLegalIdentityComplete } from '@/lib/legalIdentity';
 
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
+const ENTITY_TYPES: LegalEntityType[] = ['Sole trader', 'Company', 'Partnership'];
 const SLOT_TYPES     = ['Headline','Support','Open Mic','Other'];
 const PAYMENT_MODELS = ['Flat fee','Door split','Guarantee + split','Bar tab','Ticket sales split','Unpaid (exposure)','Negotiable'];
 const PAY_METHODS    = ['Cash','Bank transfer','PayPal','Stripe','Other'];
@@ -195,13 +199,14 @@ const field = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
 });
 
-function Input({ value, onChangeText, placeholder, multiline, autoGrow, keyboardType, error }: any) {
+function Input({ value, onChangeText, onBlur, placeholder, multiline, autoGrow, keyboardType, error }: any) {
   const { colors } = useTheme();
   return (
     <TextInput
       style={[s.input, { backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }, multiline && s.textarea, error && s.inputError]}
       value={value}
       onChangeText={onChangeText}
+      onBlur={onBlur}
       placeholder={placeholder}
       placeholderTextColor={Colors.greyLight}
       multiline={multiline || autoGrow}
@@ -603,21 +608,26 @@ const fr = StyleSheet.create({
 
 // ── SectionCard ───────────────────────────────────────────────────
 
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionCard({ title, subtitle, right, children }: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
   const { colors } = useTheme();
   return (
     <View style={[sc.card, { borderColor: colors.border, backgroundColor: colors.bg }]}>
       <View style={[sc.header, { borderBottomColor: colors.border }]}>
-        <Text style={[sc.title, { color: colors.black }]}>{title}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[sc.title, { color: colors.black }]}>{title}</Text>
+          {subtitle ? <Text style={[sc.subtitle, { color: colors.grey }]}>{subtitle}</Text> : null}
+        </View>
+        {right}
       </View>
       {children}
     </View>
   );
 }
 const sc = StyleSheet.create({
-  card:   { borderWidth: 1, borderRadius: 14, marginBottom: 16 },
-  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1 },
-  title:  { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
+  card:     { borderWidth: 1, borderRadius: 14, marginBottom: 16 },
+  header:   { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title:    { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
+  subtitle: { fontSize: 12, lineHeight: 18, marginTop: 2 },
 });
 
 // ── Tab page header metadata ──────────────────────────────────────
@@ -654,6 +664,10 @@ export default function EditVenueScreen() {
   const [loading, setLoading]     = useState(true);
   const [saving, setSaving]       = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [venueAbnTouched, setVenueAbnTouched] = useState(false);
+  const [venueAcnTouched, setVenueAcnTouched] = useState(false);
+  const [legalIdentity,   setLegalIdentityState] = useState<LegalIdentity>(BLANK_LEGAL);
+  const [savedLegal,      setSavedLegal]         = useState<LegalIdentity>(BLANK_LEGAL);
   const [activeTab, setActiveTab] = useState(tabParam || (isAgentEdit ? 'Basic Info' : 'Settings'));
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
@@ -703,6 +717,15 @@ export default function EditVenueScreen() {
         const isComplete = snap.data().onboardingComplete === true;
         setOnboardingComplete(isComplete);
         if (!isComplete) setOnboardingStep(1);
+
+        // Load private legal identity (separate subcollection, may not exist yet)
+        getDoc(doc(db, 'venues', venueId, 'private', 'legal')).then(lSnap => {
+          if (lSnap.exists()) {
+            const l = { ...BLANK_LEGAL, ...lSnap.data() } as LegalIdentity;
+            setLegalIdentityState(l);
+            setSavedLegal(l);
+          }
+        }).catch(() => {});
       }
     }).finally(() => setLoading(false));
   }, [venueId]);
@@ -715,6 +738,10 @@ export default function EditVenueScreen() {
   function setPayment<K extends keyof Payment>(field: K, value: Payment[K]) {
     setJustSaved(false);
     setData(prev => ({ ...prev, payment: { ...prev.payment, [field]: value } }));
+  }
+  function setLegal<K extends keyof LegalIdentity>(field: K, value: LegalIdentity[K]) {
+    setJustSaved(false);
+    setLegalIdentityState(prev => ({ ...prev, [field]: value }));
   }
 
   // ── Rooms ──
@@ -958,6 +985,9 @@ export default function EditVenueScreen() {
       errors.push('Rooms');
     if (data.gigNights.some(n => !(n.days?.length || n.day) || !n.startTime || !n.startDate || (!n.continuous && !n.endDate)))
       errors.push('Timetable');
+    const venueAbn = data.payment.abn.replace(/\s/g, '');
+    if (venueAbn && !isValidABN(venueAbn)) errors.push('Payments');
+    if (data.payment.gstRegistered && (!venueAbn || !isValidABN(venueAbn))) errors.push('Payments');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
@@ -967,6 +997,8 @@ export default function EditVenueScreen() {
       const { id, ...fields } = data as any;
       fields.rooms = data.rooms.map(({ _isNew, ...r }: any) => r);
       fields.gigNights = data.gigNights.map(({ _isNew, ...n }: any) => n);
+      // Store ABN digits-only in Firestore; display formatting is client-side only
+      if (fields.payment) fields.payment = { ...fields.payment, abn: (fields.payment.abn || '').replace(/\s/g, '') };
       const existingSlots = data.slots || {};
       const newSlots: Record<string, any> = {};
       CANONICAL_DAYS.forEach(day => {
@@ -1004,7 +1036,16 @@ export default function EditVenueScreen() {
         if (combined.length > 0) newSlots[day] = combined;
       });
 
-      await updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots });
+      const legalPayload: LegalIdentity = {
+        ...legalIdentity,
+        acn: legalIdentity.acn.replace(/\s/g, ''),
+        updatedAt: Date.now(),
+      };
+      await Promise.all([
+        updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots }),
+        setDoc(doc(db, 'venues', venueId, 'private', 'legal'), legalPayload),
+      ]);
+      setSavedLegal(legalIdentity);
       setSaved(data);
       setData(prev => ({
         ...prev,
@@ -1029,7 +1070,8 @@ export default function EditVenueScreen() {
   }
 
   function handleBack() {
-    const isDirty = JSON.stringify(data) !== JSON.stringify(saved);
+    const isDirty = JSON.stringify(data) !== JSON.stringify(saved) ||
+      JSON.stringify(legalIdentity) !== JSON.stringify(savedLegal);
     if (isDirty) {
       crossConfirm('Unsaved changes', 'Any unsaved changes will be lost. Are you sure?', goBack, true);
       return;
@@ -1510,12 +1552,51 @@ export default function EditVenueScreen() {
         </SectionCard>
 
         <SectionCard title="Tax and invoicing">
-          <FieldRow label="Venue ABN">
-            <Input value={data.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="e.g. 12 345 678 901" keyboardType="numeric" />
-          </FieldRow>
-          <FieldRow label="GST registered">
-            <Switch value={data.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
+          {(() => {
+            const abnDigits  = data.payment.abn.replace(/\s/g, '');
+            const abnFilled  = abnDigits.length > 0;
+            const abnValid   = abnFilled && isValidABN(abnDigits);
+            const abnError   = (venueAbnTouched || showErrors) && abnFilled && !abnValid;
+            return (
+              <>
+                <FieldRow label="Venue ABN" error={abnError}>
+                  <View>
+                    <Input
+                      value={data.payment.abn}
+                      onChangeText={(v: string) => {
+                        const cleaned = v.replace(/[^\d\s]/g, '');
+                        setPayment('abn', cleaned);
+                        if (!cleaned.replace(/\s/g, '')) setPayment('gstRegistered', false);
+                      }}
+                      onBlur={() => {
+                        setVenueAbnTouched(true);
+                        if (data.payment.abn.trim()) setPayment('abn', formatABN(data.payment.abn));
+                      }}
+                      placeholder="e.g. 12 345 678 901"
+                      keyboardType="numeric"
+                      error={abnError}
+                    />
+                    {abnError && (
+                      <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
+                        Invalid ABN. Check the 11-digit number and try again.
+                      </Text>
+                    )}
+                  </View>
+                </FieldRow>
+                <FieldRow label="GST registered">
+                  <View style={{ opacity: abnValid ? 1 : 0.4 }}>
+                    <Switch
+                      value={data.payment.gstRegistered}
+                      onValueChange={(v: boolean) => setPayment('gstRegistered', v)}
+                      disabled={!abnValid}
+                      trackColor={{ false: colors.border, true: Colors.orange }}
+                      thumbColor="#fff"
+                    />
+                  </View>
+                </FieldRow>
+              </>
+            );
+          })()}
           <FieldRow label="Requires artist ABN">
             <Switch value={data.payment.requiresArtistAbn} onValueChange={(v: boolean) => setPayment('requiresArtistAbn', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
@@ -1551,6 +1632,120 @@ export default function EditVenueScreen() {
             <Input value={data.payment.additionalNotes} onChangeText={(v: string) => setPayment('additionalNotes', v)} placeholder="Anything else artists should know about payment at your venue" multiline />
           </View>
         </SectionCard>
+
+        {(() => {
+          const acnDigits = legalIdentity.acn.replace(/\s/g, '');
+          const acnFilled = acnDigits.length > 0;
+          const acnValid  = acnFilled && isValidACN(acnDigits);
+          const acnError  = (venueAcnTouched || showErrors) && acnFilled && !acnValid;
+          const needsAcn  = legalIdentity.entityType === 'Company';
+          const complete  = isLegalIdentityComplete(legalIdentity);
+          return (
+            <SectionCard
+              title="Contract details"
+              subtitle="Used on gig contracts. Not shared publicly."
+              right={
+                complete ? (
+                  <View style={{ backgroundColor: '#e8f5e9', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#2e7d32' }}>Complete</Text>
+                  </View>
+                ) : null
+              }
+            >
+              <FieldRow label="Entity type">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {ENTITY_TYPES.map(opt => {
+                    const active = legalIdentity.entityType === opt;
+                    return (
+                      <TouchableOpacity
+                        key={opt}
+                        onPress={() => setLegal('entityType', opt)}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+                          borderWidth: 1,
+                          borderColor: active ? colors.black : colors.border,
+                          backgroundColor: active ? colors.black : 'transparent',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#fff' : colors.black }}>
+                          {opt}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </FieldRow>
+              <FieldRow label="Legal name" sublabel="The name on contracts and invoices.">
+                <Input
+                  value={legalIdentity.legalName}
+                  onChangeText={(v: string) => setLegal('legalName', v)}
+                  placeholder="e.g. The Crown Hotel Pty Ltd"
+                />
+              </FieldRow>
+              {needsAcn && (
+                <FieldRow label="ACN" error={acnError}>
+                  <View>
+                    <Input
+                      value={legalIdentity.acn}
+                      onChangeText={(v: string) => setLegal('acn', v.replace(/[^\d\s]/g, ''))}
+                      onBlur={() => {
+                        setVenueAcnTouched(true);
+                        if (legalIdentity.acn.trim()) setLegal('acn', formatACN(legalIdentity.acn));
+                      }}
+                      placeholder="123 456 789"
+                      keyboardType="numeric"
+                      error={acnError}
+                    />
+                    {acnError && (
+                      <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
+                        Invalid ACN. Check the 9-digit number and try again.
+                      </Text>
+                    )}
+                  </View>
+                </FieldRow>
+              )}
+              <FieldRow label="Signatory name" sublabel="Who signs contracts on behalf of the venue.">
+                <Input
+                  value={legalIdentity.signatoryName}
+                  onChangeText={(v: string) => setLegal('signatoryName', v)}
+                  placeholder="e.g. Alex Johnson"
+                />
+              </FieldRow>
+              <FieldRow label="Signatory role" sublabel="Their title or position.">
+                <Input
+                  value={legalIdentity.signatoryRole}
+                  onChangeText={(v: string) => setLegal('signatoryRole', v)}
+                  placeholder="e.g. Director or General Manager"
+                />
+              </FieldRow>
+              <FieldRow label="Registered address">
+                <Input
+                  value={legalIdentity.addressLine}
+                  onChangeText={(v: string) => setLegal('addressLine', v)}
+                  placeholder="Street address"
+                />
+              </FieldRow>
+              <FieldRow label="Suburb">
+                <Input
+                  value={legalIdentity.suburb}
+                  onChangeText={(v: string) => setLegal('suburb', v)}
+                  placeholder="e.g. Collingwood"
+                />
+              </FieldRow>
+              <FieldRow label="State">
+                <Pills options={AU_STATES} value={legalIdentity.state} onSelect={(v: string) => setLegal('state', v)} />
+              </FieldRow>
+              <FieldRow label="Postcode" last>
+                <Input
+                  value={legalIdentity.postcode}
+                  onChangeText={(v: string) => setLegal('postcode', v.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="e.g. 3066"
+                  keyboardType="numeric"
+                />
+              </FieldRow>
+            </SectionCard>
+          );
+        })()}
       </View>
     );
   }

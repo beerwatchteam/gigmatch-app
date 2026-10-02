@@ -18,6 +18,10 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 import { CalendarSync } from '@/components/CalendarSync';
+import { isValidABN, formatABN } from '@/lib/abn';
+import { isValidACN, formatACN } from '@/lib/acn';
+import { crossConfirm } from '@/lib/confirm';
+import { LegalIdentity, LegalEntityType, BLANK_LEGAL, isLegalIdentityComplete } from '@/lib/legalIdentity';
 
 // ── Constants ────────────────────────────────────────────────────────────
 const GENRES = ['Rock','Indie','Pop','Punk','Metal','Jazz','Blues','Soul / R&B','Funk','Hip-hop','Electronic','Country','Folk','Reggae','Classical','Other'];
@@ -37,6 +41,8 @@ const SOUNDCHECK_OPTS = ['15 min','30 min','45 min','60 min','Other'];
 const MEAL_COUNT_OPTS = ['1','2','3','4','5','6','7','8','9','10'];
 const PAY_METHODS = ['Bank transfer','Cash','PayPal','Stripe','Other'];
 const PAY_TIMING = ['On the night','7 days after','14 days after','30 days after','Other'];
+const ENTITY_TYPES: LegalEntityType[] = ['Sole trader', 'Company', 'Partnership'];
+const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 
 const NAV_GROUPS = [
   { label: 'PROFILE', tabs: ['Basic info','About','Music','Photos'] },
@@ -50,11 +56,14 @@ type Song    = { title: string; url: string; notes: string };
 type Member  = { name: string; role: string };
 type Channel = { source: string; micDi: string };
 
+type AbnStatus = 'has_abn' | 'no_abn_hobby' | 'applying';
+
 type ArtistPayment = {
   methods: string[]; abn: string; gstRegistered: boolean;
   canProvideInvoice: boolean; invoicingName: string;
   timing: string; timingOther: string; paymentNotes: string;
   publicLiabilityHeld: boolean; publicLiabilityCoverage: string; insuranceCertAvailable: boolean;
+  abnStatus?: AbnStatus;
 };
 
 type Hospitality = {
@@ -87,6 +96,7 @@ const BLANK_PAYMENT: ArtistPayment = {
   methods: [], abn: '', gstRegistered: false, canProvideInvoice: false,
   invoicingName: '', timing: '', timingOther: '', paymentNotes: '',
   publicLiabilityHeld: false, publicLiabilityCoverage: '', insuranceCertAvailable: false,
+  abnStatus: undefined,
 };
 const BLANK_HOSP: Hospitality = {
   mealsRequired: false, mealCount: '', dietaryReqs: '', drinks: '',
@@ -122,17 +132,6 @@ function detectPlatform(url: string): string {
   if (url.includes('bandcamp.com')) return 'Bandcamp';
   if (url.includes('music.apple.com')) return 'Apple Music';
   return 'Link';
-}
-
-function crossConfirm(title: string, message: string, onConfirm: () => void, destructive = false) {
-  if (Platform.OS === 'web') {
-    if ((window as any).confirm(`${title}\n\n${message}`)) onConfirm();
-  } else {
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: destructive ? 'Delete' : 'Confirm', style: destructive ? 'destructive' : 'default', onPress: onConfirm },
-    ]);
-  }
 }
 
 // ── SuburbSearch ──────────────────────────────────────────────────────────
@@ -230,13 +229,14 @@ const sc = StyleSheet.create({
 });
 
 // ── Input ─────────────────────────────────────────────────────────────────
-function Input({ value, onChangeText, placeholder, multiline, keyboardType, error, secureTextEntry }: any) {
+function Input({ value, onChangeText, onBlur, placeholder, multiline, keyboardType, error, secureTextEntry }: any) {
   const { colors } = useTheme();
   return (
     <TextInput
       style={[sh.input, multiline && sh.textarea, { backgroundColor: colors.bgFaint, borderColor: error ? Colors.danger : colors.border, color: colors.black }]}
       value={value}
       onChangeText={onChangeText}
+      onBlur={onBlur}
       placeholder={placeholder}
       placeholderTextColor={Colors.greyLight}
       multiline={multiline}
@@ -426,13 +426,18 @@ export default function EditProfileScreen() {
   const [onboardingVisited,  setOnboardingVisited]  = useState<string[]>([]);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [bannerDismissed,    setBannerDismissed]    = useState(false);
+  const [abnTouched,         setAbnTouched]         = useState(false);
+  const [acnTouched,         setAcnTouched]         = useState(false);
+  const [legalIdentity,      setLegalIdentityState] = useState<LegalIdentity>(BLANK_LEGAL);
+  const [savedLegal,         setSavedLegal]         = useState<LegalIdentity>(BLANK_LEGAL);
   const [mobileShowList,     setMobileShowList]     = useState(true);
 
   const isWeb = Platform.OS === 'web';
   const { width } = useWindowDimensions();
   const isMobileLayout = !isWeb || width < 768;
 
-  const hasUnsaved = JSON.stringify(profile) !== JSON.stringify(saved);
+  const hasUnsaved = JSON.stringify(profile) !== JSON.stringify(saved) ||
+    JSON.stringify(legalIdentity) !== JSON.stringify(savedLegal);
 
   // ── Load ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -461,11 +466,26 @@ export default function EditProfileScreen() {
       d.settings         = { ...BLANK.settings,  ...(d.settings   || {}) };
       d.hospitality      = { ...BLANK_HOSP,       ...(d.hospitality|| {}) };
       d.payment          = { ...BLANK_PAYMENT,    ...(d.payment    || {}) };
+      // Default abnStatus for existing profiles that have a non-empty ABN saved.
+      // Use 'has_abn' unconditionally (even if the ABN is invalid) so the value
+      // is visible and fixable rather than silently hidden.
+      if (!d.payment.abnStatus && d.payment.abn) {
+        d.payment.abnStatus = 'has_abn';
+      }
       originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
       const isComplete = raw.onboardingComplete === true;
       setOnboardingComplete(isComplete);
       if (!isComplete) setOnboardingStep(1);
+
+      // Load private legal identity (separate subcollection, may not exist yet)
+      getDoc(doc(db, 'bandProfiles', uid, 'private', 'legal')).then(lSnap => {
+        if (lSnap.exists()) {
+          const l = { ...BLANK_LEGAL, ...lSnap.data() } as LegalIdentity;
+          setLegalIdentityState(l);
+          setSavedLegal(l);
+        }
+      }).catch(() => {});
     }).catch(() => {}).finally(() => setLoading(false));
   }, [uid]);
 
@@ -481,6 +501,9 @@ export default function EditProfileScreen() {
   }
   function setHosp<K extends keyof Hospitality>(field: K, value: Hospitality[K]) {
     setProfile(prev => ({ ...prev, hospitality: { ...prev.hospitality, [field]: value } }));
+  }
+  function setLegal<K extends keyof LegalIdentity>(field: K, value: LegalIdentity[K]) {
+    setLegalIdentityState(prev => ({ ...prev, [field]: value }));
   }
   function setRider(field: string, value: string) {
     setProfile(prev => ({ ...prev, techRider: { ...prev.techRider, [field]: value } }));
@@ -591,6 +614,15 @@ export default function EditProfileScreen() {
       errors.push('Basic info');
     if (!profile.about?.trim()) errors.push('About');
     if (profile.songs.some(s => !s.title?.trim() || !s.url?.trim())) errors.push('Music');
+    if (profile.payment.abnStatus === 'has_abn') {
+      const abn = profile.payment.abn.replace(/\s/g, '');
+      if (abn && !isValidABN(abn)) errors.push('Invoicing');
+    }
+    // Catch the legacy case: GST on with no valid ABN regardless of abnStatus
+    if (profile.payment.gstRegistered) {
+      const abn = profile.payment.abn.replace(/\s/g, '');
+      if (!abn || !isValidABN(abn)) errors.push('Invoicing');
+    }
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
 
@@ -609,11 +641,28 @@ export default function EditProfileScreen() {
     setSaving(true);
     try {
       const toNum = (v: string) => { const n = Number(v); return isNaN(n) || v === '' ? null : n; };
-      const payload = { ...profile, username: newUsername, feeMin: toNum(profile.feeMin), feeMax: toNum(profile.feeMax), averageDraw: toNum(profile.averageDraw) };
-      await setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true });
-      await updateDoc(doc(db, 'users', uid), { username: newUsername });
+      const payload = {
+        ...profile,
+        username: newUsername,
+        feeMin: toNum(profile.feeMin),
+        feeMax: toNum(profile.feeMax),
+        averageDraw: toNum(profile.averageDraw),
+        // Store ABN digits-only in Firestore; display formatting is client-side only
+        payment: { ...profile.payment, abn: profile.payment.abn.replace(/\s/g, '') },
+      };
+      const legalPayload: LegalIdentity = {
+        ...legalIdentity,
+        acn: legalIdentity.acn.replace(/\s/g, ''),
+        updatedAt: Date.now(),
+      };
+      await Promise.all([
+        setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true }),
+        updateDoc(doc(db, 'users', uid), { username: newUsername }),
+        setDoc(doc(db, 'bandProfiles', uid, 'private', 'legal'), legalPayload),
+      ]);
       originalUsername.current = newUsername;
       setSaved(profile);
+      setSavedLegal(legalIdentity);
       setShowErrors(false);
       setJustSaved(true);
     } catch (e: any) {
@@ -625,6 +674,7 @@ export default function EditProfileScreen() {
 
   function handleDiscard() {
     setProfile(saved);
+    setLegalIdentityState(savedLegal);
     setShowErrors(false);
   }
 
@@ -1288,22 +1338,103 @@ export default function EditProfileScreen() {
   }
 
   function renderInvoicing() {
+    const abnStatus  = profile.payment.abnStatus;
+    const abnDigits  = profile.payment.abn.replace(/\s/g, '');
+    const abnFilled  = abnDigits.length > 0;
+    const abnValid   = abnFilled && isValidABN(abnDigits);
+    const abnError   = (abnTouched || showErrors) && abnFilled && !abnValid;
+    const showAbnFields = abnStatus === 'has_abn';
+
+    const ABN_STATUS_OPTS: { value: AbnStatus; label: string }[] = [
+      { value: 'has_abn',      label: 'I have an ABN'    },
+      { value: 'no_abn_hobby', label: 'Hobbyist, no ABN' },
+      { value: 'applying',     label: 'Applying for one' },
+    ];
+
     return (
       <View>
         {renderPageHeader('Invoicing', 'How venues pay you. Shared once a booking is confirmed.')}
 
         <SectionCard title="Business details" subtitle="Twaylo doesn't process payments. Venues pay you directly.">
+          <FieldRow label="ABN status">
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {ABN_STATUS_OPTS.map(opt => {
+                const active = abnStatus === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    onPress={() => {
+                      if (opt.value !== 'has_abn' && profile.payment.abn.replace(/\s/g, '')) {
+                        crossConfirm(
+                          'Clear ABN?',
+                          'Switching away from "I have an ABN" will remove your saved ABN and turn off GST.',
+                          () => {
+                            setPayment('abnStatus', opt.value);
+                            setPayment('abn', '');
+                            setPayment('gstRegistered', false);
+                            setAbnTouched(false);
+                          },
+                          true,
+                        );
+                      } else {
+                        setPayment('abnStatus', opt.value);
+                      }
+                    }}
+                    style={{
+                      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+                      borderWidth: 1,
+                      borderColor: active ? Colors.orange : colors.border,
+                      backgroundColor: active ? Colors.orange : colors.bgFaint,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#111111' : colors.grey }}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </FieldRow>
           <FieldRow label="Invoicing name" sublabel="The name on your invoices, if different from your stage name.">
             <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="The Dahlias Pty Ltd" />
           </FieldRow>
-          <FieldRow label="ABN">
-            <Input value={profile.payment.abn} onChangeText={(v: string) => setPayment('abn', v)} placeholder="51 824 753 556" keyboardType="numeric" />
-          </FieldRow>
-          <FieldRow label="Registered for GST" sublabel="Your fee range is shown excluding GST.">
-            <View style={{ alignItems: 'flex-end' }}>
-              <Switch value={profile.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#fff" />
-            </View>
-          </FieldRow>
+          {showAbnFields && (
+            <>
+              <FieldRow label="ABN" error={abnError}>
+                <View>
+                  <Input
+                    value={profile.payment.abn}
+                    onChangeText={(v: string) => setPayment('abn', v.replace(/[^\d\s]/g, ''))}
+                    onBlur={() => {
+                      setAbnTouched(true);
+                      if (profile.payment.abn.trim()) {
+                        setPayment('abn', formatABN(profile.payment.abn));
+                      }
+                    }}
+                    placeholder="51 824 753 556"
+                    keyboardType="numeric"
+                    error={abnError}
+                  />
+                  {abnError && (
+                    <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
+                      Invalid ABN. Check the 11-digit number and try again.
+                    </Text>
+                  )}
+                </View>
+              </FieldRow>
+              <FieldRow label="Registered for GST" sublabel="Your fee range is shown excluding GST.">
+                <View style={{ alignItems: 'flex-end', opacity: abnValid ? 1 : 0.4 }}>
+                  <Switch
+                    value={profile.payment.gstRegistered}
+                    onValueChange={(v: boolean) => setPayment('gstRegistered', v)}
+                    disabled={!abnValid}
+                    trackColor={{ false: '#e0e0e0', true: Colors.orange }}
+                    thumbColor="#fff"
+                  />
+                </View>
+              </FieldRow>
+            </>
+          )}
           <FieldRow label="Can provide an invoice" sublabel="Most venues need one to pay you." last>
             <View style={{ alignItems: 'flex-end' }}>
               <Switch value={profile.payment.canProvideInvoice} onValueChange={(v: boolean) => setPayment('canProvideInvoice', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#fff" />
@@ -1327,6 +1458,120 @@ export default function EditProfileScreen() {
             <Input value={profile.payment.paymentNotes} onChangeText={(v: string) => setPayment('paymentNotes', v)} placeholder="e.g. Cash on the night preferred for gigs under $500." multiline />
           </FieldRow>
         </SectionCard>
+
+        {(() => {
+          const acnDigits = legalIdentity.acn.replace(/\s/g, '');
+          const acnFilled = acnDigits.length > 0;
+          const acnValid  = acnFilled && isValidACN(acnDigits);
+          const acnError  = (acnTouched || showErrors) && acnFilled && !acnValid;
+          const needsAcn  = legalIdentity.entityType === 'Company';
+          const complete  = isLegalIdentityComplete(legalIdentity);
+          return (
+            <SectionCard
+              title="Contract details"
+              subtitle="Used on gig contracts. Not shared publicly."
+              right={
+                complete ? (
+                  <View style={{ backgroundColor: '#e8f5e9', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#2e7d32' }}>Complete</Text>
+                  </View>
+                ) : null
+              }
+            >
+              <FieldRow label="Entity type">
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {ENTITY_TYPES.map(opt => {
+                    const active = legalIdentity.entityType === opt;
+                    return (
+                      <TouchableOpacity
+                        key={opt}
+                        onPress={() => setLegal('entityType', opt)}
+                        style={{
+                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+                          borderWidth: 1,
+                          borderColor: active ? colors.black : colors.border,
+                          backgroundColor: active ? colors.black : 'transparent',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#fff' : colors.black }}>
+                          {opt}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </FieldRow>
+              <FieldRow label="Legal name" sublabel="The name on contracts and invoices.">
+                <Input
+                  value={legalIdentity.legalName}
+                  onChangeText={(v: string) => setLegal('legalName', v)}
+                  placeholder="e.g. Jane Smith or Dahlias Pty Ltd"
+                />
+              </FieldRow>
+              {needsAcn && (
+                <FieldRow label="ACN" error={acnError}>
+                  <View>
+                    <Input
+                      value={legalIdentity.acn}
+                      onChangeText={(v: string) => setLegal('acn', v.replace(/[^\d\s]/g, ''))}
+                      onBlur={() => {
+                        setAcnTouched(true);
+                        if (legalIdentity.acn.trim()) setLegal('acn', formatACN(legalIdentity.acn));
+                      }}
+                      placeholder="123 456 789"
+                      keyboardType="numeric"
+                      error={acnError}
+                    />
+                    {acnError && (
+                      <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
+                        Invalid ACN. Check the 9-digit number and try again.
+                      </Text>
+                    )}
+                  </View>
+                </FieldRow>
+              )}
+              <FieldRow label="Signatory name" sublabel="Who signs contracts on your behalf.">
+                <Input
+                  value={legalIdentity.signatoryName}
+                  onChangeText={(v: string) => setLegal('signatoryName', v)}
+                  placeholder="e.g. Jane Smith"
+                />
+              </FieldRow>
+              <FieldRow label="Signatory role" sublabel="Their title or position.">
+                <Input
+                  value={legalIdentity.signatoryRole}
+                  onChangeText={(v: string) => setLegal('signatoryRole', v)}
+                  placeholder="e.g. Director or Sole trader"
+                />
+              </FieldRow>
+              <FieldRow label="Registered address">
+                <Input
+                  value={legalIdentity.addressLine}
+                  onChangeText={(v: string) => setLegal('addressLine', v)}
+                  placeholder="Street address"
+                />
+              </FieldRow>
+              <FieldRow label="Suburb">
+                <Input
+                  value={legalIdentity.suburb}
+                  onChangeText={(v: string) => setLegal('suburb', v)}
+                  placeholder="e.g. Fitzroy"
+                />
+              </FieldRow>
+              <FieldRow label="State">
+                <Pills options={AU_STATES} value={legalIdentity.state} onSelect={(v: string) => setLegal('state', v)} />
+              </FieldRow>
+              <FieldRow label="Postcode" last>
+                <Input
+                  value={legalIdentity.postcode}
+                  onChangeText={(v: string) => setLegal('postcode', v.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="e.g. 3065"
+                  keyboardType="numeric"
+                />
+              </FieldRow>
+            </SectionCard>
+          );
+        })()}
       </View>
     );
   }

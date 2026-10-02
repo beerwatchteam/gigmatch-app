@@ -59,6 +59,11 @@ service cloud.firestore {
       allow update: if isOwner(uid) || isAdmin() ||
         (isSignedIn() && exists(/databases/$(database)/documents/agentRoster/$(request.auth.uid + '_' + uid)));
       allow delete: if isOwner(uid) || isAdmin();
+
+      // Private legal identity — owner-only, never publicly readable
+      match /private/{docId} {
+        allow read, write: if isOwner(uid);
+      }
     }
 
     // ── Agent roster ─────────────────────────────────────────────────────────
@@ -113,6 +118,11 @@ service cloud.firestore {
       match /bookings/{bookingId} {
         allow read:  if isSignedIn();
         allow write: if isVenueOwner(venueId) || isAdmin();
+      }
+
+      // Private legal identity — venue owner-only, never publicly readable
+      match /private/{docId} {
+        allow read, write: if isVenueOwner(venueId);
       }
     }
 
