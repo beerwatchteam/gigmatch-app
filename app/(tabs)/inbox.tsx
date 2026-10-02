@@ -225,6 +225,67 @@ const sb = StyleSheet.create({
   text: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
 });
 
+// ── Booking stages ──────────────────────────────────────────────────────────
+
+type StageKey =
+  | 'enquirySent' | 'discussing' | 'gigDetails' | 'techRiderReviewed'
+  | 'supportActsConfirmed' | 'setTimesLocked' | 'paymentTermsSet'
+  | 'feeAgreed' | 'hospitalityConfirmed' | 'confirmedPending'
+  | 'confirmedBooked' | 'performed' | 'paymentSettled';
+
+type StageControl = 'auto' | 'venue' | 'artist' | 'both';
+type StageStatus  = 'complete' | 'waiting_venue' | 'waiting_artist' | 'pending' | 'skipped';
+type StageData    = { venueConfirmed?: boolean; artistConfirmed?: boolean; skipped?: boolean };
+type StageDef     = { key: StageKey; label: string; control: StageControl };
+
+const BOOKING_STAGES: StageDef[] = [
+  { key: 'enquirySent',          label: 'Enquiry Sent',           control: 'auto'   },
+  { key: 'discussing',           label: 'Discussing',             control: 'auto'   },
+  { key: 'gigDetails',           label: 'General Gig Details',    control: 'venue'  },
+  { key: 'techRiderReviewed',    label: 'Tech Rider Reviewed',    control: 'venue'  },
+  { key: 'supportActsConfirmed', label: 'Support Acts Confirmed', control: 'venue'  },
+  { key: 'setTimesLocked',       label: 'Set Times Locked',       control: 'both'   },
+  { key: 'paymentTermsSet',      label: 'Payment Terms Set',      control: 'both'   },
+  { key: 'feeAgreed',            label: 'Fee Agreed',             control: 'both'   },
+  { key: 'hospitalityConfirmed', label: 'Hospitality Confirmed',  control: 'venue'  },
+  { key: 'confirmedPending',     label: 'Confirmed: Pending',     control: 'auto'   },
+  { key: 'confirmedBooked',      label: 'Confirmed: Booked',      control: 'auto'   },
+  { key: 'performed',            label: 'Performed',              control: 'both'   },
+  { key: 'paymentSettled',       label: 'Payment Settled',        control: 'both'   },
+];
+
+function computeStageStatus(
+  key: StageKey,
+  control: StageControl,
+  data: StageData | undefined,
+  enquiry: Enquiry,
+): StageStatus {
+  if (data?.skipped) return 'skipped';
+  if (control === 'auto') {
+    const norm = normalizeEnquiryStatus(enquiry.status);
+    if (key === 'enquirySent')      return 'complete';
+    if (key === 'discussing')       return (norm === 'discussing' || norm === 'confirmed') ? 'complete' : 'pending';
+    if (key === 'confirmedPending') return norm === 'confirmed' ? 'complete' : 'pending';
+    if (key === 'confirmedBooked')  return (!!(enquiry as any).gigId && norm === 'confirmed') ? 'complete' : 'pending';
+    return 'pending';
+  }
+  if (control === 'venue')  return data?.venueConfirmed  ? 'complete' : 'pending';
+  if (control === 'artist') return data?.artistConfirmed ? 'complete' : 'pending';
+  const vc = !!data?.venueConfirmed, ac = !!data?.artistConfirmed;
+  if (vc && ac) return 'complete';
+  if (vc)       return 'waiting_artist';
+  if (ac)       return 'waiting_venue';
+  return 'pending';
+}
+
+function countDoneStages(enquiry: Enquiry): number {
+  const map = (enquiry as any).stages as Record<string, StageData> | undefined;
+  return BOOKING_STAGES.filter(s => {
+    const d = map?.[s.key];
+    return !d?.skipped && computeStageStatus(s.key, s.control, d, enquiry) === 'complete';
+  }).length;
+}
+
 // ── Date separator ─────────────────────────────────────────────────────────
 
 function DateSep({ label }: { label: string }) {
@@ -560,6 +621,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [scheduleSaving,   setScheduleSaving]   = useState(false);
   const [gigEditing,       setGigEditing]       = useState(false);
   const [editSetLength,    setEditSetLength]     = useState<string>(enquiry.requestedSlot.setLength ?? '');
+  const [postGigNotes,     setPostGigNotes]     = useState<string>((enquiry as any).postGigNotes ?? '');
+  const [postGigAttendance,setPostGigAttendance]= useState<string>((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
+  const [postGigEdited,    setPostGigEdited]    = useState(false);
+  const [postGigSaving,    setPostGigSaving]    = useState(false);
   // Snapshots of field values taken when Edit is pressed — used to revert on Cancel
   const editSnapshot = useRef<{ loadIn: string; soundCheck: string; setLength: string } | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -734,13 +799,30 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             </View>
             <ScrollView contentContainerStyle={eh.drawerContent} showsVerticalScrollIndicator={false}>
 
-              {/* Gig info */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={[eh.drawerSectionLabel, { color: colors.black, marginBottom: 0 }]}>Gig Info</Text>
+              {/* Gig Info */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Gig Info</Text>
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Date</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{dateStrFull}</Text>
+                </View>
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Time</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{setStr}</Text>
+                </View>
+                <View style={eh.drawerInfoRow}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Slot</Text>
+                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{billing}</Text>
+                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[2]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
+
+              {/* Set Times */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 8 }}>
+                <Text style={[eh.drawerSectionLabel, { color: colors.black, marginTop: 0, marginBottom: 0 }]}>Set Times</Text>
                 <TouchableOpacity
                   onPress={() => {
                     if (gigEditing) {
-                      // Cancel: revert to the snapshot taken when Edit was pressed
                       if (editSnapshot.current) {
                         setLoadInTime(editSnapshot.current.loadIn);
                         setSoundCheckTime(editSnapshot.current.soundCheck);
@@ -750,7 +832,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       setScheduleEdited(false);
                       setGigEditing(false);
                     } else {
-                      // Edit: snapshot current values before any changes
                       editSnapshot.current = {
                         loadIn:     loadInTime,
                         soundCheck: soundCheckTime,
@@ -767,17 +848,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 </TouchableOpacity>
               </View>
               <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                {/* Date — always locked */}
-                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Date</Text>
-                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{dateStrFull}</Text>
-                </View>
-                {/* Set time — editable in edit mode */}
-                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Time</Text>
-                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{setStr}</Text>
-                </View>
-                {/* Set length — editable in edit mode */}
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Set Length</Text>
                   {gigEditing ? (
@@ -792,7 +862,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{editSetLength || '—'}</Text>
                   )}
                 </View>
-                {/* Load-in — editable in edit mode */}
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Load In</Text>
                   {gigEditing ? (
@@ -807,7 +876,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{loadInTime || '—'}</Text>
                   )}
                 </View>
-                {/* Soundcheck — editable in edit mode */}
                 <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Sound Check</Text>
                   {gigEditing ? (
@@ -822,10 +890,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{soundCheckTime || '—'}</Text>
                   )}
                 </View>
-                <View style={eh.drawerInfoRow}>
-                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Slot</Text>
-                  <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{billing}</Text>
-                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[5]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
               {gigEditing && scheduleEdited && (
                 <View style={eh.drawerNotesBtns}>
@@ -886,53 +951,76 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.orange }}>+ Invite Support Act</Text>
                         </TouchableOpacity>
                       )}
+                      <StageConfirmRow stage={BOOKING_STAGES[4]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                     </View>
                   </>
                 );
               })()}
 
+              {/* Hospitality */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Hospitality</Text>
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <View style={eh.drawerInfoRow}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Artist requirements</Text>
+                  <TouchableOpacity onPress={onScrollToProfile ? () => { closeDetails(); onScrollToProfile?.(); } : undefined} activeOpacity={onScrollToProfile ? 0.7 : 1}>
+                    <Text style={[eh.drawerInfoVal, { color: onScrollToProfile ? Colors.orange : colors.black }]}>
+                      {onScrollToProfile ? 'View profile →' : 'See enquiry'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[8]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
+
               {/* Payment method */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
-              <View style={eh.feeTypeGrid}>
-                {FEE_TYPE_PILLS.map(ft => {
-                  const isSuggested = slotSuggestedFeeTypes.includes(ft.value);
-                  const isSelected  = selectedFeeType === ft.value;
-                  return (
-                    <TouchableOpacity
-                      key={ft.value}
-                      onPress={async () => {
-                        setSelectedFeeType(ft.value);
-                        await updateDoc(doc(db, 'inquiries', enquiry.id), { feeType: ft.value }).catch(() => {});
-                      }}
-                      style={[
-                        eh.feeTypeChip,
-                        { borderColor: isSelected ? Colors.orange : isSuggested ? Colors.orange + '55' : colors.border },
-                        isSelected && { backgroundColor: Colors.orange + '15' },
-                      ]}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[eh.feeTypeChipText, { color: isSelected ? Colors.orange : colors.black }]}>
-                        {ft.label}
-                      </Text>
-                      {isSuggested && !isSelected && <View style={eh.feeTypeDot} />}
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <View style={{ padding: 12, gap: 6 }}>
+                  <View style={eh.feeTypeGrid}>
+                    {FEE_TYPE_PILLS.map(ft => {
+                      const isSuggested = slotSuggestedFeeTypes.includes(ft.value);
+                      const isSelected  = selectedFeeType === ft.value;
+                      return (
+                        <TouchableOpacity
+                          key={ft.value}
+                          onPress={async () => {
+                            setSelectedFeeType(ft.value);
+                            await updateDoc(doc(db, 'inquiries', enquiry.id), { feeType: ft.value }).catch(() => {});
+                          }}
+                          style={[
+                            eh.feeTypeChip,
+                            { borderColor: isSelected ? Colors.orange : isSuggested ? Colors.orange + '55' : colors.border },
+                            isSelected && { backgroundColor: Colors.orange + '15' },
+                          ]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[eh.feeTypeChipText, { color: isSelected ? Colors.orange : colors.black }]}>
+                            {ft.label}
+                          </Text>
+                          {isSuggested && !isSelected && <View style={eh.feeTypeDot} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {slotSuggestedFeeTypes.length > 0 && (
+                    <Text style={[eh.feeTypeHint, { color: colors.grey }]}>
+                      Dotted border: venue's preferred method for this slot.
+                    </Text>
+                  )}
+                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[6]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
-              {slotSuggestedFeeTypes.length > 0 && (
-                <Text style={[eh.feeTypeHint, { color: colors.grey }]}>
-                  Dotted border: venue's preferred method for this slot.
-                </Text>
-              )}
-              <TextInput
-                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 72, marginTop: 8 }]}
-                value={paymentInfo}
-                onChangeText={t => { setPaymentInfo(t); setPaymentInfoEdited(true); }}
-                placeholder="Agreed amount, payment timing, special terms..."
-                placeholderTextColor="#aaaaaa"
-                multiline
-                textAlignVertical="top"
-              />
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
+                <TextInput
+                  style={{ padding: 14, fontSize: 14, minHeight: 72, lineHeight: 21, color: colors.black }}
+                  value={paymentInfo}
+                  onChangeText={t => { setPaymentInfo(t); setPaymentInfoEdited(true); }}
+                  placeholder="Agreed amount, payment timing, special terms..."
+                  placeholderTextColor="#aaaaaa"
+                  multiline
+                  textAlignVertical="top"
+                />
+                <StageConfirmRow stage={BOOKING_STAGES[7]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
               {paymentInfoEdited && (
                 <View style={eh.drawerNotesBtns}>
                   <TouchableOpacity
@@ -1034,6 +1122,17 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   </View>
                 </>
               )}
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <View style={eh.drawerInfoRow}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Tech Rider</Text>
+                  {quickLinks.find(l => l.label === 'Tech Specs') ? (
+                    <TouchableOpacity onPress={() => closeDetails(quickLinks.find(l => l.label === 'Tech Specs')!.onPress ?? undefined)} activeOpacity={0.7}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View →</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[3]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
 
               {/* Important Notes */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Important Notes</Text>
@@ -1089,6 +1188,65 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     {notesDocUploading ? 'Uploading…' : '+ Attach Document'}
                   </Text>
                 </TouchableOpacity>
+              )}
+
+              {/* Post-Gig */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Post-Gig</Text>
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Attendance</Text>
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={postGigAttendance}
+                    onChangeText={t => { setPostGigAttendance(t.replace(/[^0-9]/g, '')); setPostGigEdited(true); }}
+                    placeholder="e.g. 120"
+                    placeholderTextColor="#aaaaaa"
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={BOOKING_STAGES[12]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
+              <TextInput
+                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
+                value={postGigNotes}
+                onChangeText={t => { setPostGigNotes(t); setPostGigEdited(true); }}
+                placeholder="How did it go? Attendance, crowd response, any notes for next time..."
+                placeholderTextColor="#aaaaaa"
+                multiline
+                textAlignVertical="top"
+              />
+              {postGigEdited && (
+                <View style={eh.drawerNotesBtns}>
+                  <TouchableOpacity
+                    style={eh.drawerCancelBtn}
+                    onPress={() => {
+                      setPostGigNotes((enquiry as any).postGigNotes ?? '');
+                      setPostGigAttendance((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
+                      setPostGigEdited(false);
+                    }}
+                  >
+                    <Text style={eh.drawerCancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={eh.drawerSaveBtn}
+                    onPress={async () => {
+                      setPostGigSaving(true);
+                      const updates: Record<string, any> = { postGigNotes: postGigNotes.trim() };
+                      const att = parseInt(postGigAttendance, 10);
+                      if (!isNaN(att)) updates.postGigAttendance = att;
+                      await updateDoc(doc(db, 'inquiries', enquiry.id), updates);
+                      setPostGigEdited(false);
+                      setPostGigSaving(false);
+                    }}
+                    disabled={postGigSaving}
+                  >
+                    {postGigSaving
+                      ? <ActivityIndicator color="#111111" size="small" />
+                      : <Text style={eh.drawerSaveBtnText}>Save</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* Delete conversation */}
@@ -1173,6 +1331,199 @@ const eh = StyleSheet.create({
   feeTypeChipText: { fontSize: 13, fontWeight: '600' },
   feeTypeDot:      { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange },
   feeTypeHint:     { fontSize: 11, marginTop: 4 },
+});
+
+// ── Stage components ────────────────────────────────────────────────────────
+
+function StageIndicator({ status }: { status: StageStatus }) {
+  const isWaiting = status === 'waiting_venue' || status === 'waiting_artist';
+  return (
+    <View style={[
+      sdi.circle,
+      status === 'complete' && { backgroundColor: '#22c55e', borderColor: '#22c55e' },
+      isWaiting             && { backgroundColor: '#fef3c7', borderColor: '#f59e0b' },
+    ]}>
+      {(status === 'complete' || isWaiting) && (
+        <Text style={[sdi.check, isWaiting && { color: '#f59e0b' }]}>✓</Text>
+      )}
+    </View>
+  );
+}
+
+const sdi = StyleSheet.create({
+  circle: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#d0d0d0', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  check:  { fontSize: 11, fontWeight: '800', color: '#ffffff', lineHeight: 14 },
+});
+
+function StageDropdownList({ item }: { item: Enquiry; isVenue: boolean }) {
+  const { colors } = useTheme();
+  const map = (item as any).stages as Record<string, StageData> | undefined;
+  return (
+    <View style={[sdl.container, { backgroundColor: colors.bgFaint, borderTopColor: colors.border, borderBottomColor: colors.border }]}>
+      {BOOKING_STAGES.map((stage, i) => {
+        const data   = map?.[stage.key];
+        const status = computeStageStatus(stage.key, stage.control, data, item);
+        const isLast = i === BOOKING_STAGES.length - 1;
+        const isWait = status === 'waiting_venue' || status === 'waiting_artist';
+        return (
+          <View key={stage.key} style={[sdl.row, !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+            <StageIndicator status={status} />
+            <Text style={[
+              sdl.label,
+              { color: status === 'complete' ? colors.black : colors.grey },
+              status === 'skipped' && sdl.labelStrike,
+            ]}>
+              {stage.label}
+            </Text>
+            {isWait && (
+              <Text style={sdl.waitText}>
+                Waiting on {status === 'waiting_venue' ? 'venue' : 'artist'}
+              </Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const sdl = StyleSheet.create({
+  container:   { paddingHorizontal: isWeb ? 24 : 16, paddingVertical: 4, borderTopWidth: 1, borderBottomWidth: 1 },
+  row:         { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  label:       { flex: 1, fontSize: 13, fontWeight: '600' },
+  labelStrike: { textDecorationLine: 'line-through' as const, opacity: 0.5 },
+  waitText:    { fontSize: 11, color: '#888888', flexShrink: 0 },
+});
+
+function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
+  stage: StageDef;
+  enquiry: Enquiry;
+  isVenue: boolean;
+  colors: any;
+}) {
+  const [saving, setSaving] = useState(false);
+  const map  = (enquiry as any).stages as Record<string, StageData> | undefined;
+  const data: StageData = map?.[stage.key] ?? {};
+
+  const venueConfirmed  = !!data.venueConfirmed;
+  const artistConfirmed = !!data.artistConfirmed;
+  const skipped         = !!data.skipped;
+
+  const myConfirmed    = isVenue ? venueConfirmed  : artistConfirmed;
+  const theirConfirmed = isVenue ? artistConfirmed : venueConfirmed;
+  const theirLabel     = isVenue ? 'Artist'        : 'Venue';
+
+  const canAct  = stage.control === 'both'
+    || (stage.control === 'venue'  && isVenue)
+    || (stage.control === 'artist' && !isVenue);
+  const theyAct = stage.control === 'both'
+    || (stage.control === 'venue'  && !isVenue)
+    || (stage.control === 'artist' && isVenue);
+
+  const myPath   = 'stages.' + stage.key + '.' + (isVenue ? 'venueConfirmed' : 'artistConfirmed');
+  const skipPath = 'stages.' + stage.key + '.skipped';
+  const vcPath   = 'stages.' + stage.key + '.venueConfirmed';
+  const acPath   = 'stages.' + stage.key + '.artistConfirmed';
+
+  async function doConfirm() {
+    setSaving(true);
+    await updateDoc(doc(db, 'inquiries', enquiry.id), { [myPath]: true, [skipPath]: false }).catch(() => {});
+    setSaving(false);
+  }
+  async function doUnconfirm() {
+    setSaving(true);
+    await updateDoc(doc(db, 'inquiries', enquiry.id), { [myPath]: false }).catch(() => {});
+    setSaving(false);
+  }
+  async function doSkip() {
+    setSaving(true);
+    await updateDoc(doc(db, 'inquiries', enquiry.id), { [skipPath]: true, [vcPath]: false, [acPath]: false }).catch(() => {});
+    setSaving(false);
+  }
+  async function doUnskip() {
+    setSaving(true);
+    await updateDoc(doc(db, 'inquiries', enquiry.id), { [skipPath]: false }).catch(() => {});
+    setSaving(false);
+  }
+
+  // Which confirmed state to show for read-only viewers
+  const responsibleConfirmed = stage.control === 'venue' ? venueConfirmed : artistConfirmed;
+
+  return (
+    <View style={[sc.wrap, { borderTopColor: colors.border }]}>
+      {/* Stage name label */}
+      <Text style={[sc.stageLabel, { color: colors.black }]}>{stage.label}</Text>
+
+      {skipped ? (
+        <View style={sc.row}>
+          <Text style={[sc.statusText, { color: colors.greyLight }]}>Stage skipped</Text>
+          {canAct && (
+            <TouchableOpacity onPress={doUnskip} disabled={saving} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={[sc.link, { color: Colors.orange }]}>Undo</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <>
+          {stage.control === 'both' && theyAct && (
+            <View style={sc.partyRow}>
+              <View style={[sc.dot, theirConfirmed && sc.dotGreen]} />
+              <Text style={[sc.partyText, { color: theirConfirmed ? '#16a34a' : colors.greyLight }]}>
+                {theirLabel}: {theirConfirmed ? 'Confirmed' : 'Not yet confirmed'}
+              </Text>
+            </View>
+          )}
+          {canAct ? (
+            <View style={sc.row}>
+              {myConfirmed ? (
+                <>
+                  <View style={sc.confirmedBadge}>
+                    <Text style={sc.confirmedBadgeText}>Confirmed</Text>
+                  </View>
+                  <TouchableOpacity onPress={doUnconfirm} disabled={saving} style={sc.rowRight}>
+                    <Text style={[sc.link, { color: colors.greyLight }]}>Undo</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity style={[sc.confirmBtn, saving && { opacity: 0.6 }]} onPress={doConfirm} disabled={saving} activeOpacity={0.75}>
+                    {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={sc.confirmBtnText}>Mark complete</Text>}
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={doSkip} disabled={saving} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Text style={[sc.link, { color: colors.greyLight }]}>Skip</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          ) : (
+            <View style={sc.row}>
+              <View style={[sc.dot, responsibleConfirmed && sc.dotGreen]} />
+              <Text style={[sc.statusText, { color: responsibleConfirmed ? '#16a34a' : colors.greyLight }]}>
+                {responsibleConfirmed ? 'Confirmed' : 'Pending confirmation'}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+const sc = StyleSheet.create({
+  wrap:               { paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1 },
+  stageLabel:         { fontSize: 12, fontWeight: '700', letterSpacing: 0.1, marginBottom: 8 },
+  row:                { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowRight:           { marginLeft: 'auto' as any },
+  partyRow:           { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  dot:                { width: 8, height: 8, borderRadius: 4, backgroundColor: '#d0d0d0' },
+  dotGreen:           { backgroundColor: '#22c55e' },
+  partyText:          { fontSize: 12, fontWeight: '600' },
+  statusText:         { fontSize: 12, fontWeight: '600' },
+  confirmedBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(22,163,74,0.1)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  confirmedBadgeText: { fontSize: 12, fontWeight: '700', color: '#16a34a' },
+  confirmBtn:         { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
+  confirmBtnText:     { fontSize: 12, fontWeight: '700', color: '#ffffff' },
+  link:               { fontSize: 12, fontWeight: '600' },
 });
 
 // ── Participant strip ───────────────────────────────────────────────────────
@@ -1626,9 +1977,11 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
 
   const badgeRef   = useRef<View>(null);
   const swipeRef   = useRef<Swipeable>(null);
-  const [menuOpen,    setMenuOpen]    = useState(false);
-  const [menuPos,     setMenuPos]     = useState<{ x: number; y: number } | null>(null);
-  const [confirmDel,  setConfirmDel]  = useState(false);
+  const [menuOpen,      setMenuOpen]      = useState(false);
+  const [menuPos,       setMenuPos]       = useState<{ x: number; y: number } | null>(null);
+  const [confirmDel,    setConfirmDel]    = useState(false);
+  const [progressOpen,  setProgressOpen]  = useState(false);
+  const doneCount = countDoneStages(item);
 
   function openMenu(e: any) {
     e.stopPropagation?.();
@@ -1721,9 +2074,23 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
               </View>
             ) : null}
           </View>
+
+          {/* Progress bar row */}
+          <TouchableOpacity
+            style={tt.progressRow}
+            onPress={e => { (e as any).stopPropagation?.(); setProgressOpen(p => !p); }}
+            activeOpacity={0.7}
+          >
+            <View style={tt.progressTrack}>
+              <View style={[tt.progressFill, { width: `${Math.round((doneCount / BOOKING_STAGES.length) * 100)}%` as any }]} />
+            </View>
+            <Text style={tt.progressCount}>{doneCount} / {BOOKING_STAGES.length} stages</Text>
+            <Text style={tt.progressChevron}>{progressOpen ? '▾' : '▸'}</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
       </Swipeable>
+      {progressOpen && <StageDropdownList item={item} isVenue={isVenue} />}
 
       <Modal visible={menuOpen} transparent animationType="none" onRequestClose={() => setMenuOpen(false)}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuOpen(false)}>
@@ -1792,6 +2159,11 @@ const tt = StyleSheet.create({
   rosterLabel:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' as any },
   rosterDot:      { width: 7, height: 7, borderRadius: 3.5, backgroundColor: Colors.orange },
   rosterLabelText:{ fontSize: 12, fontWeight: '700', color: Colors.orange },
+  progressRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10, borderTopWidth: 1, borderTopColor: '#eeeeee', backgroundColor: '#fafafa' },
+  progressTrack:  { flex: 1, height: 3, borderRadius: 2, backgroundColor: '#e8e8e8', overflow: 'hidden' as const },
+  progressFill:   { height: 3, borderRadius: 2, backgroundColor: Colors.orange },
+  progressCount:  { fontSize: 11, fontWeight: '600', color: '#aaaaaa', flexShrink: 0 },
+  progressChevron:{ fontSize: 11, color: '#aaaaaa', flexShrink: 0, width: 10 },
 });
 
 // ── Profile section sharing ────────────────────────────────────────────────
