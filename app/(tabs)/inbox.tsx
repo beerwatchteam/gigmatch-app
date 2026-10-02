@@ -3,12 +3,14 @@ import { Swipeable } from 'react-native-gesture-handler';
 import {
   View, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
-  ScrollView, Image, Linking, useWindowDimensions, Modal, Animated, Alert,
+  ScrollView, Image, Linking, useWindowDimensions, Modal, Animated, Alert, Switch,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { LegalIdentity, BLANK_LEGAL } from '@/lib/legalIdentity';
+import { LegalIdentity, BLANK_LEGAL, isLegalIdentityComplete } from '@/lib/legalIdentity';
+import { isPaymentReady } from '@/lib/payment-readiness';
+import { type EnquiryFee, type DueTiming } from '@/lib/enquiry-fee';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Text } from '@/components/Text';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -27,10 +29,12 @@ import {
   ensureVenueParticipant,
   normalizeEnquiryStatus,
   fetchVenuePastCollaborators, fetchHeadlinerPastCollaborators,
+  postSystemMessage,
   type Enquiry, type Participant,
 } from '@/lib/useEnquiries';
+import { crossConfirm } from '@/lib/confirm';
 import { cancelAcceptance } from '@/lib/useGigs';
-import { type FeeType, tzLabel, type Gig } from '@/lib/gig-types';
+import { type FeeType, tzLabel, type Gig, dollarsToCents } from '@/lib/gig-types';
 import { PaymentCard } from '@/components/PaymentCard';
 import {
   useDMConversations, useDMMessages,
@@ -131,132 +135,317 @@ function fmtSlotDateFull(date?: string | null): string {
   return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-function buildContractHtml(
-  enquiry: Enquiry,
-  myLegal: LegalIdentity,
-  isVenue: boolean,
-  setLength: string,
-  loadIn: string,
-  soundCheck: string,
-): string {
+function buildContractHtml({
+  enquiry, venueData, artistProfile, venueLegal, artistLegal,
+  setLength, loadIn, soundCheck, supportActs, isDraft, techRiderConfirmed,
+  venueSignature, artistSignature,
+}: {
+  enquiry: Enquiry;
+  venueData: Record<string, any>;
+  artistProfile: Record<string, any>;
+  venueLegal: LegalIdentity;
+  artistLegal: LegalIdentity;
+  setLength: string;
+  loadIn: string;
+  soundCheck: string;
+  supportActs: string;
+  /** When true, stamps every page DRAFT and highlights missing fields. */
+  isDraft: boolean;
+  /** Whether the venue has confirmed the tech rider review stage. */
+  techRiderConfirmed: boolean;
+  venueSignature?:  { signatoryName: string; signedAt: number } | null;
+  artistSignature?: { signatoryName: string; signedAt: number } | null;
+}): string {
   const today = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
   const gigDate = enquiry.requestedSlot.date
     ? new Date(enquiry.requestedSlot.date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-    : enquiry.requestedSlot.day || '—';
+    : enquiry.requestedSlot.day || '';
 
+  const gigId = (enquiry as any).gigId || enquiry.id;
+
+  // ── Parties ───────────────────────────────────────────────────────────────
+  const venueLegalName  = venueLegal.legalName  || enquiry.venueName;
+  const artistLegalName = artistLegal.legalName || enquiry.bandName;
+  const venueAbn  = venueData.payment?.abn || '';
+  const venueAcn  = venueLegal.acn || '';
+  const artistAbn = artistProfile.payment?.abn || '';
+  const artistAcn = artistLegal.acn || '';
+  const artistAbnStatus    = artistProfile.payment?.abnStatus as string || '';
+  const artistGstRegistered = !!artistProfile.payment?.gstRegistered;
+  const canProvideInvoice   = !!artistProfile.payment?.canProvideInvoice;
+  const artistEntityType    = artistLegal.entityType || '';
+
+  const venueAddr  = venueLegal.addressLine
+    ? [venueLegal.addressLine,  venueLegal.suburb,  venueLegal.state,  venueLegal.postcode ].filter(Boolean).join(', ')
+    : [venueData.streetAddress, venueData.suburb,   venueData.state,   venueData.postcode  ].filter(Boolean).join(', ');
+  const artistAddr = [artistLegal.addressLine, artistLegal.suburb, artistLegal.state, artistLegal.postcode].filter(Boolean).join(', ');
+  const venueTradingName = venueData.name || enquiry.venueName;
+
+  // ── Performance details ───────────────────────────────────────────────────
+  const venueStreetAddress = venueData.streetAddress || '';
+  const room        = (enquiry.requestedSlot as any).room as string || '';
+  const setLenMins  = (setLength || enquiry.requestedSlot.setLength || '').replace(/\D/g, '');
+
+  // ── Tech rider ────────────────────────────────────────────────────────────
+  const rider         = (artistProfile.techRider || {}) as Record<string, string>;
+  const riderMonitor  = [rider.monitoringType, rider.monitoring].filter(Boolean).join(' — ');
+  const riderNotes    = rider.notes || '';
+  const techRiderDocs = (artistProfile.techRiderDocs || []) as { name: string }[];
+  const techRiderName = techRiderDocs[0]?.name || 'not attached';
+  const backlineProvided: string[] = venueData.payment?.backlineProvided || [];
+
+  // ── Hospitality ───────────────────────────────────────────────────────────
+  const mealsProvided      = !!venueData.payment?.mealsProvided;
+  const mealsNotes         = venueData.payment?.mealsNotes as string || '';
+  const guestListAllowance = venueData.payment?.guestListAllowance as string || '';
+  const hospParts: string[] = [];
+  if (backlineProvided.length) hospParts.push('sound and backline support as listed in clause 3');
+  if (guestListAllowance) hospParts.push(`guest list (${guestListAllowance})`);
+  const hospitalitySummary = hospParts.length ? hospParts.join(', ') : 'standard artist provisions';
+
+  // ── Payment ───────────────────────────────────────────────────────────────
   const fee = (enquiry as any).fee as { type?: string; amountCents?: number; doorPercent?: number; ticketPrice?: number; notes?: string } | null | undefined;
-  const paymentInfo = (enquiry as any).paymentInfo as string | undefined;
-  const feeLabel: Record<string, string> = {
-    flat: 'Flat fee', door_split: 'Door split',
-    guarantee_vs_door: 'Guarantee + door', ticket_split: 'Ticket split',
-    unpaid: 'Unpaid', other: 'Other',
-  };
-  const feeRows: string[] = [];
-  if (fee?.type) feeRows.push(`<tr><td>Fee type</td><td>${feeLabel[fee.type] ?? fee.type}</td></tr>`);
-  if (fee?.amountCents != null) {
-    const d = fee.amountCents / 100;
-    feeRows.push(`<tr><td>${fee.type === 'guarantee_vs_door' ? 'Guarantee' : 'Amount'}</td><td>$${Number.isInteger(d) ? d : d.toFixed(2)}</td></tr>`);
-  }
-  if (fee?.doorPercent != null) feeRows.push(`<tr><td>Door split</td><td>${fee.doorPercent}%</td></tr>`);
-  if (fee?.notes) feeRows.push(`<tr><td>Fee notes</td><td>${fee.notes}</td></tr>`);
-  if (paymentInfo) feeRows.push(`<tr><td>Payment terms</td><td>${paymentInfo}</td></tr>`);
+  const ef  = (enquiry as any).enquiryFee as Partial<EnquiryFee> | null | undefined;
+  const feeType     = (enquiry as any).feeType as string || fee?.type || 'other';
 
-  const myPartyLabel  = isVenue ? 'Venue' : 'Artist';
-  const otherLabel    = isVenue ? 'Artist' : 'Venue';
-  const myName        = myLegal.legalName || (isVenue ? enquiry.venueName : enquiry.bandName);
-  const otherName     = isVenue ? enquiry.bandName : enquiry.venueName;
-  const myAbn         = (enquiry as any)[isVenue ? 'venueAbn' : 'artistAbn'] as string | undefined;
-  const myAddress     = [myLegal.addressLine, myLegal.suburb, myLegal.state, myLegal.postcode].filter(Boolean).join(', ');
-  const acnDisplay    = myLegal.acn ? ` &nbsp; ACN: ${myLegal.acn}` : '';
+
+  const fmtMoney = (cents: number) => {
+    const d = cents / 100;
+    return `$${Number.isInteger(d) ? d.toLocaleString('en-AU') : d.toFixed(2)}`;
+  };
+  // Prefer live enquiryFee negotiation fields over the confirmed-fee snapshot
+  const feeAmount   = ef?.amountCents      != null ? fmtMoney(ef.amountCents)          : fee?.amountCents  != null ? fmtMoney(fee.amountCents)  : '';
+  const doorPercent = ef?.doorPercent      != null ? `${ef.doorPercent}`                : fee?.doorPercent  != null ? `${fee.doorPercent}`        : '';
+  const ticketPrice = ef?.ticketPriceCents != null ? fmtMoney(ef.ticketPriceCents)      : fee?.ticketPrice  != null ? fmtMoney(fee.ticketPrice)   : '';
+  const gstApplies  = ef?.gstApplies ?? artistGstRegistered;
+  const deductions  = ef?.deductionsText || '';
+  const threshold   = ef?.thresholdCents  != null ? fmtMoney(ef.thresholdCents)         : '';
+  const rptDays     = ef?.reportDays      != null ? ef.reportDays                        : 7;
+  const unpaidNotes = ef?.unpaidNotes  || '';
+  const efChannel   = ef?.channel      || '';
+
+  const payMethodLabel: Record<string, string> = {
+    flat: 'flat fee', door_split: 'door split',
+    guarantee_vs_door: 'guarantee plus door split', ticket_split: 'ticket sales split',
+    unpaid: 'no payment (unpaid)', other: 'arrangement as described in clause 5.6',
+  };
+  const paymentMethodLabel = payMethodLabel[feeType] || 'arrangement as described in clause 5.6';
+
+  // 5.2 amount clause
+  let clause5_2 = '';
+  const np = '[not provided]';
+  if (feeType === 'flat') {
+    const gstNote = gstApplies ? ' plus GST' : '. No GST is charged';
+    clause5_2 = `The Venue will pay the Artist ${feeAmount || np}${gstNote}.`;
+  } else if (feeType === 'door_split') {
+    const dedStr = deductions ? `, calculated after ${deductions}` : ', calculated after venue costs';
+    clause5_2 = `The Artist will receive ${doorPercent || np}% of door takings${dedStr}. The Venue will give the Artist the door count and takings at the end of the night.`;
+  } else if (feeType === 'guarantee_vs_door') {
+    const thrStr = threshold ? ` above ${threshold}` : '';
+    const dedStr = deductions ? `, calculated after ${deductions}` : '';
+    clause5_2 = `The Venue will pay a guarantee of ${feeAmount || np}, plus ${doorPercent || np}% of door takings${thrStr}${dedStr}. The Venue will give the Artist the door count and takings at the end of the night.`;
+  } else if (feeType === 'ticket_split') {
+    const tpStr = ticketPrice ? ` (ticket price ${ticketPrice})` : '';
+    clause5_2 = `The Artist will receive ${doorPercent || np}% of net ticket sales${tpStr}. The Venue will send a sales report within ${rptDays} days after the performance.`;
+  } else if (feeType === 'unpaid') {
+    clause5_2 = `Both parties acknowledge this is an unpaid performance.${unpaidNotes ? ' ' + unpaidNotes : ''}`;
+  } else {
+    clause5_2 = 'Payment is as described in clause 5.6.';
+  }
+
+  // 5.3 timing — prefer structured enquiryFee timing over the venue's default
+  let clause5_3 = '';
+  const efDueTiming = ef?.dueTiming;
+  const efDueDays   = ef?.dueDays;
+  if (efDueTiming === 'on_night') {
+    clause5_3 = 'Payment is due on the night of the performance.';
+  } else if (efDueTiming === 'within_days' && efDueDays != null) {
+    clause5_3 = `Payment is due within ${efDueDays} day${efDueDays === 1 ? '' : 's'} after the performance.`;
+  } else {
+    const timingMap: Record<string, string> = {
+      'Same night':     'Payment is due on the night of the performance.',
+      'Within 7 days':  'Payment is due within 7 days after the performance.',
+      'Within 14 days': 'Payment is due within 14 days after the performance.',
+      'Within 30 days': 'Payment is due within 30 days after the performance.',
+    };
+    const venueTimingRaw   = venueData.payment?.timing    as string || '';
+    const venueTimingOther = venueData.payment?.timingOther as string || '';
+    clause5_3 = timingMap[venueTimingRaw]
+      || (venueTimingRaw === 'Other' && venueTimingOther ? `Payment timing: ${venueTimingOther}.` : '');
+  }
+
+  // 5.4 ABN/tax
+  let clause5_4 = '';
+  if (artistAbnStatus === 'has_abn' && artistAbn) {
+    clause5_4 = `The Artist's ABN is ${artistAbn}.`;
+    clause5_4 += artistGstRegistered
+      ? ' The Artist is registered for GST and will issue a tax invoice.'
+      : ' The Artist is not registered for GST.';
+    if (canProvideInvoice) clause5_4 += ' The Artist will provide an invoice before payment is due.';
+  } else if (artistAbnStatus === 'no_abn_hobby') {
+    clause5_4 = 'The Artist declares they are not carrying on an enterprise in respect of this performance and are not required to quote an ABN.';
+  } else if (artistAbnStatus === 'applying') {
+    clause5_4 = 'The Artist will give the Venue their ABN before payment is due. If none is given, the Venue may withhold tax from the payment as the law requires.';
+  }
+
+  // 5.5 deposit
+  const depositRequired = !!venueData.payment?.depositRequired;
+  const depositAmount   = venueData.payment?.depositAmount as string || '[not provided]';
+  const depositDue      = venueData.payment?.depositDue    as string || '[not provided]';
+
+  // ── Insurance ─────────────────────────────────────────────────────────────
+  const artistPLHeld     = !!artistProfile.payment?.publicLiabilityHeld;
+  const artistPLCoverage = artistProfile.payment?.publicLiabilityCoverage as string || '';
+
+  // ── General ───────────────────────────────────────────────────────────────
+  const venueState    = venueData.state || venueLegal.state || 'Australia';
+  const importantNotes = (enquiry as any).importantNotes as string || '';
+  const notesDoc       = (enquiry as any).notesDoc as { name: string } | null;
+  const attachmentList = notesDoc ? notesDoc.name : 'None';
+
+  // ── Helper: omit table row when value is empty ────────────────────────────
+  const r = (label: string, value: string) =>
+    value.trim() ? `<tr><td>${label}</td><td>${value}</td></tr>` : '';
+
+  // ── Signature lines ───────────────────────────────────────────────────────
+  const venueSigLine  = venueLegal.signatoryName
+    ? `${venueLegal.signatoryName},&nbsp;${venueLegal.signatoryRole}`
+    : '<span class="tbc">[not provided]</span>';
+  const artistSigLine = artistLegal.signatoryName
+    ? `${artistLegal.signatoryName},&nbsp;${artistLegal.signatoryRole}`
+    : '<span class="tbc">[not provided]</span>';
+
+  const fmtSigDate = (ts: number) =>
+    new Date(ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const venueSignedCell  = venueSignature
+    ? `<em>Electronically signed by ${venueSignature.signatoryName} on ${fmtSigDate(venueSignature.signedAt)}</em>`
+    : '<div class="sig-space"></div><span class="sig-label">Date signed:</span>';
+  const artistSignedCell = artistSignature
+    ? `<em>Electronically signed by ${artistSignature.signatoryName} on ${fmtSigDate(artistSignature.signedAt)}</em>`
+    : '<div class="sig-space"></div><span class="sig-label">Date signed:</span>';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Performance Agreement — ${enquiry.bandName} @ ${venueTradingName}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Georgia, 'Times New Roman', serif; font-size: 13px; color: #111; padding: 48px; line-height: 1.65; max-width: 720px; margin: auto; }
-  h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; }
-  h2 { font-size: 12px; font-weight: 400; color: #555; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 32px; }
-  h3 { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #555; margin: 28px 0 10px; }
-  .divider { border: none; border-top: 1px solid #ddd; margin: 24px 0; }
-  table { width: 100%; border-collapse: collapse; }
-  td { padding: 7px 0; vertical-align: top; }
-  td:first-child { color: #666; width: 38%; font-size: 12px; }
-  td:last-child { font-weight: 500; }
-  .party-block { border: 1px solid #e0e0e0; border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; }
-  .party-block strong { display: block; font-size: 14px; margin-bottom: 4px; }
-  .party-block span { font-size: 12px; color: #555; }
-  .notice { background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #92400e; margin: 20px 0; }
-  .sig-block { border-top: 1px solid #ccc; margin-top: 48px; padding-top: 20px; display: flex; gap: 40px; flex-wrap: wrap; }
-  .sig { flex: 1; min-width: 200px; }
-  .sig-line { border-top: 1px solid #111; margin-top: 48px; padding-top: 6px; font-size: 11px; color: #555; }
-  .watermark { text-align: center; margin-top: 40px; font-size: 10px; color: #bbb; letter-spacing: 1px; }
+  body { font-family: Georgia, 'Times New Roman', serif; font-size: 12px; line-height: 1.78; color: #111; padding: 60px; max-width: 720px; margin: auto; }
+  h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 4px; }
+  .ref { font-size: 10.5px; color: #777; margin-bottom: 38px; letter-spacing: 0.2px; }
+  h2 { font-size: 12.5px; font-weight: 700; margin: 30px 0 10px; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; letter-spacing: -0.1px; }
+  p { margin: 0 0 10px; }
+  table.det { width: 100%; border-collapse: collapse; margin: 10px 0 16px; }
+  table.det td { padding: 7px 11px; border: 1px solid #d8d8d8; vertical-align: top; font-size: 12px; }
+  table.det td:first-child { background: #f6f6f6; font-weight: 600; width: 34%; }
+  table.sig { width: 100%; border-collapse: collapse; margin: 10px 0; }
+  table.sig th { background: #f6f6f6; font-weight: 700; font-size: 11px; text-align: left; padding: 9px 13px; border: 1px solid #d8d8d8; }
+  table.sig td { padding: 10px 13px; border: 1px solid #d8d8d8; vertical-align: top; font-size: 12px; }
+  .sig-space { min-height: 52px; border-bottom: 1px solid #333; margin: 38px 0 6px; }
+  .sig-label { font-size: 10.5px; color: #666; }
+  .notice { background: #fffbeb; border: 1px solid #fde68a; padding: 11px 14px; font-size: 11px; color: #92400e; margin: 22px 0; border-radius: 4px; }
+  .tbc { color: #b45309; font-style: italic; font-size: 11px; }
+  .footer { text-align: center; font-size: 10px; color: #bbb; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 52px; padding-top: 14px; border-top: 1px solid #e0e0e0; }
+  .tbc { color: #b45309; font-style: italic; font-size: 11px; }
+  .np  { color: #b45309; font-style: italic; }
+${isDraft ? `  .draft-stamp { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 96px; font-weight: 900; color: rgba(200,0,0,0.07); white-space: nowrap; pointer-events: none; z-index: 9999; letter-spacing: 12px; font-family: Arial, sans-serif; }` : ''}
 </style>
 </head>
 <body>
+${isDraft ? '<div class="draft-stamp">DRAFT</div>' : ''}
 
-<h1>Performance Agreement</h1>
-<h2>Draft &nbsp;·&nbsp; Generated ${today}</h2>
+<h1>PERFORMANCE AGREEMENT</h1>
+<div class="ref">Reference: ${gigId}&nbsp;&nbsp;·&nbsp;&nbsp;Version: 1.0&nbsp;&nbsp;·&nbsp;&nbsp;Generated: ${today}</div>
 
-<h3>Parties</h3>
-<div class="party-block">
-  <strong>${myName}</strong>
-  <span>${myPartyLabel}${myLegal.entityType ? ' &nbsp;·&nbsp; ' + myLegal.entityType : ''}${myAbn ? ' &nbsp;·&nbsp; ABN: ' + myAbn : ''}${acnDisplay}</span>
-  ${myAddress ? `<span style="display:block;margin-top:4px">${myAddress}</span>` : ''}
-</div>
-<div class="party-block">
-  <strong>${otherName}</strong>
-  <span>${otherLabel} &nbsp;·&nbsp; Details to be confirmed by counterparty</span>
-</div>
+<h2>1. Parties</h2>
+<p>This agreement is between:</p>
+<p>(a) <strong>The Venue:</strong> ${venueLegalName}${venueAbn ? ` (ABN ${venueAbn})` : ''}${venueAcn ? ` (ACN ${venueAcn})` : ''}${venueAddr ? `, of ${venueAddr}` : ''}${venueTradingName !== venueLegalName ? ` (trading as ${venueTradingName})` : ''}; and</p>
+<p>(b) <strong>The Artist:</strong> ${artistLegalName}${artistAbnStatus === 'has_abn' && artistAbn ? ` (ABN ${artistAbn})` : ''}${artistAcn ? ` (ACN ${artistAcn})` : ''}${artistAddr ? `, of ${artistAddr}` : ''} (performing as ${enquiry.bandName}).</p>
+${artistEntityType === 'Partnership' ? '<p>The Artist\'s signatory signs on behalf of every member of the group and confirms they are authorised to do so.</p>' : ''}
 
-<hr class="divider">
+<h2>2. Performance details</h2>
+<p>Rows with no value are left out. The Artist will arrive and perform at these times. Any change must be agreed by both parties in writing through the Twaylo inbox.</p>
+<table class="det"><tbody>
+  ${r('Venue address', venueStreetAddress)}
+  ${r('Date', gigDate)}
+  ${r('Slot', (enquiry.requestedSlot.slotType || ''))}
+  ${r('Room', room)}
+  ${r('Load-in', loadIn)}
+  ${r('Sound check', soundCheck)}
+  ${r('Set start', enquiry.requestedSlot.time || '')}
+  ${r('Set length', setLenMins ? setLenMins + ' minutes' : '')}
+  ${r('Support acts', supportActs)}
+</tbody></table>
 
-<h3>Performance Details</h3>
-<table>
-  <tr><td>Date</td><td>${gigDate}</td></tr>
-  <tr><td>Venue</td><td>${enquiry.venueName}</td></tr>
-  <tr><td>Billing</td><td>${enquiry.requestedSlot.slotType || '—'}</td></tr>
-  <tr><td>Set time</td><td>${enquiry.requestedSlot.time || '—'}</td></tr>
-  <tr><td>Set length</td><td>${setLength || enquiry.requestedSlot.setLength || '—'}</td></tr>
-  ${loadIn ? `<tr><td>Load in</td><td>${loadIn}</td></tr>` : ''}
-  ${soundCheck ? `<tr><td>Soundcheck</td><td>${soundCheck}</td></tr>` : ''}
+<h2>3. Technical requirements</h2>
+<p>The Artist's technical requirements are in the attached tech rider (${techRiderName}) and summarised here:</p>
+<ul style="margin:8px 0 10px 18px">
+  ${riderMonitor ? `<li>Monitoring: ${riderMonitor}</li>` : ''}
+  ${soundCheck   ? `<li>Sound check: ${soundCheck}</li>`   : ''}
+  ${riderNotes   ? `<li>Notes: ${riderNotes}</li>`         : ''}
+  ${!riderMonitor && !soundCheck && !riderNotes ? '<li>See attached tech rider for full requirements.</li>' : ''}
+</ul>
+${techRiderConfirmed ? `<p>The Venue confirms it has reviewed the tech rider and will provide the equipment and support it describes, except as noted in clause 9.${backlineProvided.length ? ` The Venue will also provide this backline: ${backlineProvided.join(', ')}.` : ''}</p>` : ''}
+
+<h2>4. Hospitality</h2>
+<p>The Venue will provide: ${hospitalitySummary}.${mealsProvided ? ` Meals: ${mealsNotes || 'as agreed'}.` : ''}${guestListAllowance ? ` Guest list allowance: ${guestListAllowance}.` : ''}</p>
+
+<h2>5. Payment</h2>
+<p>5.1 <strong>Method.</strong> The Artist will be paid by ${paymentMethodLabel}${efChannel ? ` via ${efChannel}` : ''}. Twaylo does not process payments; the Venue pays the Artist directly.</p>
+<p>5.2 <strong>Amount.</strong> ${clause5_2}</p>
+${clause5_3 ? `<p>5.3 <strong>When.</strong> ${clause5_3}</p>` : ''}
+${clause5_4 ? `<p>5.4 <strong>ABN and tax.</strong> ${clause5_4}</p>` : ''}
+${depositRequired ? `<p>5.5 <strong>Deposit.</strong> The Venue will pay a deposit of ${depositAmount} by ${depositDue}.</p>` : ''}
+
+<h2>6. Cancellation</h2>
+<p>6.1 Either party may cancel by written notice through the Twaylo inbox.</p>
+<p>6.2 If the Venue cancels with less than 14 days' notice, it will pay the Artist 50% of the agreed fee.</p>
+<p>6.3 If the Artist cancels with less than 14 days' notice, the Artist will forfeit any deposit paid.</p>
+<p>6.4 Neither party is liable for a cancellation caused by events outside their reasonable control, such as severe weather, government restrictions or serious illness.</p>
+
+<h2>7. Insurance and licences</h2>
+<p>7.1 ${artistPLHeld ? `The Artist holds public liability insurance${artistPLCoverage ? ` (${artistPLCoverage})` : ''}.` : 'The Artist does not hold public liability insurance.'}</p>
+<p>7.2 The Venue holds the licences and public liability insurance its premises require, including any music licensing needed for public performance at the venue.</p>
+
+<h2>8. General</h2>
+<p>8.1 Each party is an independent contractor. Nothing here creates an employment, partnership or agency relationship.</p>
+<p>8.2 The Artist is responsible for their own equipment and for the conduct of their members and crew at the venue.</p>
+<p>8.3 Twaylo provides the platform only. It is not a party to this agreement, does not process payments and is not responsible for either party's performance.</p>
+<p>8.4 This agreement is the whole agreement about this performance. Changes must be in writing and agreed by both parties through the Twaylo inbox, and each change creates a new version that both parties must sign again.</p>
+<p>8.5 This agreement is governed by the laws of ${venueState}, Australia.</p>
+<p>8.6 The parties agree this agreement may be signed electronically and in counterparts.</p>
+
+<h2>9. Additional notes and attachments</h2>
+${importantNotes ? `<p>${importantNotes}</p>` : '<p>None.</p>'}
+<p>Attachments: ${attachmentList}</p>
+
+<h2>10. Signatures</h2>
+<p>By signing, each party agrees to the terms above.</p>
+<div class="notice">This is a draft contract generated by Twaylo. Reference: ${gigId}, version 1.0. Both parties should review all details before signing. Have an Australian lawyer review the text before using for real bookings. Twaylo is not a party to this agreement.</div>
+<table class="sig">
+  <thead><tr><th></th><th>Venue</th><th>Artist</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Signed for</strong></td>
+      <td>${venueLegalName}</td>
+      <td>${artistLegalName}</td>
+    </tr>
+    <tr>
+      <td><strong>Signatory</strong></td>
+      <td>${venueSigLine}</td>
+      <td>${artistSigLine}</td>
+    </tr>
+    <tr>
+      <td><strong>Signature</strong></td>
+      <td>${venueSignedCell}</td>
+      <td>${artistSignedCell}</td>
+    </tr>
+  </tbody>
 </table>
 
-<hr class="divider">
-
-<h3>Fee and Payment</h3>
-<table>
-  ${feeRows.length > 0 ? feeRows.join('\n  ') : '<tr><td colspan="2" style="color:#999">No fee details recorded.</td></tr>'}
-</table>
-
-<hr class="divider">
-
-<h3>Standard Terms</h3>
-<p style="font-size:12px;color:#444;line-height:1.7">
-  1. The Artist agrees to perform at the Venue on the date and time specified above.<br>
-  2. The Venue agrees to pay the Artist the fee specified above, in the agreed manner and timing.<br>
-  3. Either party may cancel with a minimum of 14 days notice. Cancellations within 7 days may incur a cancellation fee as agreed.<br>
-  4. The Artist is responsible for providing their own required equipment unless otherwise agreed in the Tech Rider.<br>
-  5. This agreement is governed by the laws of Australia.
-</p>
-
-<div class="notice">
-  This is a draft contract generated by Twaylo. Both parties should review all details and obtain independent legal advice before signing. Counterparty details have not been verified by Twaylo.
-</div>
-
-<h3>Signatures</h3>
-<div class="sig-block">
-  <div class="sig">
-    <div class="sig-line">${isVenue ? enquiry.venueName : enquiry.bandName}<br>${myLegal.signatoryName ? myLegal.signatoryName + ', ' + myLegal.signatoryRole : 'Authorised representative'}</div>
-  </div>
-  <div class="sig">
-    <div class="sig-line">${isVenue ? enquiry.bandName : enquiry.venueName}<br>Authorised representative</div>
-  </div>
-</div>
-
-<div class="watermark">TWAYLO &nbsp;·&nbsp; DRAFT &nbsp;·&nbsp; NOT LEGALLY BINDING UNTIL SIGNED BY BOTH PARTIES</div>
+<div class="footer">Twaylo &nbsp;·&nbsp; ${isDraft ? 'Draft — Not signed' : 'For review and signature'} &nbsp;·&nbsp; Not legally binding until signed by both parties</div>
 
 </body>
 </html>`;
@@ -319,6 +508,8 @@ function getStatusCfg(status: string, isVenue: boolean): StatusCfg {
   }
 }
 
+const PAYMENT_CHANNELS = ['Cash', 'Bank transfer', 'PayPal', 'Stripe', 'Other'];
+
 const FEE_TYPE_PILLS: { value: FeeType; label: string }[] = [
   { value: 'flat',              label: 'Flat fee'         },
   { value: 'door_split',        label: 'Door split'       },
@@ -327,6 +518,57 @@ const FEE_TYPE_PILLS: { value: FeeType; label: string }[] = [
   { value: 'unpaid',            label: 'Unpaid'           },
   { value: 'other',             label: 'Other'            },
 ];
+
+/**
+ * Human-readable labels for each enquiryFee field key — used in system messages
+ * when a confirmed stage is reset due to a field edit.
+ */
+const FEE_FIELD_LABELS: Record<string, string> = {
+  amountCents:      'Amount',
+  doorPercent:      'Artist percentage',
+  ticketPriceCents: 'Ticket price',
+  thresholdCents:   'Guarantee threshold',
+  deductionsText:   'Deductions',
+  reportDays:       'Sales report days',
+  unpaidNotes:      'Unpaid notes',
+  channel:          'Payment channel',
+  dueTiming:        'Payment timing',
+  dueDays:          'Days after gig',
+  gstApplies:       'GST applies',
+};
+
+/**
+ * Which stage(s) each enquiryFee field belongs to. When a stage is confirmed and
+ * a field it owns changes, the stage is reset so both parties must re-confirm.
+ *
+ * All fields belong to the single paymentTermsSet stage.
+ */
+const FEE_FIELD_STAGE: Record<string, StageKey[]> = {
+  amountCents:      ['paymentTermsSet'],
+  doorPercent:      ['paymentTermsSet'],
+  ticketPriceCents: ['paymentTermsSet'],
+  unpaidNotes:      ['paymentTermsSet'],
+  channel:          ['paymentTermsSet'],
+  dueTiming:        ['paymentTermsSet'],
+  dueDays:          ['paymentTermsSet'],
+  thresholdCents:   ['paymentTermsSet'],
+  deductionsText:   ['paymentTermsSet'],
+  reportDays:       ['paymentTermsSet'],
+  gstApplies:       ['paymentTermsSet'],
+};
+
+/** Format a raw fee field value for display in a system thread message. */
+function formatFeeFieldValue(key: string, value: any): string {
+  if (value === null || value === undefined || value === '') return 'none';
+  if (key === 'amountCents' || key === 'thresholdCents' || key === 'ticketPriceCents') {
+    const d = (value as number) / 100;
+    return `$${Number.isInteger(d) ? d : d.toFixed(2)}`;
+  }
+  if (key === 'doorPercent') return `${value}%`;
+  if (key === 'gstApplies')  return value ? 'yes' : 'no';
+  if (key === 'dueTiming')   return value === 'on_night' ? 'on the night' : 'within days';
+  return String(value);
+}
 
 /** Maps payment model strings (legacy and current) to a FeeType value. */
 function parseFeeType(s: string | null | undefined): FeeType | null {
@@ -364,7 +606,7 @@ const sb = StyleSheet.create({
 type StageKey =
   | 'enquirySent' | 'discussing' | 'gigDetails' | 'techRiderReviewed'
   | 'supportActsConfirmed' | 'setTimesLocked' | 'paymentTermsSet'
-  | 'feeAgreed' | 'hospitalityConfirmed' | 'confirmedPending'
+  | 'hospitalityConfirmed' | 'confirmedPending'
   | 'confirmedBooked' | 'performed' | 'paymentSettled';
 
 type StageControl = 'auto' | 'venue' | 'artist' | 'both';
@@ -379,14 +621,14 @@ const BOOKING_STAGES: StageDef[] = [
   { key: 'techRiderReviewed',    label: 'Tech Rider Reviewed',    control: 'venue'  },
   { key: 'supportActsConfirmed', label: 'Support Acts Confirmed', control: 'both'   },
   { key: 'setTimesLocked',       label: 'Set Times Locked',       control: 'both'   },
-  { key: 'paymentTermsSet',      label: 'Payment Terms Set',      control: 'both'   },
-  { key: 'feeAgreed',            label: 'Fee Agreed',             control: 'both'   },
+  { key: 'paymentTermsSet',      label: 'Payment Terms',          control: 'both'   },
   { key: 'hospitalityConfirmed', label: 'Hospitality Confirmed',  control: 'venue'  },
   { key: 'confirmedPending',     label: 'Confirmed: Pending',     control: 'auto'   },
   { key: 'confirmedBooked',      label: 'Confirmed: Booked',      control: 'auto'   },
   { key: 'performed',            label: 'Performed',              control: 'both'   },
   { key: 'paymentSettled',       label: 'Payment Settled',        control: 'both'   },
 ];
+
 
 function computeStageStatus(
   key: StageKey,
@@ -828,15 +1070,37 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [notes,            setNotes]            = useState<string>((enquiry as any).importantNotes ?? '');
-  const [paymentInfo,      setPaymentInfo]      = useState<string>((enquiry as any).paymentInfo ?? '');
   const [notesDoc,         setNotesDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
   const [notesDocUploading,setNotesDocUploading]= useState(false);
   const [contractLoading,  setContractLoading]  = useState(false);
+  const [showSignModal,    setShowSignModal]    = useState(false);
+  const [signAgreed,       setSignAgreed]       = useState(false);
+  const [signName,         setSignName]         = useState('');
+  const [signingLoading,   setSigningLoading]   = useState(false);
   const [loadInTime,       setLoadInTime]       = useState<string>(enquiry.loadInTime ?? '');
   const [soundCheckTime,   setSoundCheckTime]   = useState<string>(enquiry.soundCheckTime ?? '');
   const [editSetLength,    setEditSetLength]     = useState<string>(enquiry.requestedSlot.setLength ?? '');
   const [postGigNotes,     setPostGigNotes]     = useState<string>((enquiry as any).postGigNotes ?? '');
   const [postGigAttendance,setPostGigAttendance]= useState<string>((enquiry as any).postGigAttendance != null ? String((enquiry as any).postGigAttendance) : '');
+
+  // ── Structured fee negotiation fields (stored on enquiry as enquiryFee) ──
+  const _ef0 = (enquiry as any).enquiryFee as Partial<EnquiryFee> | null | undefined;
+  const [feeAmountStr,    setFeeAmountStr]    = useState<string>(_ef0?.amountCents    != null ? String(_ef0.amountCents    / 100) : '');
+  const [feeDoorPct,      setFeeDoorPct]      = useState<string>(_ef0?.doorPercent    != null ? String(_ef0.doorPercent)          : '');
+  const [feeTicketStr,    setFeeTicketStr]    = useState<string>(_ef0?.ticketPriceCents != null ? String(_ef0.ticketPriceCents / 100) : '');
+  const [feeThresholdStr, setFeeThresholdStr] = useState<string>(_ef0?.thresholdCents != null ? String(_ef0.thresholdCents / 100) : '');
+  const [feeDeductions,   setFeeDeductions]   = useState<string>(_ef0?.deductionsText ?? '');
+  const [feeReportDays,   setFeeReportDays]   = useState<string>(_ef0?.reportDays     != null ? String(_ef0.reportDays)           : '');
+  const [feeDueTiming,    setFeeDueTiming]    = useState<DueTiming | null>(_ef0?.dueTiming ?? null);
+  const [feeDueDays,      setFeeDueDays]      = useState<string>(_ef0?.dueDays        != null ? String(_ef0.dueDays)              : '');
+  const [feeGstApplies,   setFeeGstApplies]   = useState<boolean>(_ef0?.gstApplies    ?? false);
+  const [feeChannel,      setFeeChannel]      = useState<string>(_ef0?.channel        ?? '');
+  const [feeUnpaidNotes,  setFeeUnpaidNotes]  = useState<string>(_ef0?.unpaidNotes    ?? '');
+  const [artistPayInfo,   setArtistPayInfo]   = useState<{
+    abnStatus: string; gstRegistered: boolean; canProvideInvoice: boolean; abn: string;
+  } | null>(null);
+  const [venueRequiresAbn, setVenueRequiresAbn] = useState<boolean>(false);
+
   // Refs for debounced auto-save
   const setLengthRef       = useRef(enquiry.requestedSlot.setLength ?? '');
   const loadInRef          = useRef(enquiry.loadInTime ?? '');
@@ -849,8 +1113,13 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const loadInDebounce     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundCheckDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notesDebounce      = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const paymentInfoDebounce= useRef<ReturnType<typeof setTimeout> | null>(null);
   const postGigDebounce    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Per-field debounce map for enquiryFee fields
+  const feeDebounceMap     = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const feeValueMap        = useRef<Map<string, any>>(new Map());
+  // Captures pre-edit state (old value + which stages were confirmed) on the first
+  // keystroke of each debounce window, so the atomic update can reset them.
+  const feeEditStateMap    = useRef<Map<string, { oldValue: any; stagesToReset: StageKey[] }>>(new Map());
 
   // Sync editable schedule fields when Firestore updates them externally
   // (e.g. the venue edits a recurring gig's slot details from another session).
@@ -876,10 +1145,30 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     soundCheckRef.current = v;
   }, [enquiry.soundCheckTime]);
 
+  // Sync enquiryFee fields from Firestore when not being edited locally
+  useEffect(() => {
+    const snap = (enquiry as any).enquiryFee as Partial<EnquiryFee> | null | undefined;
+    if (!snap) return;
+    const dm = feeDebounceMap.current;
+    if (!dm.has('amountCents')     && snap.amountCents      != null) setFeeAmountStr(String(snap.amountCents    / 100));
+    if (!dm.has('doorPercent')     && snap.doorPercent      != null) setFeeDoorPct(  String(snap.doorPercent));
+    if (!dm.has('ticketPriceCents')&& snap.ticketPriceCents != null) setFeeTicketStr(String(snap.ticketPriceCents / 100));
+    if (!dm.has('thresholdCents')  && snap.thresholdCents   != null) setFeeThresholdStr(String(snap.thresholdCents / 100));
+    if (!dm.has('deductionsText'))  setFeeDeductions( snap.deductionsText ?? '');
+    if (!dm.has('reportDays')      && snap.reportDays       != null) setFeeReportDays(String(snap.reportDays));
+    if (!dm.has('dueTiming'))       setFeeDueTiming(  snap.dueTiming   ?? null);
+    if (!dm.has('dueDays')         && snap.dueDays          != null) setFeeDueDays(String(snap.dueDays));
+    if (!dm.has('gstApplies'))      setFeeGstApplies( snap.gstApplies  ?? false);
+    if (!dm.has('channel'))         setFeeChannel(    snap.channel     ?? '');
+    if (!dm.has('unpaidNotes'))     setFeeUnpaidNotes(snap.unpaidNotes ?? '');
+  }, [(enquiry as any).enquiryFee]);
+
   const slideAnim = useRef(new Animated.Value(0)).current;
   const { width: windowWidth } = useWindowDimensions();
 
   const [paymentFetched,       setPaymentFetched]       = useState(false);
+  const [legalFetched,         setLegalFetched]         = useState(false);
+  const [myLegalIdentity,      setMyLegalIdentity]      = useState<LegalIdentity | null>(null);
   const [selectedFeeType,      setSelectedFeeType]      = useState<FeeType | null>(
     parseFeeType((enquiry as any).feeType ?? (enquiry as any).paymentModel)
   );
@@ -888,9 +1177,15 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   async function fetchPaymentData() {
     if (paymentFetched) return;
     try {
-      const venueSnap = await getDoc(doc(db, 'venues', enquiry.venueId));
+      const artistUid = (enquiry as any).createdBy as string;
+      const [venueSnap, artistSnap] = await Promise.all([
+        getDoc(doc(db, 'venues', enquiry.venueId)),
+        getDoc(doc(db, 'bandProfiles', artistUid)),
+      ]);
+
       if (venueSnap.exists()) {
         const venueData = venueSnap.data();
+        setVenueRequiresAbn(!!venueData.payment?.requiresArtistAbn);
         const { day, time } = enquiry.requestedSlot;
         const slots: any[] = venueData.slots?.[day] || [];
         const match = slots.find((s: any) => s.time === time && !s.date);
@@ -906,13 +1201,43 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
           setSelectedFeeType(suggested[0]);
         }
       }
+
+      if (artistSnap.exists()) {
+        const aPay = artistSnap.data().payment || {};
+        setArtistPayInfo({
+          abnStatus:        aPay.abnStatus || (aPay.abn ? 'has_abn' : ''),
+          gstRegistered:    !!aPay.gstRegistered,
+          canProvideInvoice:!!aPay.canProvideInvoice,
+          abn:              aPay.abn || '',
+        });
+        // Prefill GST from artist profile if not yet set on this enquiry
+        const efSnap = (enquiry as any).enquiryFee as Partial<EnquiryFee> | null | undefined;
+        if (efSnap?.gstApplies === undefined && aPay.gstRegistered !== undefined) {
+          const v = !!aPay.gstRegistered;
+          setFeeGstApplies(v);
+          updateDoc(doc(db, 'inquiries', enquiry.id), { 'enquiryFee.gstApplies': v }).catch(() => {});
+        }
+      }
     } catch {}
     setPaymentFetched(true);
+  }
+
+  async function fetchLegalReadiness() {
+    if (legalFetched || !currentUserUid) return;
+    try {
+      const legalPath = isVenue
+        ? doc(db, 'venues', enquiry.venueId, 'private', 'legal')
+        : doc(db, 'bandProfiles', currentUserUid, 'private', 'legal');
+      const snap = await getDoc(legalPath);
+      setMyLegalIdentity(snap.exists() ? { ...BLANK_LEGAL, ...snap.data() } as LegalIdentity : { ...BLANK_LEGAL });
+    } catch {}
+    setLegalFetched(true);
   }
 
   function openDetails() {
     setDetailsOpen(true);
     fetchPaymentData();
+    fetchLegalReadiness();
     Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, tension: 65, friction: 11 }).start();
   }
 
@@ -969,12 +1294,161 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     }, 800);
   }
 
-  function autoSavePaymentInfo(val: string) {
-    if (paymentInfoDebounce.current) clearTimeout(paymentInfoDebounce.current);
-    paymentInfoDebounce.current = setTimeout(() => {
-      updateDoc(doc(db, 'inquiries', enquiry.id), { paymentInfo: val.trim() }).catch(() => {});
-    }, 800);
+  /** Returns true if either party has confirmed the given stage (and it hasn't been skipped). */
+  function stageIsConfirmedByAny(key: StageKey): boolean {
+    const map = (enquiry as any).stages as Record<string, StageData> | undefined;
+    const d = map?.[key];
+    return !!d && !d.skipped && !!(d.venueConfirmed || d.artistConfirmed);
   }
+
+  /** Returns the Firestore dot-path update fields to fully reset a stage. */
+  function buildStageReset(key: StageKey): Record<string, any> {
+    return {
+      [`stages.${key}.venueConfirmed`]:  false,
+      [`stages.${key}.artistConfirmed`]: false,
+      [`stages.${key}.skipped`]:         false,
+    };
+  }
+
+  /** Debounce-save a single enquiryFee field. Atomically resets any confirmed stage
+   *  that owns the field, and posts a system thread message when that happens. */
+  function autoSaveFeeField(key: string, value: any) {
+    // On the first keystroke of a new debounce window, capture pre-edit state.
+    if (!feeDebounceMap.current.has(key)) {
+      const ef = (enquiry as any).enquiryFee as Partial<EnquiryFee> | null | undefined;
+      const oldValue = ef?.[key as keyof EnquiryFee] ?? null;
+      const owned = (FEE_FIELD_STAGE[key] ?? []) as StageKey[];
+      const stagesToReset = owned.filter(sk => stageIsConfirmedByAny(sk));
+      feeEditStateMap.current.set(key, { oldValue, stagesToReset });
+    }
+
+    feeValueMap.current.set(key, value);
+    const existing = feeDebounceMap.current.get(key);
+    if (existing) clearTimeout(existing);
+
+    const t = setTimeout(async () => {
+      feeDebounceMap.current.delete(key);
+      const newValue   = feeValueMap.current.get(key) ?? null;
+      const editState  = feeEditStateMap.current.get(key);
+      feeEditStateMap.current.delete(key);
+
+      const update: Record<string, any> = { [`enquiryFee.${key}`]: newValue };
+      const stagesToReset = editState?.stagesToReset ?? [];
+      for (const sk of stagesToReset) Object.assign(update, buildStageReset(sk));
+
+      await updateDoc(doc(db, 'inquiries', enquiry.id), update).catch(() => {});
+
+      if (stagesToReset.length > 0 && editState?.oldValue !== newValue) {
+        const label    = FEE_FIELD_LABELS[key] ?? key;
+        const oldStr   = formatFeeFieldValue(key, editState?.oldValue ?? null);
+        const newStr   = formatFeeFieldValue(key, newValue);
+        const stages   = stagesToReset.map(() => 'Payment Terms').join(' and ');
+        postSystemMessage(enquiry.id, `${label} changed (${oldStr} to ${newStr}). ${stages} reset.`).catch(() => {});
+      }
+    }, 800);
+
+    feeDebounceMap.current.set(key, t);
+  }
+
+  /** Switch fee type chip: atomically saves the type, clears inapplicable fields,
+   *  resets any confirmed payment stages, and posts a system thread message. */
+  async function handleFeeTypeChange(ft: FeeType) {
+    const oldFt = selectedFeeType;
+    setSelectedFeeType(ft);
+
+    // Build one atomic update object so everything lands in a single write.
+    const update: Record<string, any> = { feeType: ft };
+
+    // Clear amount/guarantee when switching away from types that use them
+    if (ft !== 'flat' && ft !== 'guarantee_vs_door') {
+      setFeeAmountStr('');
+      update['enquiryFee.amountCents'] = null;
+    }
+    // Clear percentage when switching to a type that doesn't use it
+    if (ft !== 'door_split' && ft !== 'guarantee_vs_door' && ft !== 'ticket_split') {
+      setFeeDoorPct('');
+      update['enquiryFee.doorPercent'] = null;
+    }
+    // Clear ticket-specific fields
+    if (ft !== 'ticket_split') {
+      setFeeTicketStr('');
+      setFeeReportDays('');
+      update['enquiryFee.ticketPriceCents'] = null;
+      update['enquiryFee.reportDays']       = null;
+    }
+    // Clear guarantee threshold
+    if (ft !== 'guarantee_vs_door') {
+      setFeeThresholdStr('');
+      update['enquiryFee.thresholdCents'] = null;
+    }
+    // Clear deductions
+    if (ft !== 'door_split' && ft !== 'guarantee_vs_door') {
+      setFeeDeductions('');
+      update['enquiryFee.deductionsText'] = '';
+    }
+    // Clear unpaid notes when switching away from unpaid
+    if (ft !== 'unpaid') {
+      setFeeUnpaidNotes('');
+      update['enquiryFee.unpaidNotes'] = '';
+    }
+    // Clear timing fields for unpaid (not applicable)
+    if (ft === 'unpaid') {
+      setFeeDueTiming(null);
+      setFeeDueDays('');
+      setFeeGstApplies(false);
+      update['enquiryFee.dueTiming']   = null;
+      update['enquiryFee.dueDays']     = null;
+      update['enquiryFee.gstApplies']  = false;
+    }
+
+    // Cancel any pending per-field debounces for fields we're clearing atomically,
+    // so they don't overwrite the reset values when they fire later.
+    for (const fieldKey of Object.keys(update)
+      .filter(k => k.startsWith('enquiryFee.'))
+      .map(k => k.replace('enquiryFee.', ''))) {
+      const timer = feeDebounceMap.current.get(fieldKey);
+      if (timer) {
+        clearTimeout(timer);
+        feeDebounceMap.current.delete(fieldKey);
+        feeEditStateMap.current.delete(fieldKey);
+        feeValueMap.current.delete(fieldKey);
+      }
+    }
+
+    // Reset Payment Terms if either party confirmed it
+    const termsConfirmed = stageIsConfirmedByAny('paymentTermsSet');
+    if (termsConfirmed) Object.assign(update, buildStageReset('paymentTermsSet'));
+
+    await updateDoc(doc(db, 'inquiries', enquiry.id), update).catch(() => {});
+
+    // Post a system message only when the type actually changed
+    if (oldFt !== ft) {
+      const FEE_LABELS: Record<string, string> = {
+        flat: 'Flat fee', door_split: 'Door split', guarantee_vs_door: 'Guarantee + door',
+        ticket_split: 'Ticket split', unpaid: 'Unpaid', other: 'Other',
+      };
+      const fromLabel = oldFt ? (FEE_LABELS[oldFt] ?? oldFt) : 'none';
+      const toLabel   = FEE_LABELS[ft] ?? ft;
+      const suffix = termsConfirmed ? '. Payment Terms reset.' : '.';
+      postSystemMessage(enquiry.id, `Payment method changed from ${fromLabel} to ${toLabel}${suffix}`).catch(() => {});
+    }
+  }
+
+  /**
+   * Returns a short message when Payment Terms cannot be marked complete,
+   * or null when all required fields are present.
+   */
+  function paymentTermsGateReason(): string | null {
+    if (!selectedFeeType) return 'Choose a payment method first.';
+    if (selectedFeeType === 'unpaid' || selectedFeeType === 'other') return null;
+    if (selectedFeeType === 'door_split' || selectedFeeType === 'guarantee_vs_door' || selectedFeeType === 'ticket_split') {
+      if (!feeDoorPct.trim()) return 'Enter the artist percentage.';
+    }
+    if (feeDueTiming === null) return 'Set when payment is due.';
+    if (feeDueTiming === 'within_days' && !feeDueDays.trim()) return 'Enter the number of days.';
+    return null;
+  }
+
 
   function autoSavePostGig() {
     if (postGigDebounce.current) clearTimeout(postGigDebounce.current);
@@ -990,30 +1464,147 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
   async function generateContract() {
     if (!currentUserUid) return;
+
+    // On web, open a new tab BEFORE any async work — browsers block window.open()
+    // called after an await, treating it as an unsolicited popup.
+    let newWin: Window | null = null;
+    if (Platform.OS === 'web') {
+      newWin = (window as any).open('', '_blank') as Window | null;
+      if (newWin) {
+        newWin.document.write(
+          '<html><body style="font-family:sans-serif;padding:48px;color:#444">' +
+          '<p style="font-size:16px;margin:0">Generating contract\u2026</p>' +
+          '</body></html>'
+        );
+      }
+    }
+
     setContractLoading(true);
     try {
-      // Read the current user's legal identity from private subcollection
-      let myLegal: LegalIdentity = { ...BLANK_LEGAL };
+      const artistUid = (enquiry as any).createdBy as string;
+
+      // Fetch public docs and current user's private legal in parallel
       const legalPath = isVenue
         ? doc(db, 'venues', enquiry.venueId, 'private', 'legal')
         : doc(db, 'bandProfiles', currentUserUid, 'private', 'legal');
-      const lSnap = await getDoc(legalPath);
-      if (lSnap.exists()) myLegal = { ...BLANK_LEGAL, ...lSnap.data() } as LegalIdentity;
+      const [venueSnap, artistSnap, lSnap] = await Promise.all([
+        getDoc(doc(db, 'venues', enquiry.venueId)),
+        getDoc(doc(db, 'bandProfiles', artistUid)),
+        getDoc(legalPath),
+      ]);
+      const venueData     = venueSnap.exists()   ? venueSnap.data()   : {};
+      const artistProfile = artistSnap.exists()  ? artistSnap.data()  : {};
+      const myLegal: LegalIdentity = lSnap.exists()
+        ? { ...BLANK_LEGAL, ...lSnap.data() } as LegalIdentity
+        : { ...BLANK_LEGAL };
 
-      const html = buildContractHtml(enquiry, myLegal, isVenue, editSetLength, loadInTime, soundCheckTime);
+      // Snapshot the current user's legal details onto the enquiry so the
+      // other party can eventually read them (both-party contract requires this)
+      const mySnapshotKey    = isVenue ? 'venueLegalSnapshot'  : 'artistLegalSnapshot';
+      const otherSnapshotKey = isVenue ? 'artistLegalSnapshot' : 'venueLegalSnapshot';
+      updateDoc(doc(db, 'inquiries', enquiry.id), {
+        [mySnapshotKey]: { ...myLegal, snapshotAt: Date.now() },
+      }).catch(() => {});
+
+      // Read other party's snapshot if they have already generated their copy
+      const otherLegalRaw = (enquiry as any)[otherSnapshotKey];
+      const otherLegal: LegalIdentity = otherLegalRaw
+        ? { ...BLANK_LEGAL, ...otherLegalRaw }
+        : { ...BLANK_LEGAL };
+
+      const venueLegal  = isVenue ? myLegal    : otherLegal;
+      const artistLegal = isVenue ? otherLegal : myLegal;
+
+      const supportActNames = (participants || [])
+        .filter(p => p.role === 'support' && p.state === 'confirmed')
+        .map(p => p.displayName)
+        .filter(Boolean)
+        .join(', ');
+
+      const stageMap = (enquiry as any).stages as Record<string, { venueConfirmed?: boolean; artistConfirmed?: boolean; skipped?: boolean }> | undefined;
+      const techRiderStage = stageMap?.['techRiderReviewed'];
+      const techRiderConfirmed = !!(techRiderStage?.skipped || techRiderStage?.venueConfirmed);
+
+      const myLegalOk    = myLegal ? isLegalIdentityComplete(myLegal) : false;
+      const otherLegalOk = isLegalIdentityComplete(otherLegal);
+      const contractIsDraft = !myLegalOk || !otherLegalOk
+        || computeStageStatus('gigDetails',     'both',   stageMap?.['gigDetails'],     enquiry) !== 'complete'
+        || computeStageStatus('setTimesLocked', 'both',   stageMap?.['setTimesLocked'], enquiry) !== 'complete'
+        || computeStageStatus('paymentTermsSet','both',   stageMap?.['paymentTermsSet'],enquiry) !== 'complete'
+        || !techRiderConfirmed;
+
+      const enqVenueSig  = (enquiry as any).venueSignature  as { signatoryName: string; signedAt: number } | null | undefined;
+      const enqArtistSig = (enquiry as any).artistSignature as { signatoryName: string; signedAt: number } | null | undefined;
+
+      const html = buildContractHtml({
+        enquiry,
+        venueData,
+        artistProfile,
+        venueLegal,
+        artistLegal,
+        setLength:         editSetLength,
+        loadIn:            loadInTime,
+        soundCheck:        soundCheckTime,
+        supportActs:       supportActNames,
+        isDraft:           contractIsDraft,
+        techRiderConfirmed,
+        venueSignature:    enqVenueSig,
+        artistSignature:   enqArtistSig,
+      });
 
       if (Platform.OS === 'web') {
-        const blob = new Blob([html], { type: 'text/html' });
-        const url  = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        if (newWin) {
+          newWin.document.open();
+          newWin.document.write(html);
+          newWin.document.close();
+          newWin.focus();
+        } else {
+          // Popup was blocked — fall back to downloading as an HTML file
+          const blob = new Blob([html], { type: 'text/html' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = contractIsDraft ? 'contract-draft.html' : 'gigmatch-contract.html';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
       } else {
         const { uri } = await Print.printToFileAsync({ html, base64: false });
-        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: '.pdf', dialogTitle: 'Save Contract PDF' });
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          UTI: '.pdf',
+          dialogTitle: 'Save Contract PDF',
+        });
       }
     } catch (e: any) {
+      if (newWin) newWin.close();
       Alert.alert('Could not generate contract', e.message);
     } finally {
       setContractLoading(false);
+    }
+  }
+
+  async function signContract() {
+    if (!currentUserUid || !signName.trim() || !signAgreed) return;
+    setSigningLoading(true);
+    try {
+      const field = isVenue ? 'venueSignature' : 'artistSignature';
+      const sig = {
+        signatoryName: signName.trim(),
+        signedAt: Date.now(),
+        uid: currentUserUid,
+      };
+      await updateDoc(doc(db, 'inquiries', enquiry.id), { [field]: sig });
+      const party = isVenue ? 'Venue' : 'Artist';
+      postSystemMessage(enquiry.id, `${party} has signed the contract.`).catch(() => {});
+      setShowSignModal(false);
+      setSignAgreed(false);
+    } catch (e: any) {
+      Alert.alert('Could not sign contract', e.message);
+    } finally {
+      setSigningLoading(false);
     }
   }
 
@@ -1341,62 +1932,341 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           </TouchableOpacity>
                         </View>
                       ) : null}
-                      <StageConfirmRow stage={BOOKING_STAGES[8]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                      <StageConfirmRow stage={BOOKING_STAGES[7]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                     </View>
                   </>
                 );
               })()}
 
               {/* Payment method */}
-              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
-              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                <View style={{ padding: 12, gap: 6 }}>
-                  <View style={eh.feeTypeGrid}>
-                    {FEE_TYPE_PILLS.map(ft => {
-                      const isSuggested = slotSuggestedFeeTypes.includes(ft.value);
-                      const isSelected  = selectedFeeType === ft.value;
-                      return (
-                        <TouchableOpacity
-                          key={ft.value}
-                          onPress={async () => {
-                            setSelectedFeeType(ft.value);
-                            await updateDoc(doc(db, 'inquiries', enquiry.id), { feeType: ft.value }).catch(() => {});
-                          }}
-                          style={[
-                            eh.feeTypeChip,
-                            { borderColor: isSelected ? Colors.orange : isSuggested ? Colors.orange + '55' : colors.border },
-                            isSelected && { backgroundColor: Colors.orange + '15' },
-                          ]}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[eh.feeTypeChipText, { color: isSelected ? Colors.orange : colors.black }]}>
-                            {ft.label}
+              {(() => {
+                const termsReason = paymentTermsGateReason();
+                return (
+                  <>
+                    <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Payment Method</Text>
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      <View style={{ padding: 12, gap: 10 }}>
+                        {/* Fee type chips */}
+                        <View style={eh.feeTypeGrid}>
+                          {FEE_TYPE_PILLS.map(ft => {
+                            const isSuggested = slotSuggestedFeeTypes.includes(ft.value);
+                            const isSelected  = selectedFeeType === ft.value;
+                            return (
+                              <TouchableOpacity
+                                key={ft.value}
+                                onPress={() => handleFeeTypeChange(ft.value)}
+                                style={[
+                                  eh.feeTypeChip,
+                                  { borderColor: isSelected ? Colors.orange : isSuggested ? Colors.orange + '55' : colors.border },
+                                  isSelected && { backgroundColor: Colors.orange + '15' },
+                                ]}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[eh.feeTypeChipText, { color: isSelected ? Colors.orange : colors.black }]}>
+                                  {ft.label}
+                                </Text>
+                                {isSuggested && !isSelected && <View style={eh.feeTypeDot} />}
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        {slotSuggestedFeeTypes.length > 0 && (
+                          <Text style={[eh.feeTypeHint, { color: colors.grey }]}>
+                            Dotted border: venue's preferred method for this slot.
                           </Text>
-                          {isSuggested && !isSelected && <View style={eh.feeTypeDot} />}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  {slotSuggestedFeeTypes.length > 0 && (
-                    <Text style={[eh.feeTypeHint, { color: colors.grey }]}>
-                      Dotted border: venue's preferred method for this slot.
-                    </Text>
-                  )}
-                </View>
-                <StageConfirmRow stage={BOOKING_STAGES[6]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-              </View>
-              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
-                <TextInput
-                  style={{ padding: 14, fontSize: 14, minHeight: 72, lineHeight: 21, color: colors.black }}
-                  value={paymentInfo}
-                  onChangeText={t => { setPaymentInfo(t); autoSavePaymentInfo(t); }}
-                  placeholder="Agreed amount, payment timing, special terms..."
-                  placeholderTextColor="#aaaaaa"
-                  multiline
-                  textAlignVertical="top"
-                />
-                <StageConfirmRow stage={BOOKING_STAGES[7]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-              </View>
+                        )}
+
+                        {/* Structured fields — shown once a method is chosen */}
+                        {selectedFeeType && selectedFeeType !== 'other' && (
+                          <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+
+                            {/* Amount / guarantee */}
+                            {(selectedFeeType === 'flat' || selectedFeeType === 'guarantee_vs_door') && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>
+                                  {selectedFeeType === 'guarantee_vs_door' ? 'GUARANTEE AMOUNT' : 'FEE AMOUNT'}
+                                </Text>
+                                <View style={[eh.payInputRow, { borderColor: colors.border }]}>
+                                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.black, paddingLeft: 12 }}>$</Text>
+                                  <TextInput
+                                    style={[eh.payInput, { color: colors.black, flex: 1 }]}
+                                    value={feeAmountStr}
+                                    onChangeText={t => {
+                                      const c = t.replace(/[^0-9.]/g, '');
+                                      setFeeAmountStr(c);
+                                      autoSaveFeeField('amountCents', dollarsToCents(c));
+                                    }}
+                                    keyboardType="decimal-pad"
+                                    placeholder="0"
+                                    placeholderTextColor="#aaaaaa"
+                                  />
+                                  {selectedFeeType === 'flat' && feeGstApplies && feeAmountStr !== '' && !isNaN(parseFloat(feeAmountStr)) && (
+                                    <Text style={[eh.payGstHint, { color: colors.grey }]}>
+                                      {`incl. GST: $${(parseFloat(feeAmountStr) * 1.1).toFixed(2)}`}
+                                    </Text>
+                                  )}
+                                </View>
+                              </View>
+                            )}
+
+                            {/* Artist percentage */}
+                            {(selectedFeeType === 'door_split' || selectedFeeType === 'guarantee_vs_door' || selectedFeeType === 'ticket_split') && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>
+                                  {selectedFeeType === 'ticket_split' ? 'ARTIST TICKET SPLIT %' : 'ARTIST DOOR SPLIT %'}
+                                </Text>
+                                <View style={[eh.payInputRow, { borderColor: colors.border }]}>
+                                  <TextInput
+                                    style={[eh.payInput, { color: colors.black, flex: 1, paddingLeft: 12 }]}
+                                    value={feeDoorPct}
+                                    onChangeText={t => {
+                                      const c = t.replace(/[^0-9.]/g, '');
+                                      setFeeDoorPct(c);
+                                      const n = parseFloat(c);
+                                      autoSaveFeeField('doorPercent', Number.isFinite(n) && n >= 0 && n <= 100 ? n : null);
+                                    }}
+                                    keyboardType="decimal-pad"
+                                    placeholder="e.g. 70"
+                                    placeholderTextColor="#aaaaaa"
+                                  />
+                                  <Text style={{ fontSize: 14, color: colors.grey, paddingRight: 12 }}>%</Text>
+                                </View>
+                              </View>
+                            )}
+
+                            {/* Threshold (guarantee+door only) */}
+                            {selectedFeeType === 'guarantee_vs_door' && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>DOOR % KICKS IN ABOVE</Text>
+                                <View style={[eh.payInputRow, { borderColor: colors.border }]}>
+                                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.black, paddingLeft: 12 }}>$</Text>
+                                  <TextInput
+                                    style={[eh.payInput, { color: colors.black, flex: 1 }]}
+                                    value={feeThresholdStr}
+                                    onChangeText={t => {
+                                      const c = t.replace(/[^0-9.]/g, '');
+                                      setFeeThresholdStr(c);
+                                      autoSaveFeeField('thresholdCents', dollarsToCents(c));
+                                    }}
+                                    keyboardType="decimal-pad"
+                                    placeholder="e.g. 500"
+                                    placeholderTextColor="#aaaaaa"
+                                  />
+                                </View>
+                              </View>
+                            )}
+
+                            {/* Deductions (door types) */}
+                            {(selectedFeeType === 'door_split' || selectedFeeType === 'guarantee_vs_door') && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>CALCULATED AFTER</Text>
+                                <TextInput
+                                  style={[eh.payTextInput, { color: colors.black, borderColor: colors.border }]}
+                                  value={feeDeductions}
+                                  onChangeText={t => { setFeeDeductions(t); autoSaveFeeField('deductionsText', t); }}
+                                  placeholder="e.g. security and door staff costs"
+                                  placeholderTextColor="#aaaaaa"
+                                />
+                              </View>
+                            )}
+
+                            {/* Ticket price */}
+                            {selectedFeeType === 'ticket_split' && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>TICKET PRICE</Text>
+                                <View style={[eh.payInputRow, { borderColor: colors.border }]}>
+                                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.black, paddingLeft: 12 }}>$</Text>
+                                  <TextInput
+                                    style={[eh.payInput, { color: colors.black, flex: 1 }]}
+                                    value={feeTicketStr}
+                                    onChangeText={t => {
+                                      const c = t.replace(/[^0-9.]/g, '');
+                                      setFeeTicketStr(c);
+                                      autoSaveFeeField('ticketPriceCents', dollarsToCents(c));
+                                    }}
+                                    keyboardType="decimal-pad"
+                                    placeholder="e.g. 25"
+                                    placeholderTextColor="#aaaaaa"
+                                  />
+                                </View>
+                              </View>
+                            )}
+
+                            {/* Sales report days (ticket split) */}
+                            {selectedFeeType === 'ticket_split' && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>SALES REPORT DUE (DAYS AFTER GIG)</Text>
+                                <TextInput
+                                  style={[eh.payTextInput, { color: colors.black, borderColor: colors.border }]}
+                                  value={feeReportDays}
+                                  onChangeText={t => {
+                                    const c = t.replace(/[^0-9]/g, '');
+                                    setFeeReportDays(c);
+                                    const n = parseInt(c, 10);
+                                    autoSaveFeeField('reportDays', Number.isFinite(n) && n >= 0 && n <= 365 ? n : null);
+                                  }}
+                                  keyboardType="number-pad"
+                                  placeholder="7"
+                                  placeholderTextColor="#aaaaaa"
+                                />
+                              </View>
+                            )}
+
+                            {/* Unpaid notes */}
+                            {selectedFeeType === 'unpaid' && (
+                              <View style={{ gap: 4 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>WHAT THE ARTIST GETS</Text>
+                                <TextInput
+                                  style={[eh.payTextInput, { color: colors.black, borderColor: colors.border, minHeight: 60 }]}
+                                  value={feeUnpaidNotes}
+                                  onChangeText={t => { setFeeUnpaidNotes(t); autoSaveFeeField('unpaidNotes', t); }}
+                                  placeholder="Exposure, experience, free drinks, recording..."
+                                  placeholderTextColor="#aaaaaa"
+                                  multiline
+                                  textAlignVertical="top"
+                                />
+                              </View>
+                            )}
+
+                            {/* GST toggle (not for unpaid) */}
+                            {selectedFeeType !== 'unpaid' && (
+                              <View style={[eh.payToggleRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }]}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[eh.payFieldLabel, { color: colors.grey }]}>GST APPLIES</Text>
+                                  {artistPayInfo && (
+                                    <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>
+                                      {`Artist ${artistPayInfo.gstRegistered ? 'is' : 'is not'} registered for GST`}
+                                    </Text>
+                                  )}
+                                </View>
+                                <Switch
+                                  value={feeGstApplies}
+                                  onValueChange={v => { setFeeGstApplies(v); autoSaveFeeField('gstApplies', v); }}
+                                  trackColor={{ false: colors.border, true: Colors.orange }}
+                                  thumbColor="#ffffff"
+                                />
+                              </View>
+                            )}
+
+                            {/* Due timing (not for unpaid) */}
+                            {selectedFeeType !== 'unpaid' && (
+                              <View style={{ gap: 6 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>PAYMENT DUE</Text>
+                                <View style={eh.payChipRow}>
+                                  {(['on_night', 'within_days'] as DueTiming[]).map(opt => {
+                                    const label   = opt === 'on_night' ? 'On the night' : 'Within X days';
+                                    const isActive = feeDueTiming === opt;
+                                    return (
+                                      <TouchableOpacity
+                                        key={opt}
+                                        onPress={() => { setFeeDueTiming(opt); autoSaveFeeField('dueTiming', opt); }}
+                                        style={[eh.payChip, { borderColor: isActive ? Colors.orange : colors.border }, isActive && { backgroundColor: Colors.orange + '15' }]}
+                                        activeOpacity={0.75}
+                                      >
+                                        <Text style={[eh.payChipText, { color: isActive ? Colors.orange : colors.black }]}>{label}</Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                                {feeDueTiming === 'within_days' && (
+                                  <View style={[eh.payInputRow, { borderColor: colors.border }]}>
+                                    <TextInput
+                                      style={[eh.payInput, { color: colors.black, flex: 1, paddingLeft: 12 }]}
+                                      value={feeDueDays}
+                                      onChangeText={t => {
+                                        const c = t.replace(/[^0-9]/g, '');
+                                        setFeeDueDays(c);
+                                        const n = parseInt(c, 10);
+                                        autoSaveFeeField('dueDays', Number.isFinite(n) && n >= 0 && n <= 365 ? n : null);
+                                      }}
+                                      keyboardType="number-pad"
+                                      placeholder="e.g. 7"
+                                      placeholderTextColor="#aaaaaa"
+                                    />
+                                    <Text style={{ fontSize: 13, color: colors.grey, paddingRight: 12 }}>days after the gig</Text>
+                                  </View>
+                                )}
+                              </View>
+                            )}
+
+                            {/* Payment channel (not for unpaid) */}
+                            {selectedFeeType !== 'unpaid' && (
+                              <View style={{ gap: 6 }}>
+                                <Text style={[eh.payFieldLabel, { color: colors.grey }]}>PAYMENT CHANNEL</Text>
+                                <View style={eh.payChipRow}>
+                                  {PAYMENT_CHANNELS.map(ch => {
+                                    const isActive = feeChannel === ch;
+                                    return (
+                                      <TouchableOpacity
+                                        key={ch}
+                                        onPress={() => {
+                                          const val = isActive ? '' : ch;
+                                          setFeeChannel(val);
+                                          autoSaveFeeField('channel', val);
+                                        }}
+                                        style={[eh.payChip, { borderColor: isActive ? Colors.orange : colors.border }, isActive && { backgroundColor: Colors.orange + '15' }]}
+                                        activeOpacity={0.75}
+                                      >
+                                        <Text style={[eh.payChipText, { color: isActive ? Colors.orange : colors.black }]}>{ch}</Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        )}
+
+                        {/* Artist ABN / invoice info (read-only) */}
+                        {artistPayInfo && (
+                          <View style={{ gap: 4, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+                            {(() => {
+                              const abnLabel: Record<string, string> = {
+                                has_abn: 'Has ABN', no_abn_hobby: 'No ABN (hobby)', applying: 'Applying for ABN',
+                              };
+                              const statusStr = abnLabel[artistPayInfo.abnStatus] || artistPayInfo.abnStatus || 'Not set';
+                              return (
+                                <>
+                                  <View style={eh.payInfoRow}>
+                                    <Text style={[eh.payInfoKey, { color: colors.grey }]}>Artist ABN status</Text>
+                                    <Text style={[eh.payInfoVal, { color: colors.black }]}>
+                                      {statusStr}{artistPayInfo.abnStatus === 'has_abn' && artistPayInfo.abn ? ` (${artistPayInfo.abn})` : ''}
+                                    </Text>
+                                  </View>
+                                  <View style={eh.payInfoRow}>
+                                    <Text style={[eh.payInfoKey, { color: colors.grey }]}>GST registered</Text>
+                                    <Text style={[eh.payInfoVal, { color: colors.black }]}>{artistPayInfo.gstRegistered ? 'Yes' : 'No'}</Text>
+                                  </View>
+                                  <View style={eh.payInfoRow}>
+                                    <Text style={[eh.payInfoKey, { color: colors.grey }]}>Can provide invoice</Text>
+                                    <Text style={[eh.payInfoVal, { color: colors.black }]}>{artistPayInfo.canProvideInvoice ? 'Yes' : 'No'}</Text>
+                                  </View>
+                                  {venueRequiresAbn && (artistPayInfo.abnStatus === 'no_abn_hobby' || artistPayInfo.abnStatus === 'applying') && (
+                                    <View style={[eh.payWarning, { borderColor: '#f59e0b', backgroundColor: '#fef9c3' }]}>
+                                      <Text style={{ fontSize: 12, fontWeight: '600', color: '#92400e' }}>
+                                        {`This venue requires an artist ABN. Artist status: ${statusStr}. Confirm with the venue before proceeding.`}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </View>
+                        )}
+                      </View>
+                      <StageConfirmRow
+                        stage={BOOKING_STAGES[6]}
+                        enquiry={enquiry}
+                        isVenue={isVenue}
+                        colors={colors}
+                        disabled={!!termsReason}
+                        disabledReason={termsReason ?? undefined}
+                        skipConfirmMessage="Skipping Payment Terms means both parties will need to re-confirm if payment details are filled in later."
+                      />
+                    </View>
+                  </>
+                );
+              })()}
 
               {/* Confirmed fee summary — shown when gig is confirmed and fee was saved */}
               {savedFee && (normalizeEnquiryStatus(enquiry.status) === 'confirmed') && (
@@ -1508,8 +2378,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     keyboardType="number-pad"
                   />
                 </View>
+                <StageConfirmRow stage={BOOKING_STAGES[10]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                 <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-                <StageConfirmRow stage={BOOKING_STAGES[12]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
               <TextInput
                 style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
@@ -1523,66 +2393,198 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
               {/* Contract */}
               {(() => {
-                const stageMap = (enquiry as any).stages as Record<string, { venueConfirmed?: boolean; artistConfirmed?: boolean; skipped?: boolean }> | undefined;
-                const CONTRACT_GATES: { key: StageKey; label: string }[] = [
-                  { key: 'gigDetails',      label: 'General Gig Details' },
-                  { key: 'setTimesLocked',  label: 'Set Times Locked' },
-                  { key: 'paymentTermsSet', label: 'Payment Terms Set' },
-                  { key: 'feeAgreed',       label: 'Fee Agreed' },
+                const stageMap = (enquiry as any).stages as Record<string, StageData> | undefined;
+
+                // Stage readiness
+                const stagesDone = {
+                  gigDetails:      computeStageStatus('gigDetails',     'both',  stageMap?.['gigDetails'],     enquiry) === 'complete',
+                  setTimesLocked:  computeStageStatus('setTimesLocked', 'both',  stageMap?.['setTimesLocked'], enquiry) === 'complete',
+                  paymentTermsSet: computeStageStatus('paymentTermsSet','both',  stageMap?.['paymentTermsSet'],enquiry) === 'complete',
+                  techRiderReviewed: (() => {
+                    const d = stageMap?.['techRiderReviewed'];
+                    return !!(d?.skipped || d?.venueConfirmed);
+                  })(),
+                };
+
+                // Legal readiness
+                const myLegalOk   = myLegalIdentity ? isLegalIdentityComplete(myLegalIdentity) : legalFetched ? false : null;
+                const otherSnapKey  = isVenue ? 'artistLegalSnapshot' : 'venueLegalSnapshot';
+                const otherLegalRaw = (enquiry as any)[otherSnapKey] as Partial<LegalIdentity> | null | undefined;
+                const otherLegalOk  = otherLegalRaw ? isLegalIdentityComplete({ ...BLANK_LEGAL, ...otherLegalRaw }) : false;
+                const legalDone     = myLegalOk === true && otherLegalOk;
+
+                const allReady = stagesDone.gigDetails && stagesDone.setTimesLocked &&
+                  stagesDone.paymentTermsSet && stagesDone.techRiderReviewed && legalDone;
+
+                // Per-stage "who's blocking" hints
+                function stageHint(key: 'gigDetails' | 'setTimesLocked' | 'paymentTermsSet'): string | null {
+                  const d = stageMap?.[key];
+                  if (!d || (!d.venueConfirmed && !d.artistConfirmed)) return 'Waiting on both parties';
+                  if (!d.venueConfirmed) return isVenue ? 'Needs your confirmation' : 'Waiting on venue';
+                  if (!d.artistConfirmed) return !isVenue ? 'Needs your confirmation' : 'Waiting on artist';
+                  return null;
+                }
+                function techHint(): string | null {
+                  const d = stageMap?.['techRiderReviewed'];
+                  if (!d?.venueConfirmed && !d?.skipped) return isVenue ? 'Needs your confirmation' : 'Waiting on venue';
+                  return null;
+                }
+                function legalHint(): string | null {
+                  if (myLegalOk === null) return 'Loading...';
+                  if (!myLegalOk) return isVenue ? 'Add legal details in Venue Settings' : 'Add legal details in your profile';
+                  if (!otherLegalOk) return isVenue ? 'Waiting on artist to provide their details' : 'Waiting on venue to provide their details';
+                  return null;
+                }
+
+                const CHECKLIST: { label: string; done: boolean; hint: string | null; section?: string }[] = [
+                  { label: 'General Gig Details',  done: stagesDone.gigDetails,       hint: stagesDone.gigDetails       ? null : stageHint('gigDetails'),      section: 'Gig Details' },
+                  { label: 'Set Times Locked',     done: stagesDone.setTimesLocked,   hint: stagesDone.setTimesLocked   ? null : stageHint('setTimesLocked'),   section: 'Set Times' },
+                  { label: 'Payment Terms',        done: stagesDone.paymentTermsSet,  hint: stagesDone.paymentTermsSet  ? null : stageHint('paymentTermsSet'),  section: 'Payment Method' },
+                  { label: 'Tech Rider Reviewed',  done: stagesDone.techRiderReviewed,hint: stagesDone.techRiderReviewed? null : techHint(),                    section: 'Tech Rider' },
+                  { label: 'Legal details (both parties)', done: legalDone, hint: legalDone ? null : legalHint() },
                 ];
-                const gateStatuses = CONTRACT_GATES.map(g => {
-                  const stage = BOOKING_STAGES.find(s => s.key === g.key)!;
-                  return computeStageStatus(g.key, stage.control, stageMap?.[g.key], enquiry) === 'complete';
-                });
-                const contractReady = gateStatuses.every(Boolean);
+
+                const mySignKey    = isVenue ? 'venueSignature'  : 'artistSignature';
+                const otherSignKey = isVenue ? 'artistSignature' : 'venueSignature';
+                const mySig    = (enquiry as any)[mySignKey]    as { signatoryName: string; signedAt: number } | null | undefined;
+                const otherSig = (enquiry as any)[otherSignKey] as { signatoryName: string; signedAt: number } | null | undefined;
+                const bothSigned = !!(mySig && otherSig);
+                const myLabel    = isVenue ? 'Venue'  : 'Artist';
+                const otherLabel = isVenue ? 'Artist' : 'Venue';
 
                 return (
                   <>
                     <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Contract</Text>
                     <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                      {CONTRACT_GATES.map((g, i) => {
-                        const done = gateStatuses[i];
-                        const isLast = i === CONTRACT_GATES.length - 1;
+                      {CHECKLIST.map((item, i) => {
+                        const isLast = i === CHECKLIST.length - 1;
                         return (
                           <View
-                            key={g.key}
+                            key={item.label}
                             style={[
-                              eh.drawerInfoRow,
+                              { paddingHorizontal: 14, paddingVertical: 11 },
                               !isLast && { borderBottomWidth: 1, borderBottomColor: colors.border },
                             ]}
                           >
-                            <Text style={[eh.drawerInfoKey, { color: done ? colors.black : colors.grey }]}>{g.label}</Text>
-                            <Text style={{ fontSize: 15, color: done ? '#22c55e' : colors.greyLight }}>
-                              {done ? '✓' : '○'}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                              <Text style={{ fontSize: 15, color: item.done ? '#22c55e' : colors.greyLight, width: 18 }}>
+                                {item.done ? '✓' : '○'}
+                              </Text>
+                              <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: item.done ? colors.black : colors.grey }}>
+                                {item.label}
+                              </Text>
+                            </View>
+                            {!item.done && !!item.hint && (
+                              <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 3, paddingLeft: 28 }}>
+                                {item.hint}{item.section ? ` — see ${item.section} above` : ''}
+                              </Text>
+                            )}
                           </View>
                         );
                       })}
                     </View>
+
+                    {/* Signature status */}
+                    {(mySig || otherSig || bothSigned) && (
+                      <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
+                        {[
+                          { label: myLabel,    sig: mySig    },
+                          { label: otherLabel, sig: otherSig },
+                        ].map((row, i) => (
+                          <View
+                            key={row.label}
+                            style={[
+                              { paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+                              i === 0 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                            ]}
+                          >
+                            <Text style={{ fontSize: 14, color: row.sig ? '#22c55e' : colors.greyLight, width: 18 }}>
+                              {row.sig ? '✓' : '○'}
+                            </Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: row.sig ? colors.black : colors.grey }}>
+                                {row.label}
+                              </Text>
+                              {row.sig ? (
+                                <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>
+                                  Signed by {row.sig.signatoryName} · {new Date(row.sig.signedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </Text>
+                              ) : (
+                                <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>Pending signature</Text>
+                              )}
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Action buttons */}
+                    {allReady && !mySig ? (
+                      <TouchableOpacity
+                        style={{
+                          marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
+                          borderColor: colors.black, alignItems: 'center', backgroundColor: colors.bgFaint,
+                        }}
+                        onPress={() => {
+                          setSignName(myLegalIdentity?.signatoryName ?? '');
+                          setSignAgreed(false);
+                          setShowSignModal(true);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>
+                          Review and sign
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
+                          {otherSig ? 'Other party has already signed' : 'Both parties must sign to execute'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : allReady && mySig && !otherSig ? (
+                      <View
+                        style={{
+                          marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
+                          borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint,
+                          opacity: 0.6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.grey }}>
+                          Waiting for {otherLabel.toLowerCase()} to sign
+                        </Text>
+                      </View>
+                    ) : bothSigned ? (
+                      <View
+                        style={{
+                          marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
+                          borderColor: '#22c55e' + '55', alignItems: 'center', backgroundColor: '#22c55e' + '0a',
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#22c55e' }}>
+                          Contract fully executed
+                        </Text>
+                        <Text style={{ fontSize: 11, color: '#22c55e' + 'aa', marginTop: 2 }}>
+                          Both parties have signed
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {/* Download button — always shown */}
                     <TouchableOpacity
                       style={{
-                        marginTop: 8,
-                        paddingVertical: 13,
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: contractReady ? Colors.orange : colors.border,
-                        alignItems: 'center',
-                        backgroundColor: contractReady ? Colors.orange + '12' : colors.bgFaint,
+                        marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
+                        borderColor: Colors.orange, alignItems: 'center',
+                        backgroundColor: Colors.orange + '12',
                         opacity: contractLoading ? 0.6 : 1,
                       }}
                       onPress={generateContract}
-                      disabled={!contractReady || contractLoading}
+                      disabled={contractLoading}
                       activeOpacity={0.7}
                     >
-                      <Text style={{
-                        fontSize: 13, fontWeight: '700',
-                        color: contractReady ? Colors.orange : colors.greyLight,
-                      }}>
-                        {contractLoading ? 'Generating…' : contractReady ? 'Download Contract PDF' : 'Contract not ready yet'}
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.orange }}>
+                        {contractLoading ? 'Generating…' : allReady ? 'Download contract' : 'Download draft'}
                       </Text>
-                      {!contractReady && (
-                        <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 3 }}>
-                          All 4 stages above must be confirmed by both sides.
+                      {!allReady && (
+                        <Text style={{ fontSize: 11, color: Colors.orange + 'aa', marginTop: 2 }}>
+                          Stamped DRAFT until all items are ticked
                         </Text>
                       )}
                     </TouchableOpacity>
@@ -1638,6 +2640,95 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
             </ScrollView>
           </Animated.View>
         </View>
+      </Modal>
+
+      {/* Sign contract modal */}
+      <Modal visible={showSignModal} transparent animationType="fade" onRequestClose={() => setShowSignModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={[md.overlay, { justifyContent: 'center' }]} activeOpacity={1} onPress={() => setShowSignModal(false)}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+              <View style={[md.confirm, { backgroundColor: colors.bg, padding: 24, maxWidth: 420, marginHorizontal: 20 }]}>
+                <Text style={[md.confirmTitle, { color: colors.black, marginBottom: 4 }]}>Sign Contract</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, marginBottom: 18, lineHeight: 18 }}>
+                  {enquiry.bandName} at {enquiry.venueName}
+                  {enquiry.requestedSlot.date ? ` · ${fmtSlotDateFull(enquiry.requestedSlot.date)}` : ''}
+                </Text>
+
+                <View style={{ backgroundColor: colors.bgFaint, borderRadius: 8, borderWidth: 1, borderColor: colors.border, padding: 14, marginBottom: 18 }}>
+                  <Text style={{ fontSize: 12, color: colors.black, fontWeight: '700', marginBottom: 8 }}>By signing you confirm:</Text>
+                  {[
+                    'You have read and understood all terms in the contract.',
+                    'All gig details, set times, and payment terms are agreed.',
+                    'You are authorised to sign on behalf of the named legal entity.',
+                    'Your electronic signature is legally binding.',
+                  ].map((line, i) => (
+                    <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: i < 3 ? 6 : 0 }}>
+                      <Text style={{ fontSize: 12, color: colors.grey }}>·</Text>
+                      <Text style={{ fontSize: 12, color: colors.grey, flex: 1, lineHeight: 17 }}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Text style={{ fontSize: 12, color: colors.grey, marginBottom: 6, fontWeight: '600' }}>Full legal name</Text>
+                <TextInput
+                  style={[
+                    eh.drawerNotesInput,
+                    { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 0, height: 42, paddingVertical: 10, marginBottom: 18 },
+                  ]}
+                  value={signName}
+                  onChangeText={setSignName}
+                  placeholder="Name as it appears in your legal details"
+                  placeholderTextColor="#aaaaaa"
+                  autoCapitalize="words"
+                />
+
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 22 }}
+                  onPress={() => setSignAgreed(v => !v)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{
+                    width: 20, height: 20, borderRadius: 4, borderWidth: 2,
+                    borderColor: signAgreed ? Colors.orange : colors.border,
+                    backgroundColor: signAgreed ? Colors.orange : 'transparent',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {signAgreed && <Text style={{ fontSize: 13, color: '#fff', lineHeight: 16 }}>✓</Text>}
+                  </View>
+                  <Text style={{ fontSize: 12, color: colors.black, flex: 1, lineHeight: 17 }}>
+                    I have read and agree to the terms of this contract.
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={md.confirmBtns}>
+                  <TouchableOpacity
+                    style={[md.confirmBtn, { borderColor: colors.border }]}
+                    onPress={() => setShowSignModal(false)}
+                  >
+                    <Text style={[md.confirmBtnText, { color: colors.grey }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      md.confirmBtn,
+                      {
+                        borderColor: signAgreed && signName.trim() ? colors.black : colors.border,
+                        backgroundColor: signAgreed && signName.trim() ? colors.black : 'transparent',
+                        opacity: signingLoading ? 0.6 : 1,
+                      },
+                    ]}
+                    onPress={signContract}
+                    disabled={!signAgreed || !signName.trim() || signingLoading}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[md.confirmBtnText, { color: signAgreed && signName.trim() ? colors.bg : colors.greyLight, fontWeight: '700' }]}>
+                      {signingLoading ? 'Signing…' : 'Sign'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {(() => {
@@ -1719,6 +2810,20 @@ const eh = StyleSheet.create({
   feeTypeChipText: { fontSize: 13, fontWeight: '600' },
   feeTypeDot:      { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange },
   feeTypeHint:     { fontSize: 11, marginTop: 4 },
+  // Payment field styles
+  payFieldLabel:   { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' as const },
+  payInputRow:     { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  payInput:        { fontSize: 15, paddingVertical: 9, paddingRight: 8 },
+  payGstHint:      { fontSize: 12, paddingRight: 10 },
+  payTextInput:    { fontSize: 14, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 },
+  payToggleRow:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  payChipRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  payChip:         { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  payChipText:     { fontSize: 13, fontWeight: '600' },
+  payInfoRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  payInfoKey:      { fontSize: 12, fontWeight: '600', flex: 1 },
+  payInfoVal:      { fontSize: 12, flex: 1, textAlign: 'right' as const },
+  payWarning:      { borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 4 },
 });
 
 // ── Stage components ────────────────────────────────────────────────────────
@@ -1788,11 +2893,19 @@ const sdl = StyleSheet.create({
   waitTextYou: { color: Colors.orange, fontWeight: '700' },
 });
 
-function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
+function StageConfirmRow({ stage, enquiry, isVenue, colors, disabled, disabledReason, hideSkip, skipConfirmMessage }: {
   stage: StageDef;
   enquiry: Enquiry;
   isVenue: boolean;
   colors: any;
+  /** Greyed-out "Mark complete" button — fields not yet filled. */
+  disabled?: boolean;
+  /** Short line shown below the button explaining what's missing. */
+  disabledReason?: string;
+  /** Hide the Skip link (e.g. for stages that auto-skip). */
+  hideSkip?: boolean;
+  /** When set, tapping Skip shows a confirmation dialog with this message. */
+  skipConfirmMessage?: string;
 }) {
   const map  = (enquiry as any).stages as Record<string, StageData> | undefined;
   const data: StageData = map?.[stage.key] ?? {};
@@ -1804,6 +2917,15 @@ function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
   const [artistConfirmed, setArtistConfirmed] = useState(isGigDetails ? data.artistConfirmed !== false : !!data.artistConfirmed);
   const [skipped,         setSkipped]         = useState(!!data.skipped);
   const [saving,          setSaving]          = useState(false);
+
+  // Keep local optimistic state in sync with Firestore when external writes arrive
+  // (e.g. Part 2 field-change resets, or the other party confirming/undoing).
+  useEffect(() => {
+    if (saving) return;
+    setVenueConfirmed(isGigDetails ? data.venueConfirmed !== false : !!data.venueConfirmed);
+    setArtistConfirmed(isGigDetails ? data.artistConfirmed !== false : !!data.artistConfirmed);
+    setSkipped(!!data.skipped);
+  }, [data.venueConfirmed, data.artistConfirmed, data.skipped]);
 
   const myConfirmed    = isVenue ? venueConfirmed  : artistConfirmed;
   const theirConfirmed = isVenue ? artistConfirmed : venueConfirmed;
@@ -1834,13 +2956,20 @@ function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
     await updateDoc(doc(db, 'inquiries', enquiry.id), { [myPath]: false }).catch(() => {});
     setSaving(false);
   }
-  async function doSkip() {
+  async function performSkip() {
     setSkipped(true);
     setVenueConfirmed(false);
     setArtistConfirmed(false);
     setSaving(true);
     await updateDoc(doc(db, 'inquiries', enquiry.id), { [skipPath]: true, [vcPath]: false, [acPath]: false }).catch(() => {});
     setSaving(false);
+  }
+  function doSkip() {
+    if (skipConfirmMessage) {
+      crossConfirm('Skip this stage?', skipConfirmMessage, performSkip);
+    } else {
+      performSkip();
+    }
   }
   async function doUnskip() {
     setSkipped(false);
@@ -1888,14 +3017,26 @@ function StageConfirmRow({ stage, enquiry, isVenue, colors }: {
                   </TouchableOpacity>
                 </>
               ) : (
-                <>
-                  <TouchableOpacity style={[sc.confirmBtn, saving && { opacity: 0.6 }]} onPress={doConfirm} disabled={saving} activeOpacity={0.75}>
-                    {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={sc.confirmBtnText}>Mark complete</Text>}
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={doSkip} disabled={saving} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <Text style={[sc.link, { color: colors.greyLight }]}>Skip</Text>
-                  </TouchableOpacity>
-                </>
+                <View>
+                  <View style={sc.row}>
+                    <TouchableOpacity
+                      style={[sc.confirmBtn, (saving || disabled) && sc.confirmBtnDisabled]}
+                      onPress={disabled ? undefined : doConfirm}
+                      disabled={saving || !!disabled}
+                      activeOpacity={0.75}
+                    >
+                      {saving ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={sc.confirmBtnText}>Mark complete</Text>}
+                    </TouchableOpacity>
+                    {!hideSkip && (
+                      <TouchableOpacity onPress={doSkip} disabled={saving} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                        <Text style={[sc.link, { color: colors.greyLight }]}>Skip</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {!!disabled && !!disabledReason && (
+                    <Text style={[sc.disabledReason, { color: colors.greyLight }]}>{disabledReason}</Text>
+                  )}
+                </View>
               )}
             </View>
           ) : (
@@ -1925,8 +3066,10 @@ const sc = StyleSheet.create({
   confirmedBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(22,163,74,0.1)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
   confirmedBadgeText: { fontSize: 12, fontWeight: '700', color: '#16a34a' },
   confirmBtn:         { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
+  confirmBtnDisabled: { opacity: 0.35 },
   confirmBtnText:     { fontSize: 12, fontWeight: '700', color: '#ffffff' },
   link:               { fontSize: 12, fontWeight: '600' },
+  disabledReason:     { fontSize: 11, marginTop: 5, fontStyle: 'italic' },
 });
 
 // ── Participant strip ───────────────────────────────────────────────────────
