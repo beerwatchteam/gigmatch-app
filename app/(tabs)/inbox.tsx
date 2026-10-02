@@ -1332,40 +1332,66 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 </TouchableOpacity>
               </View>
 
-              {/* Delete conversation */}
-              {onDelete && (
-                <TouchableOpacity
-                  style={{ marginTop: 24, marginBottom: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: '#fca5a5', alignItems: 'center', backgroundColor: 'rgba(220,38,38,0.04)' }}
-                  onPress={() => closeDetails(() => setConfirmOpen(true))}
-                  activeOpacity={0.7}
-                >
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#dc2626' }}>Delete this conversation</Text>
-                </TouchableOpacity>
-              )}
+              {/* Archive conversation */}
+              {onDelete && (() => {
+                const norm = normalizeEnquiryStatus(enquiry.status);
+                const isPending = norm === 'enquired' || norm === 'discussing';
+                const archiveTitle  = isPending
+                  ? (isVenue ? 'Decline enquiry?' : 'Withdraw enquiry?')
+                  : 'Archive conversation?';
+                const archiveBody   = isPending
+                  ? (isVenue
+                      ? 'This will decline the enquiry and remove it from your inbox.'
+                      : 'This will withdraw your enquiry and remove it from your inbox.')
+                  : 'This removes the conversation from your inbox. The booking is not affected.';
+                const archiveBtnLbl = isPending ? (isVenue ? 'Decline' : 'Withdraw') : 'Archive';
+                return (
+                  <TouchableOpacity
+                    style={{ marginTop: 24, marginBottom: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1, borderColor: '#fca5a5', alignItems: 'center', backgroundColor: 'rgba(220,38,38,0.04)' }}
+                    onPress={() => closeDetails(() => setConfirmOpen(true))}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#dc2626' }}>{archiveBtnLbl} conversation</Text>
+                  </TouchableOpacity>
+                );
+              })()}
 
             </ScrollView>
           </Animated.View>
         </View>
       </Modal>
 
-      <Modal visible={confirmOpen} transparent animationType="fade" onRequestClose={() => setConfirmOpen(false)}>
-        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setConfirmOpen(false)}>
-          <View style={[md.confirm, { backgroundColor: colors.bg }]}>
-            <Text style={[md.confirmTitle, { color: colors.black }]}>Delete conversation?</Text>
-            <Text style={[md.confirmBody, { color: colors.grey }]}>
-              This will remove the conversation from your inbox. This can't be undone.
-            </Text>
-            <View style={md.confirmBtns}>
-              <TouchableOpacity style={[md.confirmBtn, { borderColor: colors.border }]} onPress={() => setConfirmOpen(false)}>
-                <Text style={[md.confirmBtnText, { color: colors.grey }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmOpen(false); onDelete?.(); }}>
-                <Text style={md.confirmBtnDangerText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {(() => {
+        const norm = normalizeEnquiryStatus(enquiry.status);
+        const isPending = norm === 'enquired' || norm === 'discussing';
+        const archiveTitle  = isPending
+          ? (isVenue ? 'Decline enquiry?' : 'Withdraw enquiry?')
+          : 'Archive conversation?';
+        const archiveBody   = isPending
+          ? (isVenue
+              ? 'This will decline the enquiry and remove it from your inbox.'
+              : 'This will withdraw your enquiry and remove it from your inbox.')
+          : 'This removes the conversation from your inbox. The booking is not affected.';
+        const archiveBtnLbl = isPending ? (isVenue ? 'Decline' : 'Withdraw') : 'Archive';
+        return (
+          <Modal visible={confirmOpen} transparent animationType="fade" onRequestClose={() => setConfirmOpen(false)}>
+            <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => setConfirmOpen(false)}>
+              <View style={[md.confirm, { backgroundColor: colors.bg }]}>
+                <Text style={[md.confirmTitle, { color: colors.black }]}>{archiveTitle}</Text>
+                <Text style={[md.confirmBody, { color: colors.grey }]}>{archiveBody}</Text>
+                <View style={md.confirmBtns}>
+                  <TouchableOpacity style={[md.confirmBtn, { borderColor: colors.border }]} onPress={() => setConfirmOpen(false)}>
+                    <Text style={[md.confirmBtnText, { color: colors.grey }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmOpen(false); onDelete?.(); }}>
+                    <Text style={md.confirmBtnDangerText}>{archiveBtnLbl}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        );
+      })()}
 
     </>
   );
@@ -2117,7 +2143,7 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
         onPress={() => { swipeRef.current?.close(); setConfirmDel(true); }}
         activeOpacity={0.85}
       >
-        <Text style={tt.swipeDeleteText}>Delete</Text>
+        <Text style={tt.swipeDeleteText}>Archive</Text>
       </TouchableOpacity>
     );
   }
@@ -2213,22 +2239,33 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
         </TouchableOpacity>
       </Modal>
 
-      <Modal visible={confirmDel} transparent animationType="fade" onRequestClose={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
-        <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
-          <View style={[md.confirm, { backgroundColor: '#ffffff' }]}>
-            <Text style={md.confirmTitle}>Delete conversation?</Text>
-            <Text style={md.confirmBody}>This will remove it from your inbox. This can't be undone.</Text>
-            <View style={md.confirmBtns}>
-              <TouchableOpacity style={[md.confirmBtn, { borderColor: '#e8e8e8' }]} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
-                <Text style={[md.confirmBtnText, { color: '#888888' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmDel(false); onDelete?.(); }}>
-                <Text style={md.confirmBtnDangerText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {(() => {
+        const norm        = normalizeEnquiryStatus(item.status);
+        const isPending   = norm === 'enquired' || norm === 'discussing';
+        const tileTitle   = isPending ? (isVenue ? 'Decline enquiry?' : 'Withdraw enquiry?') : 'Archive conversation?';
+        const tileBody    = isPending
+          ? (isVenue ? 'This will decline the enquiry and remove it from your inbox.' : 'This will withdraw your enquiry and remove it from your inbox.')
+          : 'This removes the conversation from your inbox. The booking is not affected.';
+        const tileBtnLbl  = isPending ? (isVenue ? 'Decline' : 'Withdraw') : 'Archive';
+        return (
+          <Modal visible={confirmDel} transparent animationType="fade" onRequestClose={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+            <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+              <View style={[md.confirm, { backgroundColor: '#ffffff' }]}>
+                <Text style={md.confirmTitle}>{tileTitle}</Text>
+                <Text style={md.confirmBody}>{tileBody}</Text>
+                <View style={md.confirmBtns}>
+                  <TouchableOpacity style={[md.confirmBtn, { borderColor: '#e8e8e8' }]} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
+                    <Text style={[md.confirmBtnText, { color: '#888888' }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmDel(false); onDelete?.(); }}>
+                    <Text style={md.confirmBtnDangerText}>{tileBtnLbl}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+        );
+      })()}
     </>
   );
 }
@@ -2948,7 +2985,11 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
       setToastVisible(true);
       onBack?.();
     } else {
-      // Standard archive for venue / headliner (non-group or existing flow)
+      // If the enquiry is still pending, also update the status so the other party sees it as closed
+      const norm = normalizeEnquiryStatus(enquiry.status);
+      if (norm === 'enquired' || norm === 'discussing') {
+        await updateEnquiryStatus(enquiry.id, isVenue ? 'declined' : 'cancelled');
+      }
       await archiveEnquiry(enquiry.id, isVenue ? (venueId ?? user.uid) : user.uid);
       onBack?.();
     }
@@ -3613,7 +3654,7 @@ function DMTile({ conv, myUid, isSelected, onPress, onDelete }: {
         onPress={() => { swipeRef.current?.close(); setConfirmDel(true); }}
         activeOpacity={0.85}
       >
-        <Text style={tt.swipeDeleteText}>Delete</Text>
+        <Text style={tt.swipeDeleteText}>Archive</Text>
       </TouchableOpacity>
     );
   }
@@ -3647,14 +3688,14 @@ function DMTile({ conv, myUid, isSelected, onPress, onDelete }: {
       <Modal visible={confirmDel} transparent animationType="fade" onRequestClose={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
         <TouchableOpacity style={md.overlay} activeOpacity={1} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
           <View style={[md.confirm, { backgroundColor: '#ffffff' }]}>
-            <Text style={md.confirmTitle}>Delete conversation?</Text>
-            <Text style={md.confirmBody}>This will remove it from your inbox. This can't be undone.</Text>
+            <Text style={md.confirmTitle}>Archive conversation?</Text>
+            <Text style={md.confirmBody}>This removes the conversation from your inbox.</Text>
             <View style={md.confirmBtns}>
               <TouchableOpacity style={[md.confirmBtn, { borderColor: '#e8e8e8' }]} onPress={() => { swipeRef.current?.close(); setConfirmDel(false); }}>
                 <Text style={[md.confirmBtnText, { color: '#888888' }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={md.confirmBtnDanger} onPress={() => { setConfirmDel(false); onDelete?.(); }}>
-                <Text style={md.confirmBtnDangerText}>Delete</Text>
+                <Text style={md.confirmBtnDangerText}>Archive</Text>
               </TouchableOpacity>
             </View>
           </View>
