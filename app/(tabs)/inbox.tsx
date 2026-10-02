@@ -5525,6 +5525,16 @@ export default function InboxScreen() {
       : { enquiries: mergedEnquiries, loading: artistData.loading && supportData.loading };
 
   const [selected,  setSelected]  = useState<Enquiry | null>(null);
+
+  // Keep the selected enquiry in sync with the live Firestore listener.
+  // Without this, the Details drawer holds a stale snapshot and stage
+  // resets (from field edits) don't reflect until the user re-selects.
+  useEffect(() => {
+    if (!selected) return;
+    const updated = enquiries.find(e => e.id === selected.id);
+    if (updated) setSelected(updated);
+  }, [enquiries]);
+
   const [filter,    setFilter]    = useState<FilterKey>('enquired');
   const [inboxTab,  setInboxTabRaw]  = useState<'enquiries' | 'messages'>(_sessionInboxTab);
   const [selectedRosterId, setSelectedRosterId] = useState<string | null>(null);
