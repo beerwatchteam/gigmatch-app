@@ -37,7 +37,7 @@ import {
 import { doc, getDoc, onSnapshot, updateDoc, getDocs, collection, query, where, limit, arrayRemove, addDoc } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
 import { Toast } from '@/components/Toast';
-import { AddToCalendarFromEnquiry } from '@/components/AddToCalendarButton';
+import { calendarDatesFromEnquiry } from '@/components/AddToCalendarButton';
 
 /** Fetches and caches a venue's photoUrl for display in artist-side tiles/threads. */
 function useVenuePhoto(venueId: string | null | undefined): string | null {
@@ -295,6 +295,81 @@ function countDoneStages(enquiry: Enquiry): number {
     const d = map?.[s.key];
     return !d?.skipped && computeStageStatus(s.key, s.control, d, enquiry) === 'complete';
   }).length;
+}
+
+function buildGoogleCalendarUrl(enquiry: Enquiry): string {
+  const { date, time, setLength } = enquiry.requestedSlot;
+  const title    = encodeURIComponent(`${enquiry.bandName} @ ${enquiry.venueName}`);
+  const location = encodeURIComponent(enquiry.venueName);
+  const details  = encodeURIComponent('GigMatch booking');
+
+  let startStr = '';
+  let endStr   = '';
+
+  if (date) {
+    const dateBase = date.split('T')[0];
+    const match    = time ? time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i) : null;
+    if (match) {
+      let h  = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const ap = match[3].toUpperCase();
+      if (ap === 'PM' && h !== 12) h += 12;
+      if (ap === 'AM' && h === 12) h  = 0;
+      const start = new Date(`${dateBase}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+      const lenMatch = setLength?.match(/(\d+)/);
+      const mins     = lenMatch ? parseInt(lenMatch[1], 10) : 60;
+      const end      = new Date(start.getTime() + mins * 60000);
+      const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      startStr = fmt(start);
+      endStr   = fmt(end);
+    } else {
+      // No parseable time — use all-day format
+      startStr = dateBase.replace(/-/g, '');
+      endStr   = startStr;
+    }
+  }
+
+  const dates = startStr && endStr ? `&dates=${startStr}/${endStr}` : '';
+  return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}${dates}&details=${details}&location=${location}`;
+}
+
+function buildEnquiryICS(enquiry: Enquiry): string | null {
+  const cal = calendarDatesFromEnquiry(enquiry);
+  if (!cal) return null;
+  const { start, end } = cal;
+  const fmtUtc  = (d: Date) => d.toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+  const esc     = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  const uid     = (enquiry as any).gigId ? `${(enquiry as any).gigId}@gigmatch.com.au` : `${Date.now()}@gigmatch.com.au`;
+  const summary = `${enquiry.bandName} @ ${enquiry.venueName}`;
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//GigMatch//GigMatch Gigs//EN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTART:${fmtUtc(start)}`,
+    `DTEND:${fmtUtc(end)}`,
+    `SUMMARY:${esc(summary)}`,
+    `LOCATION:${esc(enquiry.venueName)}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+function downloadEnquiryICS(enquiry: Enquiry) {
+  if (Platform.OS !== 'web') return;
+  const content = buildEnquiryICS(enquiry);
+  if (!content) return;
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'gigmatch-gig.ics';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ── Date separator ─────────────────────────────────────────────────────────
@@ -1235,6 +1310,27 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 multiline
                 textAlignVertical="top"
               />
+
+              {/* Extra */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Extra</Text>
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <TouchableOpacity
+                  style={[eh.drawerInfoRow, { paddingVertical: 14 }]}
+                  onPress={() => Linking.openURL(buildGoogleCalendarUrl(enquiry))}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[eh.drawerInfoKey, { color: colors.black, fontWeight: '600' }]}>Add to Google Calendar</Text>
+                  <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '700' }}>→</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[eh.drawerInfoRow, { paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.border }]}
+                  onPress={() => downloadEnquiryICS(enquiry)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[eh.drawerInfoKey, { color: colors.black, fontWeight: '600' }]}>Download .ics</Text>
+                  <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '700' }}>↓</Text>
+                </TouchableOpacity>
+              </View>
 
               {/* Delete conversation */}
               {onDelete && (
@@ -3309,9 +3405,6 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
                 ? `${enquiry.venueName} has listed this gig as booked`
                 : `${enquiry.venueName} has confirmed — awaiting final listing`}
             </Text>
-          </View>
-          <View style={{ paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <AddToCalendarFromEnquiry enquiry={enquiry} />
           </View>
           <View style={[ci.wrap, { borderTopColor: colors.border, backgroundColor: colors.bgFaint }]}>
             <TouchableOpacity style={ci.shareBtn} onPress={() => setShareMenuOpen(v => !v)} activeOpacity={0.7}>
