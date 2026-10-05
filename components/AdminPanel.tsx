@@ -204,6 +204,8 @@ export default function AdminPanel({ visible, onClose }: Props) {
       if (!venueId) {
         const venueRef = await addDoc(collection(db, 'venues'), {
           name: app.venueName,
+          email: app.email,
+          username: app.username || '',
           claimedBy: app.uid,
           claimedByEmail: app.email,
           claimedAt: serverTimestamp(),
@@ -215,6 +217,9 @@ export default function AdminPanel({ visible, onClose }: Props) {
           claimedBy: app.uid,
           claimedByEmail: app.email,
           claimedAt: serverTimestamp(),
+          // Backfill signup data if not already on the existing venue doc
+          ...(app.email ? { email: app.email } : {}),
+          ...(app.username ? { username: app.username } : {}),
         });
       }
       await updateDoc(doc(db, 'venueApplications', app.uid), {

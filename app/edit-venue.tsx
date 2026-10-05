@@ -770,7 +770,12 @@ export default function EditVenueScreen() {
 
   useEffect(() => {
     if (!venueId) { setLoading(false); return; }
-    getDoc(doc(db, 'venues', venueId)).then(snap => {
+    const ownerUid = profile?.uid || auth.currentUser?.uid;
+
+    Promise.all([
+      getDoc(doc(db, 'venues', venueId)),
+      ownerUid ? getDoc(doc(db, 'users', ownerUid)) : Promise.resolve(null),
+    ]).then(([snap, userSnap]) => {
       if (snap.exists()) {
         const d = { ...BLANK, id: snap.id, ...snap.data() } as VenueData;
         d.rooms     = d.rooms     || [];
@@ -794,6 +799,20 @@ export default function EditVenueScreen() {
         if (!d.location && d.suburb) {
           d.location = [d.suburb, d.state, d.postcode].filter(Boolean).join(', ');
         }
+        // Back-fill signup data (email, username, name) from users doc if missing on venue doc
+        if (userSnap?.exists()) {
+          const u = userSnap.data();
+          if (!d.email    && u.email)       d.email    = u.email;
+          if (!d.username && u.username)    d.username = u.username;
+          if (!d.name     && u.displayName) d.name     = u.displayName;
+        }
+        // Also backfill from auth as a final fallback
+        const cu = auth.currentUser;
+        if (cu) {
+          if (!d.email && cu.email) d.email = cu.email;
+          if (!d.name  && cu.displayName) d.name = cu.displayName;
+        }
+
         setData(d); setSaved(d);
         const isComplete = snap.data().onboardingComplete === true;
         setOnboardingComplete(isComplete);

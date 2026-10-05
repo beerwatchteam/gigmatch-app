@@ -444,6 +444,9 @@ export default function EditProfileScreen() {
     if (!uid) { setLoading(false); return; }
     getDoc(doc(db, 'bandProfiles', uid)).then(snap => {
       const raw = snap.exists() ? snap.data() : {};
+      // Back-fill signup data from Firebase Auth if missing on the profile doc.
+      // This handles edge cases and ensures the onboarding tour shows pre-filled fields.
+      const cu = auth.currentUser;
       const d: Profile = {
         ...BLANK,
         ...raw,
@@ -471,6 +474,12 @@ export default function EditProfileScreen() {
       // is visible and fixable rather than silently hidden.
       if (!d.payment.abnStatus && d.payment.abn) {
         d.payment.abnStatus = 'has_abn';
+      }
+      // Back-fill signup data from Firebase Auth so the onboarding tour shows pre-filled fields.
+      if (cu) {
+        if (!d.name     && cu.displayName) d.name     = cu.displayName;
+        if (!d.email    && cu.email)       d.email    = cu.email;
+        if (!d.username && profile?.username) d.username = profile.username;
       }
       originalUsername.current = d.username || '';
       setProfile(d); setSaved(d);
