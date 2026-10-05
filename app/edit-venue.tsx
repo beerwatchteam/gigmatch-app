@@ -27,7 +27,7 @@ const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop',
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const ENTITY_TYPES: LegalEntityType[] = ['Sole trader', 'Company', 'Partnership'];
 const SLOT_TYPES     = ['Headline','Support','Open Mic','Other'];
-const PAYMENT_MODELS = ['Flat fee','Door split','Guarantee + split','Bar tab','Ticket sales split','Unpaid (exposure)','Negotiable'];
+const PAYMENT_MODELS = ['Flat fee', 'Door split', 'Guarantee + door', 'Ticket split', 'Unpaid', 'Other'];
 const PAY_METHODS    = ['Cash','Bank transfer','PayPal','Stripe','Other'];
 const PAY_TIMING     = ['Same night','Within 7 days','Within 14 days','Within 30 days','Other'];
 const BACKLINE_OFFER = ['PA system','Stage monitors','Microphones + stands','Drum kit','Bass amp','Guitar amp','Keys / DI','Lighting rig'];
@@ -36,17 +36,35 @@ const PL_OPTIONS          = ['Required','Preferred','Not required'];
 const VENUE_TYPES         = ['Live music venue','Pub','Bar','RSL / Club','Theatre','Café','DIY space','Festival site','Other'];
 const VENUE_AGE_RESTRICTIONS = ['All ages','Licensed (18+)','Both'];
 
-type Room = { name: string; capacity: string; stage: string; lighting: string; pa: string; backline: string; monitoring: string; power: string; notes: string; documents: { url: string; name: string }[]; _isNew?: boolean };
+type Room = {
+  name: string; capacity: string;
+  // legacy freetext stage/monitoring; new structured fields below
+  stage: string; monitoring: string; backline: string;
+  stageWidth: string; stageDepth: string;
+  monitoringType: string; monitoringMixes: string;
+  backlineItems: string[];
+  pa: string; lighting: string; power: string; notes: string;
+  documents: { url: string; name: string }[];
+  _isNew?: boolean;
+};
 type Night = {
   name: string;
   day: string; days?: string[]; startTime: string; duration: number; slotType: string;
-  startDate: string; endDate: string; continuous: boolean;
-  feeMin: string; feeMax: string; feeBasis: string; loadIn: string; soundcheck: string;
-  room: string; genres: string[]; notes: string; paymentModel: string; paymentModels?: string[];
-  doorSplit: string; coverCharge: string;
-  barSplit: string;
+  startDate: string; endDate: string; continuous: boolean; ongoing: boolean;
+  feeMin: string; feeMax: string; feeBasis: string;
+  loadIn: string | null; soundcheck: string | null;
+  room: string; genres: string[] | null; notes: string;
+  paymentModel: string; paymentModels?: string[];
+  doorSplit: string; coverCharge: string; barSplit: string;
   ticketSalesSplit: string; ticketingHandledBy: string;
-  paymentMethod: string; minNotice: string;
+  negotiable: boolean;
+  paymentMethod: string; paymentMethods?: string[];
+  minNotice: string;
+  useVenueGenres: boolean;
+  useDefaultPay: boolean;
+  useDefaultHospitality: boolean;
+  guestList: string; meals: boolean; mealsDetails: string; drinks: boolean; drinksDetails: string;
+  guaranteeAmount: string; guaranteeSplit: string;
   _isNew?: boolean;
 };
 type Payment = {
@@ -72,6 +90,7 @@ type Payment = {
   latePaymentContact: string;
   additionalNotes: string;
 };
+type Video = { url: string; title: string };
 type VenueData = {
   id?: string; name: string; streetAddress: string; location: string; suburb: string;
   state: string; postcode: string; phone: string; email: string;
@@ -80,11 +99,32 @@ type VenueData = {
   latitude: string; longitude: string;
   rooms: Room[]; gigNights: Night[];
   techSpecs: Record<string, any>;
-  settings: { emailOnNewEnquiry: boolean; emailEnquiryReminders: boolean; listed: boolean };
-  photos: string[]; videos: string[];
+  settings: { emailOnNewEnquiry: boolean; emailEnquiryReminders: boolean; listed: boolean; emailOnNewMessage?: boolean; reminderHours?: string; theme?: string };
+  photos: string[]; videos: string[]; videoObjects?: Video[];
   payment: Payment;
   slots?: Record<string, any>;
   photoPosition?: { x: number; y: number };
+  // new fields
+  username?: string;
+  logoUrl?: string;
+  showPhone?: boolean;
+  bookingContactName?: string;
+  bookingContactPhone?: string;
+  invoicingMode?: string;
+  invoicingNotes?: string;
+  accountsContactName?: string;
+  accountsContactEmail?: string;
+  legalEntityName?: string;
+  bookingTerms?: {
+    payModels: string[]; negotiable: boolean;
+    flatFeeMin: string; flatFeeMax: string; flatFeeBasis: string;
+    doorSplit: string; guaranteeAmount: string; guaranteeSplit: string;
+    barSplit: string; ticketSplitPct: string; ticketingBy: string;
+    methods: string[]; paymentTiming: string;
+    depositRequired: boolean; depositAmount: string; depositDue: string;
+    minNotice: string;
+    guestList: string; meals: boolean; mealsDetails: string; drinks: boolean; drinksDetails: string;
+  };
 };
 
 const BLANK_PAYMENT: Payment = {
@@ -101,6 +141,17 @@ const BLANK_PAYMENT: Payment = {
   additionalNotes: '',
 };
 
+const BLANK_BOOKING_TERMS = {
+  payModels: [], negotiable: true,
+  flatFeeMin: '', flatFeeMax: '', flatFeeBasis: 'Per act',
+  doorSplit: '', guaranteeAmount: '', guaranteeSplit: '',
+  barSplit: '', ticketSplitPct: '', ticketingBy: 'Venue',
+  methods: [], paymentTiming: '',
+  depositRequired: false, depositAmount: '', depositDue: '',
+  minNotice: '1 week',
+  guestList: '', meals: false, mealsDetails: '', drinks: false, drinksDetails: '',
+};
+
 const BLANK: VenueData = {
   name: '', streetAddress: '', location: '', suburb: '', state: '', postcode: '',
   phone: '', email: '', website: '', instagram: '', facebook: '', description: '', photoUrl: '',
@@ -108,16 +159,40 @@ const BLANK: VenueData = {
   latitude: '', longitude: '',
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
-  photos: [], videos: [],
+  photos: [], videos: [], videoObjects: [],
   payment: { ...BLANK_PAYMENT },
   photoPosition: { x: 50, y: 50 },
+  username: '', logoUrl: '', showPhone: false,
+  bookingContactName: '', bookingContactPhone: '',
+  invoicingMode: 'actsInvoice', invoicingNotes: '',
+  accountsContactName: '', accountsContactEmail: '',
+  legalEntityName: '',
+  bookingTerms: { ...BLANK_BOOKING_TERMS },
 };
 
-const TABS = ['Settings','Basic Info','Rooms','Timetable','Tech Specs','Payments','Photos & Videos'];
+const TABS = ['Basic info','Photos & video','Rooms','Access & facilities','Gig slots','Booking terms','Invoicing','Verification','Settings'];
+
+const VENUE_NAV_GROUPS = [
+  { label: 'VENUE',   tabs: ['Basic info', 'Photos & video', 'Rooms', 'Access & facilities'] },
+  { label: 'BOOKING', tabs: ['Gig slots', 'Booking terms'] },
+  { label: 'ACCOUNT', tabs: ['Invoicing', 'Verification', 'Settings'] },
+];
 
 const VENUE_STEP_TAB: Record<number, string | null> = {
-  1: null, 2: 'Basic Info', 3: 'Rooms', 4: 'Timetable', 5: 'Tech Specs', 6: 'Payments', 7: 'Photos & Videos', 8: null,
+  1: null, 2: 'Basic info', 3: 'Rooms', 4: 'Gig slots', 5: 'Access & facilities', 6: 'Booking terms', 7: 'Photos & video', 8: null,
 };
+
+const CURFEW_OPTS = ['No curfew','10:00 pm','10:30 pm','11:00 pm','11:30 pm','12:00 am','12:30 am','1:00 am','1:30 am','2:00 am','2:30 am','3:00 am'];
+const GUEST_LIST_OPTS = ['0','1','2','3','4','5','6','7','8','10','Negotiable'];
+const MONITORING_PILL_OPTS = ['Wedges','In-ears','Both','None'];
+const BACKLINE_PILL_OPTS = ['Drum kit','Cymbals','Bass amp','Guitar amp','Keys','Keys stand','Mics + stands','DI boxes','Lighting rig'];
+const PAY_MODELS = ['Flat fee','Door split','Guarantee + split','Bar split','Ticket split','Unpaid'];
+const FEE_BASIS_OPTS = ['Per act','Per set','Per hour'];
+const TICKETING_BY_OPTS = ['Venue','Artist','Third party'];
+const MIN_NOTICE_OPTS = ['No minimum','24 hours','48 hours','1 week','2 weeks','1 month'];
+const REMIND_AFTER_OPTS = ['24 hours','48 hours','3 days'];
+const PAY_TIMING_OPTS = ['On the night','Within 7 days','Within 14 days','Within 30 days'];
+const DEPOSIT_DUE_OPTS = ['On booking','14 days before','7 days before'];
 
 type VenueOnboardingStep = {
   title: string;
@@ -633,13 +708,15 @@ const sc = StyleSheet.create({
 // ── Tab page header metadata ──────────────────────────────────────
 
 const TAB_META: Record<string, { title: string; desc: string }> = {
-  'Settings':        { title: 'Settings',         desc: 'Manage notifications, account preferences, and venue listing status.' },
-  'Basic Info':      { title: 'Basic info',        desc: 'Venue name, address, contact details, and how you describe your space to artists.' },
-  'Rooms':           { title: 'Rooms',             desc: 'Add every performance space at your venue. Artists book a room, not just a date.' },
-  'Timetable':       { title: 'Timetable',         desc: 'Set your recurring gig slots and the terms artists see when they enquire.' },
-  'Tech Specs':      { title: 'Tech specs',        desc: 'Venue-wide technical details. Room-specific specs are set in the Rooms tab.' },
-  'Payments':        { title: 'Payments',          desc: 'Standard payment terms, what is included, and invoicing requirements.' },
-  'Photos & Videos': { title: 'Photos and videos', desc: 'Show artists what your venue looks like. Good photos convert browsers into bookings.' },
+  'Settings':            { title: 'Settings',            desc: 'Notifications, calendar sync and your account.' },
+  'Basic info':          { title: 'Basic info',          desc: 'How artists find and recognise your venue.' },
+  'Rooms':               { title: 'Rooms',               desc: 'Each stage you book, with its own capacity and tech.' },
+  'Gig slots':           { title: 'Gig slots',           desc: 'Your recurring slots. Artists see these on your timetable and enquire against them.' },
+  'Access & facilities': { title: 'Access & facilities', desc: 'Arrival, sound, curfew and accessibility. Applies to every room.' },
+  'Booking terms':       { title: 'Booking terms',       desc: 'Your defaults for every slot. Any slot can override them.' },
+  'Photos & video':      { title: 'Photos & video',      desc: 'Show artists the room before they enquire.' },
+  'Invoicing':           { title: 'Invoicing',           desc: 'How acts get paid on paper. Shared once a booking is confirmed.' },
+  'Verification':        { title: 'Verification',        desc: 'Verified venues can list in Discover and receive enquiries.' },
 };
 
 const ns = StyleSheet.create({
@@ -668,7 +745,7 @@ export default function EditVenueScreen() {
   const [venueAcnTouched, setVenueAcnTouched] = useState(false);
   const [legalIdentity,   setLegalIdentityState] = useState<LegalIdentity>(BLANK_LEGAL);
   const [savedLegal,      setSavedLegal]         = useState<LegalIdentity>(BLANK_LEGAL);
-  const [activeTab, setActiveTab] = useState(tabParam || (isAgentEdit ? 'Basic Info' : 'Settings'));
+  const [activeTab, setActiveTab] = useState(tabParam || (isAgentEdit ? 'Basic info' : 'Basic info'));
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);
@@ -682,6 +759,10 @@ export default function EditVenueScreen() {
   const [videoUploading, setVideoUploading] = useState(false);
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [showStickySave, setShowStickySave] = useState(false);
+  const [mobileShowList, setMobileShowList] = useState(true);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifying, setVerifying]   = useState(false);
+  const [verifyError, setVerifyError] = useState('');
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingVisited, setOnboardingVisited] = useState<string[]>([]);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -750,7 +831,7 @@ export default function EditVenueScreen() {
   }
   function addRoom() {
     setData(prev => {
-      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', lighting: '', pa: '', backline: '', monitoring: '', power: '', notes: '', documents: [], _isNew: true }];
+      const rooms = [...prev.rooms, { name: '', capacity: '', stage: '', stageWidth: '', stageDepth: '', lighting: '', pa: '', backline: '', backlineItems: [], monitoring: '', monitoringType: '', monitoringMixes: '', power: '', notes: '', documents: [], _isNew: true }];
       setExpandedRoom(rooms.length - 1);
       return { ...prev, rooms };
     });
@@ -780,11 +861,14 @@ export default function EditVenueScreen() {
     setData(prev => {
       const nights = [...prev.gigNights, {
         name: '', day, days: [day], startTime: '', duration: 60, slotType: 'Headline',
-        startDate: '', endDate: '', continuous: true,
-        feeMin: '', feeMax: '', feeBasis: '', loadIn: '', soundcheck: '',
-        room: '', genres: [], notes: '', paymentModel: '', paymentModels: [],
+        startDate: '', endDate: '', continuous: true, ongoing: true,
+        feeMin: '', feeMax: '', feeBasis: '', loadIn: null, soundcheck: null,
+        room: '', genres: null, notes: '', paymentModel: '', paymentModels: [],
         doorSplit: '', coverCharge: '', barSplit: '', ticketSalesSplit: '', ticketingHandledBy: '',
-        paymentMethod: '', minNotice: '',
+        negotiable: true, guaranteeAmount: '', guaranteeSplit: '',
+        paymentMethod: '', paymentMethods: [], minNotice: '',
+        useVenueGenres: true, useDefaultPay: true, useDefaultHospitality: true,
+        guestList: '', meals: false, mealsDetails: '', drinks: false, drinksDetails: '',
         _isNew: true,
       }];
       setExpandedNight(nights.length - 1);
@@ -1144,75 +1228,90 @@ export default function EditVenueScreen() {
   // ── Tab render functions ─────────────────────────────────────────
 
   function renderSettings() {
+    const bookingEmail = data.bookingContactName
+      ? `${data.bookingContactName} (${data.email || ''})`
+      : (data.email || '');
     return (
       <View style={s.section}>
         {renderPageHeader('Settings')}
 
-        <SectionCard title="Notifications">
-          <FieldRow label="New enquiry" sublabel="Email when a new enquiry arrives">
+        <SectionCard title="Email notifications" subtitle={bookingEmail ? `Sent to: ${bookingEmail}` : undefined}>
+          <FieldRow label="New enquiries" sublabel="When an artist submits an enquiry">
             <Switch value={data.settings.emailOnNewEnquiry} onValueChange={(v) => set('settings', { ...data.settings, emailOnNewEnquiry: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
-          <FieldRow label="Reminders" sublabel="Email reminders for pending enquiries" last>
+          <FieldRow label="New messages" sublabel="When an artist sends a message">
+            <Switch value={data.settings.emailOnNewMessage || false} onValueChange={(v) => set('settings', { ...data.settings, emailOnNewMessage: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          </FieldRow>
+          <FieldRow label="Reminders" sublabel="Follow-up emails for pending enquiries" last={!data.settings.emailEnquiryReminders}>
             <Switch value={data.settings.emailEnquiryReminders} onValueChange={(v) => set('settings', { ...data.settings, emailEnquiryReminders: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
+          {data.settings.emailEnquiryReminders && (
+            <FieldRow label="Remind me after" last>
+              <Select
+                options={REMIND_AFTER_OPTS}
+                value={data.settings.reminderHours || '48 hours'}
+                onSelect={(v: string) => set('settings', { ...data.settings, reminderHours: v })}
+              />
+            </FieldRow>
+          )}
         </SectionCard>
 
         <CalendarSync />
 
-        <SectionCard title="Account">
-          <FieldRow label="Dark mode">
-            <Switch value={isDark} onValueChange={toggleDark} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#ffffff" />
+        <SectionCard title="Appearance">
+          <FieldRow label="Theme" last>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {(['Light', 'Dark', 'System'] as const).map(opt => {
+                const active = (data.settings.theme || 'System') === opt;
+                return (
+                  <TouchableOpacity
+                    key={opt}
+                    onPress={() => {
+                      set('settings', { ...data.settings, theme: opt });
+                      if (opt === 'Light' && isDark) toggleDark();
+                      if (opt === 'Dark' && !isDark) toggleDark();
+                    }}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: active ? colors.black : colors.border, backgroundColor: active ? colors.black : 'transparent' }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#fff' : colors.black }}>{opt}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </FieldRow>
-          <FieldRow label="Log out" last>
-            <TouchableOpacity onPress={async () => { await signOut(auth); router.replace('/'); }}>
-              <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '600' }}>Log out</Text>
+        </SectionCard>
+
+        <SectionCard title="Sign-in">
+          <FieldRow label="Login email" sublabel={auth.currentUser?.email || ''}>
+            <TouchableOpacity>
+              <Text style={{ fontSize: 14, color: Colors.orange, fontWeight: '600' }}>Change</Text>
+            </TouchableOpacity>
+          </FieldRow>
+          <FieldRow label="Password" last>
+            <TouchableOpacity>
+              <Text style={{ fontSize: 14, color: Colors.orange, fontWeight: '600' }}>Update</Text>
             </TouchableOpacity>
           </FieldRow>
         </SectionCard>
 
         <View style={[s.dangerSection, { borderColor: Colors.danger + '44' }]}>
-          <Text style={s.dangerTitle}>Danger Zone</Text>
+          <Text style={s.dangerTitle}>Delete account</Text>
           <Text style={[s.dangerDesc, { color: colors.black }]}>
-            Deactivating your listing will hide it from all bands browsing Twaylo. This action can be reversed at any time.
+            To pause without losing anything, turn off Listed in Discover on Basic info instead.
           </Text>
-          <TouchableOpacity
-            style={[s.dangerBtn, data.settings.listed ? {} : s.dangerBtnActive]}
-            onPress={() => {
-              const willDeactivate = data.settings.listed;
-              crossConfirm(
-                willDeactivate ? 'Deactivate Venue Listing?' : 'Reactivate Venue Listing?',
-                willDeactivate
-                  ? 'Are you sure? This will deactivate your account and hide it from view. You can reactivate at any time.'
-                  : 'This will make your venue visible to musicians again.',
-                async () => {
-                  const { venueId } = profile ?? {};
-                  if (!venueId) return;
-                  const newListed = !willDeactivate;
-                  await updateDoc(doc(db, 'venues', venueId), { 'settings.listed': newListed });
-                  set('settings', { ...data.settings, listed: newListed });
-                },
-                willDeactivate,
-              );
-            }}
-          >
-            <Text style={s.dangerBtnText}>
-              {data.settings.listed ? 'Deactivate Venue Listing' : 'Reactivate Venue Listing'}
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 20 }]}>
-            Permanently delete your venue and account. This action cannot be undone.
+          <Text style={[s.dangerDesc, { color: colors.grey, marginTop: 8 }]}>
+            Permanently delete your venue and account. This cannot be undone.
           </Text>
           <TouchableOpacity
             style={[s.dangerBtn, s.dangerBtnActive]}
             onPress={() => {
               crossConfirm(
-                'Delete Account',
-                'This will permanently delete your venue profile and account from the database. This action cannot be undone.',
+                'Delete account',
+                'This will permanently delete your venue profile and account. This cannot be undone.',
                 async () => {
                   try {
-                    const { venueId, uid } = profile ?? {};
-                    if (venueId) await deleteDoc(doc(db, 'venues', venueId));
+                    const { venueId: vId, uid } = profile ?? {};
+                    if (vId) await deleteDoc(doc(db, 'venues', vId));
                     if (uid) {
                       await deleteDoc(doc(db, 'users', uid));
                       await deleteDoc(doc(db, 'venueApplications', uid));
@@ -1230,7 +1329,7 @@ export default function EditVenueScreen() {
               );
             }}
           >
-            <Text style={s.dangerBtnText}>Delete Account</Text>
+            <Text style={s.dangerBtnText}>Delete account</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1238,567 +1337,1350 @@ export default function EditVenueScreen() {
   }
 
   function renderBasicInfo() {
+    const isVerified = !!data.techSpecs?.verifiedAt;
+    const descLen = (data.description || '').length;
     return (
       <View style={s.section}>
-        {renderPageHeader('Basic Info')}
+        {renderPageHeader('Basic info')}
 
+        {/* Listing */}
+        <SectionCard title="Listing">
+          <FieldRow label="Listed in Discover" sublabel={isVerified ? "Artists can find your venue and send enquiries. Turn off to pause without deleting anything." : "Available once your venue is verified."} last>
+            {isVerified ? (
+              <Switch value={data.settings.listed} onValueChange={(v) => set('settings', { ...data.settings, listed: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Switch value={false} disabled trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+                <TouchableOpacity onPress={() => setActiveTab('Verification')}>
+                  <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Check status</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </FieldRow>
+        </SectionCard>
+
+        {/* Venue details */}
         <SectionCard title="Venue details">
+          <FieldRow label="Logo" sublabel="Square, at least 400 × 400px.">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {data.logoUrl
+                ? <Image source={{ uri: data.logoUrl }} style={{ width: 52, height: 52, borderRadius: 8 }} resizeMode="cover" />
+                : <View style={{ width: 52, height: 52, borderRadius: 8, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 10, color: colors.grey }}>logo</Text>
+                  </View>
+              }
+              <TouchableOpacity onPress={pickBannerPhoto} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>Replace</Text>
+              </TouchableOpacity>
+              {data.logoUrl ? (
+                <TouchableOpacity onPress={() => set('logoUrl', '')}>
+                  <Text style={{ fontSize: 13, color: colors.grey }}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </FieldRow>
           <FieldRow label="Venue name" error={showErrors && !data.name?.trim()}>
-            <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="Venue name" error={showErrors && !data.name?.trim()} />
+            <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="The Lantern Room" error={showErrors && !data.name?.trim()} />
           </FieldRow>
-          <FieldRow label="Street address" error={showErrors && !data.streetAddress?.trim()}>
-            <Input value={data.streetAddress} onChangeText={(v: string) => set('streetAddress', v)} placeholder="123 Main St" error={showErrors && !data.streetAddress?.trim()} />
-          </FieldRow>
-          <FieldRow label="Location" error={showErrors && !data.location?.trim()}>
-            <SuburbSearch value={data.location} onChange={(v: string) => set('location', v)} onAutofill={(suburb, state, postcode) => { set('location', [suburb, state, postcode].filter(Boolean).join(', ')); set('suburb', suburb); set('state', state); set('postcode', postcode); }} error={showErrors && !data.location?.trim()} />
+          <FieldRow label="Username" sublabel="Your public profile link.">
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+                <View style={{ paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.bgFaint }}>
+                  <Text style={{ fontSize: 13, color: colors.grey }}>twaylo.com.au/</Text>
+                </View>
+                <TextInput
+                  value={data.username || ''}
+                  onChangeText={(v) => set('username', v.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  placeholder="thelanternroom"
+                  placeholderTextColor={colors.grey}
+                  style={{ flex: 1, fontSize: 14, padding: 11, color: colors.black }}
+                  autoCapitalize="none"
+                />
+              </View>
+              {data.username ? <Text style={{ fontSize: 12, color: '#2F7A4B', marginTop: 4 }}>Available</Text> : null}
+            </View>
           </FieldRow>
           <FieldRow label="Venue type">
             <Pills options={VENUE_TYPES} value={data.venueType || ''} onSelect={(v: string) => set('venueType', v)} />
           </FieldRow>
-          <FieldRow label="Genres" sublabel="Styles you typically book">
+          <FieldRow label="Genres you book" sublabel="Artists in these genres see you first in Discover.">
             <Pills options={GENRES} value={data.genrePreferences || []} onSelect={(v: string[]) => set('genrePreferences', v)} multi />
           </FieldRow>
-          <FieldRow label="Age restriction" last>
-            <Pills options={VENUE_AGE_RESTRICTIONS} value={data.ageRestriction || ''} onSelect={(v: string) => set('ageRestriction', v)} />
+          <FieldRow label="Age policy" last>
+            <Pills options={['All ages','18+ only','Varies by gig']} value={data.ageRestriction === 'Both' ? 'Varies by gig' : (data.ageRestriction || '')} onSelect={(v: string) => set('ageRestriction', v)} />
           </FieldRow>
         </SectionCard>
 
-        <SectionCard title="Map coordinates">
-          <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 }}>
-            <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 18 }}>Internal only. Not shown publicly. Used for future map features.</Text>
+        {/* Location */}
+        <SectionCard title="Location">
+          <FieldRow label="Street address" sublabel="Shown on your profile and used for travel distance." last>
+            <View style={{ gap: 8 }}>
+              <Input
+                value={data.streetAddress}
+                onChangeText={(v: string) => set('streetAddress', v)}
+                placeholder="212 High St, Northcote VIC 3070"
+                error={showErrors && !data.streetAddress?.trim()}
+              />
+              {data.latitude && data.longitude ? (
+                <Text style={{ fontSize: 11, color: colors.grey, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
+                  {parseFloat(data.latitude).toFixed(4)}, {parseFloat(data.longitude).toFixed(4)}
+                </Text>
+              ) : null}
+            </View>
+          </FieldRow>
+        </SectionCard>
+
+        {/* About the venue */}
+        <SectionCard title="About the venue">
+          <View style={{ padding: 16 }}>
+            <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Upstairs band room and front bar on High Street..." multiline />
+            <Text style={{ fontSize: 12, color: colors.grey, textAlign: 'right', marginTop: 4 }}>{descLen} / 600</Text>
           </View>
-          <FieldRow label="Latitude">
-            <Input value={data.latitude} onChangeText={(v: string) => set('latitude', v)} placeholder="e.g. -33.8688" keyboardType="decimal-pad" />
-          </FieldRow>
-          <FieldRow label="Longitude" last>
-            <Input value={data.longitude} onChangeText={(v: string) => set('longitude', v)} placeholder="e.g. 151.2093" keyboardType="decimal-pad" />
-          </FieldRow>
         </SectionCard>
 
-        <SectionCard title="Contact">
-          <FieldRow label="Email" error={showErrors && !data.email?.trim()}>
-            <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="booking@yourvenue.com.au" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
-          </FieldRow>
-          <FieldRow label="Phone" error={showErrors && !data.phone?.trim()}>
-            <Input value={data.phone} onChangeText={(v: string) => set('phone', v)} placeholder="Phone number" keyboardType="phone-pad" error={showErrors && !data.phone?.trim()} />
-          </FieldRow>
-          <FieldRow label="Website" error={showErrors && !data.website?.trim()}>
-            <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://yourvenue.com.au" error={showErrors && !data.website?.trim()} />
+        {/* Public contact */}
+        <SectionCard title="Public contact" subtitle="Shown on your public profile.">
+          <FieldRow label="Website">
+            <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://thelanternroom.com.au" keyboardType="url" />
           </FieldRow>
           <FieldRow label="Instagram">
-            <Input value={data.instagram || ''} onChangeText={(v: string) => set('instagram', v)} placeholder="Instagram profile or post URL" />
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.bgFaint }}>
+                <Text style={{ fontSize: 13, color: colors.grey }}>instagram.com/</Text>
+              </View>
+              <TextInput value={data.instagram || ''} onChangeText={(v) => set('instagram', v)} placeholder="thelanternroom" placeholderTextColor={colors.grey} style={{ flex: 1, fontSize: 14, padding: 11, color: colors.black }} autoCapitalize="none" />
+            </View>
           </FieldRow>
-          <FieldRow label="Facebook" last>
-            <Input value={data.facebook || ''} onChangeText={(v: string) => set('facebook', v)} placeholder="Facebook page URL" />
+          <FieldRow label="Facebook">
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.bgFaint }}>
+                <Text style={{ fontSize: 13, color: colors.grey }}>facebook.com/</Text>
+              </View>
+              <TextInput value={data.facebook || ''} onChangeText={(v) => set('facebook', v)} placeholder="thelanternroom" placeholderTextColor={colors.grey} style={{ flex: 1, fontSize: 14, padding: 11, color: colors.black }} autoCapitalize="none" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Phone">
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.bgFaint }}>
+                <Text style={{ fontSize: 13, color: colors.grey }}>+61</Text>
+              </View>
+              <TextInput value={data.phone || ''} onChangeText={(v) => set('phone', v)} placeholder="3 9489 1234" placeholderTextColor={colors.grey} keyboardType="phone-pad" style={{ flex: 1, fontSize: 14, padding: 11, color: colors.black }} />
+            </View>
+          </FieldRow>
+          <FieldRow label="Show phone on profile" sublabel="Off by default. Most venues prefer booking enquiries through Twaylo." last>
+            <Switch value={data.showPhone || false} onValueChange={(v) => set('showPhone', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
         </SectionCard>
 
-        <SectionCard title="Description">
-          <View style={{ padding: 16 }}>
-            <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Tell musicians about your venue..." multiline />
-          </View>
+        {/* Booking contact */}
+        <SectionCard title="Booking contact" subtitle="Never shown publicly. Artists reach you through Twaylo messages; this is who gets notified.">
+          <FieldRow label="Name">
+            <Input value={data.bookingContactName || ''} onChangeText={(v: string) => set('bookingContactName', v)} placeholder="Jess Nguyen" />
+          </FieldRow>
+          <FieldRow label="Email" sublabel="Enquiry, reminder and verification emails go here." error={showErrors && !data.email?.trim()}>
+            <Input value={data.email} onChangeText={(v: string) => set('email', v)} placeholder="bookings@thevenue.com.au" keyboardType="email-address" error={showErrors && !data.email?.trim()} />
+          </FieldRow>
+          <FieldRow label="Phone" sublabel="Optional." last>
+            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 11, backgroundColor: colors.bgFaint }}>
+                <Text style={{ fontSize: 13, color: colors.grey }}>+61</Text>
+              </View>
+              <TextInput value={data.bookingContactPhone || ''} onChangeText={(v) => set('bookingContactPhone', v)} placeholder="4XX XXX XXX" placeholderTextColor={colors.grey} keyboardType="phone-pad" style={{ flex: 1, fontSize: 14, padding: 11, color: colors.black }} />
+            </View>
+          </FieldRow>
         </SectionCard>
       </View>
     );
   }
 
   function renderRooms() {
+    const totalCapacity = data.rooms.reduce((sum, r) => sum + (parseInt(r.capacity) || 0), 0);
+    const slotCountForRoom = (roomName: string) => data.gigNights.filter(n => n.room === roomName).length;
     return (
       <View style={s.section}>
         {renderPageHeader('Rooms')}
-        <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Add the spaces at your venue where live music happens. PA, lighting rig, and stage dimensions are entered per room, since they can differ between spaces. Rooms can be tied to specific gigs on your timetable so artists know exactly where they will be playing.</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <Text style={{ fontSize: 14, color: colors.grey }}>
+            {data.rooms.length} room{data.rooms.length !== 1 ? 's' : ''}{totalCapacity ? ` · ${totalCapacity} total capacity` : ''}
+          </Text>
+          <TouchableOpacity onPress={addRoom} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>+ Add room</Text>
+          </TouchableOpacity>
+        </View>
         {data.rooms.map((room, i) => {
           const isOpen = expandedRoom === i;
-          const hasError = showErrors && (!room.name?.trim() || !room.capacity?.toString().trim());
+          const slotCount = slotCountForRoom(room.name);
+          const stageW = room.stageWidth || (room.stage?.match(/(\d+)\s*[x×]/i)?.[1] ?? '');
+          const stageD = room.stageDepth || (room.stage?.match(/[x×]\s*(\d+)/i)?.[1] ?? '');
+          const backlineItems: string[] = room.backlineItems?.length ? room.backlineItems : [];
+          const monType = room.monitoringType || room.monitoring || '';
           return (
-            <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-              <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedRoom(isOpen ? null : i)}>
-                <Text style={s.cardHeaderText}>{room.name || 'Unnamed room'}{room.capacity ? ` · Cap. ${room.capacity}` : ''}</Text>
-                <Text style={s.cardChevron}>{isOpen ? '▲' : '▼'}</Text>
+            <View key={i} style={[{ borderWidth: 1, borderRadius: 14, marginBottom: 14, backgroundColor: colors.bg, borderColor: colors.border }]}>
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 }} onPress={() => setExpandedRoom(isOpen ? null : i)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black }}>{room.name || 'Unnamed room'}</Text>
+                  <Text style={{ fontSize: 13, color: colors.grey, marginTop: 2 }}>
+                    {[room.capacity ? `Capacity ${room.capacity}` : null, (stageW && stageD) ? `${stageW} × ${stageD} m stage` : null, slotCount ? `${slotCount} slot${slotCount !== 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 14, color: colors.grey, fontWeight: '500' }}>{isOpen ? 'Close' : 'Edit'}</Text>
               </TouchableOpacity>
               {isOpen && (
-                <View style={{ paddingTop: 14, gap: 12 }}>
-                  <Field label="Room name *" error={showErrors && !room.name?.trim()}><Input value={room.name} onChangeText={(v: string) => setRoom(i, 'name', v)} placeholder="e.g. Main Room" error={showErrors && !room.name?.trim()} /></Field>
-                  <Field label="Capacity *" error={showErrors && !room.capacity?.toString().trim()}><Input value={room.capacity} onChangeText={(v: string) => setRoom(i, 'capacity', v)} placeholder="e.g. 200" keyboardType="numeric" error={showErrors && !room.capacity?.toString().trim()} /></Field>
-                  <Field label="Stage and Dimensions"><Input value={room.stage} onChangeText={(v: string) => setRoom(i, 'stage', v)} placeholder="e.g. Elevated stage, 6m x 4m" autoGrow /></Field>
-                  <Field label="Lighting"><Input value={room.lighting} onChangeText={(v: string) => setRoom(i, 'lighting', v)} placeholder="e.g. Full rig with follow spot" autoGrow /></Field>
-                  <Field label="PA System"><Input value={room.pa} onChangeText={(v: string) => setRoom(i, 'pa', v)} placeholder="e.g. d&b audiotechnik J-Series" autoGrow /></Field>
-                  <Field label="Backline"><Input value={room.backline} onChangeText={(v: string) => setRoom(i, 'backline', v)} placeholder="e.g. house drum kit, 2x guitar amps" autoGrow /></Field>
-                  <Field label="Monitoring"><Input value={room.monitoring} onChangeText={(v: string) => setRoom(i, 'monitoring', v)} placeholder="e.g. 4x wedges, 2 mixes" autoGrow /></Field>
-                  <Field label="Power"><Input value={room.power} onChangeText={(v: string) => setRoom(i, 'power', v)} placeholder="e.g. 4x 15A outlets on stage" autoGrow /></Field>
-                  <Field label="Notes for Acts"><Input value={room.notes} onChangeText={(v: string) => setRoom(i, 'notes', v)} placeholder="Anything acts should know about this room" multiline /></Field>
-                  <Field label="Tech Spec Documents">
-                    {(room.documents || []).map((doc, idx) => (
-                      <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Text style={[{ flex: 1, fontSize: 13 }, { color: colors.black }]} numberOfLines={1}>↓ {doc.name || doc.url}</Text>
-                        <TouchableOpacity style={s.removeBtn} onPress={() => setRoom(i, 'documents', (room.documents || []).filter((_: any, di: number) => di !== idx))}>
-                          <Text style={s.removeBtnText}>Remove</Text>
-                        </TouchableOpacity>
+                <View style={{ borderTopWidth: 1, borderTopColor: colors.border, padding: 16, gap: 20 }}>
+                  <FieldRow label="Room name">
+                    <Input value={room.name} onChangeText={(v: string) => setRoom(i, 'name', v)} placeholder="e.g. Band room" />
+                  </FieldRow>
+                  <FieldRow label="Capacity" sublabel="Licensed capacity.">
+                    <Input value={room.capacity} onChangeText={(v: string) => setRoom(i, 'capacity', v)} placeholder="350" keyboardType="numeric" style={{ width: 100 }} />
+                  </FieldRow>
+                  <FieldRow label="Stage size" sublabel="Metres, width × depth.">
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Input value={room.stageWidth || ''} onChangeText={(v) => setRoom(i, 'stageWidth', v)} placeholder="6" keyboardType="decimal-pad" style={{ width: 72 }} />
+                      <Text style={{ color: colors.grey }}>×</Text>
+                      <Input value={room.stageDepth || ''} onChangeText={(v) => setRoom(i, 'stageDepth', v)} placeholder="4" keyboardType="decimal-pad" style={{ width: 72 }} />
+                    </View>
+                  </FieldRow>
+                  <FieldRow label="PA system">
+                    <Input value={room.pa} onChangeText={(v: string) => setRoom(i, 'pa', v)} placeholder="e.g. d&b Y-series, Midas M32, 24 channels" />
+                  </FieldRow>
+                  <FieldRow label="Monitoring">
+                    <View style={{ gap: 10 }}>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {MONITORING_PILL_OPTS.map(opt => {
+                          const active = monType === opt;
+                          return (
+                            <TouchableOpacity key={opt} onPress={() => setRoom(i, 'monitoringType', active ? '' : opt)} style={{ borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: active ? colors.black : 'transparent', borderColor: active ? colors.black : colors.border }}>
+                              <Text style={{ fontSize: 13, fontWeight: active ? '600' : '400', color: active ? '#fff' : colors.black }}>{opt}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
                       </View>
-                    ))}
-                    <TouchableOpacity style={s.addBtn} onPress={() => pickRoomDocument(i)} disabled={roomDocUploading === i}>
-                      <Text style={s.addBtnText}>{roomDocUploading === i ? 'Uploading...' : '+ Add Document'}</Text>
-                    </TouchableOpacity>
-                  </Field>
-                  <View style={s.itemBtnRow}>
-                    <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => removeRoom(i)}><Text style={s.removeBtnText}>Remove Room</Text></TouchableOpacity>
-                    <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>{room._isNew ? 'Add Room' : 'Save'}</Text></TouchableOpacity>
-                  </View>
+                      <Input value={room.monitoringMixes || ''} onChangeText={(v) => setRoom(i, 'monitoringMixes', v)} placeholder="e.g. 4 wedge mixes" />
+                    </View>
+                  </FieldRow>
+                  <FieldRow label="Backline available" sublabel="Matched against what artists list as needed from the venue.">
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {BACKLINE_PILL_OPTS.map(opt => {
+                        const active = backlineItems.includes(opt);
+                        return (
+                          <TouchableOpacity key={opt} onPress={() => setRoom(i, 'backlineItems', active ? backlineItems.filter(b => b !== opt) : [...backlineItems, opt])} style={{ borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: active ? colors.black : 'transparent', borderColor: active ? colors.black : colors.border }}>
+                            <Text style={{ fontSize: 13, fontWeight: active ? '600' : '400', color: active ? '#fff' : colors.black }}>{opt}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </FieldRow>
+                  <FieldRow label="Lighting">
+                    <Input value={room.lighting} onChangeText={(v: string) => setRoom(i, 'lighting', v)} placeholder="e.g. 8 LED pars, hazer, operator on weekends" />
+                  </FieldRow>
+                  <FieldRow label="Power">
+                    <Input value={room.power} onChangeText={(v: string) => setRoom(i, 'power', v)} placeholder="e.g. 4 × 10A stage left, 2 × 10A stage right" />
+                  </FieldRow>
+                  <FieldRow label="Notes for acts">
+                    <Input value={room.notes} onChangeText={(v: string) => setRoom(i, 'notes', v)} placeholder="Anything specific to this room: stairs to the stage, low ceiling, house kit rules." multiline />
+                  </FieldRow>
+                  <FieldRow label="Tech spec documents" sublabel="Stage plot, input list, full spec sheet.">
+                    <View style={{ gap: 8 }}>
+                      {(room.documents || []).map((doc, idx) => (
+                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }}>
+                          <Text style={{ flex: 1, fontSize: 13, color: colors.black }} numberOfLines={1}>{doc.name || doc.url}</Text>
+                          <TouchableOpacity onPress={() => setRoom(i, 'documents', (room.documents || []).filter((_: any, di: number) => di !== idx))}>
+                            <Text style={{ fontSize: 16, color: colors.grey }}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                      <TouchableOpacity onPress={() => pickRoomDocument(i)} disabled={roomDocUploading === i} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, alignSelf: 'flex-start' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>{roomDocUploading === i ? 'Uploading...' : 'Upload'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </FieldRow>
+                  <TouchableOpacity onPress={() => crossConfirm('Remove room', 'This will remove the room and any gig slots assigned to it.', () => removeRoom(i), true)} style={{ alignSelf: 'flex-end', borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 13, color: Colors.danger, fontWeight: '600' }}>Remove room</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
           );
         })}
-        <TouchableOpacity style={s.addBtn} onPress={addRoom}><Text style={s.addBtnText}>+ Add Room</Text></TouchableOpacity>
       </View>
     );
   }
 
-  function renderTimetable() {
+  function renderGigSlots() {
+    const fmtTime = (t: string | null) => {
+      if (!t) return '';
+      const [h, m] = t.split(':').map(Number);
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
+    };
+    const venueGenresSummary = (data.genrePreferences || []).length
+      ? (data.genrePreferences || []).slice(0, 3).join(', ') + ((data.genrePreferences || []).length > 3 ? ` +${(data.genrePreferences || []).length - 3}` : '')
+      : 'None set';
+    const defaultPaySummary = () => {
+      const bt = data.bookingTerms;
+      if (!bt?.payModels?.length) return 'No defaults set';
+      const parts = [...bt.payModels];
+      if (bt.negotiable) parts.push('negotiable');
+      return parts.join(', ');
+    };
+    const defaultHospSummary = () => {
+      const bt = data.bookingTerms;
+      if (!bt) return 'No defaults set';
+      const parts: string[] = [];
+      if (bt.guestList && bt.guestList !== '0') parts.push(`${bt.guestList} guests`);
+      if (bt.meals) parts.push('Meals');
+      if (bt.drinks) parts.push('Drinks');
+      return parts.length ? parts.join(', ') : 'Nothing set';
+    };
+
     return (
       <View style={s.section}>
-        {renderPageHeader('Timetable')}
-        <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 16, lineHeight: 19 }}>Add your gig slots and set terms for each one. Artists browse your timetable and send enquiries for slots that suit them.</Text>
+        {renderPageHeader('Gig slots')}
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Text style={{ fontSize: 13, color: colors.grey, flex: 1, lineHeight: 19 }}>
+            Recurring slots artists can browse and enquire against. One-off changes are managed on the timetable.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8, marginLeft: 12 }}
+            onPress={addNight}
+          >
+            <Text style={{ fontSize: 13, color: '#fff', fontWeight: '700' }}>+ Add slot</Text>
+          </TouchableOpacity>
+        </View>
+
         {sortedNights(data.gigNights).map(night => {
           const i = data.gigNights.indexOf(night);
           const isOpen = expandedNight === i;
           const nightDays = night.days?.length ? night.days : (night.day ? [night.day] : []);
           const nightAllowedDow = nightDays.map(d => DAY_NAMES_DOW[d]).filter((n): n is number => n !== undefined);
-          const hasError = showErrors && (!(night.days?.length || night.day) || !night.startTime || !night.startDate || (!night.continuous && !night.endDate));
-          const fmtTime = (t: string) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
-          const dayStr = nightDays.join(', ');
-          const summaryParts = [night.name || dayStr || 'New slot', night.startTime ? fmtTime(night.startTime) : null, night.room || null, night.duration ? `${night.duration} min` : null].filter(Boolean).join(' · ');
+          const hasError = showErrors && (!(night.days?.length || night.day) || !night.startTime || !night.startDate || (!night.ongoing && !night.continuous && !night.endDate));
+          const isOngoing = night.ongoing !== false && night.continuous !== false;
           const activeModels = night.paymentModels?.length ? night.paymentModels : (night.paymentModel ? [night.paymentModel] : []);
+          const slotLabel = night.name || (night.slotType ? `${night.slotType} slot` : 'New slot');
+          const daySummary = nightDays.map(d => d.slice(0, 3)).join(', ');
+          const timeSummary = night.startTime ? fmtTime(night.startTime) : '';
+          const lenSummary = night.duration ? `${night.duration} min` : '';
+          const roomSummary = night.room || '';
+          const payLabel = night.useDefaultPay !== false
+            ? defaultPaySummary()
+            : (activeModels.length ? activeModels.join(' or ') + (night.negotiable ? ', negotiable' : '') : '');
+          const summaryLine = [daySummary, timeSummary, lenSummary, roomSummary, payLabel].filter(Boolean).join(' · ');
+
+          // Auto load-in / soundcheck
+          const autoLoadIn = night.startTime ? subtractMinutes(night.startTime, 120) : null;
+          const autoSoundcheck = night.startTime ? subtractMinutes(night.startTime, 60) : null;
+          const loadInIsAuto = night.loadIn === null || night.loadIn === undefined || night.loadIn === autoLoadIn;
+          const soundcheckIsAuto = night.soundcheck === null || night.soundcheck === undefined || night.soundcheck === autoSoundcheck;
+
           return (
-            <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: colors.border }, hasError && s.cardError]}>
-              <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)}>
-                <Text style={[s.cardHeaderText, { color: colors.black }]}>{summaryParts}</Text>
-                <Text style={s.cardChevron}>{isOpen ? '▲' : '▼'}</Text>
+            <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: hasError ? Colors.danger : colors.border, marginBottom: 12 }]}>
+              <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)} activeOpacity={0.7}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black }}>{slotLabel}</Text>
+                    {night.slotType ? (
+                      <View style={{ backgroundColor: colors.border, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 11, color: colors.grey, fontWeight: '600' }}>{night.slotType}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  {summaryLine ? <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 17 }} numberOfLines={1}>{summaryLine}</Text> : null}
+                </View>
+                <Text style={[s.cardChevron, { marginLeft: 8 }]}>{isOpen ? '▲' : '▼'}</Text>
               </TouchableOpacity>
+
               {isOpen && (
-                <View style={{ paddingTop: 14, gap: 12 }}>
-                  <View style={{ marginBottom: 4 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black, marginBottom: 4 }}>{night._isNew ? 'Add a Gig Slot' : 'Edit Gig Slot'}</Text>
-                    <Text style={{ fontSize: 13, color: Colors.grey, lineHeight: 19 }}>Set the day, time, and terms for this slot. Artists will see this exact info when they enquire.</Text>
-                  </View>
-                  <Field label="NAME" helper="Optional. Give this slot a name, like 'Summer Sunday Sessions'. Shown to artists when they enquire."><Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" /></Field>
-                  <Field label="DAY *" error={showErrors && !nightDays.length}><Pills options={CANONICAL_DAYS} value={nightDays} onSelect={(v: string[]) => setNightFields(i, { days: v, day: v[0] || '' })} multi /></Field>
-                  <Field label="SLOT TYPE" helper="Helps artists know what kind of set you're booking for."><Pills options={SLOT_TYPES} value={night.slotType || 'Headline'} onSelect={(v: string) => setNight(i, 'slotType', v)} /></Field>
-                  <Field label="ROOM" helper="Choose 'Any room' if this slot isn't tied to a specific space."><Pills options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]} value={night.room || 'Any room'} onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)} /></Field>
+                <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 0 }}>
+
+                  {/* WHEN */}
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 16, marginBottom: 10 }}>When</Text>
+
+                  <Field label="NAME" helper="Optional. Shown to artists on your timetable.">
+                    <Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" />
+                  </Field>
+
+                  <Field label="DAYS" error={showErrors && !nightDays.length}>
+                    <Pills options={CANONICAL_DAYS} value={nightDays} onSelect={(v: string[]) => setNightFields(i, { days: v, day: v[0] || '' })} multi />
+                  </Field>
+
                   <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <View style={{ flex: 2 }}><Field label="START TIME *" error={showErrors && !night.startTime}><TimePicker value={night.startTime} onChange={(v: string) => setNightFields(i, { startTime: v, loadIn: subtractMinutes(v, 150), soundcheck: subtractMinutes(v, 90) })} defaultValue="19:00" /></Field></View>
-                    <View style={{ flex: 1 }}><Field label="DURATION (MIN)" helper="How long each set runs."><Input value={night.duration > 0 ? String(night.duration) : ''} onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)} keyboardType="numeric" placeholder="60" /></Field></View>
+                    <View style={{ flex: 2 }}>
+                      <Field label="START TIME" error={showErrors && !night.startTime}>
+                        <TimePicker
+                          value={night.startTime}
+                          onChange={(v: string) => setNightFields(i, {
+                            startTime: v,
+                            loadIn: night.loadIn === null || night.loadIn === undefined ? null : subtractMinutes(v, 120),
+                            soundcheck: night.soundcheck === null || night.soundcheck === undefined ? null : subtractMinutes(v, 60),
+                          })}
+                          defaultValue="19:00"
+                        />
+                      </Field>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Field label="LENGTH (MIN)">
+                        <Input
+                          value={night.duration > 0 ? String(night.duration) : ''}
+                          onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)}
+                          keyboardType="numeric"
+                          placeholder="60"
+                        />
+                      </Field>
+                    </View>
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                    <View style={{ flex: 1 }}><Field label="LOAD-IN TIME"><TimePicker value={night.loadIn} onChange={(v: string) => setNight(i, 'loadIn', v)} /></Field></View>
-                    <View style={{ flex: 1 }}><Field label="SOUNDCHECK"><TimePicker value={night.soundcheck} onChange={(v: string) => setNight(i, 'soundcheck', v)} /></Field></View>
-                  </View>
-                  <Text style={{ fontSize: 12, color: Colors.grey, marginTop: -8, marginBottom: 2 }}>Optional: lets artists plan their arrival.</Text>
+
+                  {/* Load-in + soundcheck with Auto chip */}
                   <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 1 }}>
-                      <Field label="START DATE *" error={showErrors && !night.startDate}><DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} allowedDays={nightAllowedDow} /></Field>
-                      <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }} onPress={() => { setNight(i, 'continuous', !night.continuous); if (!night.continuous) setNight(i, 'endDate', ''); }}>
-                        <View style={[s.checkbox, { borderColor: colors.border }, night.continuous && s.checkboxChecked]}>{night.continuous && <Text style={s.checkmark}>✓</Text>}</View>
-                        <Text style={[s.checkLabel, { color: colors.black }]}>Continuous (no end date)</Text>
-                      </TouchableOpacity>
-                      <Text style={{ fontSize: 12, color: Colors.grey, marginTop: 6 }}>Uncheck to set an end date for a limited run, like a residency.</Text>
+                      <Field label="LOAD-IN">
+                        {loadInIsAuto ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flex: 1, pointerEvents: 'none', opacity: 0.5 }}>
+                              <Input value={autoLoadIn ? fmtTime(autoLoadIn) : ''} placeholder="Auto" />
+                            </View>
+                            <View style={{ backgroundColor: Colors.orange + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                              <Text style={{ fontSize: 11, color: Colors.orange, fontWeight: '700' }}>Auto</Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flex: 1 }}>
+                              <TimePicker value={night.loadIn || ''} onChange={(v: string) => setNight(i, 'loadIn', v)} />
+                            </View>
+                            <TouchableOpacity onPress={() => setNight(i, 'loadIn', null)}>
+                              <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Reset</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </Field>
+                      {loadInIsAuto && (
+                        <TouchableOpacity onPress={() => setNight(i, 'loadIn', autoLoadIn || '')} style={{ marginTop: -6, marginBottom: 8 }}>
+                          <Text style={{ fontSize: 12, color: Colors.orange }}>Edit</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
-                    {!night.continuous && (<View style={{ flex: 1 }}><Field label="END DATE *" error={showErrors && !night.endDate}><DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} allowedDays={nightAllowedDow} rangeStart={night.startDate} /></Field></View>)}
+                    <View style={{ flex: 1 }}>
+                      <Field label="SOUNDCHECK">
+                        {soundcheckIsAuto ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flex: 1, pointerEvents: 'none', opacity: 0.5 }}>
+                              <Input value={autoSoundcheck ? fmtTime(autoSoundcheck) : ''} placeholder="Auto" />
+                            </View>
+                            <View style={{ backgroundColor: Colors.orange + '22', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 }}>
+                              <Text style={{ fontSize: 11, color: Colors.orange, fontWeight: '700' }}>Auto</Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flex: 1 }}>
+                              <TimePicker value={night.soundcheck || ''} onChange={(v: string) => setNight(i, 'soundcheck', v)} />
+                            </View>
+                            <TouchableOpacity onPress={() => setNight(i, 'soundcheck', null)}>
+                              <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Reset</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </Field>
+                      {soundcheckIsAuto && (
+                        <TouchableOpacity onPress={() => setNight(i, 'soundcheck', autoSoundcheck || '')} style={{ marginTop: -6, marginBottom: 8 }}>
+                          <Text style={{ fontSize: 12, color: Colors.orange }}>Edit</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-                  <Field label="PAYMENT MODEL" helper="Artists will see this before they enquire. Clear terms mean better enquiries.">
-                    <Pills options={PAYMENT_MODELS} value={activeModels} onSelect={(newModels: string[]) => { const added = newModels.find(m => !activeModels.includes(m)); const prefill: Partial<Night> = { paymentModels: newModels, paymentModel: '' }; if (added === 'Flat fee') { prefill.feeMin = data.payment.setFeeMin; prefill.feeMax = data.payment.setFeeMax; prefill.feeBasis = data.payment.feeBasis; } else if (added === 'Door split') { prefill.doorSplit = data.payment.doorSplit; prefill.coverCharge = data.payment.coverCharge; } else if (added === 'Bar tab') { prefill.barSplit = data.payment.barSplit; } else if (added === 'Ticket sales split') { prefill.ticketSalesSplit = data.payment.ticketSalesSplit; prefill.ticketingHandledBy = data.payment.ticketingHandledBy; } setNightFields(i, prefill); }} multi />
+
+                  {/* Runs from + Ongoing */}
+                  <Field label="RUNS FROM" error={showErrors && !night.startDate}>
+                    <DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} allowedDays={nightAllowedDow} />
                   </Field>
-                  {activeModels.includes('Flat fee') && (() => { const minVal = parseFloat(night.feeMin); const maxVal = parseFloat(night.feeMax); const maxError = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minVal) && !isNaN(maxVal) && maxVal < minVal; return (<Field label="FEE RANGE"><View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><View style={{ width: 90 }}><CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" /></View><View style={{ width: 90 }}><CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxError} /></View><View style={{ flex: 1 }}><Select options={['Per band', 'Per set', 'Per hour']} value={night.feeBasis} onSelect={(v: string) => setNight(i, 'feeBasis', v)} /></View></View>{maxError && <Text style={{ fontSize: 12, color: Colors.danger }}>Max must be higher than min.</Text>}</Field>); })()}
-                  {activeModels.includes('Door split') && (<Field label="DOOR SPLIT TERMS"><Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" /></Field>)}
-                  {activeModels.includes('Bar tab') && (<Field label="BAR SPLIT TERMS"><Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar sales during set" /></Field>)}
-                  {activeModels.includes('Ticket sales split') && (<Field label="TICKET SALES SPLIT"><Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="e.g. 80% of ticket sales via venue's platform" /><View style={{ marginTop: 8 }}><Pills options={['Venue', 'Artist', 'Third-party (Moshtix, Eventbrite, etc.)']} value={night.ticketingHandledBy} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} /></View></Field>)}
-                  <Field label="PAYMENT METHOD"><Pills options={PAY_METHODS} value={night.paymentMethod || ''} onSelect={(v: string) => setNight(i, 'paymentMethod', v)} /></Field>
-                  <Field label="GENRES" helper="Select the styles that suit this slot. Leave blank to use your venue's default genres."><Pills options={GENRES} value={night.genres || []} onSelect={(v: string[]) => setNight(i, 'genres', v)} multi /></Field>
-                  <Field label="MINIMUM NOTICE" helper="How much lead time you need before this slot's date."><Pills options={['No minimum', '24 hours', '48 hours', '1 week', '2 weeks', '1 month']} value={night.minNotice || 'No minimum'} onSelect={(v: string) => setNight(i, 'minNotice', v === 'No minimum' ? '' : v)} /></Field>
-                  <Field label="NOTES" helper="Add anything artists should know before enquiring."><Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="e.g. Acoustic only, strict 45 min sets, artists must supply own PA..." multiline /></Field>
-                  <View style={s.itemBtnRow}>
-                    <TouchableOpacity style={[s.removeBtn, { flex: 1, marginTop: 0 }]} onPress={() => crossConfirm('Remove Gig Slot', "This will delete the slot and any pending enquiries tied to it. This can't be undone.", () => removeNight(i), true)}><Text style={s.removeBtnText}>Remove Gig</Text></TouchableOpacity>
-                    <TouchableOpacity style={s.itemSaveBtn} onPress={handleSave}><Text style={s.itemSaveBtnText}>Save</Text></TouchableOpacity>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <Switch
+                      value={isOngoing}
+                      onValueChange={(v) => setNightFields(i, { ongoing: v, continuous: v, endDate: v ? '' : night.endDate })}
+                      trackColor={{ false: colors.border, true: Colors.orange }}
+                      thumbColor="#fff"
+                    />
+                    <Text style={{ fontSize: 14, color: colors.black }}>Ongoing (no end date)</Text>
+                  </View>
+                  {!isOngoing && (
+                    <Field label="END DATE" error={showErrors && !night.endDate}>
+                      <DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} allowedDays={nightAllowedDow} rangeStart={night.startDate} />
+                    </Field>
+                  )}
+
+                  {/* WHERE AND WHAT */}
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 8, marginBottom: 10 }}>Where and what</Text>
+
+                  <Field label="SLOT TYPE">
+                    <Pills options={SLOT_TYPES} value={night.slotType || 'Headline'} onSelect={(v: string) => setNight(i, 'slotType', v)} />
+                  </Field>
+
+                  <Field label="ROOM" helper="'Any room' if not tied to a specific space.">
+                    <Pills
+                      options={['Any room', ...data.rooms.map(r => r.name).filter(Boolean)]}
+                      value={night.room || 'Any room'}
+                      onSelect={(v: string) => setNight(i, 'room', v === 'Any room' ? '' : v)}
+                    />
+                  </Field>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>Use your venue genres</Text>
+                      <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{venueGenresSummary}</Text>
+                    </View>
+                    <Switch
+                      value={night.useVenueGenres !== false}
+                      onValueChange={(v) => setNightFields(i, { useVenueGenres: v, genres: v ? null : (night.genres || []) })}
+                      trackColor={{ false: colors.border, true: Colors.orange }}
+                      thumbColor="#fff"
+                    />
+                  </View>
+                  {night.useVenueGenres === false && (
+                    <Field label="GENRES FOR THIS SLOT">
+                      <Pills options={GENRES} value={night.genres || []} onSelect={(v: string[]) => setNight(i, 'genres', v)} multi />
+                    </Field>
+                  )}
+
+                  {/* PAY */}
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 8, marginBottom: 10 }}>Pay</Text>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>Use your default pay</Text>
+                      <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{defaultPaySummary()}</Text>
+                    </View>
+                    <Switch
+                      value={night.useDefaultPay !== false}
+                      onValueChange={(v) => setNight(i, 'useDefaultPay', v)}
+                      trackColor={{ false: colors.border, true: Colors.orange }}
+                      thumbColor="#fff"
+                    />
+                  </View>
+
+                  {night.useDefaultPay === false && (
+                    <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 14, marginBottom: 14, gap: 12 }}>
+                      <Field label="PAYMENT MODELS">
+                        <Pills
+                          options={PAY_MODELS}
+                          value={activeModels}
+                          onSelect={(newModels: string[]) => {
+                            const last = newModels[newModels.length - 1];
+                            const next = last === 'Unpaid' ? ['Unpaid'] : newModels.filter(m => m !== 'Unpaid');
+                            setNightFields(i, { paymentModels: next, paymentModel: '' });
+                          }}
+                          multi
+                        />
+                      </Field>
+                      {activeModels.includes('Flat fee') && (() => {
+                        const minV = parseFloat(night.feeMin), maxV = parseFloat(night.feeMax);
+                        const maxErr = night.feeMax !== '' && night.feeMin !== '' && !isNaN(minV) && !isNaN(maxV) && maxV < minV;
+                        return (
+                          <Field label="FLAT FEE RANGE">
+                            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                              <View style={{ width: 90 }}><CurrencyInput value={night.feeMin} onChangeText={(v: string) => setNight(i, 'feeMin', v)} placeholder="Min" /></View>
+                              <View style={{ width: 90 }}><CurrencyInput value={night.feeMax} onChangeText={(v: string) => setNight(i, 'feeMax', v)} placeholder="Max" error={maxErr} /></View>
+                              <View style={{ flex: 1 }}><Select options={FEE_BASIS_OPTS} value={night.feeBasis || 'Per act'} onSelect={(v: string) => setNight(i, 'feeBasis', v)} /></View>
+                            </View>
+                            {maxErr && <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>Max must be higher than min.</Text>}
+                          </Field>
+                        );
+                      })()}
+                      {activeModels.includes('Door split') && (
+                        <Field label="DOOR SPLIT TERMS">
+                          <Input value={night.doorSplit} onChangeText={(v: string) => setNight(i, 'doorSplit', v)} placeholder="e.g. 70/30 artist/venue after $200 covered" />
+                        </Field>
+                      )}
+                      {activeModels.includes('Guarantee + split') && (
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                          <View style={{ flex: 1 }}>
+                            <Field label="GUARANTEE ($)">
+                              <CurrencyInput value={night.guaranteeAmount} onChangeText={(v: string) => setNight(i, 'guaranteeAmount', v)} placeholder="0" />
+                            </Field>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Field label="SPLIT TERMS">
+                              <Input value={night.guaranteeSplit} onChangeText={(v: string) => setNight(i, 'guaranteeSplit', v)} placeholder="e.g. 60/40 after" />
+                            </Field>
+                          </View>
+                        </View>
+                      )}
+                      {activeModels.includes('Bar split') && (
+                        <Field label="BAR SPLIT TERMS">
+                          <Input value={night.barSplit} onChangeText={(v: string) => setNight(i, 'barSplit', v)} placeholder="e.g. 10% of bar takings" />
+                        </Field>
+                      )}
+                      {activeModels.includes('Ticket split') && (
+                        <Field label="TICKET SPLIT">
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <View style={{ flex: 1 }}><Input value={night.ticketSalesSplit} onChangeText={(v: string) => setNight(i, 'ticketSalesSplit', v)} placeholder="% to acts" keyboardType="numeric" /></View>
+                            <View style={{ flex: 1 }}><Select options={TICKETING_BY_OPTS} value={night.ticketingHandledBy || 'Venue'} onSelect={(v: string) => setNight(i, 'ticketingHandledBy', v)} /></View>
+                          </View>
+                        </Field>
+                      )}
+                      {activeModels.includes('Unpaid') && (
+                        <View style={{ backgroundColor: Colors.orange + '11', borderRadius: 8, padding: 10 }}>
+                          <Text style={{ fontSize: 13, color: Colors.orange, lineHeight: 19 }}>This slot will be clearly labelled as unpaid on your timetable.</Text>
+                        </View>
+                      )}
+                      {!activeModels.includes('Unpaid') && activeModels.length > 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 14, color: colors.black }}>Open to negotiation</Text>
+                          <Switch
+                            value={night.negotiable !== false}
+                            onValueChange={(v) => setNight(i, 'negotiable', v)}
+                            trackColor={{ false: colors.border, true: Colors.orange }}
+                            thumbColor="#fff"
+                          />
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* WHAT ACTS GET */}
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 8, marginBottom: 10 }}>What acts get</Text>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 14 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>Use your default hospitality</Text>
+                      <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{defaultHospSummary()}</Text>
+                    </View>
+                    <Switch
+                      value={night.useDefaultHospitality !== false}
+                      onValueChange={(v) => setNight(i, 'useDefaultHospitality', v)}
+                      trackColor={{ false: colors.border, true: Colors.orange }}
+                      thumbColor="#fff"
+                    />
+                  </View>
+
+                  {night.useDefaultHospitality === false && (
+                    <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 14, marginBottom: 14, gap: 12 }}>
+                      <Field label="GUEST LIST PER ACT">
+                        <Select options={GUEST_LIST_OPTS} value={night.guestList || '0'} onSelect={(v: string) => setNight(i, 'guestList', v)} />
+                      </Field>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 14, color: colors.black }}>Meals</Text>
+                        <Switch
+                          value={night.meals || false}
+                          onValueChange={(v) => setNight(i, 'meals', v)}
+                          trackColor={{ false: colors.border, true: Colors.orange }}
+                          thumbColor="#fff"
+                        />
+                      </View>
+                      {night.meals && (
+                        <Input value={night.mealsDetails} onChangeText={(v: string) => setNight(i, 'mealsDetails', v)} placeholder="e.g. meal voucher per performer" />
+                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 14, color: colors.black }}>Drinks</Text>
+                        <Switch
+                          value={night.drinks || false}
+                          onValueChange={(v) => setNight(i, 'drinks', v)}
+                          trackColor={{ false: colors.border, true: Colors.orange }}
+                          thumbColor="#fff"
+                        />
+                      </View>
+                      {night.drinks && (
+                        <Input value={night.drinksDetails} onChangeText={(v: string) => setNight(i, 'drinksDetails', v)} placeholder="e.g. 2 drinks each" />
+                      )}
+                    </View>
+                  )}
+
+                  {/* FOR ARTISTS */}
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 8, marginBottom: 10 }}>For artists</Text>
+
+                  <Field label="MINIMUM NOTICE">
+                    <Select
+                      options={['Default (use booking terms)', ...MIN_NOTICE_OPTS]}
+                      value={night.minNotice || 'Default (use booking terms)'}
+                      onSelect={(v: string) => setNight(i, 'minNotice', v === 'Default (use booking terms)' ? '' : v)}
+                    />
+                  </Field>
+
+                  <Field label="NOTES FOR ARTISTS" helper="Anything acts should know before they enquire for this slot.">
+                    <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="e.g. Acoustic only. Strict 45-minute sets." multiline />
+                  </Field>
+
+                  {/* Slot footer */}
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+                    <TouchableOpacity
+                      style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                      onPress={() => {
+                        const copy = { ...night, name: (night.name ? `${night.name} (copy)` : ''), _isNew: true };
+                        setData(prev => {
+                          const nights = [...prev.gigNights, copy];
+                          setExpandedNight(nights.length - 1);
+                          return { ...prev, gigNights: nights };
+                        });
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, color: colors.black, fontWeight: '600' }}>Duplicate</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ flex: 1, borderWidth: 1, borderColor: Colors.danger, borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                      onPress={() => crossConfirm('Delete slot', "This will remove the slot and any open enquiries tied to it. This can't be undone.", () => removeNight(i), true)}
+                    >
+                      <Text style={{ fontSize: 13, color: Colors.danger, fontWeight: '600' }}>Delete</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               )}
             </View>
           );
         })}
-        {data.gigNights.length < 7 && (<TouchableOpacity style={s.addBtn} onPress={addNight}><Text style={s.addBtnText}>+ Add Gig Slot</Text></TouchableOpacity>)}
+
+        {data.gigNights.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Text style={{ fontSize: 15, color: colors.grey }}>No slots yet.</Text>
+            <Text style={{ fontSize: 13, color: colors.grey, textAlign: 'center', lineHeight: 19 }}>Add a recurring slot and artists can start enquiring against it.</Text>
+          </View>
+        )}
       </View>
     );
   }
 
-  function renderTechSpecs() {
+  function renderAccessFacilities() {
+    const ts = data.techSpecs || {};
+    const setTs = (updates: Record<string, any>) => set('techSpecs', { ...ts, ...updates });
     return (
       <View style={s.section}>
-        {renderPageHeader('Tech Specs')}
+        {renderPageHeader('Access & facilities')}
 
-        <SectionCard title="Venue info">
-          <FieldRow label="Load-in" sublabel="Access and instructions">
-            <Input value={data.techSpecs?.loadIn || data.techSpecs?.loadInParking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, loadIn: v, loadInParking: v })} placeholder="e.g. rear loading dock, access via laneway" />
+        <SectionCard title="Arrival">
+          <FieldRow label="Load-in access" sublabel="Instructions for getting gear in">
+            <Input value={ts.loadIn || ts.loadInParking || ''} onChangeText={(v: string) => setTs({ loadIn: v, loadInParking: v })} placeholder="e.g. rear loading dock, access via laneway" />
           </FieldRow>
-          <FieldRow label="Parking">
-            <Input value={data.techSpecs?.parking || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, parking: v })} placeholder="e.g. street parking only, 2hr limit after 6pm" />
+          <FieldRow label="Parking" last>
+            <Input value={ts.parking || ''} onChangeText={(v: string) => setTs({ parking: v })} placeholder="e.g. street parking only, 2hr limit after 6pm" />
           </FieldRow>
-          <FieldRow label="Curfew" sublabel="Noise restrictions">
-            <Input value={data.techSpecs?.curfew || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, curfew: v })} placeholder="e.g. 11pm hard curfew, council noise limit" />
+        </SectionCard>
+
+        <SectionCard title="Sound and curfew">
+          <FieldRow label="In-house sound engineer" sublabel="Venue provides a sound tech">
+            <Switch value={ts.soundEngineer || false} onValueChange={(v) => setTs({ soundEngineer: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
-          <FieldRow label="Sound engineer" sublabel="In-house sound engineer" last={!data.techSpecs?.soundEngineer && !data.techSpecs?.greenRoom}>
-            <Switch value={data.techSpecs?.soundEngineer || false} onValueChange={(v) => set('techSpecs', { ...data.techSpecs, soundEngineer: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          {data.techSpecs?.soundEngineer && (
-            <FieldRow label="Engineer details" last={!data.techSpecs?.greenRoom}>
-              <Input value={data.techSpecs?.soundEngineerDetails || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, soundEngineerDetails: v })} placeholder="e.g. included in the booking, or available at extra cost" />
+          {ts.soundEngineer && (
+            <FieldRow label="Engineer details">
+              <Input value={ts.soundEngineerDetails || ''} onChangeText={(v: string) => setTs({ soundEngineerDetails: v })} placeholder="e.g. included in the booking, or available at extra cost" />
             </FieldRow>
           )}
-          <FieldRow label="Green room" last={!data.techSpecs?.greenRoom}>
-            <Switch value={data.techSpecs?.greenRoom || false} onValueChange={(v) => set('techSpecs', { ...data.techSpecs, greenRoom: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          <FieldRow label="Curfew">
+            <Select options={CURFEW_OPTS} value={ts.curfew || 'No curfew'} onSelect={(v: string) => setTs({ curfew: v === 'No curfew' ? '' : v })} />
           </FieldRow>
-          {data.techSpecs?.greenRoom && (
-            <FieldRow label="Green room details" last>
-              <Input value={data.techSpecs?.greenRoomDetails || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, greenRoomDetails: v })} placeholder="e.g. shared green room, fridge and couch" />
+          <FieldRow label="Noise restrictions" sublabel="Council or venue rules" last>
+            <Input value={ts.noiseRestrictions || ts.noiseNotes || ''} onChangeText={(v: string) => setTs({ noiseRestrictions: v, noiseNotes: v })} placeholder="e.g. hard limit 95dB at FOH after 11pm" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Artist facilities">
+          <FieldRow label="Green room" sublabel="Dedicated space for acts">
+            <Switch value={ts.greenRoom || false} onValueChange={(v) => setTs({ greenRoom: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          </FieldRow>
+          {ts.greenRoom && (
+            <FieldRow label="Green room details">
+              <Input value={ts.greenRoomDetails || ''} onChangeText={(v: string) => setTs({ greenRoomDetails: v })} placeholder="e.g. shared green room, fridge and couch" />
             </FieldRow>
           )}
+          <FieldRow label="Merch space" sublabel="Area for acts to sell merchandise" last>
+            <Switch value={ts.merchSpace || false} onValueChange={(v) => setTs({ merchSpace: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          </FieldRow>
         </SectionCard>
 
         <SectionCard title="Accessibility">
           <FieldRow label="Wheelchair access">
-            <Switch value={data.techSpecs?.wheelchairAccess || false} onValueChange={(v) => set('techSpecs', { ...data.techSpecs, wheelchairAccess: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            <Switch value={ts.wheelchairAccess || false} onValueChange={(v) => setTs({ wheelchairAccess: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
           <FieldRow label="Accessible bathroom">
-            <Switch value={data.techSpecs?.accessibleBathroom || false} onValueChange={(v) => set('techSpecs', { ...data.techSpecs, accessibleBathroom: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            <Switch value={ts.accessibleBathroom || false} onValueChange={(v) => setTs({ accessibleBathroom: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
           <FieldRow label="Step-free stage">
-            <Switch value={data.techSpecs?.stepFreeStage || false} onValueChange={(v) => set('techSpecs', { ...data.techSpecs, stepFreeStage: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            <Switch value={ts.stepFreeStage || false} onValueChange={(v) => setTs({ stepFreeStage: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
-          <FieldRow label="Wheelchair parking" last>
-            <Switch value={data.techSpecs?.wheelchairParking || false} onValueChange={(v) => set('techSpecs', { ...data.techSpecs, wheelchairParking: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          <FieldRow label="Accessible parking" last>
+            <Switch value={ts.wheelchairParking || false} onValueChange={(v) => setTs({ wheelchairParking: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
         </SectionCard>
 
         <SectionCard title="General notes">
           <View style={{ padding: 16 }}>
-            <Input value={data.techSpecs?.notes || ''} onChangeText={(v: string) => set('techSpecs', { ...data.techSpecs, notes: v })} placeholder="Anything acts should know about the venue in general" multiline />
+            <Input value={ts.notes || ''} onChangeText={(v: string) => setTs({ notes: v })} placeholder="Anything acts should know about the venue that doesn't fit above" multiline />
           </View>
         </SectionCard>
       </View>
     );
   }
 
-  function renderPayments() {
+  function renderBookingTerms() {
+    const bt = data.bookingTerms || { ...BLANK_BOOKING_TERMS };
+    const setBt = (updates: Partial<typeof BLANK_BOOKING_TERMS>) =>
+      set('bookingTerms', { ...bt, ...updates });
+    const activeModels = bt.payModels || [];
+
     return (
       <View style={s.section}>
-        {renderPageHeader('Payments')}
+        {renderPageHeader('Booking terms')}
 
-        <SectionCard title="Payment structure">
-          <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 }}>
-            <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 19 }}>Select the payment types your venue offers. Artists see this as a general overview. Specific amounts are set per gig slot in your timetable.</Text>
-          </View>
-          <FieldRow label="Payment models" last>
-            <Pills options={PAYMENT_MODELS} value={data.payment.models} onSelect={(v: string[]) => setPayment('models', v)} multi />
-          </FieldRow>
-        </SectionCard>
+        {/* Three-step strip */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, marginBottom: 20, gap: 4 }}>
+          {['Booking terms (defaults)', 'Gig slot (can override)', 'Booking (confirmed deal)'].map((label, idx) => (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: idx === 0 ? Colors.orange : colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: idx === 0 ? '#fff' : colors.grey }}>{idx + 1}</Text>
+                </View>
+                <Text style={{ fontSize: 10, color: idx === 0 ? Colors.orange : colors.grey, textAlign: 'center', lineHeight: 13, fontWeight: idx === 0 ? '600' : '400' }}>{label}</Text>
+              </View>
+              {idx < 2 && <Text style={{ fontSize: 14, color: colors.border, marginBottom: 14 }}>›</Text>}
+            </View>
+          ))}
+        </View>
 
-        <SectionCard title="What's included">
-          <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 }}>
-            <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 19 }}>Let artists know what is covered in the booking beyond the fee.</Text>
-          </View>
-          <FieldRow label="Backline provided">
-            <Pills options={BACKLINE_OFFER} value={data.payment.backlineProvided} onSelect={(v: string[]) => setPayment('backlineProvided', v)} multi />
-          </FieldRow>
-          <FieldRow label="Guest list allowance">
-            <Input value={data.payment.guestListAllowance} onChangeText={(v: string) => setPayment('guestListAllowance', v)} placeholder="e.g. 2 guests per act" />
-          </FieldRow>
-          <FieldRow label="Meals / Hospitality" last={!data.payment.mealsProvided}>
-            <Switch value={data.payment.mealsProvided} onValueChange={(v: boolean) => setPayment('mealsProvided', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          {data.payment.mealsProvided && (
-            <FieldRow label="Hospitality details" last>
-              <Input value={data.payment.mealsNotes} onChangeText={(v: string) => setPayment('mealsNotes', v)} placeholder="e.g. meal voucher for each performer" />
-            </FieldRow>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Payment logistics">
-          <FieldRow label="Accepted methods">
-            <Pills options={PAY_METHODS} value={data.payment.paymentMethods} onSelect={(v: string[]) => setPayment('paymentMethods', v)} multi />
-          </FieldRow>
-          <FieldRow label="Payment timing">
-            <Select options={PAY_TIMING} value={data.payment.timing} onSelect={(v: string) => setPayment('timing', v)} />
-          </FieldRow>
-          {data.payment.timing === 'Other' && (
-            <FieldRow label="Timing details">
-              <Input value={data.payment.timingOther} onChangeText={(v: string) => setPayment('timingOther', v)} placeholder="Describe your payment timing" />
-            </FieldRow>
-          )}
-          <FieldRow label="Deposit required">
-            <Switch value={data.payment.depositRequired} onValueChange={(v: boolean) => setPayment('depositRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          {data.payment.depositRequired && (
-            <>
-              <FieldRow label="Deposit amount">
-                <CurrencyInput value={data.payment.depositAmount} onChangeText={(v: string) => setPayment('depositAmount', v)} placeholder="Amount" />
-              </FieldRow>
-              <FieldRow label="Deposit due">
-                <Input value={data.payment.depositDue} onChangeText={(v: string) => setPayment('depositDue', v)} placeholder="e.g. 7 days before the gig" />
-              </FieldRow>
-            </>
-          )}
-          <FieldRow label="Late payment contact" last>
-            <Input value={data.payment.latePaymentContact} onChangeText={(v: string) => setPayment('latePaymentContact', v)} placeholder="e.g. bookings@yourvenue.com.au" keyboardType="email-address" />
-          </FieldRow>
-        </SectionCard>
-
-        <SectionCard title="Tax and invoicing">
-          {(() => {
-            const abnDigits  = data.payment.abn.replace(/\s/g, '');
-            const abnFilled  = abnDigits.length > 0;
-            const abnValid   = abnFilled && isValidABN(abnDigits);
-            const abnError   = (venueAbnTouched || showErrors) && abnFilled && !abnValid;
-            return (
-              <>
-                <FieldRow label="Venue ABN" error={abnError}>
-                  <View>
-                    <Input
-                      value={data.payment.abn}
-                      onChangeText={(v: string) => {
-                        const cleaned = v.replace(/[^\d\s]/g, '');
-                        setPayment('abn', cleaned);
-                        if (!cleaned.replace(/\s/g, '')) setPayment('gstRegistered', false);
-                      }}
-                      onBlur={() => {
-                        setVenueAbnTouched(true);
-                        if (data.payment.abn.trim()) setPayment('abn', formatABN(data.payment.abn));
-                      }}
-                      placeholder="e.g. 12 345 678 901"
-                      keyboardType="numeric"
-                      error={abnError}
-                    />
-                    {abnError && (
-                      <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
-                        Invalid ABN. Check the 11-digit number and try again.
-                      </Text>
-                    )}
+        <SectionCard title="How you pay acts">
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <Field label="PAYMENT MODELS">
+              <Pills
+                options={PAY_MODELS}
+                value={activeModels}
+                onSelect={(newModels: string[]) => {
+                  const last = newModels[newModels.length - 1];
+                  const next = last === 'Unpaid' ? ['Unpaid'] : newModels.filter(m => m !== 'Unpaid');
+                  setBt({ payModels: next });
+                }}
+                multi
+              />
+            </Field>
+            {activeModels.includes('Flat fee') && (() => {
+              const minV = parseFloat(bt.flatFeeMin), maxV = parseFloat(bt.flatFeeMax);
+              const maxErr = bt.flatFeeMax !== '' && bt.flatFeeMin !== '' && !isNaN(minV) && !isNaN(maxV) && maxV < minV;
+              return (
+                <Field label="FLAT FEE RANGE">
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <View style={{ width: 90 }}><CurrencyInput value={bt.flatFeeMin} onChangeText={(v: string) => setBt({ flatFeeMin: v })} placeholder="Min" /></View>
+                    <View style={{ width: 90 }}><CurrencyInput value={bt.flatFeeMax} onChangeText={(v: string) => setBt({ flatFeeMax: v })} placeholder="Max" error={maxErr} /></View>
+                    <View style={{ flex: 1 }}><Select options={FEE_BASIS_OPTS} value={bt.flatFeeBasis || 'Per act'} onSelect={(v: string) => setBt({ flatFeeBasis: v })} /></View>
                   </View>
-                </FieldRow>
-                <FieldRow label="GST registered">
-                  <View style={{ opacity: abnValid ? 1 : 0.4 }}>
-                    <Switch
-                      value={data.payment.gstRegistered}
-                      onValueChange={(v: boolean) => setPayment('gstRegistered', v)}
-                      disabled={!abnValid}
-                      trackColor={{ false: colors.border, true: Colors.orange }}
-                      thumbColor="#fff"
-                    />
-                  </View>
-                </FieldRow>
-              </>
-            );
-          })()}
-          <FieldRow label="Requires artist ABN">
-            <Switch value={data.payment.requiresArtistAbn} onValueChange={(v: boolean) => setPayment('requiresArtistAbn', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          <FieldRow label="Invoice required" last={!data.payment.invoiceRequired}>
-            <Switch value={data.payment.invoiceRequired} onValueChange={(v: boolean) => setPayment('invoiceRequired', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          {data.payment.invoiceRequired && (
-            <FieldRow label="Invoice direction" last>
-              <Select options={INVOICE_DIRS} value={data.payment.invoiceDirection} onSelect={(v: string) => setPayment('invoiceDirection', v)} />
-            </FieldRow>
-          )}
+                  {maxErr && <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>Max must be higher than min.</Text>}
+                </Field>
+              );
+            })()}
+            {activeModels.includes('Door split') && (
+              <Field label="DOOR SPLIT TERMS">
+                <Input value={bt.doorSplit} onChangeText={(v: string) => setBt({ doorSplit: v })} placeholder="e.g. 70/30 artist/venue after $200 covered" />
+              </Field>
+            )}
+            {activeModels.includes('Guarantee + split') && (
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}><Field label="GUARANTEE ($)"><CurrencyInput value={bt.guaranteeAmount} onChangeText={(v: string) => setBt({ guaranteeAmount: v })} placeholder="0" /></Field></View>
+                <View style={{ flex: 1 }}><Field label="SPLIT TERMS"><Input value={bt.guaranteeSplit} onChangeText={(v: string) => setBt({ guaranteeSplit: v })} placeholder="e.g. 60/40 after" /></Field></View>
+              </View>
+            )}
+            {activeModels.includes('Bar split') && (
+              <Field label="BAR SPLIT TERMS">
+                <Input value={bt.barSplit} onChangeText={(v: string) => setBt({ barSplit: v })} placeholder="e.g. 10% of bar takings" />
+              </Field>
+            )}
+            {activeModels.includes('Ticket split') && (
+              <Field label="TICKET SPLIT">
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}><Input value={bt.ticketSplitPct} onChangeText={(v: string) => setBt({ ticketSplitPct: v })} placeholder="% to acts" keyboardType="numeric" /></View>
+                  <View style={{ flex: 1 }}><Select options={TICKETING_BY_OPTS} value={bt.ticketingBy || 'Venue'} onSelect={(v: string) => setBt({ ticketingBy: v })} /></View>
+                </View>
+              </Field>
+            )}
+            {activeModels.includes('Unpaid') && (
+              <View style={{ backgroundColor: Colors.orange + '11', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, color: Colors.orange, lineHeight: 19 }}>Slots using these defaults will be clearly labelled as unpaid on your timetable.</Text>
+              </View>
+            )}
+            {!activeModels.includes('Unpaid') && activeModels.length > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Open to negotiation</Text>
+                <Switch value={bt.negotiable !== false} onValueChange={(v) => setBt({ negotiable: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+            )}
+            <Field label="PAYMENT METHODS">
+              <Pills options={['Bank transfer', 'Cash', 'PayPal', 'Stripe', 'Other']} value={bt.methods || []} onSelect={(v: string[]) => setBt({ methods: v })} multi />
+            </Field>
+            <Field label="WHEN ACTS ARE PAID">
+              <Select options={PAY_TIMING_OPTS} value={bt.paymentTiming || ''} onSelect={(v: string) => setBt({ paymentTiming: v })} />
+            </Field>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: bt.depositRequired ? 8 : 0 }}>
+              <Text style={{ fontSize: 14, color: colors.black }}>Deposit required</Text>
+              <Switch value={bt.depositRequired || false} onValueChange={(v) => setBt({ depositRequired: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+            {bt.depositRequired && (
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}><Field label="AMOUNT ($)"><CurrencyInput value={bt.depositAmount} onChangeText={(v: string) => setBt({ depositAmount: v })} placeholder="0" /></Field></View>
+                <View style={{ flex: 1 }}><Field label="DUE"><Select options={DEPOSIT_DUE_OPTS} value={bt.depositDue || 'On booking'} onSelect={(v: string) => setBt({ depositDue: v })} /></Field></View>
+              </View>
+            )}
+          </View>
         </SectionCard>
 
-        <SectionCard title="Invoice templates">
-          <View style={{ padding: 16 }}>
-            <Text style={{ fontSize: 13, color: Colors.grey, marginBottom: 10, lineHeight: 19 }}>Upload any preferred invoice format or RCTI template for artists to use.</Text>
-            {(data.payment.invoiceDocs || []).map((doc, idx) => (
-              <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 8 }}>
-                <Text style={{ flex: 1, fontSize: 13, color: colors.black }} numberOfLines={1}>↓ {doc.name}</Text>
-                <TouchableOpacity onPress={() => setPayment('invoiceDocs', data.payment.invoiceDocs.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={{ fontSize: 14, color: '#e94560', fontWeight: '700' }}>✕</Text>
+        <SectionCard title="Booking rules">
+          <FieldRow label="Default minimum notice" sublabel="How much lead time you need. Slots can override this." last>
+            <Select options={MIN_NOTICE_OPTS} value={bt.minNotice || '1 week'} onSelect={(v: string) => setBt({ minNotice: v })} />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="What acts get">
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <Field label="GUEST LIST PER ACT">
+              <Select options={GUEST_LIST_OPTS} value={bt.guestList || '0'} onSelect={(v: string) => setBt({ guestList: v })} />
+            </Field>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: bt.meals ? 8 : 16 }}>
+              <Text style={{ fontSize: 14, color: colors.black }}>Meals</Text>
+              <Switch value={bt.meals || false} onValueChange={(v) => setBt({ meals: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+            {bt.meals && (
+              <View style={{ marginBottom: 16 }}>
+                <Input value={bt.mealsDetails} onChangeText={(v: string) => setBt({ mealsDetails: v })} placeholder="e.g. meal voucher per performer" />
+              </View>
+            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: bt.drinks ? 8 : 4 }}>
+              <Text style={{ fontSize: 14, color: colors.black }}>Drinks</Text>
+              <Switch value={bt.drinks || false} onValueChange={(v) => setBt({ drinks: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+            {bt.drinks && (
+              <View style={{ marginBottom: 8 }}>
+                <Input value={bt.drinksDetails} onChangeText={(v: string) => setBt({ drinksDetails: v })} placeholder="e.g. 2 drinks each" />
+              </View>
+            )}
+            <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 17, marginTop: 8, marginBottom: 8 }}>
+              Backline is set per room. Green room and merch space are in Access and facilities.
+            </Text>
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderInvoicing() {
+    const abnDigits = data.payment.abn.replace(/\s/g, '');
+    const abnFilled = abnDigits.length > 0;
+    const abnValid  = abnFilled && isValidABN(abnDigits);
+    const abnError  = (venueAbnTouched || showErrors) && abnFilled && !abnValid;
+    const invoiceMode = data.invoicingMode || 'actsInvoice';
+
+    return (
+      <View style={s.section}>
+        {renderPageHeader('Invoicing')}
+
+        <SectionCard title="Business details">
+          <FieldRow label="Legal entity name" sublabel="The name on invoices and contracts.">
+            <Input
+              value={data.legalEntityName || ''}
+              onChangeText={(v: string) => set('legalEntityName', v)}
+              placeholder="e.g. The Crown Hotel Pty Ltd"
+            />
+          </FieldRow>
+          <FieldRow label="ABN" error={abnError}>
+            <View>
+              <Input
+                value={data.payment.abn}
+                onChangeText={(v: string) => {
+                  const cleaned = v.replace(/[^\d\s]/g, '');
+                  setPayment('abn', cleaned);
+                  if (!cleaned.replace(/\s/g, '')) setPayment('gstRegistered', false);
+                }}
+                onBlur={() => {
+                  setVenueAbnTouched(true);
+                  if (data.payment.abn.trim()) setPayment('abn', formatABN(data.payment.abn));
+                }}
+                placeholder="e.g. 12 345 678 901"
+                keyboardType="numeric"
+                error={abnError}
+              />
+              {abnError && <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>Invalid ABN. Check the 11-digit number and try again.</Text>}
+            </View>
+          </FieldRow>
+          <FieldRow label="Registered for GST" last>
+            <View style={{ opacity: abnValid ? 1 : 0.4 }}>
+              <Switch value={data.payment.gstRegistered} onValueChange={(v: boolean) => setPayment('gstRegistered', v)} disabled={!abnValid} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="How invoicing works">
+          <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
+            <Field label="INVOICING MODEL">
+              <Pills
+                options={['Acts invoice you', 'You issue RCTIs', 'Not required']}
+                value={invoiceMode === 'actsInvoice' ? 'Acts invoice you' : invoiceMode === 'rcti' ? 'You issue RCTIs' : 'Not required'}
+                onSelect={(v: string) => set('invoicingMode', v === 'Acts invoice you' ? 'actsInvoice' : v === 'You issue RCTIs' ? 'rcti' : 'none')}
+              />
+            </Field>
+            {invoiceMode !== 'none' && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Acts must have an ABN</Text>
+                <Switch value={data.payment.requiresArtistAbn} onValueChange={(v: boolean) => setPayment('requiresArtistAbn', v)} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+              </View>
+            )}
+            {invoiceMode === 'rcti' && (
+              <View style={{ backgroundColor: Colors.orange + '11', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                <Text style={{ fontSize: 13, color: Colors.orange, lineHeight: 19 }}>RCTIs require a written agreement with each act before the first payment. Keep records.</Text>
+              </View>
+            )}
+            {invoiceMode !== 'none' && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                  {invoiceMode === 'rcti' ? 'RCTI TEMPLATE' : 'INVOICE TEMPLATE'}
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.grey, marginBottom: 8, lineHeight: 19 }}>
+                  Optional. Upload a preferred format for acts to use.
+                </Text>
+                {(data.payment.invoiceDocs || []).map((doc, idx) => (
+                  <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                    <Text style={{ flex: 1, fontSize: 13, color: colors.black }} numberOfLines={1}>↓ {doc.name}</Text>
+                    <TouchableOpacity onPress={() => setPayment('invoiceDocs', data.payment.invoiceDocs.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '700' }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <TouchableOpacity style={s.addBtn} onPress={pickInvoiceDocument} disabled={invoiceDocUploading}>
+                  <Text style={s.addBtnText}>{invoiceDocUploading ? 'Uploading...' : '+ Upload template'}</Text>
                 </TouchableOpacity>
               </View>
-            ))}
-            <TouchableOpacity style={s.addBtn} onPress={pickInvoiceDocument} disabled={invoiceDocUploading}>
-              <Text style={s.addBtnText}>{invoiceDocUploading ? 'Uploading...' : '+ Upload Document'}</Text>
-            </TouchableOpacity>
+            )}
           </View>
         </SectionCard>
 
-        <SectionCard title="Notes">
+        <SectionCard title="Accounts contact">
+          <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2 }}>
+            <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 19, marginBottom: 12 }}>Shared with acts once a booking is confirmed. Not shown publicly.</Text>
+          </View>
+          <FieldRow label="Name">
+            <Input value={data.accountsContactName || ''} onChangeText={(v: string) => set('accountsContactName', v)} placeholder="e.g. Alex Johnson" />
+          </FieldRow>
+          <FieldRow label="Email" last>
+            <Input value={data.accountsContactEmail || ''} onChangeText={(v: string) => set('accountsContactEmail', v)} placeholder="accounts@yourvenue.com.au" keyboardType="email-address" />
+          </FieldRow>
+        </SectionCard>
+
+        <SectionCard title="Notes for acts">
           <View style={{ padding: 16 }}>
-            <Input value={data.payment.additionalNotes} onChangeText={(v: string) => setPayment('additionalNotes', v)} placeholder="Anything else artists should know about payment at your venue" multiline />
+            <Input value={data.invoicingNotes || ''} onChangeText={(v: string) => set('invoicingNotes', v)} placeholder="Anything else acts should know about invoicing at your venue" multiline />
           </View>
         </SectionCard>
 
-        {(() => {
-          const acnDigits = legalIdentity.acn.replace(/\s/g, '');
-          const acnFilled = acnDigits.length > 0;
-          const acnValid  = acnFilled && isValidACN(acnDigits);
-          const acnError  = (venueAcnTouched || showErrors) && acnFilled && !acnValid;
-          const needsAcn  = legalIdentity.entityType === 'Company';
-          const complete  = isLegalIdentityComplete(legalIdentity);
-          return (
-            <SectionCard
-              title="Contract details"
-              subtitle="Used on gig contracts. Not shared publicly."
-              right={
-                complete ? (
-                  <View style={{ backgroundColor: '#e8f5e9', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '600', color: '#2e7d32' }}>Complete</Text>
-                  </View>
-                ) : null
-              }
-            >
-              <FieldRow label="Entity type">
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {ENTITY_TYPES.map(opt => {
-                    const active = legalIdentity.entityType === opt;
-                    return (
-                      <TouchableOpacity
-                        key={opt}
-                        onPress={() => setLegal('entityType', opt)}
-                        style={{
-                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
-                          borderWidth: 1,
-                          borderColor: active ? colors.black : colors.border,
-                          backgroundColor: active ? colors.black : 'transparent',
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#fff' : colors.black }}>
-                          {opt}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </FieldRow>
-              <FieldRow label="Legal name" sublabel="The name on contracts and invoices.">
-                <Input
-                  value={legalIdentity.legalName}
-                  onChangeText={(v: string) => setLegal('legalName', v)}
-                  placeholder="e.g. The Crown Hotel Pty Ltd"
-                />
-              </FieldRow>
-              {needsAcn && (
-                <FieldRow label="ACN" error={acnError}>
-                  <View>
-                    <Input
-                      value={legalIdentity.acn}
-                      onChangeText={(v: string) => setLegal('acn', v.replace(/[^\d\s]/g, ''))}
-                      onBlur={() => {
-                        setVenueAcnTouched(true);
-                        if (legalIdentity.acn.trim()) setLegal('acn', formatACN(legalIdentity.acn));
-                      }}
-                      placeholder="123 456 789"
-                      keyboardType="numeric"
-                      error={acnError}
-                    />
-                    {acnError && (
-                      <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
-                        Invalid ACN. Check the 9-digit number and try again.
-                      </Text>
-                    )}
-                  </View>
-                </FieldRow>
-              )}
-              <FieldRow label="Signatory name" sublabel="Who signs contracts on behalf of the venue.">
-                <Input
-                  value={legalIdentity.signatoryName}
-                  onChangeText={(v: string) => setLegal('signatoryName', v)}
-                  placeholder="e.g. Alex Johnson"
-                />
-              </FieldRow>
-              <FieldRow label="Signatory role" sublabel="Their title or position.">
-                <Input
-                  value={legalIdentity.signatoryRole}
-                  onChangeText={(v: string) => setLegal('signatoryRole', v)}
-                  placeholder="e.g. Director or General Manager"
-                />
-              </FieldRow>
-              <FieldRow label="Registered address">
-                <Input
-                  value={legalIdentity.addressLine}
-                  onChangeText={(v: string) => setLegal('addressLine', v)}
-                  placeholder="Street address"
-                />
-              </FieldRow>
-              <FieldRow label="Suburb">
-                <Input
-                  value={legalIdentity.suburb}
-                  onChangeText={(v: string) => setLegal('suburb', v)}
-                  placeholder="e.g. Collingwood"
-                />
-              </FieldRow>
-              <FieldRow label="State">
-                <Pills options={AU_STATES} value={legalIdentity.state} onSelect={(v: string) => setLegal('state', v)} />
-              </FieldRow>
-              <FieldRow label="Postcode" last>
-                <Input
-                  value={legalIdentity.postcode}
-                  onChangeText={(v: string) => setLegal('postcode', v.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="e.g. 3066"
-                  keyboardType="numeric"
-                />
-              </FieldRow>
-            </SectionCard>
-          );
-        })()}
+        {renderContractDetails()}
       </View>
+    );
+  }
+
+  function renderVerification() {
+    const isVerified = !!data.techSpecs?.verifiedAt;
+    const verifiedDate = data.techSpecs?.verifiedAt
+      ? new Date(data.techSpecs.verifiedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+
+    async function handleVerify() {
+      if (!verifyCode.trim()) return;
+      setVerifying(true);
+      setVerifyError('');
+      try {
+        const appSnap = await getDoc(doc(db, 'venueApplications', profile?.uid || ''));
+        const storedCode = appSnap.data()?.verificationCode;
+        if (!storedCode || storedCode !== verifyCode.trim()) {
+          setVerifyError('Incorrect code. Check your email and try again.');
+          return;
+        }
+        const now = Date.now();
+        await updateDoc(doc(db, 'venues', venueId), {
+          'techSpecs.verifiedAt': now,
+          'techSpecs.verified': true,
+        });
+        set('techSpecs', { ...data.techSpecs, verifiedAt: now, verified: true });
+      } catch (e: any) {
+        setVerifyError(e.message || 'Verification failed. Please try again.');
+      } finally {
+        setVerifying(false);
+      }
+    }
+
+    return (
+      <View style={s.section}>
+        {renderPageHeader('Verification')}
+
+        {isVerified ? (
+          <View style={{ backgroundColor: '#f0faf4', borderWidth: 1, borderColor: '#2F7A4B44', borderRadius: 14, padding: 20, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#2F7A4B', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>✓</Text>
+              </View>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#2F7A4B' }}>Venue verified</Text>
+            </View>
+            {verifiedDate && <Text style={{ fontSize: 13, color: '#2F7A4B', marginBottom: 10 }}>Verified {verifiedDate}</Text>}
+            <Text style={{ fontSize: 13, color: '#2F7A4B', lineHeight: 19 }}>
+              Changing your venue name, address, or ABN triggers a quick re-check. Your listing stays live during review.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ gap: 0 }}>
+            {/* Timeline */}
+            {[
+              { label: 'Details submitted', desc: 'Your venue details have been received.', done: true },
+              { label: 'Twaylo review', desc: 'We check your ABN and address match a real venue. Usually within 2 business days.', done: false, active: true },
+              { label: 'Enter your code', desc: 'Once approved, you will receive a verification code by email.', done: false },
+            ].map((step, idx) => (
+              <View key={idx} style={{ flexDirection: 'row', gap: 14, marginBottom: 20 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <View style={{
+                    width: 28, height: 28, borderRadius: 14,
+                    backgroundColor: step.done ? '#2F7A4B' : step.active ? Colors.orange : colors.border,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+                      {step.done ? '✓' : String(idx + 1)}
+                    </Text>
+                  </View>
+                  {idx < 2 && <View style={{ width: 1, flex: 1, backgroundColor: colors.border, marginTop: 4 }} />}
+                </View>
+                <View style={{ flex: 1, paddingTop: 4 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: step.active ? Colors.orange : colors.black, marginBottom: 3 }}>{step.label}</Text>
+                  <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 19 }}>{step.desc}</Text>
+                </View>
+              </View>
+            ))}
+
+            {/* Code entry */}
+            <View style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 16, marginTop: 4 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.black, marginBottom: 6 }}>Enter your verification code</Text>
+              <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 19, marginBottom: 14 }}>
+                Check your email for the code from Twaylo. It expires after 48 hours.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.bg, borderColor: verifyError ? Colors.danger : colors.border, color: colors.black, letterSpacing: 4, fontSize: 18, fontWeight: '700', textAlign: 'center' }]}
+                    value={verifyCode}
+                    onChangeText={(v) => { setVerifyCode(v.toUpperCase()); setVerifyError(''); }}
+                    placeholder="A1B2C3"
+                    placeholderTextColor={Colors.greyLight}
+                    autoCapitalize="characters"
+                    maxLength={8}
+                    returnKeyType="done"
+                    onSubmitEditing={handleVerify}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={{ backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 20, justifyContent: 'center' }}
+                  onPress={handleVerify}
+                  disabled={verifying || !verifyCode.trim()}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{verifying ? '...' : 'Verify'}</Text>
+                </TouchableOpacity>
+              </View>
+              {verifyError ? <Text style={{ fontSize: 13, color: Colors.danger, marginTop: 8 }}>{verifyError}</Text> : null}
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // Legacy fallback — renderPayments redirects to renderBookingTerms
+  function renderPayments() { return renderBookingTerms(); }
+  function renderContractDetails() {
+    const acnDigits = legalIdentity.acn.replace(/\s/g, '');
+    const acnFilled = acnDigits.length > 0;
+    const acnValid  = acnFilled && isValidACN(acnDigits);
+    const acnError  = (venueAcnTouched || showErrors) && acnFilled && !acnValid;
+    const needsAcn  = legalIdentity.entityType === 'Company';
+    const complete  = isLegalIdentityComplete(legalIdentity);
+    return (
+      <SectionCard
+        title="Contract details"
+        subtitle="Used on gig contracts. Not shown publicly."
+        right={
+          complete ? (
+            <View style={{ backgroundColor: '#e8f5e9', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#2e7d32' }}>Complete</Text>
+            </View>
+          ) : null
+        }
+      >
+        <FieldRow label="Entity type">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {ENTITY_TYPES.map(opt => {
+              const active = legalIdentity.entityType === opt;
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => setLegal('entityType', opt)}
+                  style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: active ? colors.black : colors.border, backgroundColor: active ? colors.black : 'transparent' }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#fff' : colors.black }}>{opt}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </FieldRow>
+        <FieldRow label="Legal name" sublabel="The name on contracts and invoices.">
+          <Input value={legalIdentity.legalName} onChangeText={(v: string) => setLegal('legalName', v)} placeholder="e.g. The Crown Hotel Pty Ltd" />
+        </FieldRow>
+        {needsAcn && (
+          <FieldRow label="ACN" error={acnError}>
+            <View>
+              <Input
+                value={legalIdentity.acn}
+                onChangeText={(v: string) => setLegal('acn', v.replace(/[^\d\s]/g, ''))}
+                onBlur={() => { setVenueAcnTouched(true); if (legalIdentity.acn.trim()) setLegal('acn', formatACN(legalIdentity.acn)); }}
+                placeholder="123 456 789"
+                keyboardType="numeric"
+                error={acnError}
+              />
+              {acnError && <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>Invalid ACN. Check the 9-digit number and try again.</Text>}
+            </View>
+          </FieldRow>
+        )}
+        <FieldRow label="Signatory name" sublabel="Who signs contracts on behalf of the venue.">
+          <Input value={legalIdentity.signatoryName} onChangeText={(v: string) => setLegal('signatoryName', v)} placeholder="e.g. Alex Johnson" />
+        </FieldRow>
+        <FieldRow label="Signatory role" sublabel="Their title or position.">
+          <Input value={legalIdentity.signatoryRole} onChangeText={(v: string) => setLegal('signatoryRole', v)} placeholder="e.g. Director or General Manager" />
+        </FieldRow>
+        <FieldRow label="Registered address">
+          <Input value={legalIdentity.addressLine} onChangeText={(v: string) => setLegal('addressLine', v)} placeholder="Street address" />
+        </FieldRow>
+        <FieldRow label="Suburb">
+          <Input value={legalIdentity.suburb} onChangeText={(v: string) => setLegal('suburb', v)} placeholder="e.g. Collingwood" />
+        </FieldRow>
+        <FieldRow label="State">
+          <Pills options={AU_STATES} value={legalIdentity.state} onSelect={(v: string) => setLegal('state', v)} />
+        </FieldRow>
+        <FieldRow label="Postcode" last>
+          <Input value={legalIdentity.postcode} onChangeText={(v: string) => setLegal('postcode', v.replace(/\D/g, '').slice(0, 4))} placeholder="e.g. 3066" keyboardType="numeric" />
+        </FieldRow>
+      </SectionCard>
     );
   }
 
   function renderPhotosVideos() {
+    const detectSource = (url: string) => {
+      if (!url) return null;
+      if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
+      if (url.includes('vimeo.com')) return 'Vimeo';
+      if (url.includes('firebasestorage') || url.endsWith('.mp4')) return 'Uploaded';
+      return 'Link';
+    };
+    const videoObjects: Video[] = data.videoObjects?.length
+      ? data.videoObjects
+      : (data.videos || []).map(url => ({ url, title: '' }));
+
     return (
       <View style={s.section}>
-        {renderPageHeader('Photos & Videos')}
+        {renderPageHeader('Photos & video')}
 
-        <SectionCard title="Photos">
+        {/* Cover photo */}
+        <SectionCard title="Cover photo" subtitle="3:1 banner shown at the top of your venue profile.">
+          <View style={{ padding: 16 }}>
+            {data.photoUrl ? (
+              <RepositionablePhoto
+                uri={data.photoUrl}
+                position={data.photoPosition || { x: 50, y: 50 }}
+                onPositionChange={(pos) => set('photoPosition', pos)}
+                style={{ height: 160, borderRadius: 10, marginBottom: 10 }}
+              />
+            ) : (
+              <View style={{ height: 120, borderRadius: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                <Text style={{ color: colors.grey, fontSize: 13 }}>No cover photo</Text>
+              </View>
+            )}
+            <TouchableOpacity style={s.addBtn} onPress={pickBannerPhoto} disabled={photoUploading}>
+              <Text style={s.addBtnText}>{photoUploading ? 'Uploading...' : data.photoUrl ? 'Replace cover photo' : '+ Upload cover photo'}</Text>
+            </TouchableOpacity>
+          </View>
+        </SectionCard>
+
+        {/* Gallery */}
+        <SectionCard title="Gallery" subtitle={`Up to 12 photos. ${data.photos.length}/12`}>
           <View style={{ padding: 16 }}>
             <View style={s.photoGrid}>
-              {data.photos.map((url, i) => (
+              {data.photos.filter(u => u !== data.photoUrl).map((url, i) => (
                 <View key={i} style={s.photoItem}>
                   <Image source={{ uri: url }} style={s.photoImg} />
-                  <TouchableOpacity style={s.photoRemove} onPress={() => set('photos', data.photos.filter((_, idx) => idx !== i))}>
+                  <TouchableOpacity style={s.photoRemove} onPress={() => set('photos', data.photos.filter(p => p !== url))}>
                     <Text style={{ color: '#fff', fontSize: 14 }}>✕</Text>
                   </TouchableOpacity>
                 </View>
               ))}
             </View>
-            <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}>
-              <Text style={s.addBtnText}>+ Add Photo</Text>
-            </TouchableOpacity>
+            {data.photos.length < 12 && (
+              <TouchableOpacity style={s.addBtn} onPress={addGalleryPhoto}>
+                <Text style={s.addBtnText}>+ Add photo</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </SectionCard>
 
-        <SectionCard title="Videos">
+        {/* Video */}
+        <SectionCard title="Video" subtitle="MP4 up to 200 MB. Links load faster.">
           <View style={{ padding: 16 }}>
-            {(data.videos || []).map((url, i) => (
-              <View key={i} style={[s.videoRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                <Text style={[s.videoUrl, { color: colors.black }]} numberOfLines={1}>{url}</Text>
-                <TouchableOpacity onPress={() => set('videos', data.videos.filter((_, idx) => idx !== i))}>
-                  <Text style={{ fontSize: 16, color: Colors.orange, paddingHorizontal: 4 }}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+            {videoObjects.map((vid, i) => {
+              const source = detectSource(vid.url);
+              return (
+                <View key={i} style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 10, gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {source && (
+                      <View style={{ backgroundColor: colors.border, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.grey }}>{source}</Text>
+                      </View>
+                    )}
+                    <Text style={{ flex: 1, fontSize: 12, color: colors.grey }} numberOfLines={1}>{vid.url}</Text>
+                    <TouchableOpacity onPress={() => {
+                      const next = videoObjects.filter((_, idx) => idx !== i);
+                      set('videoObjects', next);
+                      set('videos', next.map(v => v.url));
+                    }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '700' }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={[s.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    placeholder="Title (optional)"
+                    placeholderTextColor={Colors.greyLight}
+                    value={vid.title}
+                    onChangeText={(t) => {
+                      const next = videoObjects.map((v, idx) => idx === i ? { ...v, title: t } : v);
+                      set('videoObjects', next);
+                    }}
+                    autoCapitalize="words"
+                  />
+                </View>
+              );
+            })}
             <TouchableOpacity style={[s.addBtn, { marginBottom: 8 }]} onPress={pickVideoFile} disabled={videoUploading}>
-              <Text style={s.addBtnText}>{videoUploading ? 'Uploading...' : '+ Upload Video'}</Text>
+              <Text style={s.addBtnText}>{videoUploading ? 'Uploading...' : '+ Upload file'}</Text>
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TextInput
                 style={[s.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
-                placeholder="Or paste YouTube / Vimeo URL"
+                placeholder="Paste YouTube or Vimeo URL"
                 placeholderTextColor={Colors.greyLight}
                 value={newVideoUrl}
                 onChangeText={setNewVideoUrl}
                 autoCapitalize="none"
-                onSubmitEditing={addVideo}
+                onSubmitEditing={() => {
+                  const url = newVideoUrl.trim();
+                  if (!url) return;
+                  const next = [...videoObjects, { url, title: '' }];
+                  set('videoObjects', next);
+                  set('videos', next.map(v => v.url));
+                  setNewVideoUrl('');
+                }}
                 returnKeyType="done"
               />
-              <TouchableOpacity style={[s.removeBtn, { borderColor: Colors.orange, justifyContent: 'center' }]} onPress={addVideo}>
-                <Text style={[s.removeBtnText, { color: Colors.orange }]}>+ Link</Text>
+              <TouchableOpacity
+                style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center' }}
+                onPress={() => {
+                  const url = newVideoUrl.trim();
+                  if (!url) return;
+                  const next = [...videoObjects, { url, title: '' }];
+                  set('videoObjects', next);
+                  set('videos', next.map(v => v.url));
+                  setNewVideoUrl('');
+                }}
+              >
+                <Text style={{ fontSize: 14, color: colors.black, fontWeight: '600' }}>Add link</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1809,18 +2691,51 @@ export default function EditVenueScreen() {
 
   function renderActiveTab() {
     switch (activeTab) {
-      case 'Settings':        return renderSettings();
-      case 'Basic Info':      return renderBasicInfo();
-      case 'Rooms':           return renderRooms();
-      case 'Timetable':       return renderTimetable();
-      case 'Tech Specs':      return renderTechSpecs();
-      case 'Payments':        return renderPayments();
-      case 'Photos & Videos': return renderPhotosVideos();
-      default:                return null;
+      case 'Basic info':          return renderBasicInfo();
+      case 'Photos & video':      return renderPhotosVideos();
+      case 'Rooms':               return renderRooms();
+      case 'Access & facilities': return renderAccessFacilities();
+      case 'Gig slots':           return renderGigSlots();
+      case 'Booking terms':       return renderBookingTerms();
+      case 'Invoicing':           return renderInvoicing();
+      case 'Verification':        return renderVerification();
+      case 'Settings':            return renderSettings();
+      // legacy fallbacks
+      case 'Basic Info':          return renderBasicInfo();
+      case 'Timetable':           return renderGigSlots();
+      case 'Tech Specs':          return renderAccessFacilities();
+      case 'Payments':            return renderBookingTerms();
+      case 'Photos & Videos':     return renderPhotosVideos();
+      default:                    return null;
     }
   }
 
   // ────────────────────────────────────────────────────────────────
+
+  const hasUnsaved = JSON.stringify(data) !== JSON.stringify(saved) ||
+    JSON.stringify(legalIdentity) !== JSON.stringify(savedLegal);
+
+  function handleDiscard() {
+    setData(saved);
+    setLegalIdentityState(savedLegal);
+  }
+
+  function renderUnsavedBar() {
+    if (!hasUnsaved) return null;
+    return (
+      <View style={[evd.unsavedBar, { backgroundColor: '#16161A', borderTopColor: '#2a2a2a' }]}>
+        <Text style={evd.unsavedText}>Unsaved changes</Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity onPress={handleDiscard}>
+            <Text style={evd.discardText}>Discard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={evd.saveChangesBtn} onPress={handleSave} disabled={saving}>
+            <Text style={evd.saveChangesBtnText}>{saving ? 'Saving...' : 'Save changes'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
 
@@ -1835,72 +2750,88 @@ export default function EditVenueScreen() {
   }
 
   if (isWeb && !isMobileLayout) {
+    const venueInitial = (data.name || 'V')[0].toUpperCase();
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
-        <View style={evd.row}>
+      <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
+        {/* Top bar */}
+        <View style={[evd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+              <Text style={{ fontSize: 14, color: colors.grey }}>Venue</Text>
+            </TouchableOpacity>
+            <View style={evd.logoSquare}>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>T</Text>
+            </View>
+            <Text style={[evd.logoText, { color: colors.black }]}>Twaylo</Text>
+            <Text style={{ color: colors.grey, fontSize: 14 }}>/</Text>
+            <Text style={{ color: colors.grey, fontSize: 14 }}>Settings</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
+            <TouchableOpacity style={[evd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/venue/${venueId}` as any)}>
+              <Text style={[evd.outlineBtnText, { color: colors.black }]}>View public profile</Text>
+            </TouchableOpacity>
+            <View style={[evd.avatarCircle, { backgroundColor: colors.border }]}>
+              {data.photoUrl
+                ? <Image source={{ uri: data.photoUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} resizeMode="cover" />
+                : <Text style={{ fontSize: 12, fontWeight: '700', color: colors.grey }}>{venueInitial}</Text>
+              }
+            </View>
+          </View>
+        </View>
 
+        <View style={{ flex: 1, flexDirection: 'row', overflow: 'hidden' }}>
           {/* Sidebar */}
-          <View style={[evd.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
-            <TouchableOpacity onPress={pickBannerPhoto} activeOpacity={0.8} style={evd.photoWrap}>
-              {photoUploading
-                ? <View style={[evd.photo, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]}>
-                    <ActivityIndicator color={Colors.orange} />
-                  </View>
-                : data.photoUrl
-                  ? <Image source={{ uri: data.photoUrl }} style={evd.photo} resizeMode="cover" />
-                  : <View style={[evd.photo, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ fontSize: 11, color: colors.grey, textAlign: 'center' }}>Add photo</Text>
-                    </View>}
-            </TouchableOpacity>
-            <Text style={[evd.name, { color: colors.black }]} numberOfLines={2}>
-              {data.name || 'Your venue'}
-            </Text>
-            {data.location ? (
-              <Text style={[evd.sub, { color: colors.grey }]}>{data.location}</Text>
-            ) : null}
-
-            <View style={[evd.divider, { backgroundColor: colors.border }]} />
-
-            {activeTabs.map(tab => (
-              <TouchableOpacity
-                key={tab}
-                style={[evd.navItem, activeTab === tab && evd.navItemActive]}
-                onPress={() => setActiveTab(tab)}
-                activeOpacity={0.75}
-              >
-                <View style={evd.navRow}>
-                  <Text style={[evd.navText, { color: activeTab === tab ? Colors.orange : colors.black }]}>
-                    {tab}
-                  </Text>
-                  {onboardingStep > 0 && onboardingVisited.includes(tab)
-                    ? <Text style={evd.navCheck}>✓</Text>
-                    : tabErrors.includes(tab) && <View style={evd.navErrorDot} />
-                  }
+          <View style={[evd.sidebarNew, { backgroundColor: colors.bg, borderRightColor: colors.border }]}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {/* Venue header */}
+              <View style={evd.sidebarUser}>
+                {data.photoUrl
+                  ? <Image source={{ uri: data.photoUrl }} style={evd.sidebarPhoto} resizeMode="cover" />
+                  : <View style={[evd.sidebarPhoto, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ fontSize: 10, color: colors.grey }}>{venueInitial}</Text>
+                    </View>
+                }
+                <View style={{ flex: 1 }}>
+                  <Text style={[evd.sidebarName, { color: colors.black }]} numberOfLines={1}>{data.name || 'Your venue'}</Text>
+                  <Text style={[evd.sidebarHandle, { color: colors.grey }]} numberOfLines={1}>Venue{data.location ? ` · ${data.location}` : ''}</Text>
                 </View>
+              </View>
+
+              {/* Nav groups */}
+              {VENUE_NAV_GROUPS.map(group => (
+                <View key={group.label} style={{ marginBottom: 4 }}>
+                  <Text style={[evd.navGroupLabel, { color: colors.grey }]}>{group.label}</Text>
+                  {group.tabs.filter(t => activeTabs.includes(t)).map(tab => {
+                    const active = activeTab === tab;
+                    return (
+                      <TouchableOpacity
+                        key={tab}
+                        style={[evd.navItemNew, active && { backgroundColor: '#EFEEEB' }]}
+                        onPress={() => setActiveTab(tab)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[evd.navTextNew, { color: colors.black, fontWeight: active ? '700' : '500' }]}>{tab}</Text>
+                        {onboardingStep > 0 && onboardingVisited.includes(tab)
+                          ? <Text style={evd.navCheck}>✓</Text>
+                          : tabErrors.includes(tab) && <View style={evd.navErrorDot} />
+                        }
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+
+              <View style={[evd.navDivider, { backgroundColor: colors.border }]} />
+              <TouchableOpacity style={evd.navItemNew} onPress={() => crossConfirm('Log out', 'Are you sure you want to log out?', async () => { await signOut(auth); router.replace('/'); })}>
+                <Text style={[evd.navTextNew, { color: colors.grey, fontWeight: '400' }]}>Log out</Text>
               </TouchableOpacity>
-            ))}
-
-            <View style={[evd.divider, { backgroundColor: colors.border }]} />
-
-            <TouchableOpacity
-              style={[evd.saveBtn, saving && { opacity: 0.6 }, justSaved && { backgroundColor: '#22c55e' }]}
-              onPress={handleSave}
-              disabled={saving}
-              activeOpacity={0.85}
-            >
-              <Text style={evd.saveBtnText}>{saving ? 'Saving...' : justSaved ? 'Saved ✓' : 'Save'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[evd.backBtn, { borderColor: colors.border }]}
-              onPress={handleBack}
-              activeOpacity={0.75}
-            >
-              <Text style={[evd.backBtnText, { color: colors.black }]}>Back</Text>
-            </TouchableOpacity>
+            </ScrollView>
           </View>
 
           {/* Main content */}
-          <ScrollView style={evd.main} showsVerticalScrollIndicator={false} contentContainerStyle={evd.mainContent}>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={evd.contentPad}>
             {tabErrors.length > 0 && (
               <View style={[s.tabErrors, { marginBottom: 24, borderRadius: 8 }]}>
                 <Text style={s.tabErrorsLabel}>Please complete: </Text>
@@ -1954,6 +2885,8 @@ export default function EditVenueScreen() {
           })()}
 
         </View>
+
+        {renderUnsavedBar()}
 
         {/* ── Step 1: Verified modal ── */}
         {onboardingStep === 1 && (
@@ -2012,83 +2945,83 @@ export default function EditVenueScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
-      <ScrollView
-        stickyHeaderIndices={[1]}
-        showsVerticalScrollIndicator={false}
-        onScroll={(e) => {
-          setShowStickySave(e.nativeEvent.contentOffset.y > titleBarBottomRef.current);
-        }}
-        scrollEventThrottle={100}
-      >
-
-        {/* ── Banner + title bar + tab errors ── */}
-        <View>
-          <View style={{ marginTop: 20 }}>
-            <RepositionablePhoto
-              uri={data.photoUrl || null}
-              position={data.photoPosition ?? { x: 50, y: 50 }}
-              onPositionChange={pos => set('photoPosition', pos)}
-              onChangePhoto={pickBannerPhoto}
-              height={270}
-              uploading={photoUploading}
-              placeholderText="Tap to add venue photo"
-            />
-          </View>
-
-          <View
-            style={[s.titleBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}
-            onLayout={(e) => {
-              titleBarBottomRef.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[s.headerTitle, { color: colors.black }]}>Edit Venue Profile</Text>
-              <Text style={[s.headerSub, { color: colors.black }]}>{data.name || '—'}</Text>
-            </View>
-            <View style={s.headerBtns}>
-              <TouchableOpacity style={[s.backBtnInline, { borderColor: colors.border }]} onPress={handleBack}>
-                <Text style={[s.backBtnInlineText, { color: colors.black }]}>Back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.saveBtn, (saving || justSaved) && { opacity: justSaved ? 1 : 0.6 }, justSaved && { backgroundColor: '#22c55e' }]} onPress={handleSave} disabled={saving}>
-                <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {tabErrors.length > 0 && (
-            <View style={s.tabErrors}>
-              <Text style={s.tabErrorsLabel}>Please complete: </Text>
-              {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
-            </View>
-          )}
-        </View>
-
-        {/* ── Tab bar (sticky) ── */}
-        <View style={{ backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.tabBar, { borderBottomWidth: 0 }]} contentContainerStyle={s.tabBarContent}>
-            {activeTabs.map(tab => (
-              <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={[s.tab, activeTab === tab && s.tabActive]}>
-                <Text style={[s.tabText, { color: colors.black }, activeTab === tab && s.tabTextActive]}>{tab}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {showStickySave && (
-            <TouchableOpacity
-              style={[s.saveBtn, { position: 'absolute', right: 12, top: '100%', marginTop: 10, zIndex: 10 }, (saving || justSaved) && { opacity: justSaved ? 1 : 0.6 }, justSaved && { backgroundColor: '#22c55e' }]}
-              onPress={handleSave}
-              disabled={saving}
-            >
-              <Text style={s.saveBtnText}>{saving ? 'Saving…' : justSaved ? 'Saved ✓' : 'Save'}</Text>
+  // Mobile list view
+  if (mobileShowList) {
+    return (
+      <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
+        <View style={[evd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+              <Text style={{ fontSize: 14, color: colors.grey }}>Venue</Text>
             </TouchableOpacity>
-          )}
+            <View style={evd.logoSquare}><Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>T</Text></View>
+            <Text style={[evd.logoText, { color: colors.black }]}>Twaylo</Text>
+            <Text style={{ color: colors.grey }}>/</Text>
+            <Text style={{ color: colors.grey }}>Settings</Text>
+          </View>
+          <View style={[evd.avatarCircle, { backgroundColor: colors.border }]}>
+            {data.photoUrl ? <Image source={{ uri: data.photoUrl }} style={{ width: 32, height: 32, borderRadius: 16 }} resizeMode="cover" /> : null}
+          </View>
         </View>
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+          <View style={evd.sidebarUser}>
+            {data.photoUrl
+              ? <Image source={{ uri: data.photoUrl }} style={evd.sidebarPhoto} resizeMode="cover" />
+              : <View style={[evd.sidebarPhoto, { backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }]} />
+            }
+            <View>
+              <Text style={[evd.sidebarName, { color: colors.black }]}>{data.name || 'Your venue'}</Text>
+              <Text style={[evd.sidebarHandle, { color: colors.grey }]}>Venue{data.location ? ` · ${data.location}` : ''}</Text>
+            </View>
+          </View>
 
-        <View style={s.body}>
-          {renderActiveTab()}
-        </View>
+          {VENUE_NAV_GROUPS.map(group => (
+            <View key={group.label}>
+              <Text style={[evd.navGroupLabel, { color: colors.grey, paddingHorizontal: 20 }]}>{group.label}</Text>
+              {group.tabs.filter(t => activeTabs.includes(t)).map(tab => (
+                <TouchableOpacity key={tab} style={[evd.mobileListItem, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} onPress={() => { setActiveTab(tab); setMobileShowList(false); }} activeOpacity={0.7}>
+                  <Text style={[evd.navTextNew, { color: colors.black }]}>{tab}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {tabErrors.includes(tab) && <View style={evd.navErrorDot} />}
+                    <Text style={{ color: colors.grey, fontSize: 18 }}>›</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              <View style={{ height: 12 }} />
+            </View>
+          ))}
+
+          <View style={[{ height: 1, backgroundColor: colors.border, marginHorizontal: 20, marginBottom: 12 }]} />
+          <TouchableOpacity style={[evd.mobileListItem, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} onPress={() => crossConfirm('Log out', 'Are you sure?', async () => { await signOut(auth); router.replace('/'); })}>
+            <Text style={[evd.navTextNew, { color: colors.grey, fontWeight: '400' }]}>Log out</Text>
+          </TouchableOpacity>
+        </ScrollView>
+        {renderUnsavedBar()}
+      </SafeAreaView>
+    );
+  }
+
+  // Mobile section view
+  return (
+    <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
+      <View style={[evd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => setMobileShowList(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+          <Text style={{ fontSize: 14, color: colors.grey }}>All settings</Text>
+        </TouchableOpacity>
+        {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved</Text>}
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
+        {tabErrors.length > 0 && (
+          <View style={[s.tabErrors, { marginBottom: 20, borderRadius: 8 }]}>
+            <Text style={s.tabErrorsLabel}>Please complete: </Text>
+            {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
+          </View>
+        )}
+        {renderActiveTab()}
       </ScrollView>
+      {renderUnsavedBar()}
 
       {/* ── Mobile onboarding overlay ── */}
       {onboardingStep >= 1 && onboardingStep <= 8 && (() => {
@@ -2216,6 +3149,7 @@ const s = StyleSheet.create({
 });
 
 const evd = StyleSheet.create({
+  // Legacy (kept for onboarding panel references)
   row:           { flex: 1, flexDirection: 'row' },
   sidebar:       { width: 224, borderRightWidth: 1, paddingHorizontal: 20, paddingTop: 28, paddingBottom: 24 },
   photoWrap:     { marginBottom: 14 },
@@ -2234,7 +3168,34 @@ const evd = StyleSheet.create({
   backBtnText:   { fontSize: 13, fontWeight: '600' },
   main:          { flex: 1 },
   mainContent:   { paddingHorizontal: 40, paddingVertical: 32, paddingBottom: 60 },
-  navCheck:             { fontSize: 13, color: Colors.orange, fontWeight: '700' },
+  navCheck:      { fontSize: 13, color: Colors.orange, fontWeight: '700' },
+
+  // New musician-style layout
+  topBar:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1 },
+  logoSquare:     { width: 28, height: 28, borderRadius: 6, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center' },
+  logoText:       { fontSize: 15, fontWeight: '700', letterSpacing: -0.3 },
+  avatarCircle:   { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  outlineBtn:     { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  outlineBtnText: { fontSize: 13, fontWeight: '600' },
+
+  sidebarNew:     { width: 192, borderRightWidth: 1, paddingTop: 20 },
+  sidebarUser:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingBottom: 20 },
+  sidebarPhoto:   { width: 36, height: 36, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
+  sidebarName:    { fontSize: 14, fontWeight: '700', letterSpacing: -0.2, lineHeight: 19 },
+  sidebarHandle:  { fontSize: 12, lineHeight: 17 },
+
+  navGroupLabel:  { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, paddingHorizontal: 16, marginTop: 16, marginBottom: 4 },
+  navItemNew:     { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, marginHorizontal: 8, marginBottom: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  navTextNew:     { fontSize: 14 },
+  navDivider:     { height: 1, marginHorizontal: 16, marginVertical: 12 },
+  contentPad:     { padding: 32, paddingBottom: 100 },
+
+  unsavedBar:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 14, borderTopWidth: 1 },
+  unsavedText:        { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
+  discardText:        { fontSize: 14, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
+  saveChangesBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  saveChangesBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  mobileListItem:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1 },
   // Onboarding panel (right column, steps 2-6)
   onboardingPanel:      { width: 248, borderLeftWidth: 1, paddingTop: 32 },
   onboardingPanelInner: { paddingHorizontal: 24, paddingBottom: 32 },

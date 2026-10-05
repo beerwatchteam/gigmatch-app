@@ -1754,7 +1754,11 @@ export default function EditProfileScreen() {
       <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
         {/* Top bar */}
         <View style={[pd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+              <Text style={{ fontSize: 14, color: colors.grey }}>Profile</Text>
+            </TouchableOpacity>
             <View style={pd.logoSquare}>
               <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>T</Text>
             </View>
@@ -1862,7 +1866,11 @@ export default function EditProfileScreen() {
     return (
       <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
         <View style={[pd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+              <Text style={{ fontSize: 14, color: colors.grey }}>Profile</Text>
+            </TouchableOpacity>
             <View style={pd.logoSquare}><Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>T</Text></View>
             <Text style={[pd.logoText, { color: colors.black }]}>Twaylo</Text>
             <Text style={{ color: colors.grey }}>/</Text>
