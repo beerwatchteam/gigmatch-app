@@ -617,12 +617,9 @@ export default function EditProfileScreen() {
   async function handleSave() {
     setShowErrors(true);
     const errors: string[] = [];
-    if (!profile.name?.trim() || !profile.username?.trim() || !profile.artistType?.trim() ||
-        (profile.artistType === 'Other' && !profile.otherArtistType?.trim()) ||
-        !(profile.genre?.length > 0) || !profile.location?.trim() || !profile.email?.trim())
+    if (!profile.name?.trim() || !profile.username?.trim() || !profile.email?.trim())
       errors.push('Basic info');
-    if (!profile.about?.trim()) errors.push('About');
-    if (profile.songs.some(s => !s.title?.trim() || !s.url?.trim())) errors.push('Music');
+    if (profile.songs.some(s => s.title?.trim() && !s.url?.trim())) errors.push('Music');
     if (profile.payment.abnStatus === 'has_abn') {
       const abn = profile.payment.abn.replace(/\s/g, '');
       if (abn && !isValidABN(abn)) errors.push('Invoicing');

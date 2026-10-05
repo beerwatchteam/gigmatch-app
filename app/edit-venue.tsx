@@ -1081,12 +1081,11 @@ export default function EditVenueScreen() {
   async function handleSave() {
     setShowErrors(true);
     const errors: string[] = [];
-    if (!data.name?.trim() || !data.streetAddress?.trim() || !data.location?.trim() ||
-        !data.email?.trim() || !data.phone?.trim() || !data.website?.trim())
+    if (!data.name?.trim() || !data.email?.trim())
       errors.push('Basic Info');
-    if (data.rooms.some(r => !r.name?.trim() || !r.capacity?.toString().trim()))
+    if (data.rooms.some(r => r.name?.trim() && !r.capacity?.toString().trim()))
       errors.push('Rooms');
-    if (data.gigNights.some(n => !(n.days?.length || n.day) || !n.startTime || !n.startDate || (!n.continuous && !n.endDate)))
+    if (data.gigNights.some(n => !(n.days?.length || n.day) || !n.startTime))
       errors.push('Timetable');
     const venueAbn = data.payment.abn.replace(/\s/g, '');
     if (venueAbn && !isValidABN(venueAbn)) errors.push('Payments');
