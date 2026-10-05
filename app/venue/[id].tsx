@@ -580,7 +580,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           {/* Left sidebar */}
           <View style={[vd.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
             {!isProfileTab && (
-              <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 }}>
+              <View style={{ paddingHorizontal: 10, paddingTop: 10, paddingBottom: 12 }}>
                 <TouchableOpacity
                   onPress={handleBack}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 }}
