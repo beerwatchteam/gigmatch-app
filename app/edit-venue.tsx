@@ -1149,12 +1149,13 @@ export default function EditVenueScreen() {
         setDoc(doc(db, 'venues', venueId, 'private', 'legal'), legalPayload),
       ]);
       setSavedLegal(legalIdentity);
-      setSaved(data);
-      setData(prev => ({
-        ...prev,
-        rooms: prev.rooms.map(({ _isNew, ...r }: any) => r),
-        gigNights: prev.gigNights.map(({ _isNew, ...n }: any) => n),
-      }));
+      const cleanedData = {
+        ...data,
+        rooms: data.rooms.map(({ _isNew, ...r }: any) => r),
+        gigNights: data.gigNights.map(({ _isNew, ...n }: any) => n),
+      };
+      setSaved(cleanedData);
+      setData(cleanedData);
       setShowErrors(false);
       setJustSaved(true);
     } catch (e: any) {
@@ -2724,16 +2725,23 @@ export default function EditVenueScreen() {
   }
 
   function renderUnsavedBar() {
-    if (!hasUnsaved) return null;
+    if (!hasUnsaved && !justSaved) return null;
+    const saved = !hasUnsaved && justSaved;
     return (
       <View style={[evd.unsavedBar, { backgroundColor: '#16161A', borderTopColor: '#2a2a2a' }]}>
-        <Text style={evd.unsavedText}>Unsaved changes</Text>
+        <Text style={evd.unsavedText}>{saved ? 'All changes saved' : 'Unsaved changes'}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity onPress={handleDiscard}>
-            <Text style={evd.discardText}>Discard</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={evd.saveChangesBtn} onPress={handleSave} disabled={saving}>
-            <Text style={evd.saveChangesBtnText}>{saving ? 'Saving...' : 'Save changes'}</Text>
+          {!saved && (
+            <TouchableOpacity onPress={handleDiscard}>
+              <Text style={evd.discardText}>Discard</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[evd.saveChangesBtn, saved && { backgroundColor: '#2F7A4B' }]}
+            onPress={saved ? undefined : handleSave}
+            disabled={saving || saved}
+          >
+            <Text style={evd.saveChangesBtnText}>{saving ? 'Saving...' : saved ? 'Saved' : 'Save changes'}</Text>
           </TouchableOpacity>
         </View>
       </View>

@@ -1737,16 +1737,23 @@ export default function EditProfileScreen() {
 
   // ── Unsaved changes bar ────────────────────────────────────────────────────
   function renderUnsavedBar() {
-    if (!hasUnsaved) return null;
+    if (!hasUnsaved && !justSaved) return null;
+    const isSaved = !hasUnsaved && justSaved;
     return (
       <View style={[pd.unsavedBar, { backgroundColor: '#16161A', borderTopColor: '#2a2a2a' }]}>
-        <Text style={pd.unsavedText}>Unsaved changes</Text>
+        <Text style={pd.unsavedText}>{isSaved ? 'All changes saved' : 'Unsaved changes'}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity onPress={handleDiscard}>
-            <Text style={pd.discardText}>Discard</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={pd.saveChangesBtn} onPress={handleSave} disabled={saving}>
-            <Text style={pd.saveChangesBtnText}>{saving ? 'Saving...' : 'Save changes'}</Text>
+          {!isSaved && (
+            <TouchableOpacity onPress={handleDiscard}>
+              <Text style={pd.discardText}>Discard</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[pd.saveChangesBtn, isSaved && { backgroundColor: '#2F7A4B' }]}
+            onPress={isSaved ? undefined : handleSave}
+            disabled={saving || isSaved}
+          >
+            <Text style={pd.saveChangesBtnText}>{saving ? 'Saving...' : isSaved ? 'Saved' : 'Save changes'}</Text>
           </TouchableOpacity>
         </View>
       </View>
