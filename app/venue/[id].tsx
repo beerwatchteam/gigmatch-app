@@ -686,6 +686,17 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Desktop web: top nav bar with back button */}
+      {!isProfileTab && isWeb && !isMobileLayout && (
+        <View style={[s.webNavBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} activeOpacity={0.7}>
+            <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+            <Text style={{ fontSize: 14, color: colors.grey }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <ScrollView stickyHeaderIndices={[1]}>
 
         {/* ── Banner ── */}
@@ -811,8 +822,8 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
       </ScrollView>
 
-      {/* Floating back button — outside ScrollView so it persists while scrolling */}
-      {!isProfileTab && (
+      {/* Floating back button — mobile only (desktop uses the nav bar above) */}
+      {!isProfileTab && (!isWeb || isMobileLayout) && (
         <SafeAreaView edges={['top']} style={s.backOverlayWrap} pointerEvents="box-none">
           <TouchableOpacity style={s.backOverlay} onPress={handleBack}>
             <Text style={s.backOverlayText}>← Back</Text>
@@ -2124,8 +2135,9 @@ const s = StyleSheet.create({
   banner:             { width: '100%', height: isWeb ? 220 : 240, resizeMode: 'cover' },
   bannerPlaceholder:  { width: '100%', height: isWeb ? 220 : 240, backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
   bannerPlaceholderText: { color: '#999999', fontSize: 14 },
-  backOverlayWrap:    { position: 'absolute', top: 0, left: 0, right: 0 },
-  backOverlay:        { alignSelf: 'flex-start', margin: 16, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  backOverlayWrap:    { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
+  backOverlay:        { alignSelf: 'flex-start', margin: 16, backgroundColor: 'rgba(255,255,255,0.92)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+  webNavBar:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1 },
   backOverlayText:    { fontSize: 14, fontWeight: '600', color: '#111111' },
   previewBanner:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 16 },
   previewBannerText:  { fontSize: 12, fontWeight: '600', color: '#ffffff' },

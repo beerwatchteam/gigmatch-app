@@ -1479,6 +1479,17 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Desktop web: top nav bar with back button */}
+      {!isProfileTab && isWeb && !isMobileLayout && (
+        <View style={[styles.webNavBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} activeOpacity={0.7}>
+            <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
+            <Text style={{ fontSize: 14, color: colors.grey }}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <ScrollView ref={scrollRef}>
 
         {/* Hero banner */}
@@ -1604,8 +1615,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Floating back button — outside ScrollView so it persists while scrolling */}
-      {!isProfileTab && (
+      {/* Floating back button — mobile only (desktop uses the nav bar above) */}
+      {!isProfileTab && (!isWeb || isMobileLayout) && (
         <SafeAreaView edges={['top']} style={styles.backOverlayWrap} pointerEvents="box-none">
           <TouchableOpacity style={styles.backOverlay} onPress={handleBack}>
             <Text style={styles.backOverlayText}>← Back</Text>
@@ -1624,14 +1635,16 @@ const styles = StyleSheet.create({
   safe:              { flex: 1 },
   bannerPlaceholder: { width: '100%', height: BANNER_H },
 
-  backOverlayWrap: { position: 'absolute', top: 0, left: 0, right: 0 },
+  backOverlayWrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   backOverlay: {
     alignSelf: 'flex-start', margin: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: 20,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
   },
   backOverlayText: { fontSize: 14, fontWeight: '600', color: Colors.black },
+  webNavBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1 },
   previewBanner:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 16 },
   previewBannerText: { fontSize: 12, fontWeight: '600', color: '#ffffff' },
   previewBannerExit: { fontSize: 12, fontWeight: '700', color: Colors.orange },
