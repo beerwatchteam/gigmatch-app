@@ -726,6 +726,9 @@ export default function EditProfileScreen() {
     updateDoc(doc(db, 'bandProfiles', uid), { onboardingComplete: true }).catch(() => {});
     handleSave();
   }
+  function replayOnboarding() {
+    setOnboardingStep(1); setOnboardingVisited([]);
+  }
 
   // ── Completion ────────────────────────────────────────────────────────────
   const completionFields = [
@@ -1864,6 +1867,13 @@ export default function EditProfileScreen() {
             </View>
           </View>
         )}
+
+        {/* Replay setup tour button */}
+        {onboardingStep === 0 && onboardingComplete && (
+          <TouchableOpacity style={pd.replayBtn} onPress={replayOnboarding} activeOpacity={0.8}>
+            <Text style={pd.replayBtnText}>Replay setup tour</Text>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
     );
   }
@@ -1951,6 +1961,13 @@ export default function EditProfileScreen() {
         {renderActiveTab()}
       </ScrollView>
       {renderUnsavedBar()}
+
+      {/* Replay setup tour button */}
+      {onboardingStep === 0 && onboardingComplete && (
+        <TouchableOpacity style={pd.replayBtn} onPress={replayOnboarding} activeOpacity={0.8}>
+          <Text style={pd.replayBtnText}>Replay setup tour</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Mobile onboarding overlay */}
       {onboardingStep >= 1 && onboardingStep <= 9 && (() => {
@@ -2065,4 +2082,7 @@ const pd = StyleSheet.create({
   welcomeCard:    { borderRadius: 16, padding: 32, width: 400, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24 },
   primaryBtn:     { backgroundColor: Colors.orange, borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24, alignSelf: 'flex-start' },
   primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  replayBtn:      { position: 'absolute', bottom: 80, right: 24, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, zIndex: 50 },
+  replayBtnText:  { fontSize: 13, fontWeight: '600', color: '#ffffff' },
 });

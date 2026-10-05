@@ -644,7 +644,7 @@ export default function VenuesScreen() {
     try {
       const snap = await getDocs(collection(db, 'venues'));
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Venue[];
-      setVenues(all.filter(v => v.settings?.listed !== false));
+      setVenues(all);
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);

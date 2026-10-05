@@ -1362,22 +1362,6 @@ export default function EditVenueScreen() {
       <View style={s.section}>
         {renderPageHeader('Basic info')}
 
-        {/* Listing */}
-        <SectionCard title="Listing">
-          <FieldRow label="Listed in Discover" sublabel={isVerified ? "Artists can find your venue and send enquiries. Turn off to pause without deleting anything." : "Available once your venue is verified."} last>
-            {isVerified ? (
-              <Switch value={data.settings.listed} onValueChange={(v) => set('settings', { ...data.settings, listed: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Switch value={false} disabled trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-                <TouchableOpacity onPress={() => setActiveTab('Verification')}>
-                  <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Check status</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </FieldRow>
-        </SectionCard>
-
         {/* Venue details */}
         <SectionCard title="Venue details">
           <FieldRow label="Logo" sublabel="Square, at least 400 × 400px.">
@@ -3240,6 +3224,6 @@ const evd = StyleSheet.create({
   goLiveCard:           { position: 'absolute', bottom: 32, left: 244, zIndex: 100 },
   goLiveCardInner:      { width: 320, borderRadius: 14, padding: 24, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 4 } },
   // Replay button (bottom-right)
-  replayBtn:            { position: 'absolute', bottom: 24, right: 24, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, zIndex: 50 },
+  replayBtn:            { position: 'absolute', bottom: 80, right: 24, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 20, paddingHorizontal: 18, paddingVertical: 10, zIndex: 50 },
   replayBtnText:        { fontSize: 13, fontWeight: '600', color: '#ffffff' },
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Image, Linking, Platform, useWindowDimensions,
@@ -1218,7 +1218,9 @@ const pac = StyleSheet.create({
 // ── Main Screen ───────────────────────────────────────────────────
 
 export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
-  const { id: paramId, tab: initialTab, preview } = useLocalSearchParams<{ id: string; tab?: string; preview?: string }>();
+  const { id: paramId, tab: initialTab, preview, scrollTo } = useLocalSearchParams<{ id: string; tab?: string; preview?: string; scrollTo?: string }>();
+  const scrollRef    = useRef<ScrollView>(null);
+  const hasScrolled  = useRef(false);
   const id             = _overrideId ?? String(paramId);
   const isProfileTab   = !!_overrideId;
   const isPublicPreview = !!preview;
@@ -1269,6 +1271,25 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
       .then(snap => setOwnGigs(snap.docs.map(d => d.data())))
       .catch(() => {});
   }, [isOwn, id]);
+
+
+  // Scroll past the hero banner when navigated from inbox links
+  useEffect(() => {
+    if (scrollTo !== 'content' || !musician || hasScrolled.current) return;
+    hasScrolled.current = true;
+    const bannerH = isWeb ? 360 : 280;
+    // Double rAF ensures the layout has fully painted before scrolling
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (isWeb) {
+          const node = (scrollRef.current as any)?.getScrollableNode?.();
+          if (node) node.scrollTop = bannerH;
+        } else {
+          scrollRef.current?.scrollTo({ y: bannerH, animated: false });
+        }
+      });
+    });
+  }, [scrollTo, musician]);
 
   const gigsForTabs = isOwn ? ownGigs : publicGigs;
 
@@ -1458,22 +1479,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           </TouchableOpacity>
         </View>
       )}
-      <ScrollView>
+      <ScrollView ref={scrollRef}>
 
         {/* Hero banner */}
         {musician.photoUrl ? (
           <PositionedBanner uri={musician.photoUrl} position={musician.photoPosition} height={isWeb ? 360 : 280} />
         ) : (
           <View style={[styles.bannerPlaceholder, { backgroundColor: colors.bgFaint }]} />
-        )}
-
-        {/* Back button overlay */}
-        {!isProfileTab && (
-          <SafeAreaView edges={['top']} style={styles.backOverlayWrap}>
-            <TouchableOpacity style={styles.backOverlay} onPress={handleBack}>
-              <Text style={styles.backOverlayText}>← Back</Text>
-            </TouchableOpacity>
-          </SafeAreaView>
         )}
 
         {/* Profile header */}
@@ -1591,6 +1603,15 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Floating back button — outside ScrollView so it persists while scrolling */}
+      {!isProfileTab && (
+        <SafeAreaView edges={['top']} style={styles.backOverlayWrap} pointerEvents="box-none">
+          <TouchableOpacity style={styles.backOverlay} onPress={handleBack}>
+            <Text style={styles.backOverlayText}>← Back</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      )}
     </SafeAreaView>
   );
 }

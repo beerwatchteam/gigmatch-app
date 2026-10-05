@@ -694,11 +694,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             ? <PositionedBanner uri={photo} position={venue.photoPosition} height={isWeb ? 220 : 240} />
             : <View style={s.bannerPlaceholder}><Text style={s.bannerPlaceholderText}>venue photo</Text></View>
           }
-          {!isProfileTab && (
-            <TouchableOpacity style={s.backOverlay} onPress={handleBack}>
-              <Text style={s.backOverlayText}>← Back</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* ── Sticky header: name + tabs ── */}
@@ -815,6 +810,15 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
         {activeTab === 'dashboard' && isMyVenue && <DashboardContent />}
 
       </ScrollView>
+
+      {/* Floating back button — outside ScrollView so it persists while scrolling */}
+      {!isProfileTab && (
+        <SafeAreaView edges={['top']} style={s.backOverlayWrap} pointerEvents="box-none">
+          <TouchableOpacity style={s.backOverlay} onPress={handleBack}>
+            <Text style={s.backOverlayText}>← Back</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      )}
     </SafeAreaView>
   );
 }
@@ -2120,7 +2124,8 @@ const s = StyleSheet.create({
   banner:             { width: '100%', height: isWeb ? 220 : 240, resizeMode: 'cover' },
   bannerPlaceholder:  { width: '100%', height: isWeb ? 220 : 240, backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
   bannerPlaceholderText: { color: '#999999', fontSize: 14 },
-  backOverlay:        { position: 'absolute', top: 16, left: 16, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  backOverlayWrap:    { position: 'absolute', top: 0, left: 0, right: 0 },
+  backOverlay:        { alignSelf: 'flex-start', margin: 16, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   backOverlayText:    { fontSize: 14, fontWeight: '600', color: '#111111' },
   previewBanner:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 16 },
   previewBannerText:  { fontSize: 12, fontWeight: '600', color: '#ffffff' },

@@ -4522,9 +4522,9 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         isVenue={isVenue}
         onBack={onBack}
         onDelete={handleDelete}
-        onScrollToProfile={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
-        onScrollToMusic={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'music' } })}
-        onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy } })}
+        onScrollToProfile={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, scrollTo: 'content' } })}
+        onScrollToMusic={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'music', scrollTo: 'content' } })}
+        onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, scrollTo: 'content' } })}
         participants={participants}
         currentUserUid={user?.uid}
         onOpenSubThread={handleOpenSubThread}
