@@ -591,14 +591,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
               <Text style={[vd.sidebarMeta, { color: colors.grey }]}>{venue.suburb}</Text>
             ) : null}
 
-            <TouchableOpacity
-              style={[vd.viewPublicBtn, { borderColor: colors.border }]}
-              onPress={() => router.push(`/venue/${id}?preview=1` as any)}
-              activeOpacity={0.8}
-            >
-              <Text style={[vd.viewPublicText, { color: colors.black }]}>View public profile</Text>
-            </TouchableOpacity>
-
             <View style={{ height: 12 }} />
 
             {([
