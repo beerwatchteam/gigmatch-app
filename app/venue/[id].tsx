@@ -580,10 +580,16 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           {/* Left sidebar */}
           <View style={[vd.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
             {!isProfileTab && (
-              <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }} activeOpacity={0.7}>
-                <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
-                <Text style={{ fontSize: 14, color: colors.grey }}>Back</Text>
-              </TouchableOpacity>
+              <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={handleBack}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 15, color: colors.black, lineHeight: 18 }}>←</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>Back</Text>
+                </TouchableOpacity>
+              </View>
             )}
             {photo ? (
               <Image source={{ uri: photo }} style={vd.photo} resizeMode="cover" />
