@@ -984,7 +984,7 @@ export default function VenuesScreen() {
     const shown      = allSlots.slice(0, 2);
     const totalSlots = countOpenSlotsForRange(item, d0, d42);
     const extraCount = Math.max(0, totalSlots - 2);
-    const venueGenres = (item.genre || item.genres || []);
+    const venueGenres = (item.genrePreferences || item.genre || item.genres || []);
 
     const lastSlot = allSlots[allSlots.length - 1];
     const throughMonth = lastSlot?.dateStr
@@ -1188,7 +1188,7 @@ export default function VenuesScreen() {
     const photo = item.photoUrl || item.photos?.[0];
     // Enquiry status by date for this venue — populated when enquiry data is available in this context
     const myVenueEnquiryDates: Record<string, 'confirmed' | 'enquired' | 'declined'> = {};
-    const venueGenres = (item.genre || item.genres || []).slice(0, 6);
+    const venueGenres = (item.genrePreferences || item.genre || item.genres || []).slice(0, 6);
 
     // Build 21-day calendar starting from today
     const today = new Date();
