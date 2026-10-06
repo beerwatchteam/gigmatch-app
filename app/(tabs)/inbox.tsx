@@ -1664,7 +1664,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     { label: 'Tech Specs', onPress: onScrollToTech    },
   ].filter(l => l.onPress);
 
-  const DRAWER_WIDTH = isWeb ? 340 : windowWidth;
+  const DRAWER_WIDTH = isWeb ? 480 : windowWidth;
 
   return (
     <>
@@ -2810,8 +2810,8 @@ const eh = StyleSheet.create({
   quickLinkSep:      { fontSize: 12, color: '#cccccc', marginRight: 6 },
   dots:              { fontSize: 22, color: '#aaaaaa', letterSpacing: 1, marginLeft: 4 },
   // Details drawer
-  drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
-  drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 40, shadowOffset: { width: -8, height: 0 }, elevation: 24 },
+  drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: -4, height: 0 }, elevation: 12 },
   drawerHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1 },
   drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, flex: 1, textAlign: 'center' },
   drawerBack:        { fontSize: 14, fontWeight: '700' },
@@ -5372,8 +5372,8 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
           <TouchableOpacity style={eh.drawerBackdrop} activeOpacity={1} onPress={() => closeDetails()} />
           <Animated.View style={[
             eh.drawerPanel,
-            { width: isWeb ? 340 : windowWidth, backgroundColor: colors.bg, borderLeftColor: colors.border },
-            { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [isWeb ? 340 : windowWidth, 0] }) }] },
+            { width: isWeb ? 480 : windowWidth, backgroundColor: colors.bg, borderLeftColor: colors.border },
+            { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [isWeb ? 480 : windowWidth, 0] }) }] },
           ]}>
             <View style={[eh.drawerHeader, { borderBottomColor: colors.border, paddingTop: (isWeb ? 0 : insets.top) + 16 }]}>
               <TouchableOpacity onPress={() => closeDetails()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 60 }}>
