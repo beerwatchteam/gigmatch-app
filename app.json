@@ -24,7 +24,7 @@
       "package": "com.darcymaher.gigmatch",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1C1C1C"
       },
       "permissions": [
         "android.permission.RECORD_AUDIO"
