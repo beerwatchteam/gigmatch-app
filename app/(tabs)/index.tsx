@@ -448,7 +448,7 @@ export default function HomeScreen() {
           )}
           {heroImageUrl && <View style={s.heroBgOverlay} />}
           {heroImageUrl && (
-            <Text style={{ position: 'absolute' as any, bottom: 8, right: 12, fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '500', zIndex: 2 }}>P.C. Brooke Hampton</Text>
+            <Text style={{ position: 'absolute' as any, bottom: 8, right: 12, fontSize: 11, color: 'rgba(0,0,0,0.4)', fontWeight: '500', zIndex: 2 }}>P.C. Brooke Hampton</Text>
           )}
           <View style={[s.heroInner, isWide && s.heroInnerWide]}>
 
