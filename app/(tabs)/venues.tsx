@@ -1458,7 +1458,7 @@ export default function VenuesScreen() {
         {slotInfo ? <Text style={st.calViewSlotInfo}>{slotInfo}</Text> : null}
         {feeStr ? <Text style={st.calViewSlotFee}>{feeStr}</Text> : null}
         <View style={st.calViewActions}>
-          {(() => {
+          {(isArtist || !user) ? (() => {
           if (!user) {
             return (
               <TouchableOpacity
@@ -1528,7 +1528,15 @@ export default function VenuesScreen() {
                 <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Enquire</Text>
               </TouchableOpacity>
             );
-          })()}
+          })() : (
+            <TouchableOpacity
+              style={[st.webTimetableBtn, { borderColor: colors.black, alignSelf: 'stretch' }]}
+              onPress={() => router.push({ pathname: '/venue/[id]', params: { id: slot.venue.id, tab: 'timetable' } })}
+              activeOpacity={0.8}
+            >
+              <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Timetable</Text>
+            </TouchableOpacity>
+          )}
 
         </View>
       </View>
