@@ -469,7 +469,10 @@ export default function HomeScreen() {
                   <Text style={[s.ctaOutlineText, { color: colors.black }]}>Claim your venue</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={s.desktopHint}>For best experience use on desktop</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={s.desktopHint}>For best experience use on desktop</Text>
+                <Text style={{ fontSize: 12, color: '#666666', marginTop: 3 }}>P.C. Brooke Hampton</Text>
+              </View>
               {isAdmin && (
                 <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)}>
                   <Text style={s.adminLink}>Admin Panel →</Text>
