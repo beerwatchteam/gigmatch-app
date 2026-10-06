@@ -10,7 +10,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { DashboardContent } from '@/app/dashboard';
-import { MyGigsContent } from '@/app/(tabs)/gigs';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -1109,6 +1108,205 @@ type ClaimForMusician = {
   status: string;
 };
 
+type GigHistoryEntry = { venue: string; suburb?: string; date?: string; attendance?: string; notes?: string };
+
+function MyGigsTab({ musician, ownGigs, uid }: { musician: Musician; ownGigs: any[]; uid: string }) {
+  const { colors } = useTheme();
+  const now = new Date();
+
+  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+  const prettyDate = (iso: string) => {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const confirmed = ownGigs.filter(g => g.startAt?.toDate && (g.status == null || g.status === 'confirmed'));
+
+  const upcoming = confirmed
+    .filter(g => g.startAt.toDate() >= now)
+    .sort((a: any, b: any) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime())
+    .map((g: any) => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()) }));
+
+  const pastBookings = confirmed
+    .filter((g: any) => g.startAt.toDate() < now)
+    .sort((a: any, b: any) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
+    .map((g: any) => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()), attendance: g.attendance ?? undefined }));
+
+  const [gigHistory, setGigHistoryState] = useState<GigHistoryEntry[]>((musician as any).gigHistory || []);
+  const awayPeriods: { from: string; to?: string; notes?: string }[] = (musician as any).awayPeriods || [];
+
+  function saveGigHistory(next: GigHistoryEntry[]) {
+    setGigHistoryState(next);
+    updateDoc(doc(db, 'bandProfiles', uid), { gigHistory: next }).catch(() => {});
+  }
+
+  function addEntry() {
+    saveGigHistory([...gigHistory, { venue: '', suburb: '', date: '', attendance: '', notes: '' }]);
+  }
+  function removeEntry(i: number) {
+    saveGigHistory(gigHistory.filter((_, idx) => idx !== i));
+  }
+  function updateEntry(i: number, field: keyof GigHistoryEntry, val: string) {
+    setGigHistoryState(prev => prev.map((g, idx) => idx === i ? { ...g, [field]: val } : g));
+  }
+  function saveEntry(i: number) {
+    updateDoc(doc(db, 'bandProfiles', uid), { gigHistory }).catch(() => {});
+  }
+
+  const inputStyle = {
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+    fontSize: 14, borderColor: colors.border, color: colors.black, backgroundColor: colors.bg,
+  } as const;
+
+  return (
+    <View style={{ gap: 16 }}>
+
+      {/* Upcoming */}
+      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: upcoming.length > 0 ? 1 : 0, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Upcoming</Text>
+          <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
+            {upcoming.length > 0 ? `${upcoming.length} booked` : 'No upcoming gigs booked yet'}
+          </Text>
+        </View>
+        {upcoming.length === 0 ? (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+            <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
+              Confirmed bookings from your enquiries will appear here.
+            </Text>
+          </View>
+        ) : (
+          upcoming.map((g, i) => (
+            <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < upcoming.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
+              <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{prettyDate(g.date)}</Text>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* Past bookings via Twaylo */}
+      {pastBookings.length > 0 && (
+        <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Past bookings</Text>
+            <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
+              {pastBookings.length} confirmed gig{pastBookings.length !== 1 ? 's' : ''} via Twaylo
+            </Text>
+          </View>
+          {pastBookings.map((g, i) => (
+            <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < pastBookings.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
+              <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>
+                {prettyDate(g.date)}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Manual gig history */}
+      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: gigHistory.length > 0 ? 1 : 0, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Gig history</Text>
+          <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
+            {gigHistory.length > 0 ? `${gigHistory.length} gig${gigHistory.length !== 1 ? 's' : ''} logged` : 'Log gigs you played before joining Twaylo'}
+          </Text>
+        </View>
+        <View style={{ padding: 16, gap: 12 }}>
+          {gigHistory.length === 0 && (
+            <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
+              Add venues you have played before joining Twaylo. The more you log, the more credible your profile looks to new venues.
+            </Text>
+          )}
+          {gigHistory.map((gig, i) => (
+            <View key={i} style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>Gig {i + 1}</Text>
+                <TouchableOpacity onPress={() => removeEntry(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '700' }}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={inputStyle}
+                placeholder="Venue name"
+                placeholderTextColor={Colors.greyLight}
+                value={gig.venue}
+                onChangeText={v => updateEntry(i, 'venue', v)}
+                onBlur={() => saveEntry(i)}
+              />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={[inputStyle, { flex: 1 }]}
+                  placeholder="Suburb"
+                  placeholderTextColor={Colors.greyLight}
+                  value={gig.suburb || ''}
+                  onChangeText={v => updateEntry(i, 'suburb', v)}
+                  onBlur={() => saveEntry(i)}
+                />
+                <TextInput
+                  style={[inputStyle, { flex: 1 }]}
+                  placeholder="Date (e.g. Mar 2024)"
+                  placeholderTextColor={Colors.greyLight}
+                  value={gig.date || ''}
+                  onChangeText={v => updateEntry(i, 'date', v)}
+                  onBlur={() => saveEntry(i)}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={[inputStyle, { flex: 1 }]}
+                  placeholder="Attendance (optional)"
+                  placeholderTextColor={Colors.greyLight}
+                  value={gig.attendance || ''}
+                  onChangeText={v => updateEntry(i, 'attendance', v)}
+                  onBlur={() => saveEntry(i)}
+                  keyboardType="number-pad"
+                />
+                <TextInput
+                  style={[inputStyle, { flex: 2 }]}
+                  placeholder="Notes (optional)"
+                  placeholderTextColor={Colors.greyLight}
+                  value={gig.notes || ''}
+                  onChangeText={v => updateEntry(i, 'notes', v)}
+                  onBlur={() => saveEntry(i)}
+                />
+              </View>
+            </View>
+          ))}
+          <TouchableOpacity
+            onPress={addEntry}
+            style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+          >
+            <Text style={{ fontSize: 14, color: colors.black, fontWeight: '600' }}>+ Add gig</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Away periods */}
+      {awayPeriods.length > 0 && (
+        <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Away</Text>
+            <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>Periods when you are unavailable</Text>
+          </View>
+          {awayPeriods.map((p, i) => {
+            const fmt = (s: string) => new Date(s + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+            const label = p.to && p.to !== p.from ? `${fmt(p.from)} to ${fmt(p.to)}` : fmt(p.from);
+            return (
+              <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < awayPeriods.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{label}</Text>
+                {p.notes ? <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{p.notes}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+    </View>
+  );
+}
+
 function PendingAgentClaims({ musicianId }: { musicianId: string }) {
   const { colors } = useTheme();
   const [claims, setClaims]           = useState<ClaimForMusician[]>([]);
@@ -1459,7 +1657,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
             {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
             {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
-            {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded hideAway />}
+            {activeTab === 'gigs'       && isOwn && <MyGigsTab musician={musician} ownGigs={ownGigs} uid={user!.uid} />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -1609,7 +1807,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
         {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
         {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
-        {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded hideAway />}
+        {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
         <View style={{ height: 40 }} />
