@@ -47,10 +47,9 @@ const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const DRINKS_OPTS = ['Drink tickets','Bar tab','None needed','Other'];
 
 const NAV_GROUPS = [
-  { label: 'ESSENTIALS',    tabs: ['Basic info', 'About', 'Music', 'Photos'] },
-  { label: 'YOUR STORY',    tabs: ['Past gigs', 'Videos'] },
-  { label: 'BOOKING',       tabs: ['Rates & reach', 'Tech rider'] },
-  { label: 'ADMIN',         tabs: ['Hospitality', 'Invoicing', 'Settings'] },
+  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos'] },
+  { label: 'BOOKING', tabs: ['Rates & reach', 'Tech rider', 'Hospitality'] },
+  { label: 'ACCOUNT', tabs: ['Invoicing', 'Settings'] },
 ];
 const ALL_TABS = NAV_GROUPS.flatMap(g => g.tabs);
 
@@ -1032,6 +1031,9 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
         </SectionCard>
+
+        {renderPastGigs()}
+        {renderVideos()}
       </View>
     );
   }
@@ -1307,10 +1309,7 @@ export default function EditProfileScreen() {
   function renderPastGigs() {
     const gigs = profile.gigHistory || [];
     return (
-      <View>
-        {renderPageHeader('Past gigs', 'Log your previous performances. Builds credibility with venues reviewing your profile.')}
-
-        <SectionCard title="Gig history" subtitle={gigs.length > 0 ? `${gigs.length} gig${gigs.length !== 1 ? 's' : ''} logged` : 'None yet'}>
+      <SectionCard title="Gig history" subtitle={gigs.length > 0 ? `${gigs.length} gig${gigs.length !== 1 ? 's' : ''} logged` : 'Log previous performances to build credibility with venues'}>
           <View style={{ padding: 16, gap: 12 }}>
             {gigs.length === 0 && (
               <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
@@ -1375,7 +1374,6 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
         </SectionCard>
-      </View>
     );
   }
 
@@ -1393,10 +1391,7 @@ export default function EditProfileScreen() {
     };
 
     return (
-      <View>
-        {renderPageHeader('Videos', 'Live clips and promos. YouTube or Vimeo links load fastest.')}
-
-        <SectionCard title="Videos" subtitle="MP4 up to 200 MB. Links load faster.">
+      <SectionCard title="Videos" subtitle="Live clips and promos. Paste a YouTube or Vimeo URL, or upload an MP4.">
           <View style={{ padding: 16 }}>
             {videoObjects.length === 0 && (
               <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20, marginBottom: 12 }}>
@@ -1479,7 +1474,6 @@ export default function EditProfileScreen() {
             </View>
           </View>
         </SectionCard>
-      </View>
     );
   }
 
@@ -2273,8 +2267,6 @@ export default function EditProfileScreen() {
       case 'About':         return renderAbout();
       case 'Music':         return renderMusic();
       case 'Photos':        return renderPhotos();
-      case 'Past gigs':     return renderPastGigs();
-      case 'Videos':        return renderVideos();
       case 'Rates & reach': return renderRatesAndReach();
       case 'Tech rider':    return renderTechRider();
       case 'Hospitality':   return renderHospitality();
