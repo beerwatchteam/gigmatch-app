@@ -763,6 +763,7 @@ export default function EditVenueScreen() {
   const [savedLegal,      setSavedLegal]         = useState<LegalIdentity>(BLANK_LEGAL);
   const [activeTab, setActiveTab] = useState(tabParam || (isAgentEdit ? 'Basic info' : 'Basic info'));
   const [showErrors, setShowErrors] = useState(false);
+  const [leaveModal, setLeaveModal] = useState<{ title: string; body: string; detail?: string[]; onConfirm: () => void } | null>(null);
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);
   const [expandedNight, setExpandedNight] = useState<number | null>(null);
@@ -1199,15 +1200,29 @@ export default function EditVenueScreen() {
     const isDirty = JSON.stringify(data) !== JSON.stringify(saved) ||
       JSON.stringify(legalIdentity) !== JSON.stringify(savedLegal);
     if (isDirty) {
-      crossConfirm('Unsaved changes', 'Any unsaved changes will be lost. Are you sure?', goBack, true);
+      setLeaveModal({
+        title: 'Unsaved changes',
+        body: 'You have unsaved changes. Leave without saving?',
+        onConfirm: goBack,
+      });
       return;
     }
-    const hasErrors =
-      !data.name?.trim() || !data.streetAddress?.trim() || !data.location?.trim() ||
-      !data.email?.trim() || !data.phone?.trim() || !data.website?.trim();
-    if (hasErrors) {
+    const goLiveFields = [
+      { label: 'Venue name',      done: !!data.name?.trim() },
+      { label: 'Username',        done: !!data.username?.trim() },
+      { label: 'Venue type',      done: !!(data.venueTypes?.length || data.venueType?.trim()) },
+      { label: 'Location',        done: !!(data.suburb?.trim() || data.streetAddress?.trim()) },
+      { label: 'Booking contact', done: !!data.email?.trim() },
+    ];
+    const missing = goLiveFields.filter(f => !f.done).map(f => f.label);
+    if (missing.length > 0) {
       setShowErrors(true);
-      crossConfirm('Venue profile incomplete', "Some required fields are missing. Your venue won't be visible until complete. Leave anyway?", goBack, true);
+      setLeaveModal({
+        title: 'Venue not live yet',
+        body: "Your venue won't appear in search until these fields are filled in:",
+        detail: missing,
+        onConfirm: goBack,
+      });
       return;
     }
     goBack();
@@ -3048,6 +3063,52 @@ export default function EditVenueScreen() {
 
   if (loading) return <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}><ActivityIndicator style={{ marginTop: 60 }} color={Colors.orange} /></SafeAreaView>;
 
+  function renderLeaveModal() {
+    if (!leaveModal) return null;
+    return (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setLeaveModal(null)}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}
+          activeOpacity={1}
+          onPress={() => setLeaveModal(null)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={{ backgroundColor: colors.bg, borderRadius: 14, padding: 24, width: 320, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 20 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: colors.black, marginBottom: 10 }}>{leaveModal.title}</Text>
+              <Text style={{ fontSize: 14, color: colors.grey, lineHeight: 21, marginBottom: leaveModal.detail ? 12 : 20 }}>{leaveModal.body}</Text>
+              {leaveModal.detail && (
+                <View style={{ marginBottom: 20, gap: 6 }}>
+                  {leaveModal.detail.map(item => (
+                    <View key={item} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.orange }} />
+                      <Text style={{ fontSize: 14, color: colors.black, fontWeight: '500' }}>{item}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+                  onPress={() => setLeaveModal(null)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>Stay</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: colors.black, borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+                  onPress={() => { setLeaveModal(null); leaveModal.onConfirm(); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#ffffff' }}>Leave</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    );
+  }
+
   if (!venueId) {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]}>
@@ -3249,6 +3310,7 @@ export default function EditVenueScreen() {
           </TouchableOpacity>
         )}
 
+        {renderLeaveModal()}
       </SafeAreaView>
     );
   }
@@ -3306,6 +3368,7 @@ export default function EditVenueScreen() {
           </TouchableOpacity>
         </ScrollView>
         {renderUnsavedBar()}
+        {renderLeaveModal()}
       </SafeAreaView>
     );
   }
@@ -3377,6 +3440,7 @@ export default function EditVenueScreen() {
         );
       })()}
 
+      {renderLeaveModal()}
     </SafeAreaView>
   );
 }

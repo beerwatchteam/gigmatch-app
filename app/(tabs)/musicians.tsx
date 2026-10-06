@@ -792,7 +792,7 @@ const st = StyleSheet.create({
 
   // ── Native filter bar ─────────────────────────────────────────────
   nativeFilterBg:    { borderBottomWidth: 1 },
-  nativeFilterWrap:  { paddingTop: 12, paddingBottom: 8 },
+  nativeFilterWrap:  { paddingTop: 12, paddingBottom: 8, overflow: 'visible' as any, zIndex: 100 },
   nativeTopRow:      { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, gap: 10 },
   nativeSearchBox:   { flex: 1, position: 'relative' as any },
   nativeSearchInput: {
@@ -885,8 +885,8 @@ const st = StyleSheet.create({
   webSearchBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
   // ── Web filter bar ────────────────────────────────────────────────
-  webFilterBar:            { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8' },
-  webFilterInner:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any },
+  webFilterBar:            { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8', overflow: 'visible' as any },
+  webFilterInner:          { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any, overflow: 'visible' as any },
   webFilterPill:           { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#ffffff' },
   webFilterPillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '12' },
   webFilterPillText:       { fontSize: 13, color: '#333333', fontWeight: '500' },

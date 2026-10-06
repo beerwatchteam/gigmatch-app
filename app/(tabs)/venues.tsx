@@ -327,7 +327,7 @@ function CardPhoto({ uri, position }: { uri: string; position?: { x: number; y: 
 }
 
 const isWeb  = Platform.OS === 'web';
-const PANEL_W = Dimensions.get('window').width * 0.87;
+const PANEL_W = Math.min(Dimensions.get('window').width * 0.87, 340);
 
 const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const CAL_DOW    = ['M','T','W','T','F','S','S'];
@@ -2152,8 +2152,8 @@ const st = StyleSheet.create({
   webSearchBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
   // ── Web filter bar ────────────────────────────────────────────────
-  webFilterBar:   { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8' },
-  webFilterInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any },
+  webFilterBar:   { backgroundColor: '#ffffff', borderTopWidth: 1, borderTopColor: '#e0dbd4', borderBottomWidth: 1, borderBottomColor: '#e8e8e8', overflow: 'visible' as any },
+  webFilterInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 32, paddingVertical: 12, gap: 8, flexWrap: 'wrap' as any, overflow: 'visible' as any },
   webFilterPill:  { borderWidth: 1, borderColor: '#d0ccc7', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#ffffff' },
   webFilterPillActive:     { borderColor: Colors.orange, backgroundColor: Colors.orange + '12' },
   webFilterPillText:       { fontSize: 13, color: '#333333', fontWeight: '500' },
