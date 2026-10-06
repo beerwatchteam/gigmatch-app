@@ -52,7 +52,8 @@ const NAV_GROUPS = [
 const ALL_TABS = NAV_GROUPS.flatMap(g => g.tabs);
 
 // ── Types ─────────────────────────────────────────────────────────────────
-type Song    = { title: string; url: string; notes: string };
+type Song       = { title: string; url: string; notes: string };
+type ArtistPage = { platform: string; url: string };
 type Member  = { name: string; role: string };
 type Channel = { source: string; micDi: string };
 
@@ -81,7 +82,7 @@ type Profile = {
   about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string; youtube: string;
   customLinks: { label: string; url: string }[];
-  songs: Song[]; photos: string[]; videos: string[];
+  songs: Song[]; artistPages: ArtistPage[]; photos: string[]; videos: string[];
   techRider: Record<string, string>;
   techRiderDocs: { url: string; name: string }[];
   techRiderBools: Record<string, boolean>;
@@ -110,7 +111,7 @@ const BLANK: Profile = {
   setType: '', ageRestriction: '', setLengths: [],
   about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '', youtube: '',
-  customLinks: [], songs: [], photos: [], videos: [],
+  customLinks: [], songs: [], artistPages: [], photos: [], videos: [],
   techRider: {}, techRiderDocs: [], techRiderBools: {},
   inputChannels: [], backlineFromVenue: [], backlineBring: [],
   hospitality: { ...BLANK_HOSP },
@@ -455,6 +456,7 @@ export default function EditProfileScreen() {
         averageDraw: raw.averageDraw != null ? String(raw.averageDraw) : '',
       };
       d.songs            = d.songs            || [];
+      d.artistPages      = d.artistPages      || [];
       d.photos           = d.photos           || [];
       d.videos           = d.videos           || [];
       d.members          = d.members          || [];
@@ -523,6 +525,9 @@ export default function EditProfileScreen() {
   }
   function addSong()         { setProfile(prev => ({ ...prev, songs: [...prev.songs, { title: '', url: '', notes: '' }] })); }
   function removeSong(i: number) { setProfile(prev => ({ ...prev, songs: prev.songs.filter((_, idx) => idx !== i) })); }
+  function addArtistPage(platform: string) { setProfile(prev => ({ ...prev, artistPages: [...prev.artistPages, { platform, url: '' }] })); }
+  function setArtistPage(i: number, field: keyof ArtistPage, val: string) { setProfile(prev => ({ ...prev, artistPages: prev.artistPages.map((p, idx) => idx === i ? { ...p, [field]: val } : p) })); }
+  function removeArtistPage(i: number) { setProfile(prev => ({ ...prev, artistPages: prev.artistPages.filter((_, idx) => idx !== i) })); }
 
   function addMember()       { setProfile(prev => ({ ...prev, members: [...prev.members, { name: '', role: '' }] })); }
   function removeMember(i: number) { setProfile(prev => ({ ...prev, members: prev.members.filter((_, idx) => idx !== i) })); }
@@ -1000,12 +1005,57 @@ export default function EditProfileScreen() {
   }
 
   function renderMusic() {
+    const MUSIC_PLATFORMS = ['Spotify', 'Apple Music', 'SoundCloud', 'Bandcamp', 'YouTube Music', 'Other'];
+    const usedPlatforms = profile.artistPages.map(p => p.platform);
+    const availablePlatforms = MUSIC_PLATFORMS.filter(p => !usedPlatforms.includes(p));
+
     return (
       <View>
         {renderPageHeader('Music', 'Tracks venues can listen to before they book you.')}
 
+        {/* Artist Pages */}
         <SectionCard
-          title="Tracks"
+          title="Artist Pages"
+          subtitle="Link your full profile on streaming platforms so venues can explore your catalogue."
+        >
+          <View style={{ paddingBottom: 8 }}>
+            {profile.artistPages.length === 0 && availablePlatforms.length > 0 && (
+              <Text style={{ fontSize: 14, color: colors.grey, padding: 16, paddingBottom: 8 }}>No artist pages added yet.</Text>
+            )}
+            {profile.artistPages.map((page, i) => (
+              <View key={i} style={[pd.trackRow, { borderBottomColor: colors.border }, i === profile.artistPages.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={[pd.badge, { borderColor: colors.border, flexShrink: 0, minWidth: 96 }]}>
+                  <Text style={{ fontSize: 11, color: colors.grey, fontWeight: '700' }} numberOfLines={1}>{page.platform}</Text>
+                </View>
+                <TextInput
+                  style={[sh.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+                  value={page.url}
+                  onChangeText={v => setArtistPage(i, 'url', v)}
+                  placeholder="https://..."
+                  placeholderTextColor={Colors.greyLight}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity onPress={() => removeArtistPage(i)} style={{ paddingLeft: 4 }}>
+                  <Text style={{ fontSize: 18, color: colors.grey }}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            {availablePlatforms.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 16, paddingTop: profile.artistPages.length > 0 ? 12 : 4 }}>
+                {availablePlatforms.map(p => (
+                  <TouchableOpacity key={p} style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={() => addArtistPage(p)}>
+                    <Text style={[pd.outlineBtnText, { color: colors.black }]}>+ {p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </SectionCard>
+
+        {/* Individual Tracks */}
+        <SectionCard
+          title="Individual Tracks"
           subtitle="Your first track plays at the top of your profile. Live recordings help venues most."
           right={
             <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={addSong}>
