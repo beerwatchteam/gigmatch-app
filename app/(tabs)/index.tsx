@@ -29,7 +29,7 @@ type MusicianData = {
   artistType?: string | string[];
   location?: string; genre?: string[];
   photoUrl?: string;
-  feeMin?: number; feeMax?: number;
+  feeMin?: number; feeMax?: number; feeOpenToOffers?: boolean;
   averageDraw?: number; gigsThisYear?: number;
   settings?: { listed?: boolean };
 };
@@ -239,11 +239,13 @@ function ArtistCard({ musician }: { musician: MusicianData }) {
   const photo   = musician.photoUrl;
   const actType = Array.isArray(musician.artistType) ? musician.artistType[0] : musician.artistType;
   const genres  = (musician.genre ?? []).slice(0, 3).join(' · ');
-  const feeLabel = musician.feeMin != null
-    ? musician.feeMax != null
-      ? `$${musician.feeMin}-${musician.feeMax}`
-      : `$${musician.feeMin}+`
-    : null;
+  const feeLabel = musician.feeOpenToOffers
+    ? 'Open to offers'
+    : musician.feeMin != null
+      ? musician.feeMax != null
+        ? `$${musician.feeMin}–${musician.feeMax}`
+        : `$${musician.feeMin}+`
+      : null;
   const year          = new Date().getFullYear();
   const gigsThisYear  = musician.gigsThisYear ?? 0;
   const averageDraw   = musician.averageDraw ?? null;
