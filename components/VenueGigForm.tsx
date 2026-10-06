@@ -51,13 +51,39 @@ function DateInput({ value, onChange, placeholder }: { value: string; onChange: 
   );
 }
 
+/** Convert "H:MM AM/PM" state value to "HH:MM" for the HTML time input. */
+function to24h(ampm: string): string {
+  if (!ampm) return '';
+  // Already HH:MM 24h (from old data or fallback)
+  if (/^\d{2}:\d{2}$/.test(ampm)) return ampm;
+  const m = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(ampm.trim());
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  if (/PM/i.test(m[3]) && h !== 12) h += 12;
+  if (/AM/i.test(m[3]) && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${min}`;
+}
+
+/** Convert "HH:MM" from HTML time input to "H:MM AM/PM" for state. */
+function to12h(hhmm: string): string {
+  if (!hhmm) return '';
+  const [hStr, mStr] = hhmm.split(':');
+  let h = parseInt(hStr ?? '0', 10);
+  const min = mStr ?? '00';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${min} ${ampm}`;
+}
+
 function TimeInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   if (Platform.OS === 'web') {
     return (
       <input
         type="time"
-        value={value}
-        onChange={e => onChange(e.target.value)}
+        value={to24h(value)}
+        onChange={e => onChange(to12h(e.target.value))}
         style={{ fontSize: 15, padding: 10, borderRadius: 10, border: '1px solid #e0e0e0', background: 'transparent', color: 'inherit', width: '100%', boxSizing: 'border-box' } as any}
       />
     );
@@ -67,7 +93,7 @@ function TimeInput({ value, onChange, placeholder }: { value: string; onChange: 
       style={fi.input}
       value={value}
       onChangeText={onChange}
-      placeholder={placeholder ?? 'HH:MM'}
+      placeholder={placeholder ?? 'e.g. 8:00 PM'}
       placeholderTextColor={Colors.greyLight}
       keyboardType="numbers-and-punctuation"
     />
@@ -188,13 +214,13 @@ function localDateFromGig(gig: Gig & { id: string }): string {
 
 function localTimeFromGig(gig: Gig & { id: string }, useEnd: boolean): string {
   try {
-    const tz   = gig.timezone ?? 'Australia/Melbourne';
-    const ts   = useEnd ? gig.endAt : gig.startAt;
+    const tz = gig.timezone ?? 'Australia/Melbourne';
+    const ts = useEnd ? gig.endAt : gig.startAt;
     if (!ts) return '';
-    const fmt  = new Intl.DateTimeFormat('en-AU', {
-      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
-    });
-    return fmt.format(ts.toDate());
+    // Use en-US to reliably get "H:MM AM/PM" format matching parseLocalTime expectations
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
+    }).format(ts.toDate());
   } catch { return ''; }
 }
 
@@ -479,17 +505,11 @@ export default function VenueGigForm({
           {rooms.length > 0 && (
             <Field label="Room">
               <View style={cp.row}>
-                <TouchableOpacity
-                  style={[cp.chip, { borderColor: colors.border, backgroundColor: !room ? Colors.orange : colors.bg }]}
-                  onPress={() => setRoom('')}
-                >
-                  <Text style={[cp.text, { color: !room ? '#111' : colors.grey }]}>Main room</Text>
-                </TouchableOpacity>
                 {rooms.map(r => (
                   <TouchableOpacity
                     key={r}
                     style={[cp.chip, { borderColor: colors.border, backgroundColor: room === r ? Colors.orange : colors.bg }]}
-                    onPress={() => setRoom(r)}
+                    onPress={() => setRoom(room === r ? '' : r)}
                   >
                     <Text style={[cp.text, { color: room === r ? '#111' : colors.grey }]}>{r}</Text>
                   </TouchableOpacity>
@@ -527,19 +547,6 @@ export default function VenueGigForm({
             <View style={fi.half}>
               <Field label="End time">
                 <TimeInput value={localEndTime} onChange={setLocalEndTime} />
-              </Field>
-            </View>
-          </View>
-
-          <View style={fi.row}>
-            <View style={fi.half}>
-              <Field label="Load-in time">
-                <TimeInput value={loadInTime} onChange={setLoadInTime} />
-              </Field>
-            </View>
-            <View style={fi.half}>
-              <Field label="Soundcheck time">
-                <TimeInput value={soundCheckTime} onChange={setSoundCheckTime} />
               </Field>
             </View>
           </View>

@@ -3,6 +3,7 @@ import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Platform, useWindowDimensions, Modal, TextInput,
 } from 'react-native';
+import { crossConfirm } from '@/lib/confirm';
 import { Text } from '@/components/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -100,7 +101,7 @@ const drawChip = StyleSheet.create({
 // ── Gig row ───────────────────────────────────────────────────────────────────
 
 function GigRow({
-  gig, expanded, onPress, onEdit, onCancel, onDelete, isArtist, uid, colors,
+  gig, expanded, onPress, onEdit, onCancel, onDelete, isArtist, uid, colors, isPast,
 }: {
   gig:       GigWithId;
   expanded:  boolean;
@@ -111,14 +112,10 @@ function GigRow({
   isArtist:  boolean;
   uid:       string;
   colors:    any;
+  isPast?:   boolean;
 }) {
   const cancelled  = gig.status === 'cancelled';
   const completed  = !cancelled && isCompleted(gig);
-
-  const statusColor = cancelled ? Colors.danger
-    : completed ? colors.grey
-    : '#16a34a';
-  const statusText  = cancelled ? 'Cancelled' : completed ? 'Completed' : 'Confirmed';
 
   return (
     <TouchableOpacity
@@ -139,8 +136,21 @@ function GigRow({
           <Text style={[row.date, { color: colors.grey }]}>{formatGigDate(gig)}</Text>
         </View>
         <View style={row.right}>
-          <SourceBadge source={gig.source} colors={colors} />
-          <Text style={[row.status, { color: statusColor }]}>{statusText}</Text>
+          {isPast ? (
+            cancelled
+              ? <Text style={[row.status, { color: Colors.danger }]}>Cancelled</Text>
+              : gig.source === 'enquiry'
+                ? <View style={[badge.pill, { backgroundColor: Colors.orange }]}>
+                    <Text style={[badge.label, { color: '#111' }]}>Twaylo</Text>
+                  </View>
+                : null
+          ) : (
+            cancelled
+              ? <Text style={[row.status, { color: Colors.danger }]}>Cancelled</Text>
+              : <View style={[badge.pill, { backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#bbf7d0' }]}>
+                  <Text style={[badge.label, { color: '#16a34a' }]}>Booked</Text>
+                </View>
+          )}
         </View>
       </View>
 
@@ -224,6 +234,119 @@ const row = StyleSheet.create({
   btn:          { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   btnDanger:    { borderColor: Colors.danger + '60' },
   btnText:      { fontSize: 13, fontWeight: '600' },
+});
+
+// ── Pending enquiry row ───────────────────────────────────────────────────────
+
+function PendingEnquiryRow({ enq, isArtist, colors }: { enq: any; isArtist: boolean; colors: any }) {
+  const name     = isArtist ? (enq.venueName || 'Venue') : (enq.bandName || 'Artist');
+  const slotDate = enq.requestedSlot?.date;
+  const slotDay  = enq.requestedSlot?.day;
+  const dateText = slotDate
+    ? new Date(slotDate + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+    : slotDay || 'Date TBC';
+  const time = enq.requestedSlot?.time;
+  return (
+    <View style={[row.card, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+      <View style={row.main}>
+        <View style={row.left}>
+          <Text style={[row.title, { color: colors.black }]} numberOfLines={1}>{name}</Text>
+          <Text style={[row.sub, { color: colors.grey }]} numberOfLines={1}>
+            {dateText}{time ? `  ${time}` : ''}
+          </Text>
+        </View>
+        <View style={row.right}>
+          <View style={[badge.pill, { backgroundColor: Colors.orange + '22', borderWidth: 1, borderColor: Colors.orange + '66' }]}>
+            <Text style={[badge.label, { color: Colors.orange }]}>Pending</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ── Gig list row (card-list style) ────────────────────────────────────────────
+
+function GigListRow({
+  gig, isArtist, isPast, colors, onEdit, onRemove,
+}: {
+  gig:      GigWithId;
+  isArtist: boolean;
+  isPast:   boolean;
+  colors:   any;
+  onEdit:   () => void;
+  onRemove: () => void;
+}) {
+  const cancelled   = gig.status === 'cancelled';
+  const primaryText = gig.title
+    || (isArtist ? gig.venueName : (gig.artistName || gig.bandName))
+    || 'Untitled gig';
+  const dateStr = formatGigDate(gig);
+  const roomStr = gig.room ? ` · ${gig.room}` : '';
+
+  return (
+    <View style={[gl.row, { borderColor: colors.border }]}>
+      <View style={gl.left}>
+        <View style={gl.nameRow}>
+          <Text style={[gl.name, { color: cancelled ? colors.grey : colors.black }]} numberOfLines={1}>
+            {primaryText}
+          </Text>
+          {isPast ? (
+            cancelled
+              ? <View style={[badge.pill, { backgroundColor: Colors.danger + '18' }]}>
+                  <Text style={[badge.label, { color: Colors.danger }]}>Cancelled</Text>
+                </View>
+              : gig.source === 'enquiry'
+                ? <View style={[badge.pill, { backgroundColor: Colors.orange }]}>
+                    <Text style={[badge.label, { color: '#111' }]}>Twaylo</Text>
+                  </View>
+                : null
+          ) : (
+            !cancelled
+              ? <View style={[badge.pill, { backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#bbf7d0' }]}>
+                  <Text style={[badge.label, { color: '#16a34a' }]}>Booked</Text>
+                </View>
+              : null
+          )}
+        </View>
+        <Text style={[gl.meta, { color: colors.grey }]} numberOfLines={1}>
+          {dateStr}{roomStr}
+        </Text>
+        {!cancelled && (
+          <View style={gl.actions}>
+            <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[gl.actionEdit, { color: colors.black }]}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={gl.actionRemove}>Remove</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const gl = StyleSheet.create({
+  row:       { borderBottomWidth: 1, paddingHorizontal: 16, paddingVertical: 12 },
+  left:      { flex: 1 },
+  nameRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  name:      { fontSize: 14, fontWeight: '600', lineHeight: 20, flexShrink: 1 },
+  meta:      { fontSize: 12, marginTop: 2 },
+  actions:   { flexDirection: 'row', gap: 14, marginTop: 6 },
+  actionEdit:   { fontSize: 12, fontWeight: '600' },
+  actionRemove: { fontSize: 12, fontWeight: '600', color: Colors.danger },
+});
+
+// ── Section card wrapper ───────────────────────────────────────────────────────
+
+const gigSec = StyleSheet.create({
+  card:     { borderWidth: 1, borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
+  header:   { paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1 },
+  title:    { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
+  subtitle: { fontSize: 12, marginTop: 2 },
+  empty:    { paddingHorizontal: 16, paddingVertical: 13 },
+  emptyTxt: { fontSize: 13, lineHeight: 20 },
 });
 
 // ── Section header ────────────────────────────────────────────────────────────
@@ -327,6 +450,7 @@ export function MyGigsContent({ embedded = false, hideAway = false }: { embedded
   const router            = useRouter();
 
   const [gigs, setGigs]               = useState<GigWithId[]>([]);
+  const [pendingEnqs, setPendingEnqs] = useState<any[]>([]);
   const [loading, setLoading]         = useState(true);
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
@@ -405,6 +529,30 @@ export function MyGigsContent({ embedded = false, hideAway = false }: { embedded
     }
   };
 
+  // Live query for pending enquiries
+  useEffect(() => {
+    if (!uid) return;
+    const field = isArtist ? 'createdBy' : 'venueId';
+    const val   = isArtist ? uid : (venueId ?? '');
+    if (!val) return;
+    const PENDING_STATUSES = ['enquired', 'pending', 'discussing'];
+    const q = query(collection(db, 'inquiries'), where(field, '==', val));
+    const unsub = onSnapshot(q, snap => {
+      const now = new Date();
+      setPendingEnqs(
+        snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((e: any) => {
+            if (!PENDING_STATUSES.includes(e.status)) return false;
+            const slotDate = e.requestedSlot?.date;
+            if (slotDate) return new Date(slotDate + 'T23:59:59') >= now;
+            return true;
+          })
+      );
+    }, () => {});
+    return unsub;
+  }, [uid, isArtist, venueId]);
+
   // Live query from gigs collection
   useEffect(() => {
     if (!uid) return;
@@ -463,12 +611,30 @@ export function MyGigsContent({ embedded = false, hideAway = false }: { embedded
   }, [uid]);
 
   const openEdit = (gig: GigWithId) => {
+    setEditGig(gig);
     if (isArtist) {
-      setEditGig(gig);
       setShowArtistForm(true);
     } else {
-      router.push({ pathname: '/edit-venue', params: { tab: 'Gig slots' } } as any);
+      setShowVenueForm(true);
     }
+  };
+
+  const confirmRemove = (gig: GigWithId) => {
+    const isOwned = gig.source === 'artist_added';
+    crossConfirm(
+      'Remove gig?',
+      isOwned
+        ? 'This will permanently delete this gig.'
+        : 'This will mark the gig as cancelled.',
+      async () => {
+        if (isOwned) {
+          await handleDeleteGig(gig);
+        } else {
+          await handleCancelGig(gig);
+        }
+      },
+      true,
+    );
   };
 
   const handleFormSaved = () => {
@@ -515,54 +681,89 @@ export function MyGigsContent({ embedded = false, hideAway = false }: { embedded
         ) : (
           <>
             {/* Upcoming */}
-            <SectionHeader title="Upcoming" count={upcoming.length} colors={colors} />
-            {upcoming.length === 0 ? (
-              <Text style={[s.empty, { color: colors.grey }]}>No upcoming gigs. Add one above.</Text>
-            ) : (
-              upcoming.map(g => (
-                <GigRow
-                  key={g.id} gig={g}
-                  expanded={expandedId === g.id}
-                  onPress={() => setExpandedId(expandedId === g.id ? null : g.id)}
-                  onEdit={() => openEdit(g)}
-                  onCancel={() => handleCancelGig(g)}
-                  onDelete={() => handleDeleteGig(g)}
-                  isArtist={isArtist} uid={uid} colors={colors}
-                />
-              ))
-            )}
-
-            {/* Past */}
-            <SectionHeader title="Past" count={past.length} colors={colors} />
-            {past.length === 0 ? (
-              <Text style={[s.empty, { color: colors.grey }]}>
-                No past gigs yet. Use "+ Add gig" above and pick any past date.
-              </Text>
-            ) : (
-              past.map(g => (
-                <GigRow
-                  key={g.id} gig={g}
-                  expanded={expandedId === g.id}
-                  onPress={() => setExpandedId(expandedId === g.id ? null : g.id)}
-                  onEdit={() => openEdit(g)}
-                  onCancel={() => handleCancelGig(g)}
-                  onDelete={() => handleDeleteGig(g)}
-                  isArtist={isArtist} uid={uid} colors={colors}
-                />
-              ))
-            )}
-
-            {/* Show cancelled toggle */}
-            {cancelledCount > 0 && (
-              <TouchableOpacity
-                style={s.cancelledToggle}
-                onPress={() => setShowCancelled(v => !v)}
-              >
-                <Text style={[s.cancelledToggleText, { color: colors.grey }]}>
-                  {showCancelled ? 'Hide cancelled' : `Show cancelled (${cancelledCount})`}
+            <View style={[gigSec.card, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+              <View style={[gigSec.header, { borderBottomColor: colors.border, borderBottomWidth: (upcoming.length + pendingEnqs.length) > 0 ? 1 : 0 }]}>
+                <Text style={[gigSec.title, { color: colors.black }]}>Upcoming</Text>
+                <Text style={[gigSec.subtitle, { color: colors.grey }]}>
+                  {(upcoming.length + pendingEnqs.length) > 0
+                    ? `${upcoming.length + pendingEnqs.length} upcoming`
+                    : 'No upcoming gigs booked yet'}
                 </Text>
-              </TouchableOpacity>
-            )}
+              </View>
+              {upcoming.length === 0 && pendingEnqs.length === 0 ? (
+                <View style={gigSec.empty}>
+                  <Text style={[gigSec.emptyTxt, { color: colors.grey }]}>
+                    Confirmed bookings from your enquiries will appear here.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {pendingEnqs.map((e, i) => {
+                    const slotDate = e.requestedSlot?.date;
+                    const slotDay  = e.requestedSlot?.day;
+                    const dateText = slotDate
+                      ? new Date(slotDate + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+                      : slotDay || 'Date TBC';
+                    const name = isArtist ? (e.venueName || 'Venue') : (e.bandName || 'Artist');
+                    return (
+                      <View key={e.id} style={[gl.row, { borderColor: colors.border }]}>
+                        <View style={gl.left}>
+                          <View style={gl.nameRow}>
+                            <Text style={[gl.name, { color: colors.black, flexShrink: 1 }]} numberOfLines={1}>{name}</Text>
+                            <View style={[badge.pill, { backgroundColor: Colors.orange + '22', borderWidth: 1, borderColor: Colors.orange + '66' }]}>
+                              <Text style={[badge.label, { color: Colors.orange }]}>Pending</Text>
+                            </View>
+                          </View>
+                          <Text style={[gl.meta, { color: colors.grey }]}>{dateText}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                  {upcoming.map((g, i) => (
+                    <GigListRow
+                      key={g.id} gig={g} isArtist={isArtist} isPast={false} colors={colors}
+                      onEdit={() => openEdit(g)}
+                      onRemove={() => confirmRemove(g)}
+                    />
+                  ))}
+                </>
+              )}
+            </View>
+
+            {/* Past gigs */}
+            <View style={[gigSec.card, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+              <View style={[gigSec.header, { borderBottomColor: colors.border, borderBottomWidth: past.length > 0 ? 1 : 0 }]}>
+                <Text style={[gigSec.title, { color: colors.black }]}>Past gigs</Text>
+                <Text style={[gigSec.subtitle, { color: colors.grey }]}>
+                  {past.length > 0 ? `${past.length} gig${past.length !== 1 ? 's' : ''}` : 'No past gigs yet'}
+                </Text>
+              </View>
+              {past.length === 0 ? (
+                <View style={gigSec.empty}>
+                  <Text style={[gigSec.emptyTxt, { color: colors.grey }]}>
+                    Use "+ Add gig" above and pick any past date to log a completed gig.
+                  </Text>
+                </View>
+              ) : (
+                past.map((g, i) => (
+                  <GigListRow
+                    key={g.id} gig={g} isArtist={isArtist} isPast={true} colors={colors}
+                    onEdit={() => openEdit(g)}
+                    onRemove={() => confirmRemove(g)}
+                  />
+                ))
+              )}
+              {cancelledCount > 0 && (
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 16, paddingVertical: 10 }}
+                  onPress={() => setShowCancelled(v => !v)}
+                >
+                  <Text style={{ fontSize: 12, color: colors.grey }}>
+                    {showCancelled ? 'Hide cancelled' : `Show cancelled (${cancelledCount})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {/* Away Periods */}
             {isArtist && !hideAway && (

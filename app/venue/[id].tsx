@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Image, Platform, Linking, useWindowDimensions,
+  Modal, TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import WebView from 'react-native-webview';
@@ -24,7 +25,7 @@ type Slot = {
   id: string;
   time: string;
   date?: string | null;
-  status: 'open' | 'booked' | 'pending';
+  status: 'open' | 'booked' | 'pending' | 'closed';
   gigId?: string;
   gigName?: string;
   actName?: string;
@@ -300,7 +301,7 @@ function getSlotsForDate(venue: Venue, day: string, dateISO: string): Slot[] {
     if (s.continuous === false && s.endDate && dateISO > s.endDate) return false;
     return true;
   });
-  const overrides = all.filter((s: Slot) => s.date === dateISO && (s.status === 'booked' || s.status === 'pending'));
+  const overrides = all.filter((s: Slot) => s.date === dateISO && (s.status === 'booked' || s.status === 'pending' || s.status === 'closed'));
   return mergeSlots(recurOpen, overrides);
 }
 
@@ -1121,7 +1122,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
   isArtist: boolean;
   isLoggedIn: boolean;
   userEnquiries: Enquiry[];
-  onEnquire: (slot: Slot, day: string, dateISO?: string) => void;
+  onEnquire: (slot: Slot, day: string, dateISO: string) => void;
   isMobileLayout: boolean;
   isMyVenue?: boolean;
 }) {
@@ -1138,6 +1139,9 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
 
   const [monthOffset, setMonthOffset] = useState(0);
 
+  // Per-occurrence override modal
+  const [overrideModal, setOverrideModal] = useState<{ slot: Slot; day: string; dateISO: string; date: Date } | null>(null);
+
   if (!isMobileLayout) {
     const allUpcoming = generateAllUpcoming(venue, 3, monthOffset);
 
@@ -1150,7 +1154,8 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
       userEnquiries.some(e => matchEnquiry(e, day, time, dateISO));
 
     const filtered = allUpcoming.filter(({ day, dateISO, slot }) => {
-      if (filterTab === 'open') return slot.status === 'open' && !hasEnquiryFor(day, slot.time, dateISO);
+      if (!isMyVenue && slot.status === 'closed') return false;
+      if (filterTab === 'open') return (slot.status === 'open' || (isMyVenue && slot.status === 'closed')) && !hasEnquiryFor(day, slot.time, dateISO);
       if (filterTab === 'mine') return hasEnquiryFor(day, slot.time, dateISO);
       return true;
     });
@@ -1175,6 +1180,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
     });
 
     return (
+      <>
       <View style={s.tabBody}>
         {/* Recurring bar */}
         {recurringSchedule.length > 0 && (
@@ -1309,6 +1315,8 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
                         isLoggedIn={isLoggedIn}
                         userEnquiries={userEnquiries}
                         onEnquire={onEnquire}
+                        isMyVenue={isMyVenue}
+                        onVenueEdit={(s, d, iso) => setOverrideModal({ slot: s, day: d, dateISO: iso, date })}
                       />
                     ))}
                   </View>
@@ -1318,6 +1326,17 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
           </View>
         </View>
       </View>
+      {overrideModal && (
+        <SlotOverrideModal
+          slot={overrideModal.slot}
+          day={overrideModal.day}
+          dateISO={overrideModal.dateISO}
+          venueId={venue.id}
+          allSlots={venue.slots ?? {}}
+          onClose={() => setOverrideModal(null)}
+        />
+      )}
+      </>
     );
   }
 
@@ -1330,7 +1349,8 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
       inferSlotDate(e) === dateISO
     );
   const nativeFiltered = allUpcomingNative.filter(({ day, dateISO, slot }) => {
-    if (nativeFilter === 'open') return slot.status === 'open' && !hasEnquiryForNative(day, slot.time, dateISO);
+    if (!isMyVenue && slot.status === 'closed') return false;
+    if (nativeFilter === 'open') return (slot.status === 'open' || (isMyVenue && slot.status === 'closed')) && !hasEnquiryForNative(day, slot.time, dateISO);
     if (nativeFilter === 'mine') return hasEnquiryForNative(day, slot.time, dateISO);
     return true;
   });
@@ -1354,6 +1374,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
   const nativeDateRange = `(${LONG_MONTHS[windowStart.getMonth()]} ${windowStart.getDate()} – ${LONG_MONTHS[windowEnd.getMonth()]} ${windowEnd.getDate()})`;
 
   return (
+    <>
     <View>
       {/* Recurring */}
       {recurringSchedule.length > 0 && (
@@ -1456,6 +1477,8 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
                       isLoggedIn={isLoggedIn}
                       hasEnquired={hasEnquired}
                       onEnquire={() => onEnquire(slot, day, dateISO)}
+                      isMyVenue={isMyVenue}
+                      onVenueEdit={(s, d, iso) => setOverrideModal({ slot: s, day: d, dateISO: iso, date })}
                       colors={colors}
                     />
                   );
@@ -1465,6 +1488,17 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
         }
       </View>
     </View>
+    {overrideModal && (
+      <SlotOverrideModal
+        slot={overrideModal.slot}
+        day={overrideModal.day}
+        dateISO={overrideModal.dateISO}
+        venueId={venue.id}
+        allSlots={venue.slots ?? {}}
+        onClose={() => setOverrideModal(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -1536,20 +1570,26 @@ const wr = StyleSheet.create({
 
 // ── All dates slot row (native "All dates" view) ─────────────────────
 
-function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEnquired, onEnquire, colors }: {
+function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEnquired, onEnquire, isMyVenue, onVenueEdit, colors }: {
   slot: Slot; date: Date; dateISO: string; day: string;
   isArtist: boolean; isLoggedIn: boolean; hasEnquired: boolean;
-  onEnquire: () => void; colors: any;
+  onEnquire: () => void;
+  isMyVenue?: boolean;
+  onVenueEdit?: (slot: Slot, day: string, dateISO: string) => void;
+  colors: any;
 }) {
   const isBooked = slot.status === 'booked';
   const isOpen   = slot.status === 'open';
+  const isClosed = slot.status === 'closed';
 
   let leftBorderColor: string;
   let badgeLabel: string;
   let badgeTextColor: string;
   let badgeBorderColor: string;
 
-  if (hasEnquired) {
+  if (isClosed) {
+    leftBorderColor = colors.border; badgeLabel = 'Closed'; badgeTextColor = colors.grey; badgeBorderColor = colors.border;
+  } else if (hasEnquired) {
     leftBorderColor = '#22c55e'; badgeLabel = 'Enquiry sent'; badgeTextColor = '#16a34a'; badgeBorderColor = '#22c55e';
   } else if (isBooked) {
     leftBorderColor = '#e0e0e0'; badgeLabel = 'Booked'; badgeTextColor = '#888888'; badgeBorderColor = '#e0e0e0';
@@ -1558,27 +1598,37 @@ function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEn
   }
 
   return (
-    <View style={[ad.row, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: colors.bg }]}>
+    <View style={[ad.row, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: isClosed ? colors.bgFaint : colors.bg, opacity: isClosed ? 0.7 : 1 }]}>
       <View style={ad.dateBox}>
         <Text style={[ad.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
         <Text style={[ad.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
       </View>
       <Text style={[ad.dayAbbrev, { color: colors.grey }]}>{day.slice(0, 3).toUpperCase()}</Text>
       <View style={{ flex: 1 }}>
-        <Text style={[ad.time, { color: colors.black }]}>{slot.time}</Text>
+        <Text style={[ad.time, { color: isClosed ? colors.grey : colors.black }]}>{slot.time}</Text>
         {slot.room ? <Text style={[ad.room, { color: colors.grey }]}>{slot.room}</Text> : null}
       </View>
-      {isOpen && !hasEnquired && isArtist && (
+      {isMyVenue && (
+        <TouchableOpacity style={ad.editBtn} onPress={() => onVenueEdit?.(slot, day, dateISO)} activeOpacity={0.75}>
+          <Text style={ad.editBtnText}>Edit</Text>
+        </TouchableOpacity>
+      )}
+      {isOpen && !hasEnquired && isArtist && !isMyVenue && (
         <TouchableOpacity style={ad.enquireBtn} onPress={onEnquire}>
           <Text style={ad.enquireBtnText}>Enquire</Text>
         </TouchableOpacity>
       )}
-      {isOpen && !hasEnquired && !isLoggedIn && (
+      {isOpen && !hasEnquired && !isLoggedIn && !isMyVenue && (
         <TouchableOpacity style={[ad.enquireBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} onPress={onEnquire}>
           <Text style={[ad.enquireBtnText, { color: Colors.orange }]}>Log in</Text>
         </TouchableOpacity>
       )}
-      {(!isOpen || hasEnquired) && (
+      {(!isOpen || hasEnquired) && !isMyVenue && (
+        <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
+          <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+        </View>
+      )}
+      {isClosed && isMyVenue && (
         <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
           <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
         </View>
@@ -1599,6 +1649,8 @@ const ad = StyleSheet.create({
   enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
   badge:        { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
   badgeText:    { fontSize: 11, fontWeight: '600' },
+  editBtn:      { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexShrink: 0 },
+  editBtnText:  { fontSize: 12, fontWeight: '600', color: '#555555' },
 });
 
 // ── Mini calendar month (web) ─────────────────────────────────────────
@@ -1667,13 +1719,341 @@ function MiniCalendarMonth({ venue, month, year, today, windowStart, windowEnd, 
   );
 }
 
+// ── Inline chip group for the override modal ─────────────────────────
+
+function OverrideChips({ options, value, onSelect, multi }: {
+  options: string[]; value: string | string[];
+  onSelect: (v: any) => void; multi?: boolean;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {options.map(opt => {
+        const active = multi ? (value as string[]).includes(opt) : value === opt;
+        return (
+          <TouchableOpacity
+            key={opt}
+            style={[
+              som.chip,
+              active ? { backgroundColor: Colors.orange, borderColor: Colors.orange } : { borderColor: colors.border },
+            ]}
+            onPress={() => {
+              if (multi) {
+                const arr = (value as string[]) || [];
+                onSelect(active ? arr.filter(x => x !== opt) : [...arr, opt]);
+              } else {
+                onSelect(active ? '' : opt);
+              }
+            }}
+            activeOpacity={0.75}
+          >
+            <Text style={[som.chipText, { color: active ? '#111111' : colors.grey }]}>{opt}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// ── Slot override modal (venue owner) ────────────────────────────────
+
+const OVERRIDE_GENRES    = ['Rock','Indie','Pop','Punk','Metal','Jazz','Blues','Soul / R&B','Funk','Hip-hop','Electronic','Country','Folk','Reggae','Classical','Other'];
+const OVERRIDE_SLOT_TYPES = ['Headline','Support','Either','Open Mic','Residency'];
+const OVERRIDE_DURATIONS  = ['30 min','45 min','60 min','90 min','120 min'];
+const OVERRIDE_PAY_MODELS = ['Flat fee','Door split','Guarantee + split','Bar split','Ticket split','Unpaid'];
+
+function SlotOverrideModal({ slot, day, dateISO, venueId, allSlots, onClose }: {
+  slot: Slot; day: string; dateISO: string;
+  venueId: string; allSlots: Record<string, Slot[]>;
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+
+  const [isClosed,      setIsClosed]      = useState(slot.status === 'closed');
+  const [time,          setTime]          = useState(slot.time || '');
+  const [name,          setName]          = useState(slot.name || '');
+  const [slotType,      setSlotType]      = useState(slot.slotType || '');
+  const [durationStr,   setDurationStr]   = useState(
+    slot.duration ? (OVERRIDE_DURATIONS.find(o => parseInt(o) === slot.duration) || `${slot.duration} min`) : ''
+  );
+  const [feeMin,        setFeeMin]        = useState(slot.feeMin != null ? String(slot.feeMin) : '');
+  const [feeMax,        setFeeMax]        = useState(slot.feeMax != null ? String(slot.feeMax) : '');
+  const [payModels,     setPayModels]     = useState<string[]>(
+    slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : [])
+  );
+  const [genres,        setGenres]        = useState<string[]>(slot.genres || []);
+  const [notes,         setNotes]         = useState(slot.notes || '');
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState('');
+
+  const d = new Date(dateISO + 'T00:00:00');
+  const displayDate = `${day}, ${d.getDate()} ${LONG_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+
+  const normStr = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
+  async function handleSave() {
+    setSaving(true);
+    setError('');
+    try {
+      const daySlots: Slot[] = [...(allSlots[day] || [])];
+      const existingIdx = daySlots.findIndex(
+        s => s.date === dateISO && normStr(s.time) === normStr(slot.time)
+      );
+
+      const parsedDuration = durationStr ? parseInt(durationStr) : undefined;
+      const parsedFeeMin   = feeMin.trim() ? Number(feeMin.trim()) : undefined;
+      const parsedFeeMax   = feeMax.trim() ? Number(feeMax.trim()) : undefined;
+
+      const override: Slot = {
+        ...slot,
+        id: slot.id ? `${slot.id}_${dateISO}` : `override_${dateISO}_${normStr(slot.time)}`,
+        date: dateISO,
+        status:         isClosed ? 'closed' : 'open',
+        time:           time.trim() || slot.time,
+        ...(name.trim()            ? { name: name.trim() }                   : {}),
+        ...(slotType               ? { slotType }                             : {}),
+        ...(parsedDuration         ? { duration: parsedDuration }             : {}),
+        ...(parsedFeeMin != null   ? { feeMin: parsedFeeMin }                 : {}),
+        ...(parsedFeeMax != null   ? { feeMax: parsedFeeMax }                 : {}),
+        ...(payModels.length       ? { paymentModels: payModels, paymentModel: '' } : {}),
+        ...(genres.length          ? { genres }                               : {}),
+        ...(notes.trim()           ? { notes: notes.trim() }                  : {}),
+      };
+      if (!override.name)    delete override.name;
+      if (!override.notes)   delete override.notes;
+
+      if (existingIdx >= 0) {
+        daySlots[existingIdx] = override;
+      } else {
+        daySlots.push(override);
+      }
+
+      await updateDoc(doc(db, 'venues', venueId), { [`slots.${day}`]: daySlots });
+      onClose();
+    } catch {
+      setError('Failed to save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const FieldLabel = ({ label }: { label: string }) => (
+    <Text style={[som.fieldLabel, { color: colors.grey }]}>{label}</Text>
+  );
+
+  return (
+    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <View style={som.backdrop}>
+          <View style={[som.sheet, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+
+            {/* Header */}
+            <View style={som.header}>
+              <View>
+                <Text style={[som.title, { color: colors.black }]}>Edit for this date</Text>
+                <Text style={[som.subtitle, { color: colors.grey }]}>{displayDate}</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={som.closeBtn}>
+                <Text style={[som.closeBtnText, { color: colors.grey }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Recurring slot context */}
+            <View style={[som.slotInfo, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+              <Text style={[som.slotInfoLabel, { color: colors.grey }]}>Recurring slot</Text>
+              <Text style={[som.slotTime, { color: colors.black }]}>{slot.time}</Text>
+              {slot.room ? <Text style={[som.slotRoom, { color: colors.grey }]}> · {slot.room}</Text> : null}
+            </View>
+
+            <ScrollView style={som.scrollArea} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+              {/* Availability */}
+              <View style={[som.section, { borderColor: colors.border }]}>
+                <FieldLabel label="AVAILABILITY" />
+                <View style={som.toggleRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[som.toggleLabel, { color: colors.black }]}>
+                      {isClosed ? 'Closed for this date' : 'Open for this date'}
+                    </Text>
+                    <Text style={[som.toggleSub, { color: colors.grey }]}>
+                      {isClosed ? 'Hidden from artists.' : 'Artists can enquire.'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[som.toggle, isClosed ? som.toggleOff : som.toggleOn]}
+                    onPress={() => setIsClosed(v => !v)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[som.toggleThumb, isClosed ? { marginLeft: 2 } : { marginLeft: 22 }]} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Start time */}
+              <View style={som.field}>
+                <FieldLabel label="START TIME" />
+                <TextInput
+                  style={[som.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder={slot.time}
+                  placeholderTextColor={colors.grey}
+                />
+              </View>
+
+              {/* Slot name */}
+              <View style={som.field}>
+                <FieldLabel label="SLOT NAME (optional)" />
+                <TextInput
+                  style={[som.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. New Year's Eve Special"
+                  placeholderTextColor={colors.grey}
+                />
+              </View>
+
+              {/* Slot type */}
+              <View style={som.field}>
+                <FieldLabel label="SLOT TYPE" />
+                <OverrideChips options={OVERRIDE_SLOT_TYPES} value={slotType} onSelect={setSlotType} />
+              </View>
+
+              {/* Duration */}
+              <View style={som.field}>
+                <FieldLabel label="SET LENGTH" />
+                <OverrideChips options={OVERRIDE_DURATIONS} value={durationStr} onSelect={setDurationStr} />
+              </View>
+
+              {/* Fee */}
+              <View style={som.field}>
+                <FieldLabel label="FEE" />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={[som.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+                      value={feeMin}
+                      onChangeText={setFeeMin}
+                      placeholder="Min $"
+                      placeholderTextColor={colors.grey}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={[som.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+                      value={feeMax}
+                      onChangeText={setFeeMax}
+                      placeholder="Max $"
+                      placeholderTextColor={colors.grey}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Payment model */}
+              <View style={som.field}>
+                <FieldLabel label="PAYMENT MODEL" />
+                <OverrideChips options={OVERRIDE_PAY_MODELS} value={payModels} onSelect={setPayModels} multi />
+              </View>
+
+              {/* Genres */}
+              <View style={som.field}>
+                <FieldLabel label="GENRES FOR THIS DATE" />
+                <OverrideChips options={OVERRIDE_GENRES} value={genres} onSelect={setGenres} multi />
+              </View>
+
+              {/* Notes */}
+              <View style={som.field}>
+                <FieldLabel label="NOTES FOR THIS DATE" />
+                <TextInput
+                  style={[som.textarea, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Anything specific artists should know about this date"
+                  placeholderTextColor={colors.grey}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              {error ? <Text style={som.errorText}>{error}</Text> : null}
+
+              <View style={som.actions}>
+                <TouchableOpacity
+                  style={[som.cancelBtn, { borderColor: colors.border }]}
+                  onPress={onClose}
+                  disabled={saving}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[som.cancelBtnText, { color: colors.grey }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[som.saveBtn, saving && { opacity: 0.5 }]}
+                  onPress={handleSave}
+                  disabled={saving}
+                  activeOpacity={0.8}
+                >
+                  {saving
+                    ? <ActivityIndicator color="#111111" size="small" />
+                    : <Text style={som.saveBtnText}>Save for this date</Text>}
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ height: 20 }} />
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const som = StyleSheet.create({
+  backdrop:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  sheet:        { width: '100%', maxWidth: 480, borderRadius: 16, borderWidth: 1, maxHeight: '88%', overflow: 'hidden' },
+  header:       { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', padding: 20, paddingBottom: 12 },
+  title:        { fontSize: 17, fontWeight: '800' },
+  subtitle:     { fontSize: 13, marginTop: 2 },
+  closeBtn:     { padding: 4 },
+  closeBtnText: { fontSize: 18, lineHeight: 20 },
+  slotInfo:     { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 20, paddingVertical: 10, marginBottom: 4, borderTopWidth: 1, borderBottomWidth: 1 },
+  slotInfoLabel:{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 },
+  slotTime:     { fontSize: 13, fontWeight: '700' },
+  slotRoom:     { fontSize: 13 },
+  scrollArea:   { paddingHorizontal: 20 },
+  section:      { borderWidth: 1, borderRadius: 10, padding: 14, marginTop: 16 },
+  toggleRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  toggleLabel:  { fontSize: 14, fontWeight: '600' },
+  toggleSub:    { fontSize: 12, marginTop: 2 },
+  toggle:       { width: 46, height: 26, borderRadius: 13, justifyContent: 'center' },
+  toggleOn:     { backgroundColor: Colors.orange },
+  toggleOff:    { backgroundColor: '#d1d5db' },
+  toggleThumb:  { width: 22, height: 22, borderRadius: 11, backgroundColor: '#ffffff' },
+  field:        { marginTop: 16 },
+  fieldLabel:   { fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8 },
+  input:        { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  textarea:     { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, minHeight: 72, textAlignVertical: 'top' },
+  chip:         { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText:     { fontSize: 13, fontWeight: '600' },
+  errorText:    { color: '#ef4444', fontSize: 13, marginTop: 12 },
+  actions:      { flexDirection: 'row', gap: 10, marginTop: 20 },
+  cancelBtn:    { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  cancelBtnText:{ fontSize: 14, fontWeight: '600' },
+  saveBtn:      { flex: 2, backgroundColor: Colors.orange, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  saveBtnText:  { fontSize: 14, fontWeight: '700', color: '#111111' },
+});
+
 // ── List view slot row (web) ───────────────────────────────────────────
 
-function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiries, onEnquire }: {
+function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiries, onEnquire, isMyVenue, onVenueEdit }: {
   slot: Slot; date: Date; dateISO: string; day: string;
   isArtist: boolean; isLoggedIn: boolean;
   userEnquiries: Enquiry[];
-  onEnquire: (s: Slot, d: string, date?: string) => void;
+  onEnquire: (s: Slot, d: string, date: string) => void;
+  isMyVenue?: boolean;
+  onVenueEdit?: (slot: Slot, day: string, dateISO: string) => void;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -1686,7 +2066,8 @@ function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiri
   );
   const hasEnquired  = slot.status === 'open' && !!activeEnquiry;
   const isBookedByMe = slot.status === 'booked' && userEnquiries.some(e => e.status === 'accepted' && matchesSlot(e));
-  const canEnquire   = slot.status === 'open' && !hasEnquired && isArtist;
+  const canEnquire   = slot.status === 'open' && !hasEnquired && isArtist && !isMyVenue;
+  const isClosed     = slot.status === 'closed';
 
   let leftBorderColor: string;
   let badgeLabel: string;
@@ -1694,7 +2075,10 @@ function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiri
   let badgeBg: string;
   let badgeBorderColor: string;
 
-  if (isBookedByMe) {
+  if (isClosed) {
+    leftBorderColor = colors.border;
+    badgeLabel = 'Closed'; badgeTextColor = colors.grey; badgeBg = 'transparent'; badgeBorderColor = colors.border;
+  } else if (isBookedByMe) {
     leftBorderColor = '#22c55e';
     badgeLabel = 'Your gig'; badgeTextColor = '#ffffff'; badgeBg = '#22c55e'; badgeBorderColor = '#22c55e';
   } else if (hasEnquired) {
@@ -1712,19 +2096,24 @@ function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiri
   }
 
   return (
-    <View style={[lv.slotRow, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: colors.bg }]}>
+    <View style={[lv.slotRow, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: isClosed ? colors.bgFaint : colors.bg, opacity: isClosed ? 0.7 : 1 }]}>
       <View style={lv.dateBox}>
         <Text style={[lv.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
         <Text style={[lv.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
       </View>
       <Text style={[lv.dayAbbrev, { color: colors.grey }]}>{day.slice(0,3).toUpperCase()}</Text>
-      <Text style={[lv.slotTime, { color: colors.black }]}>
+      <Text style={[lv.slotTime, { color: isClosed ? colors.grey : colors.black }]}>
         {slot.time}{slot.room ? <Text style={[lv.slotRoom, { color: colors.grey }]}> · {slot.room}</Text> : null}
       </Text>
       <View style={{ flex: 1 }} />
       <View style={[lv.statusBadge, { borderColor: badgeBorderColor, backgroundColor: badgeBg }]}>
         <Text style={[lv.statusBadgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
       </View>
+      {isMyVenue && (
+        <TouchableOpacity style={lv.editBtn} onPress={() => onVenueEdit?.(slot, day, dateISO)} activeOpacity={0.75}>
+          <Text style={lv.editBtnText}>Edit</Text>
+        </TouchableOpacity>
+      )}
       {canEnquire && (
         <TouchableOpacity style={lv.enquireBtn} onPress={() => onEnquire(slot, day, dateISO)}>
           <Text style={lv.enquireBtnText}>Enquire</Text>
@@ -2330,6 +2719,8 @@ const lv = StyleSheet.create({
   enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
   enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },
   viewLink:         { fontSize: 13, fontWeight: '600', color: Colors.orange, paddingHorizontal: 4, flexShrink: 0 },
+  editBtn:          { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, flexShrink: 0 },
+  editBtnText:      { fontSize: 12, fontWeight: '600', color: '#555555' },
 });
 
 // Native timetable styles

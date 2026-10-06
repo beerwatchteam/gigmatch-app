@@ -9,6 +9,7 @@ import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { MyGigsContent } from '@/app/(tabs)/gigs';
 import { DashboardContent } from '@/app/dashboard';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -1110,6 +1111,7 @@ type ClaimForMusician = {
 
 type GigHistoryEntry = { venue: string; suburb?: string; date?: string; attendance?: string; notes?: string };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function MyGigsTab({ musician, ownGigs, uid }: { musician: Musician; ownGigs: any[]; uid: string }) {
   const { colors } = useTheme();
   const now = new Date();
@@ -1130,7 +1132,28 @@ function MyGigsTab({ musician, ownGigs, uid }: { musician: Musician; ownGigs: an
   const pastBookings = confirmed
     .filter((g: any) => g.startAt.toDate() < now)
     .sort((a: any, b: any) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
-    .map((g: any) => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()), attendance: g.attendance ?? undefined }));
+    .map((g: any) => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()), attendance: g.attendance ?? undefined, source: g.source }));
+
+  const [pendingEnqs, setPendingEnqs] = useState<any[]>([]);
+  useEffect(() => {
+    if (!uid) return;
+    const PENDING = ['enquired', 'pending', 'discussing'];
+    getDocs(query(collection(db, 'inquiries'), where('createdBy', '==', uid)))
+      .then(snap => {
+        const nowTs = new Date();
+        setPendingEnqs(
+          snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter((e: any) => {
+              if (!PENDING.includes(e.status)) return false;
+              const slotDate = e.requestedSlot?.date;
+              if (slotDate) return new Date(slotDate + 'T23:59:59') >= nowTs;
+              return true;
+            })
+        );
+      })
+      .catch(() => {});
+  }, [uid]);
 
   const [gigHistory, setGigHistoryState] = useState<GigHistoryEntry[]>((musician as any).gigHistory || []);
   const awayPeriods: { from: string; to?: string; notes?: string }[] = (musician as any).awayPeriods || [];
@@ -1163,43 +1186,75 @@ function MyGigsTab({ musician, ownGigs, uid }: { musician: Musician; ownGigs: an
 
       {/* Upcoming */}
       <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
-        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: upcoming.length > 0 ? 1 : 0, borderBottomColor: colors.border }}>
+        <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: (upcoming.length + pendingEnqs.length) > 0 ? 1 : 0, borderBottomColor: colors.border }}>
           <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Upcoming</Text>
           <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
-            {upcoming.length > 0 ? `${upcoming.length} booked` : 'No upcoming gigs booked yet'}
+            {(upcoming.length + pendingEnqs.length) > 0 ? `${upcoming.length + pendingEnqs.length} total` : 'No upcoming gigs booked yet'}
           </Text>
         </View>
-        {upcoming.length === 0 ? (
+        {upcoming.length === 0 && pendingEnqs.length === 0 ? (
           <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
             <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
               Confirmed bookings from your enquiries will appear here.
             </Text>
           </View>
         ) : (
-          upcoming.map((g, i) => (
-            <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < upcoming.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
-              <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{prettyDate(g.date)}</Text>
-            </View>
-          ))
+          <>
+            {pendingEnqs.map((e, i) => {
+              const slotDate = e.requestedSlot?.date;
+              const slotDay  = e.requestedSlot?.day;
+              const dateText = slotDate
+                ? new Date(slotDate + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+                : slotDay || 'Date TBC';
+              return (
+                <View key={e.id} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{e.venueName || 'Venue'}</Text>
+                    <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{dateText}</Text>
+                  </View>
+                  <View style={{ backgroundColor: Colors.orange + '22', borderWidth: 1, borderColor: Colors.orange + '66', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.orange }}>Pending</Text>
+                  </View>
+                </View>
+              );
+            })}
+            {upcoming.map((g, i) => (
+              <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: i < upcoming.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                <View>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
+                  <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{prettyDate(g.date)}</Text>
+                </View>
+                <View style={{ backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#bbf7d0', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#16a34a' }}>Booked</Text>
+                </View>
+              </View>
+            ))}
+          </>
         )}
       </View>
 
-      {/* Past bookings via Twaylo */}
+      {/* Past bookings */}
       {pastBookings.length > 0 && (
         <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: 'hidden' }}>
           <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>Past bookings</Text>
             <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
-              {pastBookings.length} confirmed gig{pastBookings.length !== 1 ? 's' : ''} via Twaylo
+              {pastBookings.length} confirmed gig{pastBookings.length !== 1 ? 's' : ''}
             </Text>
           </View>
           {pastBookings.map((g, i) => (
-            <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < pastBookings.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
-              <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>
-                {prettyDate(g.date)}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
-              </Text>
+            <View key={i} style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: i < pastBookings.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>
+                  {prettyDate(g.date)}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
+                </Text>
+              </View>
+              {g.source === 'enquiry' && (
+                <View style={{ backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#111' }}>Twaylo</Text>
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -1657,7 +1712,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
             {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
             {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
-            {activeTab === 'gigs'       && isOwn && <MyGigsTab musician={musician} ownGigs={ownGigs} uid={user!.uid} />}
+            {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
           </ScrollView>

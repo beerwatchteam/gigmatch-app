@@ -74,13 +74,46 @@ function DateInput({ value, onChange, placeholder }: { value: string; onChange: 
   );
 }
 
+/** Convert "H:MM AM/PM" state value to "HH:MM" for the HTML time input. */
+function to24h(ampm: string): string {
+  if (!ampm) return '';
+  if (/^\d{2}:\d{2}$/.test(ampm)) return ampm;
+  const m = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(ampm.trim());
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  if (/PM/i.test(m[3]) && h !== 12) h += 12;
+  if (/AM/i.test(m[3]) && h === 12) h = 0;
+  return `${String(h).padStart(2, '0')}:${min}`;
+}
+
+/** Convert "HH:MM" from HTML time input to "H:MM AM/PM" for state. */
+function to12h(hhmm: string): string {
+  if (!hhmm) return '';
+  const [hStr, mStr] = hhmm.split(':');
+  let h = parseInt(hStr ?? '0', 10);
+  const min = mStr ?? '00';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${min} ${ampm}`;
+}
+
+/** Parse "H:MM AM/PM" or "HH:MM" into total minutes from midnight. */
+function timeToMinutes(t: string): number {
+  if (!t) return 0;
+  const hhmm = to24h(t) || t;
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
 function TimeInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   if (Platform.OS === 'web') {
     return (
       <input
         type="time"
-        value={value}
-        onChange={e => onChange(e.target.value)}
+        value={to24h(value)}
+        onChange={e => onChange(to12h(e.target.value))}
         style={{ fontSize: 15, padding: 10, borderRadius: 10, border: '1px solid #e0e0e0', background: 'transparent', color: 'inherit', width: '100%', boxSizing: 'border-box' } as any}
       />
     );
@@ -90,7 +123,7 @@ function TimeInput({ value, onChange, placeholder }: { value: string; onChange: 
       style={fi.input}
       value={value}
       onChangeText={onChange}
-      placeholder={placeholder ?? 'HH:MM'}
+      placeholder={placeholder ?? 'e.g. 8:00 PM'}
       placeholderTextColor={Colors.greyLight}
       keyboardType="numbers-and-punctuation"
     />
@@ -262,9 +295,7 @@ export default function ArtistGigForm({
   // Auto-fill set length when end time changes
   const setLength = (() => {
     if (!localStartTime || !localEndTime) return null;
-    const [sh, sm] = localStartTime.split(':').map(Number);
-    const [eh, em] = localEndTime.split(':').map(Number);
-    let diff = (eh * 60 + em) - (sh * 60 + sm);
+    let diff = timeToMinutes(localEndTime) - timeToMinutes(localStartTime);
     if (diff < 0) diff += 24 * 60;
     return diff > 0 ? diff : null;
   })();
@@ -742,14 +773,12 @@ function localDateFromGig(gig: Gig & { id: string }): string {
 
 function localTimeFromGig(gig: Gig & { id: string }, useEnd: boolean): string {
   try {
-    const tz   = gig.timezone ?? 'Australia/Melbourne';
-    const ts   = useEnd ? gig.endAt : gig.startAt;
+    const tz = gig.timezone ?? 'Australia/Melbourne';
+    const ts = useEnd ? gig.endAt : gig.startAt;
     if (!ts) return '';
-    const date = ts.toDate();
-    const fmt  = new Intl.DateTimeFormat('en-AU', {
-      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
-    });
-    return fmt.format(date);
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
+    }).format(ts.toDate());
   } catch { return ''; }
 }
 

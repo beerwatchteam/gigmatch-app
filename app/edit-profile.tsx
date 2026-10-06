@@ -1352,6 +1352,9 @@ export default function EditProfileScreen() {
   function renderMyGigs() {
     const manualGigs = profile.gigHistory || [];
     const awayPeriods: { from: string; to?: string; notes?: string }[] = (profile as any).awayPeriods || [];
+    // These are populated by the gigs useEffect below; default to empty while loading
+    const upcomingGigs: { venue: string; suburb?: string; date: string }[] = [];
+    const confirmedPastGigs: { venue: string; suburb?: string; date: string; attendance?: number; source?: string }[] = [];
     const prettyDate = (iso: string) => {
       const d = new Date(iso + 'T00:00:00');
       return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1380,7 +1383,7 @@ export default function EditProfileScreen() {
 
         {/* Confirmed past gigs from bookings */}
         {confirmedPastGigs.length > 0 && (
-          <SectionCard title="Past bookings" subtitle={`${confirmedPastGigs.length} confirmed gig${confirmedPastGigs.length !== 1 ? 's' : ''} via Twaylo`}>
+          <SectionCard title="Past bookings" subtitle={`${confirmedPastGigs.length} confirmed gig${confirmedPastGigs.length !== 1 ? 's' : ''}`}>
             <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 4 }}>
               {confirmedPastGigs.map((g, i) => (
                 <View key={i} style={{ paddingVertical: 8, borderBottomWidth: i < confirmedPastGigs.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
@@ -1411,7 +1414,7 @@ export default function EditProfileScreen() {
                   </TouchableOpacity>
                 </View>
                 <TextInput
-                  style={[pd.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                  style={[sh.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
                   placeholder="Venue name"
                   placeholderTextColor={Colors.greyLight}
                   value={gig.venue}
@@ -1419,14 +1422,14 @@ export default function EditProfileScreen() {
                 />
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TextInput
-                    style={[pd.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    style={[sh.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
                     placeholder="Suburb"
                     placeholderTextColor={Colors.greyLight}
                     value={gig.suburb || ''}
                     onChangeText={v => setGigHistoryEntry(i, 'suburb', v)}
                   />
                   <TextInput
-                    style={[pd.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    style={[sh.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
                     placeholder="Date (e.g. Mar 2024)"
                     placeholderTextColor={Colors.greyLight}
                     value={gig.date || ''}
@@ -1435,7 +1438,7 @@ export default function EditProfileScreen() {
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TextInput
-                    style={[pd.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    style={[sh.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
                     placeholder="Attendance (optional)"
                     placeholderTextColor={Colors.greyLight}
                     value={gig.attendance || ''}
@@ -1443,7 +1446,7 @@ export default function EditProfileScreen() {
                     keyboardType="number-pad"
                   />
                   <TextInput
-                    style={[pd.input, { flex: 2, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    style={[sh.input, { flex: 2, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
                     placeholder="Notes (optional)"
                     placeholderTextColor={Colors.greyLight}
                     value={gig.notes || ''}
@@ -1523,7 +1526,7 @@ export default function EditProfileScreen() {
                     </TouchableOpacity>
                   </View>
                   <TextInput
-                    style={[pd.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    style={[sh.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
                     placeholder="Title (optional)"
                     placeholderTextColor={Colors.greyLight}
                     value={vid.title}
@@ -1547,7 +1550,7 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TextInput
-                style={[pd.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+                style={[sh.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
                 placeholder="Paste YouTube or Vimeo URL"
                 placeholderTextColor={Colors.greyLight}
                 value={newVideoUrl}
