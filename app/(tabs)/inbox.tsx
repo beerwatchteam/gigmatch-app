@@ -2810,8 +2810,8 @@ const eh = StyleSheet.create({
   quickLinkSep:      { fontSize: 12, color: '#cccccc', marginRight: 6 },
   dots:              { fontSize: 22, color: '#aaaaaa', letterSpacing: 1, marginLeft: 4 },
   // Details drawer
-  drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
-  drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: -4, height: 0 }, elevation: 12 },
+  drawerBackdrop:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  drawerPanel:       { position: 'absolute' as any, top: 0, right: 0, bottom: 0, borderLeftWidth: 1, shadowColor: '#000', shadowOpacity: 0.32, shadowRadius: 40, shadowOffset: { width: -8, height: 0 }, elevation: 24 },
   drawerHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1 },
   drawerTitle:       { fontSize: 17, fontWeight: '800', letterSpacing: -0.3, flex: 1, textAlign: 'center' },
   drawerBack:        { fontSize: 14, fontWeight: '700' },
