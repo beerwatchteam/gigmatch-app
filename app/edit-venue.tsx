@@ -1102,14 +1102,14 @@ export default function EditVenueScreen() {
     setShowErrors(true);
     const errors: string[] = [];
     if (!data.name?.trim() || !data.email?.trim())
-      errors.push('Basic Info');
+      errors.push('Basic info');
     if (data.rooms.some(r => r.name?.trim() && !r.capacity?.toString().trim()))
       errors.push('Rooms');
     if (data.gigNights.some((n, idx) => touchedNights.has(idx) && (!(n.days?.length || n.day) || !n.startTime || !n.startDate || (!n.ongoing && !n.continuous && !n.endDate))))
-      errors.push('Timetable');
+      errors.push('Gig slots');
     const venueAbn = data.payment.abn.replace(/\s/g, '');
-    if (venueAbn && !isValidABN(venueAbn)) errors.push('Payments');
-    if (data.payment.gstRegistered && (!venueAbn || !isValidABN(venueAbn))) errors.push('Payments');
+    if (venueAbn && !isValidABN(venueAbn)) errors.push('Invoicing');
+    if (data.payment.gstRegistered && (!venueAbn || !isValidABN(venueAbn))) errors.push('Invoicing');
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
@@ -3141,10 +3141,9 @@ export default function EditVenueScreen() {
 
           {/* Main content */}
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={evd.contentPad}>
-            {tabErrors.length > 0 && (
+            {tabErrors.includes(activeTab) && (
               <View style={[s.tabErrors, { marginBottom: 24, borderRadius: 8 }]}>
-                <Text style={s.tabErrorsLabel}>Please complete: </Text>
-                {tabErrors.map(t => <Text key={t} style={s.tabErrorPill}>{t}</Text>)}
+                <Text style={s.tabErrorsLabel}>Please complete the required fields on this tab before saving.</Text>
               </View>
             )}
             {renderActiveTab()}
