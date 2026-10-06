@@ -2817,7 +2817,7 @@ export default function EditVenueScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {saveState === 'saved' && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
-            <TouchableOpacity style={[evd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/venue/${venueId}` as any)}>
+            <TouchableOpacity style={[evd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/venue/${venueId}?preview=true` as any)}>
               <Text style={[evd.outlineBtnText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
             <View style={[evd.avatarCircle, { backgroundColor: colors.border }]}>
