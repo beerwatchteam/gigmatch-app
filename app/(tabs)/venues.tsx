@@ -1203,6 +1203,9 @@ export default function VenuesScreen() {
     }
 
     const openCount = openDates.size;
+    const paymentVal = item.payment?.models?.length ? item.payment.models.join(' · ') : '—';
+    const avgReplyMs = (item.replyStats?.count ?? 0) > 0 ? item.replyStats!.totalMs / item.replyStats!.count : null;
+    const replyVal = avgReplyMs != null ? formatReplyTime(avgReplyMs) : '—';
     const nextSlot = getNextOpenSlotsDetailed(item)[0];
     const selectedSlots = selectedDate ? getSlotsForDate(item, selectedDate) : [];
 
