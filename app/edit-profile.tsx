@@ -47,17 +47,20 @@ const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const DRINKS_OPTS = ['Drink tickets','Bar tab','None needed','Other'];
 
 const NAV_GROUPS = [
-  { label: 'PROFILE', tabs: ['Basic info','About','Music','Photos'] },
-  { label: 'BOOKING',  tabs: ['Rates & reach','Tech rider','Hospitality'] },
-  { label: 'ACCOUNT',  tabs: ['Invoicing','Settings'] },
+  { label: 'ESSENTIALS',    tabs: ['Basic info', 'About', 'Music', 'Photos'] },
+  { label: 'YOUR STORY',    tabs: ['Past gigs', 'Videos'] },
+  { label: 'BOOKING',       tabs: ['Rates & reach', 'Tech rider'] },
+  { label: 'ADMIN',         tabs: ['Hospitality', 'Invoicing', 'Settings'] },
 ];
 const ALL_TABS = NAV_GROUPS.flatMap(g => g.tabs);
 
 // ── Types ─────────────────────────────────────────────────────────────────
-type Song       = { title: string; url: string; notes: string };
-type ArtistPage = { platform: string; url: string };
-type Member  = { name: string; role: string };
-type Channel = { source: string; micDi: string };
+type Song             = { title: string; url: string; notes: string };
+type ArtistPage       = { platform: string; url: string };
+type Member           = { name: string; role: string };
+type Channel          = { source: string; micDi: string };
+type GigHistoryEntry  = { venue: string; suburb?: string; date?: string; attendance?: string; notes?: string };
+type VideoObject      = { url: string; title: string };
 
 type AbnStatus = 'has_abn' | 'no_abn_hobby' | 'applying';
 
@@ -86,6 +89,7 @@ type Profile = {
   instagram: string; tiktok: string; spotify: string; appleMusic: string; youtube: string;
   customLinks: { label: string; url: string }[];
   songs: Song[]; artistPages: ArtistPage[]; photos: string[]; videos: string[];
+  gigHistory: GigHistoryEntry[]; videoObjects?: VideoObject[];
   techRider: Record<string, string>;
   techRiderDocs: { url: string; name: string }[];
   techRiderBools: Record<string, boolean>;
@@ -116,6 +120,7 @@ const BLANK: Profile = {
   about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
   instagram: '', tiktok: '', spotify: '', appleMusic: '', youtube: '',
   customLinks: [], songs: [], artistPages: [], photos: [], videos: [],
+  gigHistory: [], videoObjects: [],
   techRider: {}, techRiderDocs: [], techRiderBools: {},
   inputChannels: [], backlineFromVenue: [], backlineBring: [],
   hospitality: { ...BLANK_HOSP },
@@ -456,6 +461,8 @@ export default function EditProfileScreen() {
   const [legalIdentity,      setLegalIdentityState] = useState<LegalIdentity>(BLANK_LEGAL);
   const [savedLegal,         setSavedLegal]         = useState<LegalIdentity>(BLANK_LEGAL);
   const [mobileShowList,     setMobileShowList]     = useState(true);
+  const [videoUploading,     setVideoUploading]     = useState(false);
+  const [newVideoUrl,        setNewVideoUrl]        = useState('');
 
   const isWeb = Platform.OS === 'web';
   const { width } = useWindowDimensions();
@@ -483,6 +490,8 @@ export default function EditProfileScreen() {
       d.artistPages      = d.artistPages      || [];
       d.photos           = d.photos           || [];
       d.videos           = d.videos           || [];
+      d.gigHistory       = d.gigHistory       || [];
+      d.videoObjects     = d.videoObjects     || [];
       d.members          = d.members          || [];
       d.inputChannels    = d.inputChannels    || [];
       d.backlineFromVenue= d.backlineFromVenue|| [];
@@ -589,6 +598,16 @@ export default function EditProfileScreen() {
     setProfile(prev => ({ ...prev, inputChannels: prev.inputChannels.map((c, idx) => idx === i ? { ...c, [field]: val } : c) }));
   }
 
+  function addGigHistoryEntry() {
+    set('gigHistory', [...(profile.gigHistory || []), { venue: '', suburb: '', date: '', attendance: '', notes: '' }]);
+  }
+  function removeGigHistoryEntry(i: number) {
+    set('gigHistory', (profile.gigHistory || []).filter((_, idx) => idx !== i));
+  }
+  function setGigHistoryEntry(i: number, field: keyof GigHistoryEntry, val: string) {
+    set('gigHistory', (profile.gigHistory || []).map((g, idx) => idx === i ? { ...g, [field]: val } : g));
+  }
+
   // ── Uploads ───────────────────────────────────────────────────────────────
   async function pickBannerPhoto() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85, allowsEditing: true, aspect: [1, 1] });
@@ -619,6 +638,23 @@ export default function EditProfileScreen() {
       set('photos', [...profile.photos, ...urls].slice(0, 12));
     } catch (e) { Alert.alert('Upload failed', String(e)); }
     finally { setPhotoUploading(false); }
+  }
+
+  async function pickVideoFile() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 1 });
+    if (result.canceled || !result.assets?.[0]) return;
+    setVideoUploading(true);
+    try {
+      const uri  = result.assets[0].uri;
+      const blob = await (await fetch(uri)).blob();
+      const ref  = sRef(storage, `videos/bands/${uid}/${Date.now()}.mp4`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      const next = [...(profile.videoObjects || []), { url, title: '' }];
+      set('videoObjects', next);
+      set('videos', next.map(v => v.url));
+    } catch (e) { Alert.alert('Upload failed', String(e)); }
+    finally { setVideoUploading(false); }
   }
 
   async function pickDocument() {
@@ -1261,6 +1297,185 @@ export default function EditProfileScreen() {
                   }
                 </TouchableOpacity>
               )}
+            </View>
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderPastGigs() {
+    const gigs = profile.gigHistory || [];
+    return (
+      <View>
+        {renderPageHeader('Past gigs', 'Log your previous performances. Builds credibility with venues reviewing your profile.')}
+
+        <SectionCard title="Gig history" subtitle={gigs.length > 0 ? `${gigs.length} gig${gigs.length !== 1 ? 's' : ''} logged` : 'None yet'}>
+          <View style={{ padding: 16, gap: 12 }}>
+            {gigs.length === 0 && (
+              <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
+                Add venues you have played. The more you log, the more credible your profile looks to new venues.
+              </Text>
+            )}
+            {gigs.map((gig, i) => (
+              <View key={i} style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>Gig {i + 1}</Text>
+                  <TouchableOpacity onPress={() => removeGigHistoryEntry(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '700' }}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={[pd.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                  placeholder="Venue name"
+                  placeholderTextColor={Colors.greyLight}
+                  value={gig.venue}
+                  onChangeText={v => setGigHistoryEntry(i, 'venue', v)}
+                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    style={[pd.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    placeholder="Suburb"
+                    placeholderTextColor={Colors.greyLight}
+                    value={gig.suburb || ''}
+                    onChangeText={v => setGigHistoryEntry(i, 'suburb', v)}
+                  />
+                  <TextInput
+                    style={[pd.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    placeholder="Date (e.g. Mar 2024)"
+                    placeholderTextColor={Colors.greyLight}
+                    value={gig.date || ''}
+                    onChangeText={v => setGigHistoryEntry(i, 'date', v)}
+                  />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    style={[pd.input, { flex: 1, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    placeholder="Attendance (optional)"
+                    placeholderTextColor={Colors.greyLight}
+                    value={gig.attendance || ''}
+                    onChangeText={v => setGigHistoryEntry(i, 'attendance', v)}
+                    keyboardType="number-pad"
+                  />
+                  <TextInput
+                    style={[pd.input, { flex: 2, backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    placeholder="Notes (optional)"
+                    placeholderTextColor={Colors.greyLight}
+                    value={gig.notes || ''}
+                    onChangeText={v => setGigHistoryEntry(i, 'notes', v)}
+                  />
+                </View>
+              </View>
+            ))}
+            <TouchableOpacity
+              onPress={addGigHistoryEntry}
+              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 14, color: colors.black, fontWeight: '600' }}>+ Add gig</Text>
+            </TouchableOpacity>
+          </View>
+        </SectionCard>
+      </View>
+    );
+  }
+
+  function renderVideos() {
+    const videoObjects: VideoObject[] = profile.videoObjects?.length
+      ? profile.videoObjects
+      : (profile.videos || []).map(url => ({ url, title: '' }));
+
+    const detectSource = (url: string) => {
+      if (!url) return null;
+      if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
+      if (url.includes('vimeo.com')) return 'Vimeo';
+      if (url.includes('firebasestorage') || url.endsWith('.mp4')) return 'Uploaded';
+      return 'Link';
+    };
+
+    return (
+      <View>
+        {renderPageHeader('Videos', 'Live clips and promos. YouTube or Vimeo links load fastest.')}
+
+        <SectionCard title="Videos" subtitle="MP4 up to 200 MB. Links load faster.">
+          <View style={{ padding: 16 }}>
+            {videoObjects.length === 0 && (
+              <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20, marginBottom: 12 }}>
+                No videos yet. Paste a YouTube or Vimeo link below, or upload an MP4.
+              </Text>
+            )}
+            {videoObjects.map((vid, i) => {
+              const source = detectSource(vid.url);
+              return (
+                <View key={i} style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginBottom: 10, gap: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {source && (
+                      <View style={{ backgroundColor: colors.border, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: colors.grey }}>{source}</Text>
+                      </View>
+                    )}
+                    <Text style={{ flex: 1, fontSize: 12, color: colors.grey }} numberOfLines={1}>{vid.url}</Text>
+                    <TouchableOpacity onPress={() => {
+                      const next = videoObjects.filter((_, idx) => idx !== i);
+                      set('videoObjects', next);
+                      set('videos', next.map(v => v.url));
+                    }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={{ fontSize: 14, color: Colors.danger, fontWeight: '700' }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TextInput
+                    style={[pd.input, { backgroundColor: colors.bg, borderColor: colors.border, color: colors.black }]}
+                    placeholder="Title (optional)"
+                    placeholderTextColor={Colors.greyLight}
+                    value={vid.title}
+                    onChangeText={t => {
+                      const next = videoObjects.map((v, idx) => idx === i ? { ...v, title: t } : v);
+                      set('videoObjects', next);
+                    }}
+                    autoCapitalize="words"
+                  />
+                </View>
+              );
+            })}
+            <TouchableOpacity
+              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginBottom: 8 }}
+              onPress={pickVideoFile}
+              disabled={videoUploading}
+            >
+              <Text style={{ fontSize: 14, color: colors.black, fontWeight: '600' }}>
+                {videoUploading ? 'Uploading...' : '+ Upload video file'}
+              </Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={[pd.input, { flex: 1, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black }]}
+                placeholder="Paste YouTube or Vimeo URL"
+                placeholderTextColor={Colors.greyLight}
+                value={newVideoUrl}
+                onChangeText={setNewVideoUrl}
+                autoCapitalize="none"
+                onSubmitEditing={() => {
+                  const url = newVideoUrl.trim();
+                  if (!url) return;
+                  const next = [...videoObjects, { url, title: '' }];
+                  set('videoObjects', next);
+                  set('videos', next.map(v => v.url));
+                  setNewVideoUrl('');
+                }}
+                returnKeyType="done"
+              />
+              <TouchableOpacity
+                style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center' }}
+                onPress={() => {
+                  const url = newVideoUrl.trim();
+                  if (!url) return;
+                  const next = [...videoObjects, { url, title: '' }];
+                  set('videoObjects', next);
+                  set('videos', next.map(v => v.url));
+                  setNewVideoUrl('');
+                }}
+              >
+                <Text style={{ fontSize: 14, color: colors.black, fontWeight: '600' }}>Add link</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </SectionCard>
@@ -2058,6 +2273,8 @@ export default function EditProfileScreen() {
       case 'About':         return renderAbout();
       case 'Music':         return renderMusic();
       case 'Photos':        return renderPhotos();
+      case 'Past gigs':     return renderPastGigs();
+      case 'Videos':        return renderVideos();
       case 'Rates & reach': return renderRatesAndReach();
       case 'Tech rider':    return renderTechRider();
       case 'Hospitality':   return renderHospitality();
