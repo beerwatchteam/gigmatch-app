@@ -565,7 +565,7 @@ export default function ConfirmGigScreen() {
         {/* Header */}
         <View style={cs.formHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={cs.headerLabel}>{isUpgrade ? 'ADD FEE DETAILS' : 'CONFIRM GIG'}</Text>
+            <Text style={cs.headerLabel}>{isUpgrade ? 'ADD FEE DETAILS' : 'CONFIRM BOOKING'}</Text>
             <Text style={[cs.bandName, { color: colors.black }]}>{enquiry.bandName}</Text>
             <Text style={[cs.venueName, { color: colors.grey }]}>{enquiry.venueName}</Text>
             <Text style={[cs.slotDetail, { color: colors.grey }]}>
@@ -839,7 +839,7 @@ export default function ConfirmGigScreen() {
         >
           {submitting
             ? <ActivityIndicator color="#111111" size="small" />
-            : <Text style={cs.confirmBtnText}>{isUpgrade ? 'List as Booked' : 'Confirm gig'}</Text>
+            : <Text style={cs.confirmBtnText}>{isUpgrade ? 'List as Booked' : 'Confirm Booking'}</Text>
           }
         </TouchableOpacity>
       </View>
