@@ -1407,10 +1407,10 @@ export default function EditVenueScreen() {
                 desc: 'Helps artists find the right fit.',
                 fields: [
                   { label: 'About',      done: !!data.description?.trim(),                   tab: 'Basic info' },
-                  { label: 'Photos',     done: (data.photos?.length ?? 0) > 0,               tab: 'Photos & video' },
-                  { label: 'Genres',     done: (data.genrePreferences?.length ?? 0) > 0,     tab: 'Basic info' },
-                  { label: 'Sets',       done: (data.setsYouBook?.length ?? 0) > 0,          tab: 'Basic info' },
-                  { label: 'Age policy', done: !!data.ageRestriction?.trim(),                 tab: 'Basic info' },
+                  { label: 'Photos',        done: (data.photos?.length ?? 0) > 0,                          tab: 'Photos & video' },
+                  { label: 'Genres',        done: (data.genrePreferences?.length ?? 0) > 0,              tab: 'Basic info' },
+                  { label: 'Age policy',    done: !!data.ageRestriction?.trim(),                          tab: 'Basic info' },
+                  { label: 'Social links',  done: !!(data.instagram || data.facebook || data.website),   tab: 'Basic info' },
                 ],
               },
               {
@@ -1428,9 +1428,8 @@ export default function EditVenueScreen() {
                 label: 'Fully set up',
                 desc: 'For professional venue listings.',
                 fields: [
-                  { label: 'Tech specs',   done: data.rooms?.some(r => (r.backlineItems?.length ?? 0) > 0 || !!r.pa?.trim()) ?? false, tab: 'Rooms' },
-                  { label: 'Invoicing',    done: !!data.payment?.abn?.trim(),                                                         tab: 'Invoicing' },
-                  { label: 'Social links', done: !!(data.instagram || data.facebook || data.website),                                 tab: 'Basic info' },
+                  { label: 'Tech specs', done: data.rooms?.some(r => (r.backlineItems?.length ?? 0) > 0 || !!r.pa?.trim()) ?? false, tab: 'Rooms' },
+                  { label: 'Invoicing',  done: !!data.payment?.abn?.trim(),                                                         tab: 'Invoicing' },
                 ],
               },
             ];
