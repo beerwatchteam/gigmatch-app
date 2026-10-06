@@ -19,6 +19,7 @@ import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 import { CalendarSync } from '@/components/CalendarSync';
 import { isValidABN, formatABN } from '@/lib/abn';
+import { lookupABN, type AbnLookupResult } from '@/lib/abn-lookup';
 import { isValidACN, formatACN } from '@/lib/acn';
 import { crossConfirm } from '@/lib/confirm';
 import { LegalIdentity, LegalEntityType, BLANK_LEGAL, isLegalIdentityComplete } from '@/lib/legalIdentity';
@@ -448,6 +449,8 @@ export default function EditProfileScreen() {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [bannerDismissed,    setBannerDismissed]    = useState(false);
   const [abnTouched,         setAbnTouched]         = useState(false);
+  const [abnLookupLoading,   setAbnLookupLoading]   = useState(false);
+  const [abnLookupResult,    setAbnLookupResult]    = useState<AbnLookupResult | null>(null);
   const [acnTouched,         setAcnTouched]         = useState(false);
   const [legalIdentity,      setLegalIdentityState] = useState<LegalIdentity>(BLANK_LEGAL);
   const [savedLegal,         setSavedLegal]         = useState<LegalIdentity>(BLANK_LEGAL);
@@ -713,8 +716,17 @@ export default function EditProfileScreen() {
   }
 
   function goBack() {
-    if (router.canGoBack()) router.back();
-    else router.replace(`/musician/${uid}` as any);
+    // canGoBack() can return true even when the GO_BACK action fails (e.g. direct
+    // URL navigation in dev). Always prefer replace to avoid the unhandled warning.
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(`/musician/${uid}` as any);
+      }
+    } catch {
+      router.replace(`/musician/${uid}` as any);
+    }
   }
 
   function handleBack() {
@@ -934,7 +946,11 @@ export default function EditProfileScreen() {
                 value={(profile as any)[p.key] || ''}
                 onChangeText={(v: string) => set(p.key as any, v)}
                 onBlur={() => set(p.key as any, normaliseHandle((profile as any)[p.key] || '', p.key))}
-                placeholder="@yourhandle"
+                placeholder={
+                  p.key === 'instagram' ? 'https://www.instagram.com/yourhandle'
+                  : p.key === 'tiktok'  ? 'https://www.tiktok.com/@yourhandle'
+                  :                       'https://www.youtube.com/@yourhandle'
+                }
               />
             </FieldRow>
           ))}
@@ -1651,24 +1667,85 @@ export default function EditProfileScreen() {
           {showAbnFields && (
             <>
               <FieldRow label="ABN" error={abnError}>
-                <View>
-                  <Input
-                    value={profile.payment.abn}
-                    onChangeText={(v: string) => setPayment('abn', v.replace(/[^\d\s]/g, ''))}
-                    onBlur={() => {
-                      setAbnTouched(true);
-                      if (profile.payment.abn.trim()) {
-                        setPayment('abn', formatABN(profile.payment.abn));
-                      }
-                    }}
-                    placeholder="51 824 753 556"
-                    keyboardType="numeric"
-                    error={abnError}
-                  />
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      <Input
+                        value={profile.payment.abn}
+                        onChangeText={(v: string) => {
+                          setPayment('abn', v.replace(/[^\d\s]/g, ''));
+                          setAbnLookupResult(null);
+                        }}
+                        onBlur={() => {
+                          setAbnTouched(true);
+                          if (profile.payment.abn.trim()) {
+                            setPayment('abn', formatABN(profile.payment.abn));
+                          }
+                        }}
+                        placeholder="51 824 753 556"
+                        keyboardType="numeric"
+                        error={abnError}
+                      />
+                    </View>
+                    {abnValid && (
+                      <TouchableOpacity
+                        style={{ paddingHorizontal: 14, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: abnLookupResult ? '#2F7A4B' : Colors.orange, backgroundColor: abnLookupResult ? '#2F7A4B11' : Colors.orange + '18' }}
+                        disabled={abnLookupLoading}
+                        onPress={async () => {
+                          setAbnLookupLoading(true);
+                          try {
+                            const result = await lookupABN(profile.payment.abn);
+                            if (!result) {
+                              Alert.alert('ABN Lookup not configured', 'Add your ABR GUID to the .env file as EXPO_PUBLIC_ABR_GUID. Register free at abr.business.gov.au/Tools/ABRXMLSearch');
+                              return;
+                            }
+                            if ('error' in result) {
+                              Alert.alert('Lookup failed', result.error);
+                              return;
+                            }
+                            setAbnLookupResult(result);
+                            // Pre-fill legal identity if not already set
+                            if (!legalIdentity.legalName && result.entityName) {
+                              setLegal('legalName', result.entityName);
+                            }
+                            if (!legalIdentity.entityType && result.entityType !== 'Other') {
+                              setLegal('entityType', result.entityType as any);
+                            }
+                            if (!legalIdentity.state && result.state) {
+                              setLegal('state', result.state);
+                            }
+                            if (!legalIdentity.postcode && result.postcode) {
+                              setLegal('postcode', result.postcode);
+                            }
+                            if (result.gstRegistered !== profile.payment.gstRegistered) {
+                              setPayment('gstRegistered', result.gstRegistered);
+                            }
+                          } finally {
+                            setAbnLookupLoading(false);
+                          }
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: abnLookupResult ? '#2F7A4B' : Colors.orange }}>
+                          {abnLookupLoading ? 'Looking up...' : abnLookupResult ? 'Verified' : 'Verify'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   {abnError && (
-                    <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>
+                    <Text style={{ fontSize: 12, color: Colors.danger }}>
                       Invalid ABN. Check the 11-digit number and try again.
                     </Text>
+                  )}
+                  {abnLookupResult && (
+                    <View style={{ padding: 10, borderRadius: 8, backgroundColor: '#2F7A4B11', borderWidth: 1, borderColor: '#2F7A4B44', gap: 3 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#2F7A4B' }}>{abnLookupResult.entityName}</Text>
+                      <Text style={{ fontSize: 12, color: '#2F7A4B' }}>
+                        {abnLookupResult.entityType}{abnLookupResult.gstRegistered ? '  ·  Registered for GST' : '  ·  Not registered for GST'}
+                      </Text>
+                      {abnLookupResult.abnStatus !== 'Active' && (
+                        <Text style={{ fontSize: 12, color: Colors.danger }}>Status: {abnLookupResult.abnStatus}</Text>
+                      )}
+                    </View>
                   )}
                 </View>
               </FieldRow>
@@ -2041,7 +2118,7 @@ export default function EditProfileScreen() {
         {/* Top bar */}
         <View style={[pd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
               <Text style={{ fontSize: 14, color: colors.grey }}>Profile</Text>
             </TouchableOpacity>
@@ -2160,7 +2237,7 @@ export default function EditProfileScreen() {
       <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
         <View style={[pd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <TouchableOpacity onPress={handleBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
               <Text style={{ fontSize: 14, color: colors.grey }}>Profile</Text>
             </TouchableOpacity>
