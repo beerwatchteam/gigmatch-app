@@ -447,6 +447,9 @@ export default function HomeScreen() {
             <Image source={{ uri: heroImageUrl }} style={s.heroBgImage} resizeMode="cover" />
           )}
           {heroImageUrl && <View style={s.heroBgOverlay} />}
+          {heroImageUrl && (
+            <Text style={{ position: 'absolute' as any, bottom: 8, right: 12, fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '500', zIndex: 2 }}>P.C. Brooke Hampton</Text>
+          )}
           <View style={[s.heroInner, isWide && s.heroInnerWide]}>
 
             {/* Left */}
@@ -469,10 +472,7 @@ export default function HomeScreen() {
                   <Text style={[s.ctaOutlineText, { color: colors.black }]}>Claim your venue</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={s.desktopHint}>For best experience use on desktop</Text>
-                <Text style={{ fontSize: 12, color: '#666666', marginTop: 3 }}>P.C. Brooke Hampton</Text>
-              </View>
+              <Text style={s.desktopHint}>For best experience use on desktop</Text>
               {isAdmin && (
                 <TouchableOpacity onPress={() => router.push('/(tabs)/profile' as any)}>
                   <Text style={s.adminLink}>Admin Panel →</Text>
