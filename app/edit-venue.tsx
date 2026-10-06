@@ -19,14 +19,16 @@ import { useTheme } from '@/lib/theme-context';
 import { RepositionablePhoto } from '@/components/RepositionablePhoto';
 import { CalendarSync } from '@/components/CalendarSync';
 import { isValidABN, formatABN } from '@/lib/abn';
+import { lookupABN, type AbnLookupResult } from '@/lib/abn-lookup';
 import { isValidACN, formatACN } from '@/lib/acn';
 import { LegalIdentity, LegalEntityType, BLANK_LEGAL, isLegalIdentityComplete } from '@/lib/legalIdentity';
 
 const CANONICAL_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const GENRES = ['Rock','Jazz','Blues','Pop','Indie','Electronic / DJ','Hip-Hop','Country','Acoustic / Folk','Cover Bands','Original','Classical','Metal','Other'];
+const GENRES = ['Rock','Indie','Pop','Punk','Metal','Jazz','Blues','Soul / R&B','Funk','Hip-hop','Electronic','Country','Folk','Reggae','Classical','Other'];
+const SETS_BOOK_OPTS = ['Originals','Covers','Mixed'];
 const AU_STATES      = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
-const ENTITY_TYPES: LegalEntityType[] = ['Sole trader', 'Company', 'Partnership'];
-const SLOT_TYPES     = ['Headline','Support','Open Mic','Other'];
+const ENTITY_TYPES: LegalEntityType[] = ['Sole trader', 'Company', 'Partnership', 'Trust', 'Association / club'];
+const SLOT_TYPES     = ['Headline','Support','Open Mic','Residency','Other'];
 const PAYMENT_MODELS = ['Flat fee', 'Door split', 'Guarantee + door', 'Ticket split', 'Unpaid', 'Other'];
 const PAY_METHODS    = ['Cash','Bank transfer','PayPal','Stripe','Other'];
 const PAY_TIMING     = ['Same night','Within 7 days','Within 14 days','Within 30 days','Other'];
@@ -34,7 +36,7 @@ const BACKLINE_OFFER = ['PA system','Stage monitors','Microphones + stands','Dru
 const INVOICE_DIRS   = ['Artist invoices venue','Venue issues RCTI to artist','Not required'];
 const PL_OPTIONS          = ['Required','Preferred','Not required'];
 const VENUE_TYPES         = ['Live music venue','Pub','Bar','RSL / Club','Theatre','Café','DIY space','Festival site','Other'];
-const VENUE_AGE_RESTRICTIONS = ['All ages','Licensed (18+)','Both'];
+const VENUE_AGE_RESTRICTIONS = ['All ages','18+ only','Varies by gig'];
 
 type Room = {
   name: string; capacity: string;
@@ -95,7 +97,7 @@ type VenueData = {
   id?: string; name: string; streetAddress: string; location: string; suburb: string;
   state: string; postcode: string; phone: string; email: string;
   website: string; instagram: string; facebook: string; description: string; photoUrl: string;
-  venueType: string; genrePreferences: string[]; ageRestriction: string;
+  venueType: string; venueTypes?: string[]; genrePreferences: string[]; setsYouBook?: string[]; ageRestriction: string;
   latitude: string; longitude: string;
   rooms: Room[]; gigNights: Night[];
   techSpecs: Record<string, any>;
@@ -141,7 +143,16 @@ const BLANK_PAYMENT: Payment = {
   additionalNotes: '',
 };
 
-const BLANK_BOOKING_TERMS = {
+const BLANK_BOOKING_TERMS: {
+  payModels: string[]; negotiable: boolean;
+  flatFeeMin: string; flatFeeMax: string; flatFeeBasis: string;
+  doorSplit: string; guaranteeAmount: string; guaranteeSplit: string;
+  barSplit: string; ticketSplitPct: string; ticketingBy: string;
+  methods: string[]; paymentTiming: string;
+  depositRequired: boolean; depositAmount: string; depositDue: string;
+  minNotice: string;
+  guestList: string; meals: boolean; mealsDetails: string; drinks: boolean; drinksDetails: string;
+} = {
   payModels: [], negotiable: true,
   flatFeeMin: '', flatFeeMax: '', flatFeeBasis: 'Per act',
   doorSplit: '', guaranteeAmount: '', guaranteeSplit: '',
@@ -155,7 +166,7 @@ const BLANK_BOOKING_TERMS = {
 const BLANK: VenueData = {
   name: '', streetAddress: '', location: '', suburb: '', state: '', postcode: '',
   phone: '', email: '', website: '', instagram: '', facebook: '', description: '', photoUrl: '',
-  venueType: '', genrePreferences: [], ageRestriction: '',
+  venueType: '', venueTypes: [], genrePreferences: [], setsYouBook: [], ageRestriction: '',
   latitude: '', longitude: '',
   rooms: [], gigNights: [], techSpecs: {},
   settings: { emailOnNewEnquiry: true, emailEnquiryReminders: false, listed: true },
@@ -182,6 +193,11 @@ const VENUE_STEP_TAB: Record<number, string | null> = {
   1: null, 2: 'Basic info', 3: 'Rooms', 4: 'Gig slots', 5: 'Access & facilities', 6: 'Booking terms', 7: 'Photos & video', 8: null,
 };
 
+const SET_LENGTHS_OPTS = ['30 min','45 min','60 min','90 min','2 × 45 min','3 × 45 min'];
+const PARKING_OPTS = ['Street parking','Off-street parking','Loading zone','None'];
+const GREEN_ROOM_OPTS = ['Private','Shared','None'];
+const ENGINEER_COST_OPTS = ['Included','Extra cost','Not provided'];
+const ACCESSIBILITY_STATES = ['Yes','No','Not sure'];
 const CURFEW_OPTS = ['No curfew','10:00 pm','10:30 pm','11:00 pm','11:30 pm','12:00 am','12:30 am','1:00 am','1:30 am','2:00 am','2:30 am','3:00 am'];
 const GUEST_LIST_OPTS = ['0','1','2','3','4','5','6','7','8','10','Negotiable'];
 const MONITORING_PILL_OPTS = ['Wedges','In-ears','Both','None'];
@@ -191,7 +207,7 @@ const FEE_BASIS_OPTS = ['Per act','Per set','Per hour'];
 const TICKETING_BY_OPTS = ['Venue','Artist','Third party'];
 const MIN_NOTICE_OPTS = ['No minimum','24 hours','48 hours','1 week','2 weeks','1 month'];
 const REMIND_AFTER_OPTS = ['24 hours','48 hours','3 days'];
-const PAY_TIMING_OPTS = ['On the night','Within 7 days','Within 14 days','Within 30 days'];
+const PAY_TIMING_OPTS = ['On the night','Within 7 days','Within 14 days','Within 30 days','Discuss per gig'];
 const DEPOSIT_DUE_OPTS = ['On booking','14 days before','7 days before'];
 
 type VenueOnboardingStep = {
@@ -764,6 +780,8 @@ export default function EditVenueScreen() {
   const [verifyCode, setVerifyCode] = useState('');
   const [verifying, setVerifying]   = useState(false);
   const [verifyError, setVerifyError] = useState('');
+  const [abnLookupLoading, setAbnLookupLoading] = useState(false);
+  const [abnLookupResult, setAbnLookupResult] = useState<AbnLookupResult | null>(null);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingVisited, setOnboardingVisited] = useState<string[]>([]);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -846,7 +864,7 @@ export default function EditVenueScreen() {
   }
 
   // ── Rooms ──
-  function setRoom(i: number, field: keyof Room, val: string) {
+  function setRoom(i: number, field: keyof Room, val: any) {
     setData(prev => ({ ...prev, rooms: prev.rooms.map((r, idx) => idx === i ? { ...r, [field]: val } : r) }));
   }
   function addRoom() {
@@ -1367,36 +1385,113 @@ export default function EditVenueScreen() {
       <View style={s.section}>
         {renderPageHeader('Basic info')}
 
-        {/* Listing / go-live checklist */}
+        {/* Listing / go-live hierarchy */}
         <SectionCard title="Listing">
           {(() => {
-            const goLiveFields = [
-              { label: 'Venue name',      done: !!data.name?.trim() },
-              { label: 'Username',        done: !!data.username?.trim() },
-              { label: 'Venue type',      done: !!data.venueType?.trim() },
-              { label: 'Location',        done: !!data.streetAddress?.trim() },
-              { label: 'Booking contact', done: !!data.email?.trim() },
+            const stages = [
+              {
+                num: 1,
+                label: 'Go live',
+                desc: 'Required to appear in search.',
+                fields: [
+                  { label: 'Venue name',      done: !!data.name?.trim(),                                             tab: 'Basic info' },
+                  { label: 'Username',        done: !!data.username?.trim(),                                         tab: 'Basic info' },
+                  { label: 'Venue type',      done: !!(data.venueTypes?.length || data.venueType?.trim()),            tab: 'Basic info' },
+                  { label: 'Location',        done: !!(data.suburb?.trim() || data.streetAddress?.trim()),            tab: 'Basic info' },
+                  { label: 'Booking contact', done: !!data.email?.trim(),                                            tab: 'Basic info' },
+                ],
+              },
+              {
+                num: 2,
+                label: 'Build your profile',
+                desc: 'Helps artists find the right fit.',
+                fields: [
+                  { label: 'About',      done: !!data.description?.trim(),                   tab: 'Basic info' },
+                  { label: 'Photos',     done: (data.photos?.length ?? 0) > 0,               tab: 'Photos & video' },
+                  { label: 'Genres',     done: (data.genrePreferences?.length ?? 0) > 0,     tab: 'Basic info' },
+                  { label: 'Sets',       done: (data.setsYouBook?.length ?? 0) > 0,          tab: 'Basic info' },
+                  { label: 'Age policy', done: !!data.ageRestriction?.trim(),                 tab: 'Basic info' },
+                ],
+              },
+              {
+                num: 3,
+                label: 'Booking ready',
+                desc: 'Tells artists what to expect when enquiring.',
+                fields: [
+                  { label: 'Payment terms', done: !!(data.bookingTerms?.payModels?.length),  tab: 'Booking terms' },
+                  { label: 'Gig slots',     done: (data.gigNights?.length ?? 0) > 0,         tab: 'Gig slots' },
+                  { label: 'Rooms',         done: (data.rooms?.length ?? 0) > 0,              tab: 'Rooms' },
+                ],
+              },
+              {
+                num: 4,
+                label: 'Fully set up',
+                desc: 'For professional venue listings.',
+                fields: [
+                  { label: 'Tech specs',   done: data.rooms?.some(r => (r.backlineItems?.length ?? 0) > 0 || !!r.pa?.trim()) ?? false, tab: 'Rooms' },
+                  { label: 'Invoicing',    done: !!data.payment?.abn?.trim(),                                                         tab: 'Invoicing' },
+                  { label: 'Social links', done: !!(data.instagram || data.facebook || data.website),                                 tab: 'Basic info' },
+                ],
+              },
             ];
-            const allDone = goLiveFields.every(f => f.done);
+            const liveStage = stages[0];
+            const liveDone = liveStage.fields.every(f => f.done);
             return (
-              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: colors.grey, textTransform: 'uppercase', marginBottom: 10 }}>To go live</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {goLiveFields.map(f => (
-                    <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}>
-                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
-                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
+              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
+                {stages.map((stage, si) => {
+                  const done = stage.fields.filter(f => f.done).length;
+                  const total = stage.fields.length;
+                  const allDone = done === total;
+                  const isLive = si === 0;
+                  return (
+                    <View key={stage.num} style={{ marginBottom: si < stages.length - 1 ? 18 : 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: allDone ? '#2F7A4B' : colors.bgFaint, borderWidth: 1, borderColor: allDone ? '#2F7A4B' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: allDone ? '#fff' : colors.grey }}>{allDone ? '✓' : stage.num}</Text>
+                          </View>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>{stage.label}</Text>
+                          {isLive && (
+                            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, backgroundColor: liveDone ? '#2F7A4B22' : '#FF000011', borderWidth: 1, borderColor: liveDone ? '#2F7A4B55' : '#FF000033' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: liveDone ? '#2F7A4B' : '#CC0000' }}>{liveDone ? 'LIVE' : 'NOT LIVE'}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 11, color: allDone ? '#2F7A4B' : colors.grey, fontWeight: '600' }}>{done}/{total}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.grey, marginBottom: 8 }}>{stage.desc}</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                        {stage.fields.map(f => (
+                          <TouchableOpacity
+                            key={f.label}
+                            onPress={() => { setActiveTab(f.tab); if (isMobileLayout) setMobileShowList(false); }}
+                            activeOpacity={0.7}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}
+                          >
+                            <Text style={{ fontSize: 11, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
+                            <Text style={{ fontSize: 11, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                  ))}
-                </View>
-                <View style={{ marginTop: 12, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: allDone ? '#2F7A4B11' : '#FF000011', borderWidth: 1, borderColor: allDone ? '#2F7A4B44' : '#FF000033' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: allDone ? '#2F7A4B' : '#CC0000' }}>
-                    {allDone ? 'Your venue is live on Twaylo.' : 'Your venue is not live on Twaylo until this information is entered.'}
-                  </Text>
-                </View>
+                  );
+                })}
               </View>
             );
           })()}
+          <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 16 }} />
+          <FieldRow label="Listed in Discover" sublabel="Artists can find you in search and send enquiries. Turn off to pause your listing without deleting anything." last>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch
+                value={data.settings.listed}
+                onValueChange={async v => {
+                  set('settings', { ...data.settings, listed: v });
+                }}
+                trackColor={{ false: colors.border, true: Colors.orange }}
+                thumbColor="#fff"
+              />
+            </View>
+          </FieldRow>
         </SectionCard>
 
         {/* Venue details */}
@@ -1422,11 +1517,14 @@ export default function EditVenueScreen() {
               {data.username ? <Text style={{ fontSize: 12, color: '#2F7A4B', marginTop: 4 }}>Available</Text> : null}
             </View>
           </FieldRow>
-          <FieldRow label="Venue type">
-            <Pills options={VENUE_TYPES} value={data.venueType || ''} onSelect={(v: string) => set('venueType', v)} />
+          <FieldRow label="Venue type" sublabel="Select all that apply.">
+            <Pills options={VENUE_TYPES} value={data.venueTypes?.length ? data.venueTypes : (data.venueType ? [data.venueType] : [])} onSelect={(v: string[]) => set('venueTypes', v)} multi />
           </FieldRow>
           <FieldRow label="Genres you book" sublabel="Artists in these genres see you first in Discover.">
             <Pills options={GENRES} value={data.genrePreferences || []} onSelect={(v: string[]) => set('genrePreferences', v)} multi />
+          </FieldRow>
+          <FieldRow label="Sets you book" sublabel="What kind of sets does your venue typically book?">
+            <Pills options={SETS_BOOK_OPTS} value={data.setsYouBook || []} onSelect={(v: string[]) => set('setsYouBook', v)} multi />
           </FieldRow>
           <FieldRow label="Age policy" last>
             <Pills options={['All ages','18+ only','Varies by gig']} value={data.ageRestriction === 'Both' ? 'Varies by gig' : (data.ageRestriction || '')} onSelect={(v: string) => set('ageRestriction', v)} />
@@ -1435,26 +1533,65 @@ export default function EditVenueScreen() {
 
         {/* Location */}
         <SectionCard title="Location">
-          <FieldRow label="Street address" sublabel="Shown on your profile and used for travel distance." last>
-            <View style={{ gap: 8 }}>
-              <Input
-                value={data.streetAddress}
-                onChangeText={(v: string) => set('streetAddress', v)}
-                placeholder="212 High St, Northcote VIC 3070"
-                error={showErrors && !data.streetAddress?.trim()}
-              />
-              {data.latitude && data.longitude ? (
-                <Text style={{ fontSize: 11, color: colors.grey, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
-                  {parseFloat(data.latitude).toFixed(4)}, {parseFloat(data.longitude).toFixed(4)}
-                </Text>
-              ) : null}
-            </View>
+          <FieldRow label="Street address" sublabel="Street number and name. Shown on your profile.">
+            <Input
+              value={data.streetAddress}
+              onChangeText={(v: string) => set('streetAddress', v)}
+              placeholder="212 High St"
+              error={showErrors && !data.streetAddress?.trim()}
+            />
           </FieldRow>
+          <FieldRow label="Suburb" sublabel="Start typing to search. Fills state and postcode automatically.">
+            <SuburbSearch
+              value={data.suburb || ''}
+              onChange={(v: string) => set('suburb', v)}
+              onAutofill={(suburb, state, postcode) => {
+                set('suburb', suburb);
+                set('state', state);
+                set('postcode', postcode);
+              }}
+            />
+          </FieldRow>
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingBottom: 14 }}>
+            <View style={{ flex: 1 }}>
+              <Field label="STATE">
+                <Select options={AU_STATES} value={data.state || ''} onSelect={(v: string) => set('state', v)} />
+              </Field>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="POSTCODE">
+                <Input
+                  value={data.postcode || ''}
+                  onChangeText={(v: string) => set('postcode', v.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="3070"
+                  keyboardType="numeric"
+                />
+              </Field>
+            </View>
+          </View>
+          {data.latitude && data.longitude ? (
+            <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+              <Text style={{ fontSize: 11, color: colors.grey, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
+                {parseFloat(data.latitude).toFixed(4)}, {parseFloat(data.longitude).toFixed(4)}
+              </Text>
+            </View>
+          ) : null}
         </SectionCard>
 
         {/* About the venue */}
         <SectionCard title="About the venue">
           <View style={{ padding: 16 }}>
+            {!data.description?.trim() && (
+              <TouchableOpacity
+                onPress={() => set('description', `${data.name || 'We'} ${data.venueTypes?.length ? `is a ${data.venueTypes[0].toLowerCase()}` : 'is a live music venue'} located in ${data.suburb || '[suburb]'}. We host live music throughout the week across ${data.rooms?.length ? `${data.rooms.length} room${data.rooms.length > 1 ? 's' : ''}` : 'our venue'}. ${(data.genrePreferences?.length ?? 0) > 0 ? `We book ${data.genrePreferences!.slice(0, 3).join(', ')} and more.` : ''} Artists can browse our open slots and send an enquiry directly through Twaylo.`.trim())}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10, alignSelf: 'flex-start' }}
+                activeOpacity={0.7}
+              >
+                <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: Colors.orange + '55', backgroundColor: Colors.orange + '11' }}>
+                  <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Start with a template</Text>
+                </View>
+              </TouchableOpacity>
+            )}
             <Input value={data.description} onChangeText={(v: string) => set('description', v)} placeholder="Upstairs band room and front bar on High Street..." multiline />
             <Text style={{ fontSize: 12, color: colors.grey, textAlign: 'right', marginTop: 4 }}>{descLen} / 600</Text>
           </View>
@@ -1463,7 +1600,16 @@ export default function EditVenueScreen() {
         {/* Public contact */}
         <SectionCard title="Public contact" subtitle="Shown on your public profile.">
           <FieldRow label="Website">
-            <Input value={data.website} onChangeText={(v: string) => set('website', v)} placeholder="https://thelanternroom.com.au" keyboardType="url" />
+            <Input
+              value={data.website}
+              onChangeText={(v: string) => set('website', v)}
+              onBlur={() => {
+                const w = (data.website || '').trim();
+                if (w && !w.startsWith('http://') && !w.startsWith('https://')) set('website', 'https://' + w);
+              }}
+              placeholder="https://thelanternroom.com.au"
+              keyboardType="url"
+            />
           </FieldRow>
           <FieldRow label="Instagram">
             <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 10, overflow: 'hidden' }}>
@@ -1523,7 +1669,10 @@ export default function EditVenueScreen() {
         {renderPageHeader('Rooms')}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <Text style={{ fontSize: 14, color: colors.grey }}>
-            {data.rooms.length} room{data.rooms.length !== 1 ? 's' : ''}{totalCapacity ? ` · ${totalCapacity} total capacity` : ''}
+            {data.rooms.length} room{data.rooms.length !== 1 ? 's' : ''}
+            {data.rooms.length > 1 && totalCapacity
+              ? ` · ${data.rooms.filter(r => parseInt(r.capacity) > 0).map(r => r.capacity).join(' and ')} cap`
+              : totalCapacity ? ` · ${totalCapacity} cap` : ''}
           </Text>
           <TouchableOpacity onPress={addRoom} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 }}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>+ Add room</Text>
@@ -1540,9 +1689,16 @@ export default function EditVenueScreen() {
             <View key={i} style={[{ borderWidth: 1, borderRadius: 14, marginBottom: 14, backgroundColor: colors.bg, borderColor: colors.border }]}>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 }} onPress={() => setExpandedRoom(isOpen ? null : i)}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black }}>{room.name || 'Unnamed room'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black }}>{room.name || 'Unnamed room'}</Text>
+                    {slotCount === 0 && room.name ? (
+                      <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: '#FF000011', borderWidth: 1, borderColor: '#FF000033' }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: '#CC0000' }}>No slots</Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Text style={{ fontSize: 13, color: colors.grey, marginTop: 2 }}>
-                    {[room.capacity ? `Capacity ${room.capacity}` : null, (stageW && stageD) ? `${stageW} × ${stageD} m stage` : null, slotCount ? `${slotCount} slot${slotCount !== 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')}
+                    {[room.capacity ? `${room.capacity} cap` : null, (stageW && stageD) ? `${stageW} × ${stageD} m stage` : null, slotCount ? `${slotCount} slot${slotCount !== 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
                 <Text style={{ fontSize: 14, color: colors.grey, fontWeight: '500' }}>{isOpen ? 'Close' : 'Edit'}</Text>
@@ -1557,9 +1713,9 @@ export default function EditVenueScreen() {
                   </FieldRow>
                   <FieldRow label="Stage size" sublabel="Metres, width × depth.">
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Input value={room.stageWidth || ''} onChangeText={(v) => setRoom(i, 'stageWidth', v)} placeholder="6" keyboardType="decimal-pad" style={{ width: 72 }} />
+                      <Input value={room.stageWidth || ''} onChangeText={(v: string) => setRoom(i, 'stageWidth', v)} placeholder="6" keyboardType="decimal-pad" style={{ width: 72 }} />
                       <Text style={{ color: colors.grey }}>×</Text>
-                      <Input value={room.stageDepth || ''} onChangeText={(v) => setRoom(i, 'stageDepth', v)} placeholder="4" keyboardType="decimal-pad" style={{ width: 72 }} />
+                      <Input value={room.stageDepth || ''} onChangeText={(v: string) => setRoom(i, 'stageDepth', v)} placeholder="4" keyboardType="decimal-pad" style={{ width: 72 }} />
                     </View>
                   </FieldRow>
                   <FieldRow label="PA system">
@@ -1577,19 +1733,44 @@ export default function EditVenueScreen() {
                           );
                         })}
                       </View>
-                      <Input value={room.monitoringMixes || ''} onChangeText={(v) => setRoom(i, 'monitoringMixes', v)} placeholder="e.g. 4 wedge mixes" />
+                      <Input value={room.monitoringMixes || ''} onChangeText={(v: string) => setRoom(i, 'monitoringMixes', v)} placeholder="e.g. 4 wedge mixes" />
                     </View>
                   </FieldRow>
                   <FieldRow label="Backline available" sublabel="Matched against what artists list as needed from the venue.">
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                      {BACKLINE_PILL_OPTS.map(opt => {
-                        const active = backlineItems.includes(opt);
-                        return (
-                          <TouchableOpacity key={opt} onPress={() => setRoom(i, 'backlineItems', active ? backlineItems.filter(b => b !== opt) : [...backlineItems, opt])} style={{ borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: active ? colors.black : 'transparent', borderColor: active ? colors.black : colors.border }}>
-                            <Text style={{ fontSize: 13, fontWeight: active ? '600' : '400', color: active ? '#fff' : colors.black }}>{opt}</Text>
+                    <View>
+                      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                        {([
+                          { label: 'PA only',    items: ['Mics + stands', 'DI boxes'] },
+                          { label: 'Rock band',  items: ['Drum kit', 'Cymbals', 'Bass amp', 'Guitar amp', 'Mics + stands', 'DI boxes'] },
+                          { label: 'Full house', items: BACKLINE_PILL_OPTS },
+                        ] as { label: string; items: string[] }[]).map(preset => (
+                          <TouchableOpacity
+                            key={preset.label}
+                            onPress={() => setRoom(i, 'backlineItems', preset.items)}
+                            style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: Colors.orange + '55', backgroundColor: Colors.orange + '11' }}
+                          >
+                            <Text style={{ fontSize: 11, color: Colors.orange, fontWeight: '600' }}>{preset.label}</Text>
                           </TouchableOpacity>
-                        );
-                      })}
+                        ))}
+                        {backlineItems.length > 0 && (
+                          <TouchableOpacity
+                            onPress={() => setRoom(i, 'backlineItems', [])}
+                            style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: colors.border }}
+                          >
+                            <Text style={{ fontSize: 11, color: colors.grey }}>Clear</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                        {BACKLINE_PILL_OPTS.map(opt => {
+                          const active = backlineItems.includes(opt);
+                          return (
+                            <TouchableOpacity key={opt} onPress={() => setRoom(i, 'backlineItems', active ? backlineItems.filter(b => b !== opt) : [...backlineItems, opt])} style={{ borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: active ? colors.black : 'transparent', borderColor: active ? colors.black : colors.border }}>
+                              <Text style={{ fontSize: 13, fontWeight: active ? '600' : '400', color: active ? '#fff' : colors.black }}>{opt}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
                     </View>
                   </FieldRow>
                   <FieldRow label="Lighting">
@@ -1639,19 +1820,19 @@ export default function EditVenueScreen() {
       : 'None set';
     const defaultPaySummary = () => {
       const bt = data.bookingTerms;
-      if (!bt?.payModels?.length) return 'No defaults set';
+      if (!bt?.payModels?.length) return 'Using venue terms';
       const parts = [...bt.payModels];
       if (bt.negotiable) parts.push('negotiable');
       return parts.join(', ');
     };
     const defaultHospSummary = () => {
       const bt = data.bookingTerms;
-      if (!bt) return 'No defaults set';
+      if (!bt) return 'Using venue terms';
       const parts: string[] = [];
       if (bt.guestList && bt.guestList !== '0') parts.push(`${bt.guestList} guests`);
       if (bt.meals) parts.push('Meals');
       if (bt.drinks) parts.push('Drinks');
-      return parts.length ? parts.join(', ') : 'Nothing set';
+      return parts.length ? parts.join(', ') : 'Using venue terms';
     };
 
     return (
@@ -1718,7 +1899,17 @@ export default function EditVenueScreen() {
                   <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.grey, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 16, marginBottom: 10 }}>When</Text>
 
                   <Field label="NAME" helper="Optional. Shown to artists on your timetable.">
-                    <Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" />
+                    <View style={{ gap: 6 }}>
+                      <Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" />
+                      {!night.name && nightDays.length > 0 && night.startTime && (() => {
+                        const suggestedName = `${nightDays[0]} ${fmtTime(night.startTime)} ${night.slotType ? night.slotType : 'Live Music'}`;
+                        return (
+                          <TouchableOpacity onPress={() => setNight(i, 'name', suggestedName)} activeOpacity={0.7} style={{ alignSelf: 'flex-start' }}>
+                            <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Suggest: "{suggestedName}"</Text>
+                          </TouchableOpacity>
+                        );
+                      })()}
+                    </View>
                   </Field>
 
                   <Field label="DAYS" error={showErrors && touchedNights.has(i) && !nightDays.length}>
@@ -1740,12 +1931,11 @@ export default function EditVenueScreen() {
                       </Field>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Field label="LENGTH (MIN)">
-                        <Input
-                          value={night.duration > 0 ? String(night.duration) : ''}
-                          onChangeText={(v: string) => setNight(i, 'duration', Number(v) || 0)}
-                          keyboardType="numeric"
-                          placeholder="60"
+                      <Field label="SET LENGTH">
+                        <Select
+                          options={SET_LENGTHS_OPTS}
+                          value={night.duration > 0 ? (SET_LENGTHS_OPTS.find(o => parseInt(o) === night.duration) || `${night.duration} min`) : ''}
+                          onSelect={(v: string) => setNight(i, 'duration', parseInt(v) || 0)}
                         />
                       </Field>
                     </View>
@@ -2089,17 +2279,17 @@ export default function EditVenueScreen() {
             <Input value={ts.loadIn || ts.loadInParking || ''} onChangeText={(v: string) => setTs({ loadIn: v, loadInParking: v })} placeholder="e.g. rear loading dock, access via laneway" />
           </FieldRow>
           <FieldRow label="Parking" last>
-            <Input value={ts.parking || ''} onChangeText={(v: string) => setTs({ parking: v })} placeholder="e.g. street parking only, 2hr limit after 6pm" />
+            <Pills options={PARKING_OPTS} value={ts.parkingOptions || []} onSelect={(v: string[]) => setTs({ parkingOptions: v })} multi />
           </FieldRow>
         </SectionCard>
 
         <SectionCard title="Sound and curfew">
-          <FieldRow label="In-house sound engineer" sublabel="Venue provides a sound tech">
-            <Switch value={ts.soundEngineer || false} onValueChange={(v) => setTs({ soundEngineer: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          <FieldRow label="In-house engineer">
+            <Pills options={ENGINEER_COST_OPTS} value={ts.engineerCost || ''} onSelect={(v: string) => setTs({ engineerCost: v, soundEngineer: v !== 'Not provided' })} />
           </FieldRow>
-          {ts.soundEngineer && (
-            <FieldRow label="Engineer details">
-              <Input value={ts.soundEngineerDetails || ''} onChangeText={(v: string) => setTs({ soundEngineerDetails: v })} placeholder="e.g. included in the booking, or available at extra cost" />
+          {ts.engineerCost && ts.engineerCost !== 'Not provided' && (
+            <FieldRow label="Engineer notes">
+              <Input value={ts.soundEngineerDetails || ''} onChangeText={(v: string) => setTs({ soundEngineerDetails: v })} placeholder="e.g. available for all shows, contact in advance" />
             </FieldRow>
           )}
           <FieldRow label="Curfew">
@@ -2111,32 +2301,34 @@ export default function EditVenueScreen() {
         </SectionCard>
 
         <SectionCard title="Artist facilities">
-          <FieldRow label="Green room" sublabel="Dedicated space for acts">
-            <Switch value={ts.greenRoom || false} onValueChange={(v) => setTs({ greenRoom: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+          <FieldRow label="Green room">
+            <Pills options={GREEN_ROOM_OPTS} value={ts.greenRoomType || ''} onSelect={(v: string) => setTs({ greenRoomType: v, greenRoom: v !== 'None' })} />
           </FieldRow>
-          {ts.greenRoom && (
+          {ts.greenRoomType && ts.greenRoomType !== 'None' && (
             <FieldRow label="Green room details">
-              <Input value={ts.greenRoomDetails || ''} onChangeText={(v: string) => setTs({ greenRoomDetails: v })} placeholder="e.g. shared green room, fridge and couch" />
+              <Input value={ts.greenRoomDetails || ''} onChangeText={(v: string) => setTs({ greenRoomDetails: v })} placeholder="e.g. fridge, couch, mirror" />
             </FieldRow>
           )}
-          <FieldRow label="Merch space" sublabel="Area for acts to sell merchandise" last>
+          <FieldRow label="Merch table" sublabel="Area for acts to sell merchandise" last>
             <Switch value={ts.merchSpace || false} onValueChange={(v) => setTs({ merchSpace: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
           </FieldRow>
         </SectionCard>
 
         <SectionCard title="Accessibility">
-          <FieldRow label="Wheelchair access">
-            <Switch value={ts.wheelchairAccess || false} onValueChange={(v) => setTs({ wheelchairAccess: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          <FieldRow label="Accessible bathroom">
-            <Switch value={ts.accessibleBathroom || false} onValueChange={(v) => setTs({ accessibleBathroom: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          <FieldRow label="Step-free stage">
-            <Switch value={ts.stepFreeStage || false} onValueChange={(v) => setTs({ stepFreeStage: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
-          <FieldRow label="Accessible parking" last>
-            <Switch value={ts.wheelchairParking || false} onValueChange={(v) => setTs({ wheelchairParking: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
-          </FieldRow>
+          {([
+            { label: 'Wheelchair access',   stateKey: 'wheelchairAccessState' },
+            { label: 'Accessible bathroom', stateKey: 'accessibleBathroomState' },
+            { label: 'Step-free stage',     stateKey: 'stepFreeStageState' },
+            { label: 'Accessible parking',  stateKey: 'wheelchairParkingState' },
+          ] as { label: string; stateKey: string }[]).map((item, idx, arr) => (
+            <FieldRow key={item.stateKey} label={item.label} last={idx === arr.length - 1}>
+              <Pills
+                options={ACCESSIBILITY_STATES}
+                value={ts[item.stateKey] || ''}
+                onSelect={(v: string) => setTs({ [item.stateKey]: v })}
+              />
+            </FieldRow>
+          ))}
         </SectionCard>
 
         <SectionCard title="General notes">
@@ -2312,24 +2504,62 @@ export default function EditVenueScreen() {
               placeholder="e.g. The Crown Hotel Pty Ltd"
             />
           </FieldRow>
-          <FieldRow label="ABN" error={abnError}>
-            <View>
-              <Input
-                value={data.payment.abn}
-                onChangeText={(v: string) => {
-                  const cleaned = v.replace(/[^\d\s]/g, '');
-                  setPayment('abn', cleaned);
-                  if (!cleaned.replace(/\s/g, '')) setPayment('gstRegistered', false);
-                }}
-                onBlur={() => {
-                  setVenueAbnTouched(true);
-                  if (data.payment.abn.trim()) setPayment('abn', formatABN(data.payment.abn));
-                }}
-                placeholder="e.g. 12 345 678 901"
-                keyboardType="numeric"
-                error={abnError}
-              />
-              {abnError && <Text style={{ fontSize: 12, color: Colors.danger, marginTop: 4 }}>Invalid ABN. Check the 11-digit number and try again.</Text>}
+          <FieldRow label="ABN" sublabel="Required for invoicing and contracts. Register free at abr.business.gov.au." error={abnError}>
+            <View style={{ gap: 6 }}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+                <View style={{ flex: 1 }}>
+                  <Input
+                    value={data.payment.abn}
+                    onChangeText={(v: string) => {
+                      const cleaned = v.replace(/[^\d\s]/g, '');
+                      setPayment('abn', cleaned);
+                      if (!cleaned.replace(/\s/g, '')) { setPayment('gstRegistered', false); setAbnLookupResult(null); }
+                    }}
+                    onBlur={() => {
+                      setVenueAbnTouched(true);
+                      if (data.payment.abn.trim()) setPayment('abn', formatABN(data.payment.abn));
+                    }}
+                    placeholder="e.g. 12 345 678 901"
+                    keyboardType="numeric"
+                    error={abnError}
+                  />
+                </View>
+                {abnValid && (
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 14, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: abnLookupResult ? '#2F7A4B' : Colors.orange, backgroundColor: abnLookupResult ? '#2F7A4B11' : Colors.orange + '18' }}
+                    disabled={abnLookupLoading}
+                    onPress={async () => {
+                      setAbnLookupLoading(true);
+                      try {
+                        const result = await lookupABN(data.payment.abn);
+                        if (!result) {
+                          Alert.alert('ABN Lookup not configured', 'Add your ABR GUID to the .env file as EXPO_PUBLIC_ABR_GUID. Register free at abr.business.gov.au/Tools/ABRXMLSearch');
+                          return;
+                        }
+                        if ('error' in result) { Alert.alert('Lookup failed', result.error); return; }
+                        setAbnLookupResult(result);
+                        if (!data.legalEntityName && result.entityName) set('legalEntityName', result.entityName);
+                        if (result.gstRegistered !== data.payment.gstRegistered) setPayment('gstRegistered', result.gstRegistered);
+                      } finally {
+                        setAbnLookupLoading(false);
+                      }
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: abnLookupResult ? '#2F7A4B' : Colors.orange }}>
+                      {abnLookupLoading ? 'Looking up...' : abnLookupResult ? 'Verified' : 'Verify'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {abnError && <Text style={{ fontSize: 12, color: Colors.danger }}>Invalid ABN. Check the 11-digit number and try again.</Text>}
+              {abnLookupResult && !('error' in abnLookupResult) && (
+                <View style={{ padding: 10, borderRadius: 8, backgroundColor: '#2F7A4B11', borderWidth: 1, borderColor: '#2F7A4B44', gap: 3 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#2F7A4B' }}>{abnLookupResult.entityName}</Text>
+                  <Text style={{ fontSize: 12, color: '#2F7A4B' }}>
+                    {abnLookupResult.entityType}{abnLookupResult.gstRegistered ? '  ·  Registered for GST' : '  ·  Not registered for GST'}
+                  </Text>
+                </View>
+              )}
             </View>
           </FieldRow>
           <FieldRow label="Registered for GST" last>
@@ -2388,10 +2618,21 @@ export default function EditVenueScreen() {
             <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 19, marginBottom: 12 }}>Shared with acts once a booking is confirmed. Not shown publicly.</Text>
           </View>
           <FieldRow label="Name">
-            <Input value={data.accountsContactName || ''} onChangeText={(v: string) => set('accountsContactName', v)} placeholder="e.g. Alex Johnson" />
+            <Input value={data.accountsContactName || ''} onChangeText={(v: string) => set('accountsContactName', v)} placeholder={data.bookingContactName || 'e.g. Alex Johnson'} />
           </FieldRow>
           <FieldRow label="Email" last>
-            <Input value={data.accountsContactEmail || ''} onChangeText={(v: string) => set('accountsContactEmail', v)} placeholder="accounts@yourvenue.com.au" keyboardType="email-address" />
+            <View style={{ gap: 6 }}>
+              <Input value={data.accountsContactEmail || ''} onChangeText={(v: string) => set('accountsContactEmail', v)} placeholder={data.email || 'accounts@yourvenue.com.au'} keyboardType="email-address" />
+              {!data.accountsContactEmail && (data.bookingContactName || data.email) && (
+                <TouchableOpacity
+                  onPress={() => { if (data.accountsContactName === '' && data.bookingContactName) set('accountsContactName', data.bookingContactName); if (data.email) set('accountsContactEmail', data.email); }}
+                  activeOpacity={0.7}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '600' }}>Same as booking contact</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </FieldRow>
         </SectionCard>
 
@@ -2640,7 +2881,8 @@ export default function EditVenueScreen() {
                 uri={data.photoUrl}
                 position={data.photoPosition || { x: 50, y: 50 }}
                 onPositionChange={(pos) => set('photoPosition', pos)}
-                style={{ height: 160, borderRadius: 10, marginBottom: 10 }}
+                onChangePhoto={pickBannerPhoto}
+                height={160}
               />
             ) : (
               <View style={{ height: 120, borderRadius: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
@@ -2654,7 +2896,7 @@ export default function EditVenueScreen() {
         </SectionCard>
 
         {/* Gallery */}
-        <SectionCard title="Gallery" subtitle={`Up to 12 photos. ${data.photos.length}/12`}>
+        <SectionCard title="Gallery" subtitle={`Up to 12 photos. ${data.photos.length}/12 — Include stage from audience, stage from band view, and green room.`}>
           <View style={{ padding: 16 }}>
             <View style={s.photoGrid}>
               {data.photos.filter(u => u !== data.photoUrl).map((url, i) => (

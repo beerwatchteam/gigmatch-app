@@ -1,6 +1,6 @@
 import { isValidACN } from './acn';
 
-export type LegalEntityType = 'Sole trader' | 'Company' | 'Partnership' | '';
+export type LegalEntityType = 'Sole trader' | 'Company' | 'Partnership' | 'Trust' | 'Association / club' | '';
 
 export type LegalIdentity = {
   entityType: LegalEntityType;
