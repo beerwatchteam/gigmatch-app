@@ -449,6 +449,7 @@ export default function EditProfileScreen() {
   const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [bannerDismissed,    setBannerDismissed]    = useState(false);
   const [abnTouched,         setAbnTouched]         = useState(false);
+  const [liveAvgDraw,        setLiveAvgDraw]        = useState<number | null>(null);
   const [abnLookupLoading,   setAbnLookupLoading]   = useState(false);
   const [abnLookupResult,    setAbnLookupResult]    = useState<AbnLookupResult | null>(null);
   const [acnTouched,         setAcnTouched]         = useState(false);
@@ -521,6 +522,30 @@ export default function EditProfileScreen() {
         }
       }).catch(() => {});
     }).catch(() => {}).finally(() => setLoading(false));
+  }, [uid]);
+
+  // Load confirmed past gigs from the gigs collection to compute average draw
+  // (same source the public musician profile uses — not the manual gigHistory array)
+  useEffect(() => {
+    if (!uid) return;
+    const now = new Date();
+    getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', uid)))
+      .then(snap => {
+        const past = snap.docs
+          .map(d => d.data())
+          .filter((g: any) =>
+            g.startAt?.toDate?.() < now &&
+            (g.status == null || g.status === 'confirmed') &&
+            g.attendance != null && g.attendance > 0
+          );
+        if (past.length > 0) {
+          const avg = Math.round(
+            past.reduce((s: number, g: any) => s + Number(g.attendance), 0) / past.length
+          );
+          setLiveAvgDraw(avg);
+        }
+      })
+      .catch(() => {});
   }, [uid]);
 
 
@@ -776,7 +801,7 @@ export default function EditProfileScreen() {
     { label: 'Location',      done: !!profile.location?.trim() },
     { label: 'Music tracks',  done: profile.songs?.length > 0 || profile.artistPages?.length > 0 },
     { label: 'Fee range',     done: !!profile.feeMin && !!profile.feeMax },
-    { label: 'Average draw',  done: ((profile as any).gigHistory ?? []).some((g: any) => g.attendance != null && g.attendance > 0) },
+    { label: 'Average draw',  done: liveAvgDraw != null || !!profile.drawEstimateBand },
     { label: 'Travel',        done: !!profile.travel },
   ];
   const doneCount    = completionFields.filter(f => f.done).length;
@@ -1275,25 +1300,20 @@ export default function EditProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Audience & travel">
-          <FieldRow label="Average draw" sublabel="Computed from your logged gigs. Estimate until you have real data.">
-            {(() => {
-              const gigs: any[] = (profile as any).gigHistory ?? [];
-              const withAtt = gigs.filter((g: any) => g.attendance != null && Number(g.attendance) > 0);
-              const avg = withAtt.length > 0
-                ? Math.round(withAtt.reduce((s: number, g: any) => s + Number(g.attendance), 0) / withAtt.length)
-                : null;
-              if (avg != null) return <Text style={{ fontSize: 14, color: colors.black }}>~{avg} people (from logged gigs)</Text>;
-              return (
+          <FieldRow label="Average draw" sublabel="Computed from confirmed Twaylo bookings with logged attendance.">
+            {liveAvgDraw != null
+              ? <Text style={{ fontSize: 14, color: colors.black }}>~{liveAvgDraw} people</Text>
+              : (
                 <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 12, color: colors.grey }}>No gig history yet. Pick a rough estimate:</Text>
+                  <Text style={{ fontSize: 12, color: colors.grey }}>No confirmed gigs with attendance logged yet. Pick a rough estimate:</Text>
                   <Pills
                     options={['Under 50', '50–100', '100–250', '250+', 'Not sure']}
                     value={profile.drawEstimateBand || ''}
                     onSelect={(v: string) => set('drawEstimateBand', v)}
                   />
                 </View>
-              );
-            })()}
+              )
+            }
           </FieldRow>
           <FieldRow label="Travel" sublabel="How far you'll go for a gig." last>
             <SelectField value={profile.travel} options={TRAVEL_OPTS} onChange={v => set('travel', v)} placeholder="Select" />
