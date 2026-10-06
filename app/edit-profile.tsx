@@ -47,7 +47,7 @@ const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const DRINKS_OPTS = ['Drink tickets','Bar tab','None needed','Other'];
 
 const NAV_GROUPS = [
-  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos & videos', 'My gigs'] },
+  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos & videos'] },
   { label: 'BOOKING', tabs: ['Rates & reach', 'Tech rider', 'Hospitality'] },
   { label: 'ACCOUNT', tabs: ['Invoicing', 'Settings'] },
 ];
@@ -454,8 +454,6 @@ export default function EditProfileScreen() {
   const [bannerDismissed,    setBannerDismissed]    = useState(false);
   const [abnTouched,         setAbnTouched]         = useState(false);
   const [liveAvgDraw,        setLiveAvgDraw]        = useState<number | null>(null);
-  const [upcomingGigs,       setUpcomingGigs]       = useState<{ venue: string; suburb?: string; date: string }[]>([]);
-  const [confirmedPastGigs,  setConfirmedPastGigs]  = useState<{ venue: string; suburb?: string; date: string; attendance?: number }[]>([]);
   const [abnLookupLoading,   setAbnLookupLoading]   = useState(false);
   const [abnLookupResult,    setAbnLookupResult]    = useState<AbnLookupResult | null>(null);
   const [acnTouched,         setAcnTouched]         = useState(false);
@@ -534,31 +532,23 @@ export default function EditProfileScreen() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [uid]);
 
-  // Load confirmed gigs from the gigs collection — used for avg draw, upcoming, and past lists
+  // Load confirmed past gigs from the gigs collection to compute average draw
   useEffect(() => {
     if (!uid) return;
     const now = new Date();
-    const isoDate = (d: Date) => d.toISOString().slice(0, 10);
     getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', uid)))
       .then(snap => {
-        const all = snap.docs.map(d => d.data()) as any[];
-        const confirmed = all.filter(g => g.startAt?.toDate && (g.status == null || g.status === 'confirmed'));
-
-        const upcoming = confirmed
-          .filter(g => g.startAt.toDate() >= now)
-          .sort((a, b) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime())
-          .map(g => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()) }));
-        setUpcomingGigs(upcoming);
-
-        const past = confirmed
-          .filter(g => g.startAt.toDate() < now)
-          .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
-          .map(g => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()), attendance: g.attendance ?? undefined }));
-        setConfirmedPastGigs(past);
-
-        const withAttendance = past.filter(g => g.attendance != null && (g.attendance ?? 0) > 0);
-        if (withAttendance.length > 0) {
-          const avg = Math.round(withAttendance.reduce((s, g) => s + Number(g.attendance), 0) / withAttendance.length);
+        const past = snap.docs
+          .map(d => d.data())
+          .filter((g: any) =>
+            g.startAt?.toDate?.() < now &&
+            (g.status == null || g.status === 'confirmed') &&
+            g.attendance != null && g.attendance > 0
+          );
+        if (past.length > 0) {
+          const avg = Math.round(
+            past.reduce((s: number, g: any) => s + Number(g.attendance), 0) / past.length
+          );
           setLiveAvgDraw(avg);
         }
       })
@@ -2382,7 +2372,6 @@ export default function EditProfileScreen() {
       case 'About':            return renderAbout();
       case 'Music':            return renderMusic();
       case 'Photos & videos':  return renderPhotos();
-      case 'My gigs':          return renderMyGigs();
       case 'Rates & reach':    return renderRatesAndReach();
       case 'Tech rider':    return renderTechRider();
       case 'Hospitality':   return renderHospitality();
