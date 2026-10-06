@@ -1229,9 +1229,12 @@ export default function VenuesScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Col 2: CAPACITY (MAX) */}
-        <View style={st.webColCapacity}>
-          <Text style={st.webColValue}>{item.capacity?.toLocaleString() ?? '—'}</Text>
+        {/* Col 2: PAYMENT MODEL + REPLY TIME */}
+        <View style={st.webColPayment}>
+          <Text style={st.webColValue} numberOfLines={1}>{paymentVal}</Text>
+        </View>
+        <View style={st.webColReply}>
+          <Text style={st.webColValue}>{replyVal}</Text>
         </View>
 
         {/* Col 3: NEXT 3 WEEKS — calendar strip */}
@@ -1802,7 +1805,8 @@ export default function VenuesScreen() {
           {/* ── Column headers ─────────────────────────────────────── */}
           <View style={st.webTableHeader}>
             <Text style={[st.webTh, { flex: 3.5 }]}>VENUE</Text>
-            <Text style={[st.webTh, { flex: 0.8 }]}>CAPACITY (MAX)</Text>
+            <Text style={[st.webTh, { flex: 0.9 }]}>PAYMENT MODEL</Text>
+            <Text style={[st.webTh, { flex: 0.8 }]}>REPLY TIME</Text>
             <View style={{ flex: 3.5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 8 }}>
               <Text style={st.webTh}>NEXT 3 WEEKS</Text>
               <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
@@ -2180,7 +2184,8 @@ const st = StyleSheet.create({
   webRow:              { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0', gap: 16 },
   webColVenue:         { flex: 3.5, flexDirection: 'row', alignItems: 'center', gap: 16 },
   webColVenueInfo:     { flex: 1, gap: 5 },
-  webColCapacity:      { flex: 0.8 },
+  webColPayment:       { flex: 0.9 },
+  webColReply:          { flex: 0.8 },
   webColCalendar:      { flex: 3.5 },
   webColAction:        { flex: 1.2, alignItems: 'flex-end' as any },
   webColValue:         { fontSize: 14, color: '#333333', fontWeight: '500' },
