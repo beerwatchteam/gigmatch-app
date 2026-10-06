@@ -320,7 +320,7 @@ const away = StyleSheet.create({
 
 // ── Shared content (also used embedded in the musician profile dashboard) ─────
 
-export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
+export function MyGigsContent({ embedded = false, hideAway = false }: { embedded?: boolean; hideAway?: boolean }) {
   const { user, profile } = useAuth();
   const { colors }        = useTheme();
   const { width }         = useWindowDimensions();
@@ -487,7 +487,7 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
         <View style={s.header}>
           <Text style={[s.heading, { color: colors.black }]}>My Gigs</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            {isArtist && (
+            {isArtist && !hideAway && (
               <TouchableOpacity
                 style={[s.addBtn, { backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border }]}
                 onPress={() => openAwayForm(null)}
@@ -565,7 +565,7 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
             )}
 
             {/* Away Periods */}
-            {isArtist && (
+            {isArtist && !hideAway && (
               <>
                 <View style={[sh.row, { marginTop: 24 }]}>
                   <Text style={[sh.title, { color: colors.black }]}>Away Periods</Text>
