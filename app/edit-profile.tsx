@@ -876,12 +876,12 @@ export default function EditProfileScreen() {
                 label: 'Go live',
                 desc: 'Required to appear in search.',
                 fields: [
-                  { label: 'Email',       done: !!profile.email?.trim() },
-                  { label: 'Stage name',  done: !!profile.name?.trim() },
-                  { label: 'Username',    done: !!profile.username?.trim() },
-                  { label: 'Act type',    done: !!profile.artistType?.trim() },
-                  { label: 'Genres',      done: (profile.genre?.length ?? 0) > 0 },
-                  { label: 'Instruments', done: (profile.instruments?.length ?? 0) > 0 },
+                  { label: 'Email',       done: !!profile.email?.trim(),                                                  tab: 'Basic info' },
+                  { label: 'Stage name',  done: !!profile.name?.trim(),                                                   tab: 'Basic info' },
+                  { label: 'Username',    done: !!profile.username?.trim(),                                                tab: 'Basic info' },
+                  { label: 'Act type',    done: !!profile.artistType?.trim(),                                              tab: 'Basic info' },
+                  { label: 'Genres',      done: (profile.genre?.length ?? 0) > 0,                                         tab: 'Basic info' },
+                  { label: 'Instruments', done: (profile.instruments?.length ?? 0) > 0,                                   tab: 'Basic info' },
                 ],
               },
               {
@@ -889,12 +889,12 @@ export default function EditProfileScreen() {
                 label: 'Build your profile',
                 desc: 'Helps venues find the right fit.',
                 fields: [
-                  { label: 'Bio',         done: !!profile.about?.trim() },
-                  { label: 'Photo',        done: !!profile.photoUrl },
-                  { label: 'Music',        done: (profile.songs?.length ?? 0) > 0 || (profile.artistPages?.length ?? 0) > 0 },
-                  { label: 'Gallery',      done: (profile.photos?.length ?? 0) > 0 },
-                  { label: 'Past gigs',    done: (profile.gigHistory?.length ?? 0) > 0 },
-                  { label: 'Social links', done: !!(profile.instagram || profile.tiktok || profile.youtube) },
+                  { label: 'Bio',          done: !!profile.about?.trim(),                                                 tab: 'About' },
+                  { label: 'Photo',        done: !!profile.photoUrl,                                                      tab: 'Photos & videos' },
+                  { label: 'Music',        done: (profile.songs?.length ?? 0) > 0 || (profile.artistPages?.length ?? 0) > 0, tab: 'Music' },
+                  { label: 'Gallery',      done: (profile.photos?.length ?? 0) > 0,                                      tab: 'Photos & videos' },
+                  { label: 'Past gigs',    done: (profile.gigHistory?.length ?? 0) > 0,                                   tab: 'My gigs' },
+                  { label: 'Social links', done: !!(profile.instagram || profile.tiktok || profile.youtube),              tab: 'Basic info' },
                 ],
               },
               {
@@ -902,9 +902,9 @@ export default function EditProfileScreen() {
                 label: 'Booking ready',
                 desc: 'Tells venues what to expect.',
                 fields: [
-                  { label: 'Fee range',   done: !!profile.feeMin && !!profile.feeMax || profile.feeOpenToOffers },
-                  { label: 'Tech rider',  done: !!(profile.techRider?.monitoringType || profile.techRider?.monitoring) },
-                  { label: 'Travel',      done: !!profile.travel },
+                  { label: 'Fee range',  done: !!(profile.feeMin && profile.feeMax) || profile.feeOpenToOffers,           tab: 'Rates & reach' },
+                  { label: 'Tech rider', done: !!(profile.techRider?.monitoringType || profile.techRider?.monitoring),    tab: 'Tech rider' },
+                  { label: 'Travel',     done: !!profile.travel,                                                          tab: 'Rates & reach' },
                 ],
               },
               {
@@ -912,8 +912,8 @@ export default function EditProfileScreen() {
                 label: 'Fully set up',
                 desc: 'For serious working artists.',
                 fields: [
-                  { label: 'Hospitality',  done: !!(profile.hospitality?.mealsRequired || profile.hospitality?.greenRoom || profile.hospitality?.drinks) },
-                  { label: 'Invoicing',    done: !!(profile.payment?.methods?.length || profile.payment?.abn) },
+                  { label: 'Hospitality', done: !!(profile.hospitality?.mealsRequired || profile.hospitality?.greenRoom || profile.hospitality?.drinks), tab: 'Hospitality' },
+                  { label: 'Invoicing',   done: !!(profile.payment?.methods?.length || profile.payment?.abn),             tab: 'Invoicing' },
                 ],
               },
             ];
@@ -945,10 +945,15 @@ export default function EditProfileScreen() {
                       <Text style={{ fontSize: 11, color: colors.grey, marginBottom: 8 }}>{stage.desc}</Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
                         {stage.fields.map(f => (
-                          <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}>
+                          <TouchableOpacity
+                            key={f.label}
+                            onPress={() => { setActiveTab(f.tab); if (isMobileLayout) setMobileShowList(false); }}
+                            activeOpacity={0.7}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}
+                          >
                             <Text style={{ fontSize: 11, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
                             <Text style={{ fontSize: 11, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
-                          </View>
+                          </TouchableOpacity>
                         ))}
                       </View>
                     </View>
@@ -974,26 +979,6 @@ export default function EditProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Identity">
-          <FieldRow label="Profile photo" sublabel="Upload any photo. Crop to square on the next screen. Shown on enquiries and in search.">
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              {photoUploading
-                ? <View style={pd.photoThumb}><ActivityIndicator color={Colors.orange} /></View>
-                : profile.photoUrl
-                  ? <Image source={{ uri: profile.photoUrl }} style={pd.photoThumb} resizeMode="cover" />
-                  : <View style={[pd.photoThumb, { backgroundColor: colors.bgFaint, alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ fontSize: 9, color: Colors.greyLight }}>photo</Text>
-                    </View>
-              }
-              <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={pickBannerPhoto}>
-                <Text style={[pd.outlineBtnText, { color: colors.black }]}>Replace</Text>
-              </TouchableOpacity>
-              {profile.photoUrl ? (
-                <TouchableOpacity onPress={() => set('photoUrl', '')}>
-                  <Text style={{ fontSize: 14, color: colors.grey }}>Remove</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </FieldRow>
           <FieldRow label="Stage name" sublabel="How venues and fans see you." error={showErrors && !profile.name?.trim()}>
             <Input value={profile.name} onChangeText={(v: string) => set('name', v)} placeholder="The Dahlias" error={showErrors && !profile.name?.trim()} />
           </FieldRow>
