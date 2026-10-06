@@ -739,8 +739,8 @@ export default function EditVenueScreen() {
   const [data, setData]           = useState<VenueData>(BLANK);
   const [saved, setSaved]         = useState<VenueData>(BLANK);
   const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [venueAbnTouched, setVenueAbnTouched] = useState(false);
   const [venueAcnTouched, setVenueAcnTouched] = useState(false);
   const [legalIdentity,   setLegalIdentityState] = useState<LegalIdentity>(BLANK_LEGAL);
@@ -831,16 +831,16 @@ export default function EditVenueScreen() {
   }, [venueId]);
 
   function set<K extends keyof VenueData>(field: K, value: VenueData[K]) {
-    setJustSaved(false);
+
     setData(prev => ({ ...prev, [field]: value }));
   }
 
   function setPayment<K extends keyof Payment>(field: K, value: Payment[K]) {
-    setJustSaved(false);
+
     setData(prev => ({ ...prev, payment: { ...prev.payment, [field]: value } }));
   }
   function setLegal<K extends keyof LegalIdentity>(field: K, value: LegalIdentity[K]) {
-    setJustSaved(false);
+
     setLegalIdentityState(prev => ({ ...prev, [field]: value }));
   }
 
@@ -862,11 +862,11 @@ export default function EditVenueScreen() {
 
   // ── Gig Nights ──
   function setNight(i: number, field: keyof Night, val: any) {
-    setJustSaved(false);
+
     setData(prev => ({ ...prev, gigNights: prev.gigNights.map((n, idx) => idx === i ? { ...n, [field]: val } : n) }));
   }
   function setNightFields(i: number, fields: Partial<Night>) {
-    setJustSaved(false);
+
     setData(prev => ({ ...prev, gigNights: prev.gigNights.map((n, idx) => idx === i ? { ...n, ...fields } : n) }));
   }
   function subtractMinutes(time: string, mins: number): string {
@@ -1093,7 +1093,8 @@ export default function EditVenueScreen() {
 
     if (errors.length > 0) { setTabErrors(errors); return; }
     setTabErrors([]);
-    setSaving(true);
+    setSaveState('saving');
+    let didError = false;
 
     try {
       const { id, ...fields } = data as any;
@@ -1143,11 +1144,10 @@ export default function EditVenueScreen() {
         acn: legalIdentity.acn.replace(/\s/g, ''),
         updatedAt: Date.now(),
       };
-      await Promise.all([
-        updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots }),
-        setDoc(doc(db, 'venues', venueId, 'private', 'legal'), legalPayload),
-      ]);
-      setSavedLegal(legalIdentity);
+      await updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots });
+      setDoc(doc(db, 'venues', venueId, 'private', 'legal'), legalPayload)
+        .then(() => setSavedLegal(legalIdentity))
+        .catch(() => {});
       const cleanedData = {
         ...data,
         rooms: data.rooms.map(({ _isNew, ...r }: any) => r),
@@ -1156,11 +1156,14 @@ export default function EditVenueScreen() {
       setSaved(cleanedData);
       setData(cleanedData);
       setShowErrors(false);
-      setJustSaved(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      setSaveState('saved');
+      savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
     } catch (e: any) {
+      didError = true;
       Alert.alert('Save failed', e.message);
     } finally {
-      setSaving(false);
+      if (didError) setSaveState('idle');
     }
   }
 
@@ -1362,26 +1365,40 @@ export default function EditVenueScreen() {
       <View style={s.section}>
         {renderPageHeader('Basic info')}
 
+        {/* Listing / go-live checklist */}
+        <SectionCard title="Listing">
+          {(() => {
+            const goLiveFields = [
+              { label: 'Venue name',      done: !!data.name?.trim() },
+              { label: 'Username',        done: !!data.username?.trim() },
+              { label: 'Venue type',      done: !!data.venueType?.trim() },
+              { label: 'Location',        done: !!data.streetAddress?.trim() },
+              { label: 'Booking contact', done: !!data.email?.trim() },
+            ];
+            const allDone = goLiveFields.every(f => f.done);
+            return (
+              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: colors.grey, textTransform: 'uppercase', marginBottom: 10 }}>To go live</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {goLiveFields.map(f => (
+                    <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}>
+                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
+                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={{ marginTop: 12, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: allDone ? '#2F7A4B11' : '#FF000011', borderWidth: 1, borderColor: allDone ? '#2F7A4B44' : '#FF000033' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: allDone ? '#2F7A4B' : '#CC0000' }}>
+                    {allDone ? 'Your venue is live on Twaylo.' : 'Your venue is not live on Twaylo until this information is entered.'}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
+        </SectionCard>
+
         {/* Venue details */}
         <SectionCard title="Venue details">
-          <FieldRow label="Logo" sublabel="Square, at least 400 × 400px.">
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              {data.logoUrl
-                ? <Image source={{ uri: data.logoUrl }} style={{ width: 52, height: 52, borderRadius: 8 }} resizeMode="cover" />
-                : <View style={{ width: 52, height: 52, borderRadius: 8, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 10, color: colors.grey }}>logo</Text>
-                  </View>
-              }
-              <TouchableOpacity onPress={pickBannerPhoto} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>Replace</Text>
-              </TouchableOpacity>
-              {data.logoUrl ? (
-                <TouchableOpacity onPress={() => set('logoUrl', '')}>
-                  <Text style={{ fontSize: 13, color: colors.grey }}>Remove</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </FieldRow>
           <FieldRow label="Venue name" error={showErrors && !data.name?.trim()}>
             <Input value={data.name} onChangeText={(v: string) => set('name', v)} placeholder="The Lantern Room" error={showErrors && !data.name?.trim()} />
           </FieldRow>
@@ -2573,6 +2590,28 @@ export default function EditVenueScreen() {
       <View style={s.section}>
         {renderPageHeader('Photos & video')}
 
+        {/* Logo */}
+        <SectionCard title="Logo" subtitle="Square, at least 400 × 400px.">
+          <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            {data.logoUrl
+              ? <Image source={{ uri: data.logoUrl }} style={{ width: 64, height: 64, borderRadius: 10 }} resizeMode="cover" />
+              : <View style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, color: colors.grey }}>No logo</Text>
+                </View>
+            }
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity onPress={pickBannerPhoto} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>{data.logoUrl ? 'Replace' : 'Upload'}</Text>
+              </TouchableOpacity>
+              {data.logoUrl ? (
+                <TouchableOpacity onPress={() => set('logoUrl', '')} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>
+                  <Text style={{ fontSize: 13, color: colors.grey }}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </SectionCard>
+
         {/* Cover photo */}
         <SectionCard title="Cover photo" subtitle="3:1 banner shown at the top of your venue profile.">
           <View style={{ padding: 16 }}>
@@ -2724,23 +2763,22 @@ export default function EditVenueScreen() {
   }
 
   function renderUnsavedBar() {
-    if (!hasUnsaved && !justSaved) return null;
-    const saved = !hasUnsaved && justSaved;
+    if (!hasUnsaved && saveState === 'idle') return null;
     return (
       <View style={[evd.unsavedBar, { backgroundColor: '#16161A', borderTopColor: '#2a2a2a' }]}>
-        <Text style={evd.unsavedText}>{saved ? 'All changes saved' : 'Unsaved changes'}</Text>
+        <Text style={evd.unsavedText}>{saveState === 'saved' ? 'All changes saved' : 'Unsaved changes'}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {!saved && (
+          {saveState !== 'saved' && (
             <TouchableOpacity onPress={handleDiscard}>
               <Text style={evd.discardText}>Discard</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[evd.saveChangesBtn, saved && { backgroundColor: '#2F7A4B' }]}
-            onPress={saved ? undefined : handleSave}
-            disabled={saving || saved}
+            style={{ backgroundColor: saveState === 'saved' ? '#2F7A4B' : Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 }}
+            onPress={() => { if (saveState === 'idle') handleSave(); }}
+            activeOpacity={saveState === 'idle' ? 0.8 : 1}
           >
-            <Text style={evd.saveChangesBtnText}>{saving ? 'Saving...' : saved ? 'Saved' : 'Save changes'}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>{saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save changes'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2778,7 +2816,7 @@ export default function EditVenueScreen() {
             <Text style={{ color: colors.grey, fontSize: 14 }}>Settings</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
+            {saveState === 'saved' && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
             <TouchableOpacity style={[evd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/venue/${venueId}` as any)}>
               <Text style={[evd.outlineBtnText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
@@ -3020,7 +3058,7 @@ export default function EditVenueScreen() {
           <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
           <Text style={{ fontSize: 14, color: colors.grey }}>All settings</Text>
         </TouchableOpacity>
-        {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved</Text>}
+        {saveState === 'saved' && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved</Text>}
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
         {tabErrors.length > 0 && (

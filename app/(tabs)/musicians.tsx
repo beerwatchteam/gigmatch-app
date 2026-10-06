@@ -124,7 +124,15 @@ export default function MusiciansScreen() {
         return m;
       });
 
-      setMusicians(data.filter(m => m.settings?.listed !== false));
+      setMusicians(data.filter(m =>
+        m.settings?.listed !== false &&
+        !!m.name?.trim() &&
+        !!(m as any).username?.trim() &&
+        !!(m as any).email?.trim() &&
+        !!(m.artistType as string)?.trim() &&
+        (m.genre?.length ?? 0) > 0 &&
+        ((m as any).instruments?.length ?? 0) > 0
+      ));
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }
   }, []);

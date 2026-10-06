@@ -413,8 +413,8 @@ export default function EditProfileScreen() {
   const [profile,  setProfile]  = useState<Profile>(BLANK);
   const [saved,    setSaved]    = useState<Profile>(BLANK);
   const [loading,  setLoading]  = useState(true);
-  const [saving,   setSaving]   = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState(tabParam || 'Basic info');
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
@@ -498,8 +498,6 @@ export default function EditProfileScreen() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [uid]);
 
-  // clear justSaved when edits are made
-  useEffect(() => { if (hasUnsaved) setJustSaved(false); }, [hasUnsaved]);
 
   // ── Setters ──────────────────────────────────────────────────────────────
   function set<K extends keyof Profile>(field: K, value: Profile[K]) {
@@ -644,7 +642,8 @@ export default function EditProfileScreen() {
       }
     }
 
-    setSaving(true);
+    setSaveState('saving');
+    let didError = false;
     try {
       const toNum = (v: string) => { const n = Number(v); return isNaN(n) || v === '' ? null : n; };
       const payload = {
@@ -664,17 +663,21 @@ export default function EditProfileScreen() {
       await Promise.all([
         setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true }),
         updateDoc(doc(db, 'users', uid), { username: newUsername }),
-        setDoc(doc(db, 'bandProfiles', uid, 'private', 'legal'), legalPayload),
       ]);
+      setDoc(doc(db, 'bandProfiles', uid, 'private', 'legal'), legalPayload)
+        .then(() => setSavedLegal(legalIdentity))
+        .catch(() => {});
       originalUsername.current = newUsername;
       setSaved(profile);
-      setSavedLegal(legalIdentity);
       setShowErrors(false);
-      setJustSaved(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      setSaveState('saved');
+      savedTimerRef.current = setTimeout(() => setSaveState('idle'), 3000);
     } catch (e: any) {
+      didError = true;
       Alert.alert('Save failed', e.message);
     } finally {
-      setSaving(false);
+      if (didError) setSaveState('idle');
     }
   }
 
@@ -760,6 +763,36 @@ export default function EditProfileScreen() {
         {renderPageHeader('Basic info', 'The first thing venues see when they find you.')}
 
         <SectionCard title="Listing">
+          {(() => {
+            const goLiveFields = [
+              { label: 'Email',       done: !!profile.email?.trim() },
+              { label: 'Stage name',  done: !!profile.name?.trim() },
+              { label: 'Username',    done: !!profile.username?.trim() },
+              { label: 'Act type',    done: !!profile.artistType?.trim() },
+              { label: 'Genres',      done: profile.genre?.length > 0 },
+              { label: 'Instruments', done: profile.instruments?.length > 0 },
+            ];
+            const allDone = goLiveFields.every(f => f.done);
+            return (
+              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: colors.grey, textTransform: 'uppercase', marginBottom: 10 }}>To go live</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {goLiveFields.map(f => (
+                    <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}>
+                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
+                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={{ marginTop: 12, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: allDone ? '#2F7A4B11' : '#FF000011', borderWidth: 1, borderColor: allDone ? '#2F7A4B44' : '#FF000033' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: allDone ? '#2F7A4B' : '#CC0000' }}>
+                    {allDone ? 'Your profile is live on Twaylo.' : 'Your profile is not live on Twaylo until this information is entered.'}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
+          <View style={{ height: 1, backgroundColor: colors.border, marginHorizontal: 16 }} />
           <FieldRow label="Listed in Discover" sublabel="Venues can find you in search and send enquiries. Turn off to pause your listing without deleting anything." last>
             <View style={{ alignItems: 'flex-end' }}>
               <Switch
@@ -1734,23 +1767,22 @@ export default function EditProfileScreen() {
 
   // ── Unsaved changes bar ────────────────────────────────────────────────────
   function renderUnsavedBar() {
-    if (!hasUnsaved && !justSaved) return null;
-    const isSaved = !hasUnsaved && justSaved;
+    if (!hasUnsaved && saveState === 'idle') return null;
     return (
       <View style={[pd.unsavedBar, { backgroundColor: '#16161A', borderTopColor: '#2a2a2a' }]}>
-        <Text style={pd.unsavedText}>{isSaved ? 'All changes saved' : 'Unsaved changes'}</Text>
+        <Text style={pd.unsavedText}>{saveState === 'saved' ? 'All changes saved' : 'Unsaved changes'}</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          {!isSaved && (
+          {saveState !== 'saved' && (
             <TouchableOpacity onPress={handleDiscard}>
               <Text style={pd.discardText}>Discard</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[pd.saveChangesBtn, isSaved && { backgroundColor: '#2F7A4B' }]}
-            onPress={isSaved ? undefined : handleSave}
-            disabled={saving || isSaved}
+            style={{ backgroundColor: saveState === 'saved' ? '#2F7A4B' : Colors.orange, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 }}
+            onPress={() => { if (saveState === 'idle') handleSave(); }}
+            activeOpacity={saveState === 'idle' ? 0.8 : 1}
           >
-            <Text style={pd.saveChangesBtnText}>{saving ? 'Saving...' : isSaved ? 'Saved' : 'Save changes'}</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>{saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Save changes'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1783,7 +1815,7 @@ export default function EditProfileScreen() {
             <Text style={{ color: colors.grey, fontSize: 14 }}>Settings</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
+            {saveState === 'saved' && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved just now</Text>}
             <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={() => router.push(`/musician/${uid}` as any)}>
               <Text style={[pd.outlineBtnText, { color: colors.black }]}>View public profile</Text>
             </TouchableOpacity>
@@ -1952,7 +1984,7 @@ export default function EditProfileScreen() {
           <Text style={{ fontSize: 16, color: colors.grey }}>‹</Text>
           <Text style={{ fontSize: 14, color: colors.grey }}>All settings</Text>
         </TouchableOpacity>
-        {justSaved && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved</Text>}
+        {saveState === 'saved' && <Text style={{ fontSize: 13, color: '#2F7A4B' }}>Saved</Text>}
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
         {renderCompletionBanner()}

@@ -96,6 +96,8 @@ function VenuePendingScreen() {
         // New venue — create a minimal venue document
         const venueRef = await addDoc(collection(db, 'venues'), {
           name: data.venueName,
+          username: data.username ?? '',
+          email: data.email ?? '',
           claimedBy: user.uid,
           claimedByEmail: user.email ?? '',
           claimedAt: serverTimestamp(),
@@ -114,6 +116,8 @@ function VenuePendingScreen() {
             approvedAt: serverTimestamp(),
           }),
           updateDoc(doc(db, 'venues', venueId), {
+            username: data.username ?? '',
+            email: data.email ?? '',
             claimedBy: user.uid,
             claimedByEmail: user.email ?? '',
             claimedAt: serverTimestamp(),
