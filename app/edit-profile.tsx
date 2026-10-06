@@ -47,7 +47,7 @@ const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const DRINKS_OPTS = ['Drink tickets','Bar tab','None needed','Other'];
 
 const NAV_GROUPS = [
-  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos'] },
+  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos', 'Past gigs'] },
   { label: 'BOOKING', tabs: ['Rates & reach', 'Tech rider', 'Hospitality'] },
   { label: 'ACCOUNT', tabs: ['Invoicing', 'Settings'] },
 ];
@@ -861,31 +861,90 @@ export default function EditProfileScreen() {
 
         <SectionCard title="Listing">
           {(() => {
-            const goLiveFields = [
-              { label: 'Email',       done: !!profile.email?.trim() },
-              { label: 'Stage name',  done: !!profile.name?.trim() },
-              { label: 'Username',    done: !!profile.username?.trim() },
-              { label: 'Act type',    done: !!profile.artistType?.trim() },
-              { label: 'Genres',      done: profile.genre?.length > 0 },
-              { label: 'Instruments', done: profile.instruments?.length > 0 },
+            const stages = [
+              {
+                num: 1,
+                label: 'Go live',
+                desc: 'Required to appear in search.',
+                fields: [
+                  { label: 'Email',       done: !!profile.email?.trim() },
+                  { label: 'Stage name',  done: !!profile.name?.trim() },
+                  { label: 'Username',    done: !!profile.username?.trim() },
+                  { label: 'Act type',    done: !!profile.artistType?.trim() },
+                  { label: 'Genres',      done: (profile.genre?.length ?? 0) > 0 },
+                  { label: 'Instruments', done: (profile.instruments?.length ?? 0) > 0 },
+                ],
+              },
+              {
+                num: 2,
+                label: 'Build your profile',
+                desc: 'Helps venues find the right fit.',
+                fields: [
+                  { label: 'Bio',         done: !!profile.about?.trim() },
+                  { label: 'Photo',        done: !!profile.photoUrl },
+                  { label: 'Music',        done: (profile.songs?.length ?? 0) > 0 || (profile.artistPages?.length ?? 0) > 0 },
+                  { label: 'Gallery',      done: (profile.photos?.length ?? 0) > 0 },
+                  { label: 'Past gigs',    done: (profile.gigHistory?.length ?? 0) > 0 },
+                  { label: 'Social links', done: !!(profile.instagram || profile.tiktok || profile.youtube) },
+                ],
+              },
+              {
+                num: 3,
+                label: 'Booking ready',
+                desc: 'Tells venues what to expect.',
+                fields: [
+                  { label: 'Fee range',   done: !!profile.feeMin && !!profile.feeMax || profile.feeOpenToOffers },
+                  { label: 'Tech rider',  done: !!(profile.techRider?.monitoringType || profile.techRider?.monitoring) },
+                  { label: 'Travel',      done: !!profile.travel },
+                ],
+              },
+              {
+                num: 4,
+                label: 'Fully set up',
+                desc: 'For serious working artists.',
+                fields: [
+                  { label: 'Hospitality',  done: !!(profile.hospitality?.mealsRequired || profile.hospitality?.greenRoom || profile.hospitality?.drinks) },
+                  { label: 'Invoicing',    done: !!(profile.payment?.methods?.length || profile.payment?.abn) },
+                ],
+              },
             ];
-            const allDone = goLiveFields.every(f => f.done);
+            const liveStage = stages[0];
+            const liveDone = liveStage.fields.every(f => f.done);
             return (
-              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: colors.grey, textTransform: 'uppercase', marginBottom: 10 }}>To go live</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {goLiveFields.map(f => (
-                    <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}>
-                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
-                      <Text style={{ fontSize: 12, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
+              <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
+                {stages.map((stage, si) => {
+                  const done = stage.fields.filter(f => f.done).length;
+                  const total = stage.fields.length;
+                  const allDone = done === total;
+                  const isLive = si === 0;
+                  return (
+                    <View key={stage.num} style={{ marginBottom: si < stages.length - 1 ? 18 : 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: allDone ? '#2F7A4B' : colors.bgFaint, borderWidth: 1, borderColor: allDone ? '#2F7A4B' : colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: allDone ? '#fff' : colors.grey }}>{allDone ? '✓' : stage.num}</Text>
+                          </View>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>{stage.label}</Text>
+                          {isLive && (
+                            <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, backgroundColor: liveDone ? '#2F7A4B22' : '#FF000011', borderWidth: 1, borderColor: liveDone ? '#2F7A4B55' : '#FF000033' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: liveDone ? '#2F7A4B' : '#CC0000' }}>{liveDone ? 'LIVE' : 'NOT LIVE'}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 11, color: allDone ? '#2F7A4B' : colors.grey, fontWeight: '600' }}>{done}/{total}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.grey, marginBottom: 8 }}>{stage.desc}</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                        {stage.fields.map(f => (
+                          <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: f.done ? '#2F7A4B44' : colors.border, backgroundColor: f.done ? '#2F7A4B11' : 'transparent' }}>
+                            <Text style={{ fontSize: 11, color: f.done ? '#2F7A4B' : colors.grey }}>{f.done ? '✓' : '○'}</Text>
+                            <Text style={{ fontSize: 11, color: f.done ? '#2F7A4B' : colors.grey, fontWeight: f.done ? '600' : '400' }}>{f.label}</Text>
+                          </View>
+                        ))}
+                      </View>
                     </View>
-                  ))}
-                </View>
-                <View style={{ marginTop: 12, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, backgroundColor: allDone ? '#2F7A4B11' : '#FF000011', borderWidth: 1, borderColor: allDone ? '#2F7A4B44' : '#FF000033' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: allDone ? '#2F7A4B' : '#CC0000' }}>
-                    {allDone ? 'Your profile is live on Twaylo.' : 'Your profile is not live on Twaylo until this information is entered.'}
-                  </Text>
-                </View>
+                  );
+                })}
               </View>
             );
           })()}
@@ -1032,8 +1091,6 @@ export default function EditProfileScreen() {
           </View>
         </SectionCard>
 
-        {renderPastGigs()}
-        {renderVideos()}
       </View>
     );
   }
@@ -1302,6 +1359,8 @@ export default function EditProfileScreen() {
             </View>
           </View>
         </SectionCard>
+
+        {renderVideos()}
       </View>
     );
   }
@@ -1309,7 +1368,9 @@ export default function EditProfileScreen() {
   function renderPastGigs() {
     const gigs = profile.gigHistory || [];
     return (
-      <SectionCard title="Gig history" subtitle={gigs.length > 0 ? `${gigs.length} gig${gigs.length !== 1 ? 's' : ''} logged` : 'Log previous performances to build credibility with venues'}>
+      <View>
+        {renderPageHeader('Past gigs', 'Log your previous performances. Builds credibility with venues.')}
+        <SectionCard title="Gig history" subtitle={gigs.length > 0 ? `${gigs.length} gig${gigs.length !== 1 ? 's' : ''} logged` : 'None yet'}>
           <View style={{ padding: 16, gap: 12 }}>
             {gigs.length === 0 && (
               <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
@@ -1374,6 +1435,7 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
         </SectionCard>
+      </View>
     );
   }
 
@@ -1391,7 +1453,7 @@ export default function EditProfileScreen() {
     };
 
     return (
-      <SectionCard title="Videos" subtitle="Live clips and promos. Paste a YouTube or Vimeo URL, or upload an MP4.">
+      <SectionCard title="Videos" subtitle="Paste a YouTube or Vimeo link or upload an MP4. Links load faster.">
           <View style={{ padding: 16 }}>
             {videoObjects.length === 0 && (
               <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20, marginBottom: 12 }}>
@@ -2267,6 +2329,7 @@ export default function EditProfileScreen() {
       case 'About':         return renderAbout();
       case 'Music':         return renderMusic();
       case 'Photos':        return renderPhotos();
+      case 'Past gigs':     return renderPastGigs();
       case 'Rates & reach': return renderRatesAndReach();
       case 'Tech rider':    return renderTechRider();
       case 'Hospitality':   return renderHospitality();
