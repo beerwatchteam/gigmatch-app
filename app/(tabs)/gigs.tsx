@@ -463,9 +463,12 @@ export function MyGigsContent({ embedded = false }: { embedded?: boolean }) {
   }, [uid]);
 
   const openEdit = (gig: GigWithId) => {
-    setEditGig(gig);
-    if (isArtist) setShowArtistForm(true);
-    else          setShowVenueForm(true);
+    if (isArtist) {
+      setEditGig(gig);
+      setShowArtistForm(true);
+    } else {
+      router.push({ pathname: '/edit-venue', params: { tab: 'Gig slots' } } as any);
+    }
   };
 
   const handleFormSaved = () => {
