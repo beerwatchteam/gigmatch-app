@@ -33,16 +33,17 @@ const INSTRUMENT_SUGGESTIONS = ['Vocals','Guitar (acoustic)','Guitar (electric)'
 const AVERAGE_DRAW_OPTS = ['Under 25','25-50','50-100','100-250','250+'];
 const TRAVEL_OPTS = ['Local (within 30 km)','Up to 100 km','Anywhere in my state','Interstate'];
 const MONITORING_OPTS = ['Wedges','In-ears','Both','Not needed'];
-const BACKLINE_NEEDED_OPTS = ['PA system','Stage monitors','Microphones + stands','Drum kit','Bass amp','Guitar amp','Keys stand','DI boxes','Lighting'];
+const BACKLINE_NEEDED_OPTS = ['PA system','Stage monitors','Microphones + stands','Drum kit','Bass amp','Guitar amp','Keys stand','DI boxes'];
 const BACKLINE_BRING_OPTS = ['Drum kit','Cymbals','Bass amp','Guitar amp','Keys','Pedalboards','In-ear rig','Own mics'];
 const COVERAGE_OPTS = ['$5 million','$10 million','$20 million','Other'];
-const LOAD_IN_OPTS = ['30 min before doors','1 hour before doors','2 hours before doors','Other'];
-const SOUNDCHECK_OPTS = ['15 min','30 min','45 min','60 min','Other'];
+const LOAD_IN_OPTS = ['30 min before doors','1 hour before doors','2 hours before doors','Other','Flexible, happy to discuss'];
+const SOUNDCHECK_OPTS = ['15 min','30 min','45 min','60 min','Other','Flexible, happy to discuss'];
 const MEAL_COUNT_OPTS = ['1','2','3','4','5','6','7','8','9','10'];
 const PAY_METHODS = ['Bank transfer','Cash','PayPal','Stripe','Other'];
 const PAY_TIMING = ['On the night','7 days after','14 days after','30 days after','Other'];
 const ENTITY_TYPES: LegalEntityType[] = ['Sole trader', 'Company', 'Partnership'];
 const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
+const DRINKS_OPTS = ['Drink tickets','Bar tab','None needed','Other'];
 
 const NAV_GROUPS = [
   { label: 'PROFILE', tabs: ['Basic info','About','Music','Photos'] },
@@ -79,6 +80,7 @@ type Profile = {
   feeMin: string; feeMax: string; averageDraw: string; travel: string;
   memberCount: string; members: Member[]; formed: string;
   setType: string; ageRestriction: string; setLengths: string[];
+  feeOpenToOffers: boolean; drawEstimateBand: string;
   about: string; photoUrl: string; photoPosition: { x: number; y: number };
   instagram: string; tiktok: string; spotify: string; appleMusic: string; youtube: string;
   customLinks: { label: string; url: string }[];
@@ -107,6 +109,7 @@ const BLANK: Profile = {
   name: '', username: '', artistType: '', otherArtistType: '', genre: [], otherGenres: '',
   instruments: [], location: '', email: '', phone: '',
   feeMin: '', feeMax: '', averageDraw: '', travel: '',
+  feeOpenToOffers: false, drawEstimateBand: '',
   memberCount: '', members: [], formed: '',
   setType: '', ageRestriction: '', setLengths: [],
   about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
@@ -133,6 +136,23 @@ function detectPlatform(url: string): string {
   if (url.includes('bandcamp.com')) return 'Bandcamp';
   if (url.includes('music.apple.com')) return 'Apple Music';
   return 'Link';
+}
+
+// ── normaliseHandle ───────────────────────────────────────────────────────
+function normaliseHandle(raw: string, platform: string): string {
+  if (!raw) return '';
+  const s = raw.trim();
+  const patterns: Record<string, RegExp> = {
+    instagram: /(?:https?:\/\/)?(?:www\.)?instagram\.com\/([A-Za-z0-9_.]+)/,
+    tiktok:    /(?:https?:\/\/)?(?:www\.)?tiktok\.com\/@?([A-Za-z0-9_.]+)/,
+    youtube:   /(?:https?:\/\/)?(?:www\.)?youtube\.com\/@?([A-Za-z0-9_.@-]+)/,
+  };
+  const p = patterns[platform];
+  if (p) {
+    const m = s.match(p);
+    if (m) return m[1];
+  }
+  return s.startsWith('@') ? s.slice(1) : s;
 }
 
 // ── SuburbSearch ──────────────────────────────────────────────────────────
@@ -543,7 +563,7 @@ export default function EditProfileScreen() {
 
   // ── Uploads ───────────────────────────────────────────────────────────────
   async function pickBannerPhoto() {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85, allowsEditing: true, aspect: [1, 1] });
     if (result.canceled || !result.assets[0]) return;
     setPhotoUploading(true);
     try {
@@ -742,7 +762,7 @@ export default function EditProfileScreen() {
     { label: 'Bio',           done: !!profile.about?.trim() },
     { label: 'Profile photo', done: !!profile.photoUrl },
     { label: 'Location',      done: !!profile.location?.trim() },
-    { label: 'Music tracks',  done: profile.songs?.length > 0 },
+    { label: 'Music tracks',  done: profile.songs?.length > 0 || profile.artistPages?.length > 0 },
     { label: 'Fee range',     done: !!profile.feeMin && !!profile.feeMax },
     { label: 'Average draw',  done: ((profile as any).gigHistory ?? []).some((g: any) => g.attendance != null && g.attendance > 0) },
     { label: 'Travel',        done: !!profile.travel },
@@ -814,7 +834,7 @@ export default function EditProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Identity">
-          <FieldRow label="Profile photo" sublabel="Square, at least 800 x 800px. Shown on enquiries and in search.">
+          <FieldRow label="Profile photo" sublabel="Upload any photo. Crop to square on the next screen. Shown on enquiries and in search.">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               {photoUploading
                 ? <View style={pd.photoThumb}><ActivityIndicator color={Colors.orange} /></View>
@@ -903,19 +923,19 @@ export default function EditProfileScreen() {
           </FieldRow>
         </SectionCard>
 
-        <SectionCard title="Social links">
+        <SectionCard title="Social links" subtitle="Paste a handle, full URL or @name. We'll clean it up.">
           {[
-            { key: 'instagram',  label: 'Instagram',    prefix: 'instagram.com/' },
-            { key: 'tiktok',     label: 'TikTok',       prefix: 'tiktok.com/@' },
-            { key: 'spotify',    label: 'Spotify',      prefix: 'open.spotify.com/artist/' },
-            { key: 'appleMusic', label: 'Apple Music',  prefix: 'music.apple.com/' },
-            { key: 'youtube',    label: 'YouTube',      prefix: 'youtube.com/@' },
+            { key: 'instagram', label: 'Instagram' },
+            { key: 'tiktok',    label: 'TikTok'    },
+            { key: 'youtube',   label: 'YouTube'   },
           ].map((p, i, arr) => (
             <FieldRow key={p.key} label={p.label} last={i === arr.length - 1 && profile.customLinks.length === 0}>
-              <View style={[pd.prefixRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <Text style={[pd.prefixText, { color: colors.grey, fontSize: 12 }]}>{p.prefix}</Text>
-                <TextInput style={[pd.prefixInput, { color: colors.black }]} value={(profile as any)[p.key] || ''} onChangeText={v => set(p.key as any, v)} placeholder="username" placeholderTextColor={Colors.greyLight} autoCapitalize="none" />
-              </View>
+              <Input
+                value={(profile as any)[p.key] || ''}
+                onChangeText={(v: string) => set(p.key as any, v)}
+                onBlur={() => set(p.key as any, normaliseHandle((profile as any)[p.key] || '', p.key))}
+                placeholder="@yourhandle"
+              />
             </FieldRow>
           ))}
           {profile.customLinks.map((link, i) => (
@@ -949,6 +969,31 @@ export default function EditProfileScreen() {
         <SectionCard title="Bio">
           <FieldRow label="Your story" sublabel="Two or three sentences: who you are, what you sound like, where you've played." last>
             <View>
+              {!profile.about?.trim() && (() => {
+                const mc = profile.members?.length;
+                const sizeLabel = mc > 0 ? `${mc}-piece`
+                  : profile.artistType === 'Solo artist' ? 'solo'
+                  : profile.artistType === 'Duo' ? '2-piece'
+                  : profile.artistType === 'Trio' ? '3-piece'
+                  : 'band';
+                const typeLabel = profile.artistType === 'Solo artist' ? 'artist'
+                  : profile.artistType === 'DJ' ? 'DJ' : 'band';
+                const genreLabel = profile.genre?.length > 0 ? profile.genre[0].toLowerCase() : 'your genre';
+                const locationLabel = profile.location ? profile.location.split(',')[0].trim() : 'your city';
+                const setTypeLabel = profile.setType ? profile.setType.toLowerCase() : 'originals and covers';
+                const formedLabel = profile.formed || 'year';
+                const tmpl = `We're a ${sizeLabel} ${genreLabel} ${typeLabel} from ${locationLabel}. We play ${setTypeLabel} and have been together since ${formedLabel}.`;
+                return (
+                  <TouchableOpacity
+                    style={{ marginBottom: 8, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bgFaint }}
+                    onPress={() => set('about', tmpl)}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.grey, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 }}>Start with a template</Text>
+                    <Text style={{ fontSize: 13, color: colors.black, lineHeight: 19 }}>{tmpl}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.orange, marginTop: 4 }}>Tap to use and edit</Text>
+                  </TouchableOpacity>
+                );
+              })()}
               <TextInput
                 style={[sh.input, sh.textarea, { backgroundColor: colors.bgFaint, borderColor: showErrors && !profile.about?.trim() ? Colors.danger : colors.border, color: colors.black, minHeight: 120 }]}
                 value={profile.about}
@@ -1119,6 +1164,28 @@ export default function EditProfileScreen() {
       <View>
         {renderPageHeader('Photos', 'Your cover photo and gallery.')}
 
+        <SectionCard title="Profile photo" subtitle="Square view, as it appears in search and on your profile card. Drag to reposition.">
+          <View style={{ padding: 16 }}>
+            <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
+              <View style={{ width: 96, height: 96, borderRadius: 48, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
+                {profile.photoUrl
+                  ? <Image source={{ uri: profile.photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  : <View style={{ flex: 1, backgroundColor: colors.bgFaint, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 11, color: Colors.greyLight }}>No photo</Text>
+                    </View>
+                }
+              </View>
+              <View style={{ flex: 1, gap: 6, paddingTop: 4 }}>
+                <Text style={{ fontSize: 13, color: colors.black, fontWeight: '600' }}>Profile card photo</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 18 }}>The same image is used for both the profile card and the banner below. Upload once, crop both.</Text>
+                <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border, alignSelf: 'flex-start', marginTop: 4 }]} onPress={pickBannerPhoto}>
+                  <Text style={[pd.outlineBtnText, { color: colors.black }]}>{photoUploading ? 'Uploading...' : profile.photoUrl ? 'Replace' : 'Upload photo'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </SectionCard>
+
         <SectionCard title="Cover photo" subtitle="The wide banner across the top of your profile.">
           <View style={{ padding: 16 }}>
             <RepositionablePhoto
@@ -1167,31 +1234,49 @@ export default function EditProfileScreen() {
 
         <SectionCard title="Fees" subtitle="Shown as a range on your profile. The final fee is agreed per gig.">
           <FieldRow label="Fee range" sublabel="Per gig, AUD, excluding GST." last>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={[pd.prefixRow, { flex: 1, borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <Text style={[pd.prefixText, { color: colors.grey }]}>$</Text>
-                <TextInput style={[pd.prefixInput, { color: colors.black }]} value={profile.feeMin} onChangeText={v => set('feeMin', v)} placeholder="400" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-              </View>
-              <Text style={{ color: colors.grey }}>to</Text>
-              <View style={[pd.prefixRow, { flex: 1, borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <Text style={[pd.prefixText, { color: colors.grey }]}>$</Text>
-                <TextInput style={[pd.prefixInput, { color: colors.black }]} value={profile.feeMax} onChangeText={v => set('feeMax', v)} placeholder="900" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
-              </View>
+            <View style={{ gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => set('feeOpenToOffers', !profile.feeOpenToOffers)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, alignSelf: 'flex-start', borderColor: profile.feeOpenToOffers ? Colors.orange : colors.border, backgroundColor: profile.feeOpenToOffers ? Colors.orange + '18' : 'transparent' }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '600', color: profile.feeOpenToOffers ? Colors.orange : colors.grey }}>Open to offers</Text>
+              </TouchableOpacity>
+              {!profile.feeOpenToOffers && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={[pd.prefixRow, { flex: 1, borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                    <Text style={[pd.prefixText, { color: colors.grey }]}>$</Text>
+                    <TextInput style={[pd.prefixInput, { color: colors.black }]} value={profile.feeMin} onChangeText={v => set('feeMin', v)} placeholder="400" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                  </View>
+                  <Text style={{ color: colors.grey }}>to</Text>
+                  <View style={[pd.prefixRow, { flex: 1, borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+                    <Text style={[pd.prefixText, { color: colors.grey }]}>$</Text>
+                    <TextInput style={[pd.prefixInput, { color: colors.black }]} value={profile.feeMax} onChangeText={v => set('feeMax', v)} placeholder="900" placeholderTextColor={Colors.greyLight} keyboardType="numeric" />
+                  </View>
+                </View>
+              )}
             </View>
           </FieldRow>
         </SectionCard>
 
         <SectionCard title="Audience & travel">
-          <FieldRow label="Average draw" sublabel="Computed from attendance logged in your past gigs.">
+          <FieldRow label="Average draw" sublabel="Computed from your logged gigs. Estimate until you have real data.">
             {(() => {
               const gigs: any[] = (profile as any).gigHistory ?? [];
               const withAtt = gigs.filter((g: any) => g.attendance != null && Number(g.attendance) > 0);
               const avg = withAtt.length > 0
                 ? Math.round(withAtt.reduce((s: number, g: any) => s + Number(g.attendance), 0) / withAtt.length)
                 : null;
-              return avg != null
-                ? <Text style={{ fontSize: 14, color: colors.black }}>~{avg} people</Text>
-                : <Text style={{ fontSize: 13, color: colors.grey }}>Add attendance to your past gigs to see your average.</Text>;
+              if (avg != null) return <Text style={{ fontSize: 14, color: colors.black }}>~{avg} people (from logged gigs)</Text>;
+              return (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 12, color: colors.grey }}>No gig history yet. Pick a rough estimate:</Text>
+                  <Pills
+                    options={['Under 50', '50–100', '100–250', '250+', 'Not sure']}
+                    value={profile.drawEstimateBand || ''}
+                    onSelect={(v: string) => set('drawEstimateBand', v)}
+                  />
+                </View>
+              );
             })()}
           </FieldRow>
           <FieldRow label="Travel" sublabel="How far you'll go for a gig." last>
@@ -1200,7 +1285,7 @@ export default function EditProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Insurance">
-          <FieldRow label="Public liability insurance" sublabel="Many venues require it. Insured acts get a badge on their profile.">
+          <FieldRow label="Public liability insurance" sublabel="Some venues require it, so it's worth flagging early. Whether you have it or not, you're welcome on Twaylo.">
             <View style={{ alignItems: 'flex-end' }}>
               <Switch value={profile.payment.publicLiabilityHeld} onValueChange={(v: boolean) => setPayment('publicLiabilityHeld', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#fff" />
             </View>
@@ -1218,6 +1303,35 @@ export default function EditProfileScreen() {
         </SectionCard>
       </View>
     );
+  }
+
+  function generateInputList(): Channel[] {
+    const instruments = profile.instruments || [];
+    const channels: Channel[] = [];
+    const has = (kw: string) => instruments.some(i => i.toLowerCase().includes(kw.toLowerCase()));
+    if (has('drum')) {
+      channels.push(
+        { source: 'Kick',      micDi: '' },
+        { source: 'Snare',     micDi: '' },
+        { source: 'Hi-hat',    micDi: '' },
+        { source: 'Overheads', micDi: '' },
+      );
+    }
+    if (has('bass')) channels.push({ source: 'Bass DI', micDi: 'DI' });
+    const guitars = instruments.filter(i => i.toLowerCase().includes('guitar'));
+    guitars.forEach((_, idx) => {
+      channels.push({ source: idx === 0 ? 'Guitar' : `Guitar ${idx + 1}`, micDi: '' });
+    });
+    if (has('keys') || has('piano')) channels.push({ source: 'Keys', micDi: 'DI' });
+    if (has('sax')) channels.push({ source: 'Saxophone', micDi: '' });
+    if (has('trumpet') || has('brass') || has('trombone')) channels.push({ source: 'Brass', micDi: '' });
+    if (has('vocal')) {
+      const vocalCount = Math.max(1, profile.members?.length || 1);
+      for (let v = 0; v < Math.min(vocalCount, 4); v++) {
+        channels.push({ source: vocalCount > 1 ? `Vocals ${v + 1}` : 'Vocals', micDi: '' });
+      }
+    }
+    return channels;
   }
 
   function renderTechRider() {
@@ -1285,9 +1399,22 @@ export default function EditProfileScreen() {
           title="Input list"
           subtitle="Sent to the venue's sound engineer."
           right={
-            <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={addChannel}>
-              <Text style={[pd.outlineBtnText, { color: colors.black }]}>+ Add channel</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(profile.instruments?.length > 0) && (
+                <TouchableOpacity
+                  style={[pd.outlineBtn, { borderColor: Colors.orange }]}
+                  onPress={() => {
+                    const suggested = generateInputList();
+                    if (suggested.length > 0) set('inputChannels', suggested);
+                  }}
+                >
+                  <Text style={[pd.outlineBtnText, { color: Colors.orange }]}>Suggest</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={addChannel}>
+                <Text style={[pd.outlineBtnText, { color: colors.black }]}>+ Add channel</Text>
+              </TouchableOpacity>
+            </View>
           }
         >
           <View style={{ paddingBottom: 8 }}>
@@ -1309,8 +1436,18 @@ export default function EditProfileScreen() {
                 </TouchableOpacity>
               </View>
             ))}
+            {profile.inputChannels.length === 1 && (
+              <View style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 4, padding: 10, borderRadius: 8, backgroundColor: Colors.orange + '11', borderWidth: 1, borderColor: Colors.orange + '44' }}>
+                <Text style={{ fontSize: 12, color: Colors.orange, lineHeight: 18 }}>Looks incomplete. A venue engineer may read one channel as your full list. Add the rest or tap Suggest to generate from your instruments.</Text>
+              </View>
+            )}
             {profile.inputChannels.length === 0 && (
-              <Text style={{ fontSize: 14, color: colors.grey, padding: 16 }}>No channels added yet.</Text>
+              <View style={{ padding: 16 }}>
+                <Text style={{ fontSize: 14, color: colors.grey }}>No channels yet.</Text>
+                {(profile.instruments?.length > 0) && (
+                  <Text style={{ fontSize: 12, color: colors.grey, marginTop: 4 }}>Tap Suggest to generate a draft from your instruments.</Text>
+                )}
+              </View>
             )}
           </View>
           <View style={{ borderTopWidth: 1, borderTopColor: colors.border, padding: 16, gap: 8 }}>
@@ -1376,29 +1513,46 @@ export default function EditProfileScreen() {
 
   function renderHospitality() {
     const memberCount = profile.members?.length || 0;
+    const drinksIsOther = profile.hospitality.drinks && !DRINKS_OPTS.slice(0, -1).includes(profile.hospitality.drinks);
+    const drinksChipValue = drinksIsOther ? 'Other' : (profile.hospitality.drinks || '');
     return (
       <View>
-        {renderPageHeader('Hospitality', 'What you need off stage. Shared with the venue once a booking is confirmed.')}
+        {renderPageHeader('Hospitality', 'Nice to have. Shared with the venue once a booking is confirmed. Everything defaults to off.')}
 
         <SectionCard title="Food & drink">
-          <FieldRow label="Meals">
+          <FieldRow label="Meals" sublabel="Toggle on if you'd like meals provided.">
             <View style={{ alignItems: 'flex-end' }}>
               <Switch value={profile.hospitality.mealsRequired} onValueChange={(v: boolean) => setHosp('mealsRequired', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#fff" />
             </View>
           </FieldRow>
           {profile.hospitality.mealsRequired && (
-            <FieldRow label="How many">
-              <View style={{ gap: 4 }}>
-                <SelectField value={profile.hospitality.mealCount} options={MEAL_COUNT_OPTS} onChange={v => setHosp('mealCount', v)} placeholder="Select" />
-                {memberCount > 0 && <Text style={{ fontSize: 12, color: colors.grey }}>Your line-up has {memberCount} performer{memberCount !== 1 ? 's' : ''}.</Text>}
-              </View>
-            </FieldRow>
+            <>
+              <FieldRow label="How many">
+                <View style={{ gap: 4 }}>
+                  <SelectField value={profile.hospitality.mealCount} options={MEAL_COUNT_OPTS} onChange={v => setHosp('mealCount', v)} placeholder="Select" />
+                  {memberCount > 0 && <Text style={{ fontSize: 12, color: colors.grey }}>Your line-up has {memberCount} performer{memberCount !== 1 ? 's' : ''}.</Text>}
+                </View>
+              </FieldRow>
+              <FieldRow label="Dietary requirements">
+                <Input value={profile.hospitality.dietaryReqs} onChangeText={(v: string) => setHosp('dietaryReqs', v)} placeholder="e.g. 1 vegetarian, 1 gluten-free" />
+              </FieldRow>
+            </>
           )}
-          <FieldRow label="Dietary requirements">
-            <Input value={profile.hospitality.dietaryReqs} onChangeText={(v: string) => setHosp('dietaryReqs', v)} placeholder="e.g. 1 vegetarian, 1 gluten-free" />
-          </FieldRow>
           <FieldRow label="Drinks" last>
-            <Input value={profile.hospitality.drinks} onChangeText={(v: string) => setHosp('drinks', v)} placeholder="e.g. water on stage, drink tickets" />
+            <View style={{ gap: 8 }}>
+              <Pills
+                options={DRINKS_OPTS}
+                value={drinksChipValue}
+                onSelect={(v: string) => setHosp('drinks', v === 'None needed' ? '' : v === 'Other' ? '' : v)}
+              />
+              {drinksChipValue === 'Other' && (
+                <Input
+                  value={drinksIsOther ? profile.hospitality.drinks : ''}
+                  onChangeText={(v: string) => setHosp('drinks', v)}
+                  placeholder="Describe what you'd like"
+                />
+              )}
+            </View>
           </FieldRow>
         </SectionCard>
 
@@ -1487,8 +1641,12 @@ export default function EditProfileScreen() {
               })}
             </View>
           </FieldRow>
-          <FieldRow label="Invoicing name" sublabel="The name on your invoices, if different from your stage name.">
-            <Input value={profile.payment.invoicingName} onChangeText={(v: string) => setPayment('invoicingName', v)} placeholder="The Dahlias Pty Ltd" />
+          <FieldRow label="Invoicing name" sublabel="Defaults to your stage name. Only change this if you invoice under a different name.">
+            <Input
+              value={profile.payment.invoicingName}
+              onChangeText={(v: string) => setPayment('invoicingName', v)}
+              placeholder={profile.name || 'Your stage name'}
+            />
           </FieldRow>
           {showAbnFields && (
             <>
@@ -1570,34 +1728,43 @@ export default function EditProfileScreen() {
                 ) : null
               }
             >
-              <FieldRow label="Entity type">
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {ENTITY_TYPES.map(opt => {
-                    const active = legalIdentity.entityType === opt;
-                    return (
-                      <TouchableOpacity
-                        key={opt}
-                        onPress={() => setLegal('entityType', opt)}
-                        style={{
-                          paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
-                          borderWidth: 1,
-                          borderColor: active ? colors.black : colors.border,
-                          backgroundColor: active ? colors.black : 'transparent',
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#fff' : colors.black }}>
-                          {opt}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+              <FieldRow label="Entity type" sublabel="Not sure? Most solo musicians are sole traders.">
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {ENTITY_TYPES.map(opt => {
+                      const active = legalIdentity.entityType === opt;
+                      return (
+                        <TouchableOpacity
+                          key={opt}
+                          onPress={() => {
+                            setLegal('entityType', opt);
+                            if (opt === 'Sole trader' && !legalIdentity.legalName) {
+                              setLegal('legalName', profile.name || '');
+                              setLegal('signatoryName', profile.name || '');
+                              setLegal('signatoryRole', 'Sole trader');
+                            }
+                          }}
+                          style={{
+                            paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20,
+                            borderWidth: 1,
+                            borderColor: active ? colors.black : colors.border,
+                            backgroundColor: active ? colors.black : 'transparent',
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '500', color: active ? '#fff' : colors.black }}>
+                            {opt}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
               </FieldRow>
-              <FieldRow label="Legal name" sublabel="The name on contracts and invoices.">
+              <FieldRow label="Legal name" sublabel="The name on contracts and invoices. Same as your stage name for sole traders.">
                 <Input
                   value={legalIdentity.legalName}
                   onChangeText={(v: string) => setLegal('legalName', v)}
-                  placeholder="e.g. Jane Smith or Dahlias Pty Ltd"
+                  placeholder={profile.name || 'e.g. Jane Smith or Dahlias Pty Ltd'}
                 />
               </FieldRow>
               {needsAcn && (
@@ -1626,14 +1793,14 @@ export default function EditProfileScreen() {
                 <Input
                   value={legalIdentity.signatoryName}
                   onChangeText={(v: string) => setLegal('signatoryName', v)}
-                  placeholder="e.g. Jane Smith"
+                  placeholder={profile.name || 'e.g. Jane Smith'}
                 />
               </FieldRow>
               <FieldRow label="Signatory role" sublabel="Their title or position.">
                 <Input
                   value={legalIdentity.signatoryRole}
                   onChangeText={(v: string) => setLegal('signatoryRole', v)}
-                  placeholder="e.g. Director or Sole trader"
+                  placeholder={legalIdentity.entityType === 'Sole trader' ? 'Sole trader' : legalIdentity.entityType === 'Company' ? 'Director' : 'e.g. Director or Sole trader'}
                 />
               </FieldRow>
               <FieldRow label="Registered address">
@@ -1644,11 +1811,32 @@ export default function EditProfileScreen() {
                 />
               </FieldRow>
               <FieldRow label="Suburb">
-                <Input
-                  value={legalIdentity.suburb}
-                  onChangeText={(v: string) => setLegal('suburb', v)}
-                  placeholder="e.g. Fitzroy"
-                />
+                <View style={{ gap: 6 }}>
+                  <Input
+                    value={legalIdentity.suburb}
+                    onChangeText={(v: string) => setLegal('suburb', v)}
+                    placeholder={(() => {
+                      const parts = (profile.location || '').split(',').map(s => s.trim());
+                      return parts[0] || 'e.g. Fitzroy';
+                    })()}
+                  />
+                  {!legalIdentity.suburb && profile.location && (
+                    <TouchableOpacity onPress={() => {
+                      const parts = (profile.location || '').split(',').map(s => s.trim());
+                      if (parts[0]) setLegal('suburb', parts[0]);
+                      if (parts[1]) {
+                        const stateMatch = parts[1].match(/([A-Z]{2,3})/);
+                        if (stateMatch) setLegal('state', stateMatch[1]);
+                      }
+                      if (parts[2]) {
+                        const pcMatch = parts[2].match(/\d{4}/);
+                        if (pcMatch) setLegal('postcode', pcMatch[0]);
+                      }
+                    }}>
+                      <Text style={{ fontSize: 12, color: Colors.orange }}>Use location: {profile.location}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </FieldRow>
               <FieldRow label="State">
                 <Pills options={AU_STATES} value={legalIdentity.state} onSelect={(v: string) => setLegal('state', v)} />

@@ -750,6 +750,7 @@ export default function EditVenueScreen() {
   const [tabErrors, setTabErrors]   = useState<string[]>([]);
   const [expandedRoom,  setExpandedRoom]  = useState<number | null>(null);
   const [expandedNight, setExpandedNight] = useState<number | null>(null);
+  const [touchedNights, setTouchedNights] = useState<Set<number>>(new Set());
 
   const [photoUploading, setPhotoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
@@ -890,6 +891,7 @@ export default function EditVenueScreen() {
         guestList: '', meals: false, mealsDetails: '', drinks: false, drinksDetails: '',
         _isNew: true,
       }];
+      setTouchedNights(prev => new Set([...prev, nights.length - 1]));
       setExpandedNight(nights.length - 1);
       return { ...prev, gigNights: nights };
     });
@@ -1085,7 +1087,7 @@ export default function EditVenueScreen() {
       errors.push('Basic Info');
     if (data.rooms.some(r => r.name?.trim() && !r.capacity?.toString().trim()))
       errors.push('Rooms');
-    if (data.gigNights.some(n => !(n.days?.length || n.day) || !n.startTime))
+    if (data.gigNights.some((n, idx) => touchedNights.has(idx) && (!(n.days?.length || n.day) || !n.startTime || !n.startDate || (!n.ongoing && !n.continuous && !n.endDate))))
       errors.push('Timetable');
     const venueAbn = data.payment.abn.replace(/\s/g, '');
     if (venueAbn && !isValidABN(venueAbn)) errors.push('Payments');
@@ -1673,7 +1675,7 @@ export default function EditVenueScreen() {
           const isOpen = expandedNight === i;
           const nightDays = night.days?.length ? night.days : (night.day ? [night.day] : []);
           const nightAllowedDow = nightDays.map(d => DAY_NAMES_DOW[d]).filter((n): n is number => n !== undefined);
-          const hasError = showErrors && (!(night.days?.length || night.day) || !night.startTime || !night.startDate || (!night.ongoing && !night.continuous && !night.endDate));
+          const hasError = showErrors && touchedNights.has(i) && (!(night.days?.length || night.day) || !night.startTime || !night.startDate || (!night.ongoing && !night.continuous && !night.endDate));
           const isOngoing = night.ongoing !== false && night.continuous !== false;
           const activeModels = night.paymentModels?.length ? night.paymentModels : (night.paymentModel ? [night.paymentModel] : []);
           const slotLabel = night.name || (night.slotType ? `${night.slotType} slot` : 'New slot');
@@ -1694,7 +1696,7 @@ export default function EditVenueScreen() {
 
           return (
             <View key={i} style={[s.card, { backgroundColor: colors.bgFaint, borderColor: hasError ? Colors.danger : colors.border, marginBottom: 12 }]}>
-              <TouchableOpacity style={s.cardHeader} onPress={() => setExpandedNight(isOpen ? null : i)} activeOpacity={0.7}>
+              <TouchableOpacity style={s.cardHeader} onPress={() => { if (!isOpen) setTouchedNights(prev => new Set([...prev, i])); setExpandedNight(isOpen ? null : i); }} activeOpacity={0.7}>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black }}>{slotLabel}</Text>
@@ -1719,13 +1721,13 @@ export default function EditVenueScreen() {
                     <Input value={night.name} onChangeText={(v: string) => setNight(i, 'name', v)} placeholder="e.g. Friday Night Sessions" />
                   </Field>
 
-                  <Field label="DAYS" error={showErrors && !nightDays.length}>
+                  <Field label="DAYS" error={showErrors && touchedNights.has(i) && !nightDays.length}>
                     <Pills options={CANONICAL_DAYS} value={nightDays} onSelect={(v: string[]) => setNightFields(i, { days: v, day: v[0] || '' })} multi />
                   </Field>
 
                   <View style={{ flexDirection: 'row', gap: 12 }}>
                     <View style={{ flex: 2 }}>
-                      <Field label="START TIME" error={showErrors && !night.startTime}>
+                      <Field label="START TIME" error={showErrors && touchedNights.has(i) && !night.startTime}>
                         <TimePicker
                           value={night.startTime}
                           onChange={(v: string) => setNightFields(i, {
@@ -1810,7 +1812,7 @@ export default function EditVenueScreen() {
                   </View>
 
                   {/* Runs from + Ongoing */}
-                  <Field label="RUNS FROM" error={showErrors && !night.startDate}>
+                  <Field label="RUNS FROM" error={showErrors && touchedNights.has(i) && !night.startDate}>
                     <DatePicker value={night.startDate} onChange={(v: string) => setNight(i, 'startDate', v)} allowedDays={nightAllowedDow} />
                   </Field>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -1823,7 +1825,7 @@ export default function EditVenueScreen() {
                     <Text style={{ fontSize: 14, color: colors.black }}>Ongoing (no end date)</Text>
                   </View>
                   {!isOngoing && (
-                    <Field label="END DATE" error={showErrors && !night.endDate}>
+                    <Field label="END DATE" error={showErrors && touchedNights.has(i) && !night.endDate}>
                       <DatePicker value={night.endDate} onChange={(v: string) => setNight(i, 'endDate', v)} allowedDays={nightAllowedDow} rangeStart={night.startDate} />
                     </Field>
                   )}
@@ -2019,6 +2021,23 @@ export default function EditVenueScreen() {
                     <Input value={night.notes} onChangeText={(v: string) => setNight(i, 'notes', v)} placeholder="e.g. Acoustic only. Strict 45-minute sets." multiline />
                   </Field>
 
+                  {showErrors && touchedNights.has(i) && (() => {
+                    const missing: string[] = [];
+                    if (!nightDays.length) missing.push('Days');
+                    if (!night.startTime) missing.push('Start time');
+                    if (!night.startDate) missing.push('Runs from date');
+                    if (!isOngoing && !night.endDate) missing.push('End date');
+                    if (missing.length === 0) return null;
+                    return (
+                      <View style={{ backgroundColor: 'rgba(233,69,96,0.06)', borderRadius: 8, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(233,69,96,0.25)' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.danger, marginBottom: 6 }}>Complete before saving:</Text>
+                        {missing.map(m => (
+                          <Text key={m} style={{ fontSize: 13, color: Colors.danger, lineHeight: 20 }}>{`\u2022 ${m}`}</Text>
+                        ))}
+                      </View>
+                    );
+                  })()}
+
                   {/* Slot footer */}
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
                     <TouchableOpacity
@@ -2027,6 +2046,7 @@ export default function EditVenueScreen() {
                         const copy = { ...night, name: (night.name ? `${night.name} (copy)` : ''), _isNew: true };
                         setData(prev => {
                           const nights = [...prev.gigNights, copy];
+                          setTouchedNights(p => new Set([...p, nights.length - 1]));
                           setExpandedNight(nights.length - 1);
                           return { ...prev, gigNights: nights };
                         });

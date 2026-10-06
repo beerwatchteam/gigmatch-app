@@ -77,7 +77,14 @@ export default function EnquireScreen() {
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
-      if (snap.exists()) setBand(snap.data());
+      if (snap.exists()) {
+        const d = snap.data();
+        setBand(d);
+        // Default set length from artist's saved set lengths, unless venue has locked one
+        if (!lockedDuration && d.setLengths?.length > 0) {
+          setSetLength(d.setLengths[0]);
+        }
+      }
     }).catch(() => {});
   }, [user?.uid]);
 
