@@ -47,7 +47,7 @@ const AU_STATES = ['ACT','NSW','NT','QLD','SA','TAS','VIC','WA'];
 const DRINKS_OPTS = ['Drink tickets','Bar tab','None needed','Other'];
 
 const NAV_GROUPS = [
-  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos', 'Past gigs'] },
+  { label: 'PROFILE', tabs: ['Basic info', 'About', 'Music', 'Photos & videos', 'My gigs'] },
   { label: 'BOOKING', tabs: ['Rates & reach', 'Tech rider', 'Hospitality'] },
   { label: 'ACCOUNT', tabs: ['Invoicing', 'Settings'] },
 ];
@@ -454,6 +454,8 @@ export default function EditProfileScreen() {
   const [bannerDismissed,    setBannerDismissed]    = useState(false);
   const [abnTouched,         setAbnTouched]         = useState(false);
   const [liveAvgDraw,        setLiveAvgDraw]        = useState<number | null>(null);
+  const [upcomingGigs,       setUpcomingGigs]       = useState<{ venue: string; suburb?: string; date: string }[]>([]);
+  const [confirmedPastGigs,  setConfirmedPastGigs]  = useState<{ venue: string; suburb?: string; date: string; attendance?: number }[]>([]);
   const [abnLookupLoading,   setAbnLookupLoading]   = useState(false);
   const [abnLookupResult,    setAbnLookupResult]    = useState<AbnLookupResult | null>(null);
   const [acnTouched,         setAcnTouched]         = useState(false);
@@ -532,24 +534,31 @@ export default function EditProfileScreen() {
     }).catch(() => {}).finally(() => setLoading(false));
   }, [uid]);
 
-  // Load confirmed past gigs from the gigs collection to compute average draw
-  // (same source the public musician profile uses — not the manual gigHistory array)
+  // Load confirmed gigs from the gigs collection — used for avg draw, upcoming, and past lists
   useEffect(() => {
     if (!uid) return;
     const now = new Date();
+    const isoDate = (d: Date) => d.toISOString().slice(0, 10);
     getDocs(query(collection(db, 'gigs'), where('participantIds', 'array-contains', uid)))
       .then(snap => {
-        const past = snap.docs
-          .map(d => d.data())
-          .filter((g: any) =>
-            g.startAt?.toDate?.() < now &&
-            (g.status == null || g.status === 'confirmed') &&
-            g.attendance != null && g.attendance > 0
-          );
-        if (past.length > 0) {
-          const avg = Math.round(
-            past.reduce((s: number, g: any) => s + Number(g.attendance), 0) / past.length
-          );
+        const all = snap.docs.map(d => d.data()) as any[];
+        const confirmed = all.filter(g => g.startAt?.toDate && (g.status == null || g.status === 'confirmed'));
+
+        const upcoming = confirmed
+          .filter(g => g.startAt.toDate() >= now)
+          .sort((a, b) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime())
+          .map(g => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()) }));
+        setUpcomingGigs(upcoming);
+
+        const past = confirmed
+          .filter(g => g.startAt.toDate() < now)
+          .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
+          .map(g => ({ venue: g.venueName || '', suburb: g.locationText || undefined, date: isoDate(g.startAt.toDate()), attendance: g.attendance ?? undefined }));
+        setConfirmedPastGigs(past);
+
+        const withAttendance = past.filter(g => g.attendance != null && (g.attendance ?? 0) > 0);
+        if (withAttendance.length > 0) {
+          const avg = Math.round(withAttendance.reduce((s, g) => s + Number(g.attendance), 0) / withAttendance.length);
           setLiveAvgDraw(avg);
         }
       })
@@ -1298,7 +1307,7 @@ export default function EditProfileScreen() {
   function renderPhotos() {
     return (
       <View>
-        {renderPageHeader('Photos', 'Your cover photo and gallery.')}
+        {renderPageHeader('Photos & videos', 'Your cover photo, gallery, and video clips.')}
 
         <SectionCard title="Profile photo" subtitle="Square view, as it appears in search and on your profile card. Drag to reposition.">
           <View style={{ padding: 16 }}>
@@ -1365,19 +1374,60 @@ export default function EditProfileScreen() {
     );
   }
 
-  function renderPastGigs() {
-    const gigs = profile.gigHistory || [];
+  function renderMyGigs() {
+    const manualGigs = profile.gigHistory || [];
+    const awayPeriods: { from: string; to?: string; notes?: string }[] = (profile as any).awayPeriods || [];
+    const prettyDate = (iso: string) => {
+      const d = new Date(iso + 'T00:00:00');
+      return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
     return (
       <View>
-        {renderPageHeader('Past gigs', 'Log your previous performances. Builds credibility with venues.')}
-        <SectionCard title="Gig history" subtitle={gigs.length > 0 ? `${gigs.length} gig${gigs.length !== 1 ? 's' : ''} logged` : 'None yet'}>
-          <View style={{ padding: 16, gap: 12 }}>
-            {gigs.length === 0 && (
+        {renderPageHeader('My gigs', 'Your upcoming bookings, gig history, and away periods.')}
+
+        {/* Upcoming */}
+        <SectionCard title="Upcoming" subtitle={upcomingGigs.length > 0 ? `${upcomingGigs.length} booked` : 'No upcoming gigs booked yet'}>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 4 }}>
+            {upcomingGigs.length === 0 ? (
               <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
-                Add venues you have played. The more you log, the more credible your profile looks to new venues.
+                Confirmed bookings from your enquiries will appear here.
+              </Text>
+            ) : (
+              upcomingGigs.map((g, i) => (
+                <View key={i} style={{ paddingVertical: 8, borderBottomWidth: i < upcomingGigs.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
+                  <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{prettyDate(g.date)}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        </SectionCard>
+
+        {/* Confirmed past gigs from bookings */}
+        {confirmedPastGigs.length > 0 && (
+          <SectionCard title="Past bookings" subtitle={`${confirmedPastGigs.length} confirmed gig${confirmedPastGigs.length !== 1 ? 's' : ''} via Twaylo`}>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 4 }}>
+              {confirmedPastGigs.map((g, i) => (
+                <View key={i} style={{ paddingVertical: 8, borderBottomWidth: i < confirmedPastGigs.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{g.venue}{g.suburb ? `, ${g.suburb}` : ''}</Text>
+                  <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>
+                    {prettyDate(g.date)}{g.attendance != null ? ` · ~${g.attendance} draw` : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </SectionCard>
+        )}
+
+        {/* Manual gig history */}
+        <SectionCard title="Gig history" subtitle={manualGigs.length > 0 ? `${manualGigs.length} gig${manualGigs.length !== 1 ? 's' : ''} logged` : 'Log gigs you played before using Twaylo'}>
+          <View style={{ padding: 16, gap: 12 }}>
+            {manualGigs.length === 0 && (
+              <Text style={{ fontSize: 13, color: colors.grey, lineHeight: 20 }}>
+                Add venues you have played before joining Twaylo. The more you log, the more credible your profile looks to new venues.
               </Text>
             )}
-            {gigs.map((gig, i) => (
+            {manualGigs.map((gig, i) => (
               <View key={i} style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>Gig {i + 1}</Text>
@@ -1435,6 +1485,24 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
         </SectionCard>
+
+        {/* Away periods */}
+        {awayPeriods.length > 0 && (
+          <SectionCard title="Away" subtitle="Periods when you are unavailable">
+            <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 4 }}>
+              {awayPeriods.map((p, i) => {
+                const fmt = (s: string) => { const d = new Date(s + 'T00:00:00'); return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }); };
+                const label = p.to && p.to !== p.from ? `${fmt(p.from)} to ${fmt(p.to)}` : fmt(p.from);
+                return (
+                  <View key={i} style={{ paddingVertical: 8, borderBottomWidth: i < awayPeriods.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>{label}</Text>
+                    {p.notes ? <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2 }}>{p.notes}</Text> : null}
+                  </View>
+                );
+              })}
+            </View>
+          </SectionCard>
+        )}
       </View>
     );
   }
@@ -2325,12 +2393,12 @@ export default function EditProfileScreen() {
 
   function renderActiveTab() {
     switch (activeTab) {
-      case 'Basic info':    return renderBasicInfo();
-      case 'About':         return renderAbout();
-      case 'Music':         return renderMusic();
-      case 'Photos':        return renderPhotos();
-      case 'Past gigs':     return renderPastGigs();
-      case 'Rates & reach': return renderRatesAndReach();
+      case 'Basic info':       return renderBasicInfo();
+      case 'About':            return renderAbout();
+      case 'Music':            return renderMusic();
+      case 'Photos & videos':  return renderPhotos();
+      case 'My gigs':          return renderMyGigs();
+      case 'Rates & reach':    return renderRatesAndReach();
       case 'Tech rider':    return renderTechRider();
       case 'Hospitality':   return renderHospitality();
       case 'Invoicing':     return renderInvoicing();
