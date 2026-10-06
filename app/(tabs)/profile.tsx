@@ -401,7 +401,7 @@ function AgentScreen() {
           where('status', '==', 'pending'))
       );
       if (!existingSnap.empty) {
-        setClaimError('You already have a pending claim for this musician.');
+        setClaimError('You already have a pending claim for this artist.');
         setClaimLoading(false); return;
       }
 
@@ -546,7 +546,7 @@ function AgentScreen() {
       return;
     }
     if (entered !== claim.verificationCode) {
-      setVerifyErrors(p => ({ ...p, [claim.id]: 'Incorrect code. Ask the musician to check theirs.' }));
+      setVerifyErrors(p => ({ ...p, [claim.id]: 'Incorrect code. Ask the artist to check theirs.' }));
       return;
     }
     setVerifying(p => ({ ...p, [claim.id]: true }));
@@ -634,7 +634,7 @@ function AgentScreen() {
               onPress={() => { setShowSearch(true); setClaimSent(null); setClaimError(''); }}
               activeOpacity={0.8}
             >
-              <Text style={agentStyles.addBtnText}>+ Claim Musician</Text>
+              <Text style={agentStyles.addBtnText}>+ Claim Artist</Text>
             </TouchableOpacity>
           </View>
 
@@ -642,7 +642,7 @@ function AgentScreen() {
             <ActivityIndicator color={Colors.orange} style={{ marginTop: 16 }} />
           ) : approved.length === 0 ? (
             <Text style={[agentStyles.empty, { color: colors.greyLight }]}>
-              No musicians in your roster yet. Claim a musician to get started.
+              No artists in your roster yet. Claim an artist to get started.
             </Text>
           ) : (
             approved.map(c => (
@@ -747,9 +747,9 @@ function AgentScreen() {
         {/* Search / claim flow */}
         {showSearch && (
           <View style={[agentStyles.searchBox, { borderColor: colors.border, backgroundColor: colors.bg }]}>
-            <Text style={[agentStyles.searchTitle, { color: colors.black }]}>Find a Musician to Claim</Text>
+            <Text style={[agentStyles.searchTitle, { color: colors.black }]}>Find an Artist to Claim</Text>
             <Text style={[agentStyles.searchHint, { color: colors.grey }]}>
-              Search by name or username. The musician must already have a Twaylo account.
+              Search by name or username. The artist must already have a Twaylo account.
             </Text>
             <TextInput
               style={[agentStyles.input, { borderColor: colors.border, color: colors.black, backgroundColor: colors.bgFaint }]}
@@ -782,7 +782,7 @@ function AgentScreen() {
                   <Text style={[agentStyles.claimName, { color: colors.black }]}>{selectedArtist.name}</Text>
                   {selectedArtist.email
                     ? <Text style={[agentStyles.claimEmail, { color: colors.grey }]}>Verification sent to: {selectedArtist.email}</Text>
-                    : <Text style={[agentStyles.claimEmail, { color: Colors.danger }]}>No email on file for this musician.</Text>}
+                    : <Text style={[agentStyles.claimEmail, { color: Colors.danger }]}>No email on file for this artist.</Text>}
                 </View>
                 <TouchableOpacity onPress={() => setSelectedArtist(null)} activeOpacity={0.7}>
                   <Text style={{ color: colors.greyLight, fontSize: 13 }}>Clear</Text>

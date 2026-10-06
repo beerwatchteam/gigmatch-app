@@ -27,7 +27,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
   const BOTTOM_ROUTES = ['venues', 'musicians', 'discover', 'inbox'];
   const LABELS: Record<string, string> = {
     venues:    'Venues',
-    musicians: 'Musicians',
+    musicians: 'Artists',
     discover:  'Discover',
     inbox:     'Inbox',
   };
@@ -130,7 +130,7 @@ function BottomTabBar({ state, descriptors, navigation, badgeCount, greenTick }:
 
   const LABELS: Record<string, string> = {
     venues:    'Venues',
-    musicians: 'Musicians',
+    musicians: 'Artists',
     discover:  'Discover',
     inbox:     'Inbox',
   };
@@ -475,7 +475,7 @@ export default function TabsLayout() {
       >
         <Tabs.Screen name="index"     options={{ href: null }} />
         <Tabs.Screen name="venues"    options={{ title: 'Venues' }} />
-        <Tabs.Screen name="musicians" options={{ title: 'Musicians' }} />
+        <Tabs.Screen name="musicians" options={{ title: 'Artists' }} />
         <Tabs.Screen name="discover"  options={{ title: 'Discover' }} />
         <Tabs.Screen name="inbox"     options={{ title: 'Inbox', tabBarBadge: badgeCount || undefined, ...(!user ? { href: null } : {}) }} />
         <Tabs.Screen name="gigs"      options={{ href: null }} />

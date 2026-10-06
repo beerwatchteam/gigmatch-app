@@ -668,7 +668,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
               <TouchableOpacity style={s.browseMusicianBtn} onPress={() => router.push('/(tabs)/musicians')}>
-                <Text style={s.browseMusicianText}>Browse musicians →</Text>
+                <Text style={s.browseMusicianText}>Browse artists →</Text>
               </TouchableOpacity>
             </View>
             {/* Cards grid */}
@@ -713,12 +713,12 @@ export default function HomeScreen() {
             <Text style={[s.footerMeta, { color: colors.grey }]}>BETA · MELBOURNE</Text>
           </View>
           <View style={s.footerNav}>
-            {(['Venues', 'Musicians', 'Discover', 'Contact'] as const).map(label => (
+            {(['Venues', 'Artists', 'Discover', 'Contact'] as const).map(label => (
               <TouchableOpacity
                 key={label}
                 onPress={() => {
                   if (label === 'Venues')    router.push('/(tabs)/venues');
-                  else if (label === 'Musicians') router.push('/(tabs)/musicians');
+                  else if (label === 'Artists') router.push('/(tabs)/musicians');
                   else if (label === 'Discover') router.push('/(tabs)/discover');
                 }}
               >

@@ -277,7 +277,7 @@ export default function MusiciansScreen() {
       {showDropdown && hasDropdown && (
         <View style={[st.dropdown, { top: 54, left: 16, right: 16, zIndex: 9999 }]}>
           {musicianMatches.length > 0 && (<>
-            <Text style={st.dropSection}>MUSICIANS</Text>
+            <Text style={st.dropSection}>ARTISTS</Text>
             {musicianMatches.map(m => (
               <TouchableOpacity key={m.id} style={st.dropItem} onPress={() => selectMusicianMatch(m)}>
                 <Text style={st.dropItemText}>🎵 {m.name}</Text>
@@ -372,7 +372,7 @@ export default function MusiciansScreen() {
           <View style={st.fpFooter}>
             <TouchableOpacity style={st.fpApplyBtn} onPress={closeFilterPanel} activeOpacity={0.85}>
               <Text style={st.fpApplyBtnText}>
-                Show {filtered.length} musician{filtered.length !== 1 ? 's' : ''}
+                Show {filtered.length} artist{filtered.length !== 1 ? 's' : ''}
               </Text>
             </TouchableOpacity>
           </View>
@@ -465,7 +465,7 @@ export default function MusiciansScreen() {
               onPress={e => {
                 e.stopPropagation?.();
                 if (!user) { router.push('/login'); return; }
-                router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name || 'Musician' } });
+                router.push({ pathname: '/messages/[id]', params: { id: item.id, name: item.name || 'Artist' } });
               }}
               activeOpacity={0.85}
             >
@@ -492,7 +492,7 @@ export default function MusiciansScreen() {
           <View style={[st.mobileWebHero, { backgroundColor: '#f2ede6', paddingTop: insets.top + TOP_TAB_H + 20 }]}>
             <Text style={st.mobileWebHeroTitle}>Find your next act</Text>
             <Text style={st.webHeroSub}>
-              {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+              {filtered.length} artist{filtered.length !== 1 ? 's' : ''} listed
             </Text>
           </View>
 
@@ -510,7 +510,7 @@ export default function MusiciansScreen() {
               {loading
                 ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
                 : filtered.length === 0
-                  ? <Text style={[st.empty, { paddingTop: 10 }]}>No musicians match your filters.</Text>
+                  ? <Text style={[st.empty, { paddingTop: 10 }]}>No artists match your filters.</Text>
                   : filtered.map(item => <MusicianCard key={item.id} item={item} />)
               }
               <View style={{ height: 48 }} />
@@ -531,7 +531,7 @@ export default function MusiciansScreen() {
             <View style={{ flex: 1 }}>
               <Text style={st.webHeroTitle}>Find your next act</Text>
               <Text style={st.webHeroSub}>
-                {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+                {filtered.length} artist{filtered.length !== 1 ? 's' : ''} listed
               </Text>
             </View>
             {/* Search */}
@@ -564,7 +564,7 @@ export default function MusiciansScreen() {
                 {showDropdown && hasDropdown && (
                   <View style={[st.dropdown, { top: 48, left: 0, right: 0, zIndex: 9999 }]}>
                     {musicianMatches.length > 0 && (<>
-                      <Text style={st.dropSection}>MUSICIANS</Text>
+                      <Text style={st.dropSection}>ARTISTS</Text>
                       {musicianMatches.map(m => (
                         <TouchableOpacity key={m.id} style={st.dropItem} onPress={() => selectMusicianMatch(m)}>
                           <Text style={st.dropItemText}>🎵 {m.name}</Text>
@@ -712,7 +712,7 @@ export default function MusiciansScreen() {
             {loading
               ? <ActivityIndicator style={{ marginTop: 60, marginBottom: 60 }} color={Colors.orange} />
               : filtered.length === 0
-                ? <Text style={st.empty}>No musicians match your filters.</Text>
+                ? <Text style={st.empty}>No artists match your filters.</Text>
                 : (
                   <View style={st.webGrid}>
                     {filtered.map(item => (
@@ -737,7 +737,7 @@ export default function MusiciansScreen() {
       <View style={st.nativeHero}>
         <Text style={st.nativeTitle}>Find your next act</Text>
         <Text style={st.nativeSub}>
-          {filtered.length} musician{filtered.length !== 1 ? 's' : ''} listed
+          {filtered.length} artist{filtered.length !== 1 ? 's' : ''} listed
         </Text>
       </View>
 
@@ -754,7 +754,7 @@ export default function MusiciansScreen() {
           {loading
             ? <ActivityIndicator style={{ marginTop: 40 }} color={Colors.orange} />
             : filtered.length === 0
-              ? <Text style={[st.empty, { color: colors.grey }]}>No musicians match your filters.</Text>
+              ? <Text style={[st.empty, { color: colors.grey }]}>No artists match your filters.</Text>
               : filtered.map(item => <MusicianCard key={item.id} item={item} />)
           }
           <View style={{ height: 48 }} />
