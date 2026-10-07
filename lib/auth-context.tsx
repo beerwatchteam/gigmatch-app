@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { registerForPushNotifications } from '@/lib/pushNotifications';
 
 export type UserProfile = {
   type: 'venue' | 'artist' | 'admin' | 'agent';
@@ -40,8 +41,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         unsubProfile = onSnapshot(
           doc(db, 'users', firebaseUser.uid),
           (snap) => {
-            setProfile(snap.exists() ? { uid: firebaseUser.uid, ...snap.data() } as UserProfile : null);
+            const p = snap.exists() ? { uid: firebaseUser.uid, ...snap.data() } as UserProfile : null;
+            setProfile(p);
             setLoading(false);
+            if (p) registerForPushNotifications(firebaseUser.uid, p).catch(() => {});
           },
           () => { setProfile(null); setLoading(false); },
         );

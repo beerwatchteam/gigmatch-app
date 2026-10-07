@@ -39,6 +39,14 @@
       "expo-router",
       "expo-status-bar",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#f97316",
+          "iosDisplayInForeground": true
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Twaylo accesses your photos to upload profile and venue images.",

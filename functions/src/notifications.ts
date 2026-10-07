@@ -5,6 +5,17 @@ import { Resend } from 'resend';
 
 const resendApiKey = defineSecret('RESEND_API_KEY');
 
+// ── Expo push helper ──────────────────────────────────────────────────────────
+
+async function sendPush(token: string, title: string, body: string): Promise<void> {
+  if (!token.startsWith('ExponentPushToken[')) return;
+  await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ to: token, title, body, sound: 'default', priority: 'high' }),
+  });
+}
+
 const FROM_ADDRESS = 'Twaylo <notifications@twaylo.com.au>';
 const APP_URL      = 'https://twaylo.com.au';
 
@@ -96,13 +107,17 @@ export const onEnquiryCreated = onDocumentCreated(
       ${BUTTON(inboxUrl, 'View in inbox')}
     `);
 
-    const resend = new Resend(resendApiKey.value());
-    await resend.emails.send({
-      from:    FROM_ADDRESS,
-      to:      venueEmail,
-      subject: `New enquiry from ${bandName}`,
-      html,
-    });
+    const pushToken = venue?.expoPushToken as string | undefined;
+
+    await Promise.all([
+      new Resend(resendApiKey.value()).emails.send({
+        from:    FROM_ADDRESS,
+        to:      venueEmail,
+        subject: `New enquiry from ${bandName}`,
+        html,
+      }),
+      pushToken ? sendPush(pushToken, `New enquiry from ${bandName}`, `${slotLabel} — tap to review in your inbox`) : Promise.resolve(),
+    ]);
   },
 );
 
@@ -164,12 +179,16 @@ export const onEnquiryUpdated = onDocumentUpdated(
       ${BUTTON(inboxUrl, 'Open inbox')}
     `);
 
-    const resend = new Resend(resendApiKey.value());
-    await resend.emails.send({
-      from:    FROM_ADDRESS,
-      to:      artistEmail,
-      subject: `${labels.heading}: ${venueName}`,
-      html,
-    });
+    const pushToken = profile?.expoPushToken as string | undefined;
+
+    await Promise.all([
+      new Resend(resendApiKey.value()).emails.send({
+        from:    FROM_ADDRESS,
+        to:      artistEmail,
+        subject: `${labels.heading}: ${venueName}`,
+        html,
+      }),
+      pushToken ? sendPush(pushToken, labels.heading, `${venueName} · ${slotLabel}`) : Promise.resolve(),
+    ]);
   },
 );

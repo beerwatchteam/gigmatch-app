@@ -5,8 +5,23 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider, useTheme } from '@/lib/theme-context';
+
+// Show notifications as banners even when the app is in the foreground
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
+
 SplashScreen.preventAutoHideAsync();
 
 const isWeb = Platform.OS === 'web';
