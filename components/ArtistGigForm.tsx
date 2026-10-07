@@ -1,13 +1,10 @@
 /**
  * ArtistGigForm
  * Creates or edits an artist-added gig.
- * Used by My Gigs for both new gigs and editing existing ones.
  *
- * Section 1: Gig details
- * Section 2: Public visibility + preview
- * Section 3: Private (fee, payment, documents, notes) — collapsible
+ * Sections: Gig details | Money | Private notes | Documents | Show on profile
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Switch, Modal, ActivityIndicator, Platform,
@@ -16,7 +13,7 @@ import { Text } from '@/components/Text';
 import { Colors } from '@/constants/colors';
 import { useTheme } from '@/lib/theme-context';
 import * as DocumentPicker from 'expo-document-picker';
-import { doc, getDoc, collection, getDocs, query, where, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
   createArtistGig, updateArtistGig, setGigPublic, savePrivateGigData,
@@ -24,21 +21,33 @@ import {
 } from '@/lib/useGigs';
 import {
   STATE_TZ, dollarsToCents, type Gig, type GigPrivateDoc,
-  type GigFee, type FeeType, type GigDocKind,
+  type GigFee, type FeeType, type GigDocKind, type GigTerms,
+  TIMING_LABELS, type TimingLabel,
 } from '@/lib/gig-types';
+import { searchSuburbs, type AreaResult } from '@/lib/suburbSearch';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const AU_STATES = ['NSW','VIC','QLD','SA','WA','TAS','NT','ACT'];
 
 const FEE_TYPES: { value: FeeType; label: string }[] = [
   { value: 'flat',              label: 'Flat fee'          },
   { value: 'door_split',        label: 'Door split'        },
+  { value: 'bar_split',         label: 'Bar split'         },
   { value: 'guarantee_vs_door', label: 'Guarantee + door'  },
   { value: 'ticket_split',      label: 'Ticket split'      },
   { value: 'unpaid',            label: 'Unpaid'            },
   { value: 'other',             label: 'Other'             },
 ];
+
+/** Parse "Richmond, VIC, 3121" → state code "VIC". */
+function stateFromSuburbLabel(label: string): string {
+  const parts = label.split(',').map(p => p.trim());
+  return parts[1] ?? 'VIC';
+}
+
+/** Parse "Richmond, VIC, 3121" → suburb name "Richmond". */
+function nameFromSuburbLabel(label: string): string {
+  return label.split(',')[0]?.trim() ?? label;
+}
 
 const DOC_KINDS: { value: GigDocKind; label: string }[] = [
   { value: 'contract',   label: 'Contract'     },
@@ -153,20 +162,28 @@ const fi = StyleSheet.create({
   half:     { flex: 1 },
 });
 
-// ── State picker (AU states) ──────────────────────────────────────────────────
+// ── Pill row (shared by fee type, payment timing) ────────────────────────────
 
-function StatePicker({ value, onChange, colors }: { value: string; onChange: (v: string) => void; colors: any }) {
+const PILL_SELECTED_BG   = '#16161A';
+const PILL_SELECTED_TEXT = '#FFFFFF';
+
+function PillRow<T extends string>({
+  options, value, onChange, colors,
+}: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; colors: any }) {
   return (
     <View style={sp.row}>
-      {AU_STATES.map(s => (
-        <TouchableOpacity
-          key={s}
-          style={[sp.chip, { borderColor: colors.border, backgroundColor: value === s ? Colors.orange : colors.bg }]}
-          onPress={() => onChange(s)}
-        >
-          <Text style={[sp.chipText, { color: value === s ? '#111' : colors.grey }]}>{s}</Text>
-        </TouchableOpacity>
-      ))}
+      {options.map(o => {
+        const active = value === o.value;
+        return (
+          <TouchableOpacity
+            key={o.value}
+            style={[sp.chip, { borderColor: active ? PILL_SELECTED_BG : colors.border, backgroundColor: active ? PILL_SELECTED_BG : colors.bg }]}
+            onPress={() => onChange(o.value)}
+          >
+            <Text style={[sp.chipText, { color: active ? PILL_SELECTED_TEXT : colors.grey }]}>{o.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -177,20 +194,122 @@ const sp = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '600' },
 });
 
-// ── Fee type picker ───────────────────────────────────────────────────────────
+const FEE_TYPE_OPTIONS = FEE_TYPES;
+const TIMING_OPTIONS: { value: TimingLabel; label: string }[] = TIMING_LABELS.map(t => ({ value: t, label: t }));
 
-function FeeTypePicker({ value, onChange, colors }: { value: FeeType; onChange: (v: FeeType) => void; colors: any }) {
+// ── Suburb autocomplete ────────────────────────────────────────────────────────
+
+function SuburbAutocomplete({
+  value, onSelect, colors,
+}: {
+  value: string;
+  onSelect: (suburb: string, state: string) => void;
+  colors: any;
+}) {
+  const [query, setQuery] = useState(value);
+  const [results, setResults] = useState<AreaResult[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (query.length < 2) { setResults([]); setOpen(false); return; }
+    const r = searchSuburbs(query, 6);
+    setResults(r);
+    setOpen(r.length > 0);
+  }, [query]);
+
   return (
-    <View style={sp.row}>
-      {FEE_TYPES.map(ft => (
-        <TouchableOpacity
-          key={ft.value}
-          style={[sp.chip, { borderColor: colors.border, backgroundColor: value === ft.value ? Colors.orange : colors.bg }]}
-          onPress={() => onChange(ft.value)}
-        >
-          <Text style={[sp.chipText, { color: value === ft.value ? '#111' : colors.grey }]}>{ft.label}</Text>
-        </TouchableOpacity>
-      ))}
+    <View>
+      <TextInput
+        style={fi.input}
+        value={query}
+        onChangeText={t => { setQuery(t); }}
+        placeholder="e.g. Richmond VIC"
+        placeholderTextColor={Colors.greyLight}
+        autoCorrect={false}
+      />
+      {open && (
+        <View style={[sa.dropdown, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+          {results.map(r => (
+            <TouchableOpacity
+              key={r.label}
+              style={[sa.item, { borderBottomColor: colors.border }]}
+              onPress={() => {
+                const suburb = nameFromSuburbLabel(r.label);
+                const state  = stateFromSuburbLabel(r.label);
+                setQuery(r.label);
+                setOpen(false);
+                onSelect(suburb, state);
+              }}
+            >
+              <Text style={[sa.itemText, { color: colors.black }]}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const sa = StyleSheet.create({
+  dropdown: { borderWidth: 1, borderRadius: 10, marginTop: 4, overflow: 'hidden', zIndex: 10 },
+  item:     { padding: 10, borderBottomWidth: 1 },
+  itemText: { fontSize: 14 },
+});
+
+// ── Venue autocomplete ─────────────────────────────────────────────────────────
+
+function VenueAutocomplete({
+  value, onChange, onSelect, colors,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelect: (name: string, venueId: string) => void;
+  colors: any;
+}) {
+  const [venues, setVenues] = useState<{ id: string; name: string; suburb?: string }[]>([]);
+  const [open, setOpen]   = useState(false);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    if (loaded.current) return;
+    loaded.current = true;
+    getDocs(collection(db, 'venues'))
+      .then(snap => setVenues(snap.docs.map(d => ({ id: d.id, name: d.data().name as string, suburb: d.data().suburb as string | undefined }))))
+      .catch(() => {});
+  }, []);
+
+  const matches = value.trim().length > 1
+    ? venues.filter(v => v.name?.toLowerCase().includes(value.toLowerCase())).slice(0, 5)
+    : [];
+
+  useEffect(() => {
+    setOpen(matches.length > 0 && value.trim().length > 1);
+  }, [matches.length, value]);
+
+  return (
+    <View>
+      <TextInput
+        style={fi.input}
+        value={value}
+        onChangeText={v => { onChange(v); }}
+        placeholder="e.g. The Corner Hotel"
+        placeholderTextColor={Colors.greyLight}
+        autoCorrect={false}
+      />
+      {open && (
+        <View style={[sa.dropdown, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+          {matches.map(v => (
+            <TouchableOpacity
+              key={v.id}
+              style={[sa.item, { borderBottomColor: colors.border }]}
+              onPress={() => { setOpen(false); onSelect(v.name, v.id); }}
+            >
+              <Text style={[sa.itemText, { color: colors.black }]}>{v.name}</Text>
+              {v.suburb ? <Text style={[{ fontSize: 12, color: colors.grey }]}>{v.suburb}</Text> : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -238,34 +357,39 @@ export default function ArtistGigForm({
   const { colors } = useTheme();
   const isEdit     = !!gigId;
 
-  // ── Section 1: Gig details ──
+  // ── Gig details ──
   const [title,          setTitle]          = useState(existingGig?.title ?? '');
   const [venueName,      setVenueName]      = useState(existingGig?.venueName ?? '');
+  const venueIdRef = useRef<string | null>(existingGig?.venueId ?? null);
   const [locationText,   setLocationText]   = useState(existingGig?.locationText ?? '');
   const [state,          setState]          = useState(existingGig?.state ?? 'VIC');
   const [localDate,      setLocalDate]      = useState(existingGig ? localDateFromGig(existingGig) : '');
   const [localStartTime, setLocalStartTime] = useState(existingGig ? localTimeFromGig(existingGig, false) : '');
   const [localEndTime,   setLocalEndTime]   = useState(existingGig ? localTimeFromGig(existingGig, true) : '');
   const [doorsTime,      setDoorsTime]      = useState('');
-  const [ticketUrl,      setTicketUrl]      = useState(existingGig?.fee?.ticketUrl ?? '');
-  const [ticketPrice,    setTicketPrice]    = useState(existingGig?.fee?.ticketPriceCents ? String(existingGig.fee.ticketPriceCents / 100) : '');
-  const [description,    setDescription]    = useState(existingGig?.description ?? '');
   const [attendance,     setAttendance]     = useState(existingGig?.attendance != null ? String(existingGig.attendance) : '');
 
-  // ── Section 2: Visibility ──
-  const [isPublic, setIsPublic] = useState(existingGig?.isPublic ?? false);
-
-  // ── Section 3: Private ──
-  const [showPrivate,   setShowPrivate]   = useState(false);
+  // ── Money ──
   const [feeType,       setFeeType]       = useState<FeeType>(existingGig?.fee?.type ?? 'other');
   const [feeAmount,     setFeeAmount]     = useState(existingGig?.fee?.amountCents ? String(existingGig.fee.amountCents / 100) : '');
   const [doorPercent,   setDoorPercent]   = useState(existingGig?.fee?.doorPercent ? String(existingGig.fee.doorPercent) : '');
+  const [ticketPrice,   setTicketPrice]   = useState(existingGig?.fee?.ticketPriceCents ? String(existingGig.fee.ticketPriceCents / 100) : '');
   const [feeNotes,      setFeeNotes]      = useState(existingGig?.fee?.notes ?? '');
+  const [paymentTiming, setPaymentTiming] = useState<TimingLabel>(
+    (existingGig?.terms?.timing as TimingLabel | undefined) ?? 'Within 7 days'
+  );
+
+  // ── Private notes + docs ──
   const [privateNotes,  setPrivateNotes]  = useState('');
   const [privateDocs,   setPrivateDocs]   = useState<GigPrivateDoc['docs']>([]);
   const [pendingDocKind, setPendingDocKind] = useState<GigDocKind>('contract');
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [uploadError,   setUploadError]   = useState('');
+
+  // ── Public profile ──
+  const [isPublic,     setIsPublic]     = useState(existingGig?.isPublic ?? false);
+  const [description,  setDescription]  = useState(existingGig?.description ?? '');
+  const [ticketUrl,    setTicketUrl]    = useState(existingGig?.fee?.ticketUrl ?? '');
 
   // ── Submit state ──
   const [submitting, setSubmitting] = useState(false);
@@ -277,7 +401,6 @@ export default function ArtistGigForm({
   const isPast = !!localDate && localDate < today;
 
   // Date conflict warning
-  const otherDates = allGigDates.filter(d => d !== localDate && d === localDate);
   const hasConflict = localDate && allGigDates.filter(d => d === localDate && d !== (existingGig ? localDateFromGig(existingGig) : '')).length > 0;
 
   // Load private doc for edit
@@ -352,9 +475,9 @@ export default function ArtistGigForm({
 
   // ── Validation ──
   function validate(): boolean {
-    if (!title.trim() || !venueName.trim() || !localDate) return false;
+    if (!venueName.trim() || !localDate) return false;
     if (!isPast && !localStartTime) return false;
-    if (!isPast && ticketUrl.trim() && !ticketUrl.trim().startsWith('https://')) return false;
+    if (isPublic && ticketUrl.trim() && !ticketUrl.trim().startsWith('https://')) return false;
     return true;
   }
 
@@ -366,9 +489,28 @@ export default function ArtistGigForm({
     try {
       const attendanceVal = attendance.trim() ? Math.round(Math.abs(parseFloat(attendance))) : null;
       const effectiveStartTime = isPast ? (localStartTime || '00:00') : localStartTime;
+      const ticketUrlVal = (isPublic && ticketUrl.trim()) ? ticketUrl.trim() : null;
+      const ticketPriceCentsVal = (isPublic && ticketPrice) ? dollarsToCents(ticketPrice) : null;
+
+      // Build terms snapshot when fee type is not unpaid
+      const terms: GigTerms | undefined = feeType !== 'unpaid' ? {
+        model:       feeType,
+        amount:      (feeType === 'flat' || feeType === 'guarantee_vs_door') ? (feeAmount ? dollarsToCents(feeAmount) : null) : null,
+        splitTerms:  doorPercent ? `${doorPercent}%` : null,
+        doorPercent: doorPercent ? parseFloat(doorPercent) : null,
+        timing:      paymentTiming,
+        methods:     [],
+      } : undefined;
+
+      // Compute due date from timing and gig date
+      const paymentDueDate = terms ? computeDueDateFromTiming(localDate, paymentTiming) : null;
+
+      // Invoice URL from docs if user uploaded an invoice doc
+      const invoiceDoc = privateDocs.find(d => d.kind === 'invoice');
+      const invoiceFileUrl = invoiceDoc?.url ?? null;
 
       const input: ArtistGigInput = {
-        title:            title.trim(),
+        title:            title.trim() || venueName.trim(),
         venueName:        venueName.trim(),
         locationText:     locationText.trim() || null,
         state,
@@ -376,21 +518,24 @@ export default function ArtistGigForm({
         localStartTime:   effectiveStartTime,
         localEndTime:     (!isPast && localEndTime) ? localEndTime : null,
         doorsTime:        (!isPast && doorsTime) ? doorsTime : null,
-        ticketUrl:        (!isPast && ticketUrl.trim()) ? ticketUrl.trim() : null,
-        ticketPriceCents: (!isPast && ticketPrice) ? dollarsToCents(ticketPrice) : null,
-        description:      description.trim() || null,
+        ticketUrl:        ticketUrlVal,
+        ticketPriceCents: ticketPriceCentsVal,
+        description:      (isPublic && description.trim()) ? description.trim() : null,
         setLengthMinutes: setLength,
         isPublic,
         attendance:       attendanceVal,
         fee: {
-          type:            feeType,
-          amountCents:     feeAmount ? dollarsToCents(feeAmount) : null,
-          doorPercent:     doorPercent ? parseFloat(doorPercent) : null,
-          ticketPriceCents: (!isPast && ticketPrice) ? dollarsToCents(ticketPrice) : null,
-          ticketUrl:        (!isPast && ticketUrl.trim()) ? ticketUrl.trim() : null,
+          type:             feeType,
+          amountCents:      feeAmount ? dollarsToCents(feeAmount) : null,
+          doorPercent:      doorPercent ? parseFloat(doorPercent) : null,
+          ticketPriceCents: ticketPriceCentsVal,
+          ticketUrl:        ticketUrlVal,
           notes:            feeNotes.trim() || null,
           includesGst:      null,
         },
+        terms,
+        paymentDueDate,
+        invoiceFileUrl,
       };
 
       let savedGigId: string;
@@ -425,12 +570,11 @@ export default function ArtistGigForm({
 
   // ── Public preview ──
   function PublicPreview() {
-    if (!isPublic) return null;
-    const tz   = STATE_TZ[state] ?? 'Australia/Melbourne';
+    const tz = STATE_TZ[state] ?? 'Australia/Melbourne';
     return (
       <View style={[pv.box, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
         <Text style={[pv.heading, { color: colors.grey }]}>Public preview</Text>
-        <Text style={[pv.title, { color: colors.black }]}>{title || 'Event name'}</Text>
+        <Text style={[pv.title, { color: colors.black }]}>{title || venueName || 'Event name'}</Text>
         <Text style={[pv.line, { color: colors.grey }]}>
           {[venueName, locationText].filter(Boolean).join(' · ') || 'Venue'}
         </Text>
@@ -481,10 +625,19 @@ export default function ArtistGigForm({
             </View>
           ) : null}
 
-          {/* ── Section 1: Gig details ── */}
+          {/* ── Gig details ── */}
           <Text style={[ms.sectionTitle, { color: colors.black }]}>Gig details</Text>
 
-          <Field label="Event name *" error={showErrors && !title.trim()}>
+          <Field label="Venue name" error={showErrors && !venueName.trim()}>
+            <VenueAutocomplete
+              value={venueName}
+              onChange={setVenueName}
+              onSelect={(name, id) => { setVenueName(name); venueIdRef.current = id; }}
+              colors={colors}
+            />
+          </Field>
+
+          <Field label="Event name" hint="Optional. Defaults to venue name if blank.">
             <TextInput
               style={fi.input}
               value={title}
@@ -494,33 +647,17 @@ export default function ArtistGigForm({
             />
           </Field>
 
-          <Field label="Venue name *" error={showErrors && !venueName.trim()}>
-            <TextInput
-              style={fi.input}
-              value={venueName}
-              onChangeText={setVenueName}
-              placeholder="e.g. The Corner Hotel"
-              placeholderTextColor={Colors.greyLight}
-            />
-          </Field>
-
-          <Field label="Suburb / address">
-            <TextInput
-              style={fi.input}
+          <Field label="Suburb">
+            <SuburbAutocomplete
               value={locationText}
-              onChangeText={setLocationText}
-              placeholder="e.g. Richmond VIC"
-              placeholderTextColor={Colors.greyLight}
+              onSelect={(suburb, st) => { setLocationText(suburb); setState(st); }}
+              colors={colors}
             />
-          </Field>
-
-          <Field label="State *">
-            <StatePicker value={state} onChange={setState} colors={colors} />
           </Field>
 
           <View style={fi.row}>
             <View style={fi.half}>
-              <Field label="Date *" error={showErrors && !localDate}>
+              <Field label="Date" error={showErrors && !localDate}>
                 <DateInput value={localDate} onChange={setLocalDate} placeholder="YYYY-MM-DD" />
               </Field>
             </View>
@@ -538,7 +675,7 @@ export default function ArtistGigForm({
             <>
               <View style={fi.row}>
                 <View style={fi.half}>
-                  <Field label="Start time *" error={showErrors && !localStartTime}>
+                  <Field label="Start time" error={showErrors && !localStartTime}>
                     <TimeInput value={localStartTime} onChange={setLocalStartTime} placeholder="HH:MM" />
                   </Field>
                 </View>
@@ -559,50 +696,8 @@ export default function ArtistGigForm({
             </>
           )}
 
-          <Field label="Description">
-            <TextInput
-              style={[fi.input, ms.multiline]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Public description of the event"
-              placeholderTextColor={Colors.greyLight}
-              multiline
-              numberOfLines={3}
-            />
-          </Field>
-
-          {!isPast && (
-            <View style={fi.row}>
-              <View style={fi.half}>
-                <Field label="Ticket URL" hint="Must start with https://" error={showErrors && !!ticketUrl && !ticketUrl.startsWith('https://')}>
-                  <TextInput
-                    style={fi.input}
-                    value={ticketUrl}
-                    onChangeText={setTicketUrl}
-                    placeholder="https://..."
-                    placeholderTextColor={Colors.greyLight}
-                    autoCapitalize="none"
-                    keyboardType="url"
-                  />
-                </Field>
-              </View>
-              <View style={fi.half}>
-                <Field label="Ticket price ($)">
-                  <TextInput
-                    style={fi.input}
-                    value={ticketPrice}
-                    onChangeText={setTicketPrice}
-                    placeholder="0.00"
-                    placeholderTextColor={Colors.greyLight}
-                    keyboardType="decimal-pad"
-                  />
-                </Field>
-              </View>
-            </View>
-          )}
-
           {isPast && (
-            <Field label="Attendance" hint="How many people showed up? This feeds your average draw on your public profile.">
+            <Field label="Attendance" hint="How many showed up? Feeds your average draw on your profile.">
               <TextInput
                 style={fi.input}
                 value={attendance}
@@ -614,14 +709,153 @@ export default function ArtistGigForm({
             </Field>
           )}
 
-          {/* ── Section 2: Public visibility ── */}
+          {/* ── Money ── */}
+          <Text style={[ms.sectionTitle, { color: colors.black }]}>Money</Text>
+
+          <Field label="Fee type">
+            <PillRow
+              options={FEE_TYPE_OPTIONS}
+              value={feeType}
+              onChange={setFeeType}
+              colors={colors}
+            />
+          </Field>
+
+          {(feeType === 'flat' || feeType === 'guarantee_vs_door') && (
+            <Field label="Amount ($)">
+              <TextInput
+                style={fi.input}
+                value={feeAmount}
+                onChangeText={setFeeAmount}
+                placeholder="0.00"
+                placeholderTextColor={Colors.greyLight}
+                keyboardType="decimal-pad"
+              />
+            </Field>
+          )}
+
+          {feeType === 'other' && (
+            <Field label="Amount ($)" hint="Optional">
+              <TextInput
+                style={fi.input}
+                value={feeAmount}
+                onChangeText={setFeeAmount}
+                placeholder="0.00"
+                placeholderTextColor={Colors.greyLight}
+                keyboardType="decimal-pad"
+              />
+            </Field>
+          )}
+
+          {(feeType === 'door_split' || feeType === 'bar_split' || feeType === 'guarantee_vs_door' || feeType === 'ticket_split') && (
+            <Field label="Split %">
+              <TextInput
+                style={fi.input}
+                value={doorPercent}
+                onChangeText={setDoorPercent}
+                placeholder="e.g. 70"
+                placeholderTextColor={Colors.greyLight}
+                keyboardType="decimal-pad"
+              />
+            </Field>
+          )}
+
+          {feeType === 'ticket_split' && (
+            <Field label="Ticket price ($)">
+              <TextInput
+                style={fi.input}
+                value={ticketPrice}
+                onChangeText={setTicketPrice}
+                placeholder="0.00"
+                placeholderTextColor={Colors.greyLight}
+                keyboardType="decimal-pad"
+              />
+            </Field>
+          )}
+
+          {feeType !== 'unpaid' && (
+            <Field label="When is payment due?">
+              <PillRow
+                options={TIMING_OPTIONS}
+                value={paymentTiming}
+                onChange={setPaymentTiming}
+                colors={colors}
+              />
+            </Field>
+          )}
+
+          {feeType !== 'unpaid' && (
+            <Field label="Fee notes" hint="Optional">
+              <TextInput
+                style={[fi.input, ms.multiline]}
+                value={feeNotes}
+                onChangeText={setFeeNotes}
+                placeholder="Any notes about the fee arrangement"
+                placeholderTextColor={Colors.greyLight}
+                multiline
+                numberOfLines={2}
+              />
+            </Field>
+          )}
+
+          {/* ── Private notes ── */}
+          <Text style={[ms.sectionTitle, { color: colors.black }]}>Private notes</Text>
+          <Text style={[ms.privateNote, { color: colors.grey }]}>Only you can see this</Text>
+          <Field label="">
+            <TextInput
+              style={[fi.input, ms.multiline]}
+              value={privateNotes}
+              onChangeText={setPrivateNotes}
+              placeholder="Your private notes about this gig"
+              placeholderTextColor={Colors.greyLight}
+              multiline
+              numberOfLines={4}
+            />
+          </Field>
+
+          {/* ── Documents ── */}
+          <Text style={[ms.sectionTitle, { color: colors.black }]}>Documents</Text>
+          <Text style={[ms.privateNote, { color: colors.grey }]}>Only you can see this</Text>
+
+          {privateDocs.map(d => (
+            <DocRow key={d.id} doc={d} onRemove={() => removeDoc(d.id)} colors={colors} />
+          ))}
+
+          <View style={fi.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[fi.label, { color: colors.black }]}>Document type</Text>
+              <PillRow
+                options={DOC_KINDS}
+                value={pendingDocKind}
+                onChange={setPendingDocKind}
+                colors={colors}
+              />
+            </View>
+          </View>
+
+          {uploadProgress ? (
+            <View style={ms.progressWrap}>
+              <View style={[ms.progressBar, { width: `${uploadProgress.total ? Math.round(uploadProgress.bytes / uploadProgress.total * 100) : 0}%` as any }]} />
+              <Text style={[ms.progressText, { color: colors.grey }]}>Uploading...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={[ms.uploadBtn, { borderColor: colors.border }]} onPress={pickDoc} activeOpacity={0.8}>
+              <Text style={[ms.uploadBtnText, { color: colors.black }]}>+ Attach document</Text>
+            </TouchableOpacity>
+          )}
+
+          {uploadError ? (
+            <Text style={[ms.uploadError, { color: Colors.danger }]}>{uploadError}</Text>
+          ) : null}
+
+          {/* ── Show on profile ── */}
           <Text style={[ms.sectionTitle, { color: colors.black }]}>Public profile</Text>
 
           <View style={[ms.toggleRow, { borderColor: colors.border }]}>
             <View style={ms.toggleLeft}>
               <Text style={[ms.toggleLabel, { color: colors.black }]}>Show on my public profile</Text>
               <Text style={[ms.toggleHint, { color: colors.grey }]}>
-                Shows the event name, venue, date, time, suburb and ticket link. Never fees, documents or notes.
+                Shows the event name, venue, date, time and suburb. Never fees, documents or notes.
               </Text>
             </View>
             <Switch
@@ -632,119 +866,52 @@ export default function ArtistGigForm({
             />
           </View>
 
-          <PublicPreview />
-
-          {/* ── Section 3: Private ── */}
-          <TouchableOpacity
-            style={[ms.sectionToggle, { borderColor: colors.border }]}
-            onPress={() => setShowPrivate(v => !v)}
-          >
-            <Text style={[ms.sectionTitle, { color: colors.black, marginBottom: 0 }]}>Private</Text>
-            <Text style={[ms.collapseArrow, { color: colors.grey }]}>{showPrivate ? '▲' : '▼'}</Text>
-          </TouchableOpacity>
-          <Text style={[ms.privateNote, { color: colors.grey }]}>Only you can see this</Text>
-
-          {showPrivate && (
-            <View style={ms.privateWrap}>
-              {/* Fee */}
-              <Text style={[ms.subTitle, { color: colors.black }]}>Fee</Text>
-              <Field label="Fee type">
-                <FeeTypePicker value={feeType} onChange={setFeeType} colors={colors} />
-              </Field>
-
-              {(feeType === 'flat' || feeType === 'guarantee_vs_door') && (
-                <Field label="Amount ($)">
-                  <TextInput
-                    style={fi.input}
-                    value={feeAmount}
-                    onChangeText={setFeeAmount}
-                    placeholder="0.00"
-                    placeholderTextColor={Colors.greyLight}
-                    keyboardType="decimal-pad"
-                  />
-                </Field>
-              )}
-
-              {(feeType === 'door_split' || feeType === 'guarantee_vs_door' || feeType === 'ticket_split') && (
-                <Field label="Split %">
-                  <TextInput
-                    style={fi.input}
-                    value={doorPercent}
-                    onChangeText={setDoorPercent}
-                    placeholder="e.g. 70"
-                    placeholderTextColor={Colors.greyLight}
-                    keyboardType="decimal-pad"
-                  />
-                </Field>
-              )}
-
-              <Field label="Fee notes">
+          {isPublic && (
+            <>
+              <Field label="Description">
                 <TextInput
                   style={[fi.input, ms.multiline]}
-                  value={feeNotes}
-                  onChangeText={setFeeNotes}
-                  placeholder="Any notes about the fee arrangement"
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Public description of the event"
                   placeholderTextColor={Colors.greyLight}
                   multiline
-                  numberOfLines={2}
+                  numberOfLines={3}
                 />
               </Field>
 
-              {/* Private notes */}
-              <Text style={[ms.subTitle, { color: colors.black }]}>Private notes</Text>
-              <Text style={[ms.privateNote, { color: colors.grey }]}>Only you can see this</Text>
-              <Field label="">
-                <TextInput
-                  style={[fi.input, ms.multiline]}
-                  value={privateNotes}
-                  onChangeText={setPrivateNotes}
-                  placeholder="Your private notes about this gig"
-                  placeholderTextColor={Colors.greyLight}
-                  multiline
-                  numberOfLines={4}
-                />
-              </Field>
-
-              {/* Documents */}
-              <Text style={[ms.subTitle, { color: colors.black }]}>Documents</Text>
-              <Text style={[ms.privateNote, { color: colors.grey }]}>Only you can see this</Text>
-
-              {privateDocs.map(d => (
-                <DocRow key={d.id} doc={d} onRemove={() => removeDoc(d.id)} colors={colors} />
-              ))}
-
-              <View style={fi.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[fi.label, { color: colors.black }]}>Document type</Text>
-                  <View style={sp.row}>
-                    {DOC_KINDS.map(k => (
-                      <TouchableOpacity
-                        key={k.value}
-                        style={[sp.chip, { borderColor: colors.border, backgroundColor: pendingDocKind === k.value ? Colors.orange : colors.bg }]}
-                        onPress={() => setPendingDocKind(k.value)}
-                      >
-                        <Text style={[sp.chipText, { color: pendingDocKind === k.value ? '#111' : colors.grey }]}>{k.label}</Text>
-                      </TouchableOpacity>
-                    ))}
+              {!isPast && (
+                <View style={fi.row}>
+                  <View style={fi.half}>
+                    <Field label="Ticket URL" hint="Must start with https://" error={showErrors && !!ticketUrl && !ticketUrl.startsWith('https://')}>
+                      <TextInput
+                        style={fi.input}
+                        value={ticketUrl}
+                        onChangeText={setTicketUrl}
+                        placeholder="https://..."
+                        placeholderTextColor={Colors.greyLight}
+                        autoCapitalize="none"
+                        keyboardType="url"
+                      />
+                    </Field>
+                  </View>
+                  <View style={fi.half}>
+                    <Field label="Ticket price ($)">
+                      <TextInput
+                        style={fi.input}
+                        value={ticketPrice}
+                        onChangeText={setTicketPrice}
+                        placeholder="0.00"
+                        placeholderTextColor={Colors.greyLight}
+                        keyboardType="decimal-pad"
+                      />
+                    </Field>
                   </View>
                 </View>
-              </View>
-
-              {uploadProgress ? (
-                <View style={ms.progressWrap}>
-                  <View style={[ms.progressBar, { width: `${uploadProgress.total ? Math.round(uploadProgress.bytes / uploadProgress.total * 100) : 0}%` as any }]} />
-                  <Text style={[ms.progressText, { color: colors.grey }]}>Uploading...</Text>
-                </View>
-              ) : (
-                <TouchableOpacity style={[ms.uploadBtn, { borderColor: colors.border }]} onPress={pickDoc}>
-                  <Text style={[ms.uploadBtnText, { color: colors.black }]}>+ Attach document</Text>
-                </TouchableOpacity>
               )}
 
-              {uploadError ? (
-                <Text style={[ms.uploadError, { color: Colors.danger }]}>{uploadError}</Text>
-              ) : null}
-            </View>
+              <PublicPreview />
+            </>
           )}
 
           <View style={{ height: 40 }} />
@@ -752,6 +919,21 @@ export default function ArtistGigForm({
       </View>
     </Modal>
   );
+}
+
+// ── Due date helper ───────────────────────────────────────────────────────────
+
+/** Compute ISO YYYY-MM-DD due date from a gig date and timing label. */
+function computeDueDateFromTiming(localDate: string, timing: TimingLabel): string | null {
+  if (!localDate) return null;
+  const [y, m, d] = localDate.split('-').map(Number);
+  if (timing === 'On the night' || timing === 'Before the gig') return localDate;
+  const days =
+    timing === 'Within 7 days'  ? 7  :
+    timing === 'Within 14 days' ? 14 :
+    timing === 'Within 30 days' ? 30 : 0;
+  const due = new Date((y ?? 2024), (m ?? 1) - 1, (d ?? 1) + days);
+  return `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`;
 }
 
 // ── Helpers for existing gig ──────────────────────────────────────────────────

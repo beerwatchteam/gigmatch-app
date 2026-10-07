@@ -32,6 +32,8 @@ import { buildPdfHtml, buildCsv } from '@/lib/dashboard-export';
 import { summarizeGigs } from '@/lib/dashboard';
 import type { Gig, FeeType } from '@/lib/gig-types';
 import { dollarsToCents } from '@/lib/gig-types';
+import { deleteArtistGig } from '@/lib/useGigs';
+import ArtistGigForm from '@/components/ArtistGigForm';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
@@ -326,7 +328,7 @@ function computeChartData(fyGigs: GigWithStatus[], fyStart: number, period: Peri
       if (gMonth !== key) continue;
       if (st.status === 'paid' || st.status === 'self_reported') {
         paidCents += gig.payment.confirmedAmountCents ?? 0;
-      } else if (st.status === 'overdue' || st.status === 'due' || st.status === 'awaiting') {
+      } else if (st.status === 'overdue' || st.status === 'due' || st.status === 'awaiting' || st.status === 'needsAmount') {
         owedCents += agreedCents(gig) ?? 0;
       } else if (st.status === 'upcoming') {
         aheadCents += agreedCents(gig) ?? 0;
@@ -356,12 +358,13 @@ function computeAttention(enriched: GigWithStatus[], role: 'artist' | 'venue'): 
   for (const { gig, st } of enriched) {
     if (st.status !== 'overdue') continue;
     const dueDate = st.dueDate ? new Date(st.dueDate + 'T12:00:00Z') : null;
+    const isManual = gig.source === 'artist_added';
     items.push({
       gigId:  gig.id,
       dot:    D.chip.overdue.fg,
       title:  `${role === 'artist' ? (gig.venueName ?? 'Venue') : (gig.artistName ?? gig.bandName ?? 'Artist')} \u00b7 ${fmtAud(agreedCents(gig) ?? 0)}`,
       sub:    `${role === 'venue' ? 'You owe this act, overdue since ' : 'Overdue since '}${dueDate ? dateShort(dueDate) : ''}`,
-      action: role === 'artist' ? 'Follow up' : 'Pay now',
+      action: isManual ? L.markPaid : (role === 'artist' ? 'Follow up' : 'Pay now'),
     });
   }
 
@@ -543,11 +546,15 @@ function DetailPanel({
   role,
   onClose,
   onRecorded,
+  onEdit,
+  onDelete,
 }: {
   gig: Gig;
   role: 'artist' | 'venue';
   onClose: () => void;
   onRecorded: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -564,14 +571,15 @@ function DetailPanel({
     ? (gig.terms ? (gig.room ?? '') : '')
     : `${gig.room ?? ''} · Band room`.replace(/^ · /, '');
 
-  const [amtInput,    setAmtInput]    = useState(() => {
-    const a = agreedCents(gig);
-    return a != null && !isSplitType(gig.fee.type) ? String(a / 100) : '';
-  });
+  const isManual = gig.source === 'artist_added';
+
+  const [amtInput,    setAmtInput]    = useState('');
   const [dateInput,   setDateInput]   = useState(today.toISOString().slice(0, 10));
   const [methodInput, setMethodInput] = useState(gig.terms?.methods?.[0] ?? '');
   const [saving,      setSaving]      = useState(false);
   const [saveErr,     setSaveErr]     = useState('');
+  const [confirmDel,  setConfirmDel]  = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
 
   const canRecord = ['due', 'overdue', 'needsAmount', 'awaiting'].includes(st.status);
   const isPaid    = st.status === 'paid' || st.status === 'self_reported';
@@ -593,10 +601,11 @@ function DetailPanel({
     ? 'Amount not recorded'
     : st.dueDate ? `Due ${dateLong(new Date(st.dueDate + 'T12:00:00Z'))}` : 'Awaiting payment';
 
+  const showInvoiceStep = !!(gig.payment.invoice && gig.payment.invoice.status !== 'notNeeded');
   const steps = [
     { label: 'Booked', sub: gig.room ?? 'Headline', done: true, now: false },
     { label: 'Played', sub: dateLong(localDate), done: st.status !== 'upcoming', now: st.status === 'upcoming' },
-    { label: 'Invoice', sub: invoiceLabel(gig), done: invDone, now: false },
+    ...(showInvoiceStep ? [{ label: 'Invoice', sub: invoiceLabel(gig), done: invDone, now: false }] : []),
     { label: role === 'artist' ? 'Received' : 'Paid', sub: finalSub, done: finalStepDone, now: finalStepNow },
   ];
 
@@ -638,7 +647,7 @@ function DetailPanel({
           </View>
         </View>
         <TouchableOpacity onPress={onClose} style={dp.closeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={{ fontSize: 20, color: D.text }}>\u00d7</Text>
+          <Text style={{ fontSize: 20, color: D.text }}>{'\u00d7'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -665,7 +674,13 @@ function DetailPanel({
       <View style={[dp.section, { borderBottomColor: D.borderFaint }]}>
         <View style={dp.dealHdr}>
           <Text style={dp.sectionTitle}>The deal</Text>
-          <Text style={[dp.locked, { color: D.muted }]}>Locked when confirmed</Text>
+          {isManual && onEdit ? (
+            <TouchableOpacity onPress={onEdit} activeOpacity={0.8}>
+              <Text style={[dp.locked, { color: D.primary }]}>Edit</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={[dp.locked, { color: D.muted }]}>Locked when confirmed</Text>
+          )}
         </View>
         <View style={dp.dealGrid}>
           {[
@@ -800,16 +815,69 @@ function DetailPanel({
           </>
         )}
 
-        {/* Invoice row */}
-        <View style={[dp.invoiceRow, { borderTopColor: D.borderFaint }]}>
-          <View>
-            <Text style={[dp.dealLabel, { color: D.muted }]}>Invoice</Text>
-            <Text style={dp.dealVal}>{invoiceLabel(gig)}</Text>
+        {/* Invoice row — hidden when not needed */}
+        {showInvoiceStep && (
+          <View style={[dp.invoiceRow, { borderTopColor: D.borderFaint }]}>
+            <View>
+              <Text style={[dp.dealLabel, { color: D.muted }]}>Invoice</Text>
+              <Text style={dp.dealVal}>{invoiceLabel(gig)}</Text>
+            </View>
+            <TouchableOpacity style={dp.invoiceBtn} activeOpacity={0.8}>
+              <Text style={{ fontSize: 13, fontWeight: '500', color: D.text }}>{L.invoiceAction}</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity style={dp.invoiceBtn} activeOpacity={0.8}>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: D.text }}>{L.invoiceAction}</Text>
-          </TouchableOpacity>
-        </View>
+        )}
+
+        {/* Delete gig — manual gigs only */}
+        {isManual && onDelete && (
+          <View style={[dp.deleteWrap, { borderTopColor: D.borderFaint }]}>
+            {!confirmDel ? (
+              <TouchableOpacity
+                style={dp.deleteBtn}
+                onPress={() => setConfirmDel(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={dp.deleteBtnText}>Delete gig</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={dp.deleteConfirm}>
+                <Text style={{ fontSize: 13, color: D.muted, marginBottom: 8 }}>
+                  Remove this gig from your records? This cannot be undone.
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={[dp.deleteConfirmBtn, { backgroundColor: '#B84A06' }]}
+                    onPress={async () => {
+                      setDeleting(true);
+                      try {
+                        await deleteArtistGig({ gigId: gig.id, artistUid: gig.artistUid! });
+                        onDelete();
+                        onClose();
+                      } catch {
+                        setDeleting(false);
+                        setConfirmDel(false);
+                      }
+                    }}
+                    disabled={deleting}
+                    activeOpacity={0.8}
+                  >
+                    {deleting
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Yes, delete</Text>
+                    }
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[dp.deleteConfirmBtn, { borderWidth: 1, borderColor: D.border }]}
+                    onPress={() => setConfirmDel(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: D.text }}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -876,6 +944,11 @@ const dp = StyleSheet.create({
   secondaryBtnText: { fontSize: 14, fontWeight: '500', color: D.text },
   invoiceRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, marginTop: 4, borderTopWidth: 1 },
   invoiceBtn:     { height: 32, paddingHorizontal: 12, borderWidth: 1, borderColor: D.border, borderRadius: 8, backgroundColor: D.bg, alignItems: 'center', justifyContent: 'center' },
+  deleteWrap:     { marginTop: 16, paddingTop: 14, borderTopWidth: 1 },
+  deleteBtn:      { alignSelf: 'flex-start' },
+  deleteBtnText:  { fontSize: 13, color: '#9A3B06', fontWeight: '500' },
+  deleteConfirm:  {},
+  deleteConfirmBtn: { height: 36, paddingHorizontal: 14, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
 });
 
 // ── Main dashboard content ────────────────────────────────────────────────────
@@ -892,8 +965,9 @@ export function DashboardContent() {
 
   const today = useMemo(() => new Date(), []);
 
-  // Period
-  const [presetKey, setPresetKey] = useState('this_fy');
+  // Period + source filter
+  const [presetKey,    setPresetKey]    = useState('this_fy');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'booked' | 'manual'>('all');
   const period = useMemo<Period>(() => (PERIOD_PRESETS[presetKey]?.() ?? PERIOD_PRESETS.this_fy()), [presetKey]);
 
   // FY period for chart (might differ from selected period)
@@ -928,20 +1002,30 @@ export function DashboardContent() {
   // Enriched gigs (add paymentStatus to each)
   const fyEnriched = useMemo(() => enrichGigs(fyGigs, today), [fyGigs, today]);
 
+  // Source-filtered enriched gigs (chart, attention, KPIs)
+  const sourceFilteredFyEnriched = useMemo(() => {
+    if (sourceFilter === 'all') return fyEnriched;
+    return fyEnriched.filter(({ gig }) =>
+      sourceFilter === 'manual'
+        ? gig.source === 'artist_added'
+        : gig.source !== 'artist_added',
+    );
+  }, [fyEnriched, sourceFilter]);
+
   // Period-filtered enriched gigs (for KPIs + table)
   const pStart = period.start.toDate().getTime();
   const pEnd   = period.end.toDate().getTime();
   const periodEnriched = useMemo(
-    () => fyEnriched.filter(({ gig }) => {
+    () => sourceFilteredFyEnriched.filter(({ gig }) => {
       const t = gig.startAt.toDate().getTime();
       return t >= pStart && t < pEnd;
     }),
-    [fyEnriched, pStart, pEnd],
+    [sourceFilteredFyEnriched, pStart, pEnd],
   );
 
   const kpis        = useMemo(() => computeKpis(periodEnriched), [periodEnriched]);
-  const chartBars   = useMemo(() => computeChartData(fyEnriched, fyStartYear(period.start.toDate()), period), [fyEnriched, period]);
-  const attention   = useMemo(() => computeAttention(fyEnriched, role), [fyEnriched, role]);
+  const chartBars   = useMemo(() => computeChartData(sourceFilteredFyEnriched, fyStartYear(period.start.toDate()), period), [sourceFilteredFyEnriched, period]);
+  const attention   = useMemo(() => computeAttention(sourceFilteredFyEnriched, role), [sourceFilteredFyEnriched, role]);
   const byNight     = useMemo(() => computeByNight(periodEnriched), [periodEnriched]);
   const maxNight    = useMemo(() => Math.max(1, ...byNight.map(n => n.total)), [byNight]);
 
@@ -985,11 +1069,18 @@ export function DashboardContent() {
     [tableRows],
   );
 
-  // Detail panel
-  const [selectedGigId, setSelectedGigId] = useState<string | null>(null);
+  // Detail panel + manual gig edit
+  const [selectedGigId,  setSelectedGigId]  = useState<string | null>(null);
+  const [editManualGig,  setEditManualGig]  = useState<(Gig & { id: string }) | null>(null);
   const selectedGig = useMemo(
     () => fyGigs.find(g => g.id === selectedGigId) ?? null,
     [fyGigs, selectedGigId],
+  );
+
+  // Dates for conflict check (used by ArtistGigForm)
+  const allGigDates = useMemo(
+    () => fyGigs.map(g => gigLocalDate(g).toISOString().slice(0, 10)),
+    [fyGigs],
   );
 
   // Export
@@ -1050,7 +1141,7 @@ export function DashboardContent() {
     { label: L.avg,   value: kpis.paidCount ? fmtAud(Math.round(kpis.paidCents / kpis.paidCount)) : '\u2014', sub: 'Across paid gigs', fg: D.text, subFg: D.muted },
   ];
 
-  const chartEmpty = chartBars.every(b => b.paidCents + b.owedCents + b.aheadCents === 0);
+  const chartEmpty = sourceFilteredFyEnriched.filter(e => e.st.status !== 'not_applicable').length === 0;
 
   return (
     <View style={{ flex: 1 }}>
@@ -1075,6 +1166,20 @@ export function DashboardContent() {
           ))}
           <Text style={[db.rangeLabel, { color: D.muted }]}>{rangeLabel(period)}</Text>
         </ScrollView>
+
+        {/* Source filter */}
+        <View style={[db.sourceRow, { backgroundColor: '#EFEEEB' }]}>
+          {([['all', 'All'], ['booked', 'Booked on GigMatch'], ['manual', 'Added by you']] as const).map(([key, label]) => (
+            <TouchableOpacity
+              key={key}
+              style={[db.sourceTab, sourceFilter === key && db.sourceTabActive]}
+              onPress={() => setSourceFilter(key)}
+              activeOpacity={0.75}
+            >
+              <Text style={[db.sourceTabText, { color: sourceFilter === key ? D.text : D.muted }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {loading && (
           <View style={db.centre}><ActivityIndicator color={D.owed} /></View>
@@ -1251,6 +1356,7 @@ export function DashboardContent() {
                 const who   = role === 'artist' ? (gig.venueName ?? 'Venue') : (gig.artistName ?? gig.bandName ?? 'Artist');
                 const where = role === 'artist' ? '' : (gig.room ?? '');
 
+                const isManualGig = gig.source === 'artist_added';
                 return (
                   <TouchableOpacity
                     key={gig.id}
@@ -1262,6 +1368,11 @@ export function DashboardContent() {
                     <View style={{ flex: 1.4 }}>
                       <Text style={db.tableWho} numberOfLines={1}>{who}</Text>
                       {where ? <Text style={[db.tableWhere, { color: D.muted }]} numberOfLines={1}>{where}</Text> : null}
+                      {isManualGig && (
+                        <View style={db.manualChip}>
+                          <Text style={[db.manualChipText, { color: D.muted }]}>Added by you</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={{ flex: 1.3 }}>
                       <Text style={db.tableDeal} numberOfLines={1}>{modelLabel(gig.fee.type)}</Text>
@@ -1299,6 +1410,27 @@ export function DashboardContent() {
           role={role}
           onClose={() => setSelectedGigId(null)}
           onRecorded={load}
+          onEdit={selectedGig.source === 'artist_added' ? () => {
+            setEditManualGig(selectedGig as Gig & { id: string });
+            setSelectedGigId(null);
+          } : undefined}
+          onDelete={selectedGig.source === 'artist_added' ? () => {
+            setSelectedGigId(null);
+            load();
+          } : undefined}
+        />
+      )}
+
+      {/* Edit form for manual gigs */}
+      {editManualGig && (
+        <ArtistGigForm
+          gigId={editManualGig.id}
+          existingGig={editManualGig}
+          artistUid={user!.uid}
+          artistName={profile?.displayName ?? ''}
+          allGigDates={allGigDates}
+          onClose={() => setEditManualGig(null)}
+          onSaved={() => { setEditManualGig(null); load(); }}
         />
       )}
     </View>
@@ -1377,6 +1509,12 @@ const db = StyleSheet.create({
   pillActive:     { backgroundColor: D.text },
   pillText:       { fontSize: 13, fontWeight: '500' },
   rangeLabel:     { fontSize: 13, marginLeft: 6, flexShrink: 1 },
+  sourceRow:      { flexDirection: 'row', padding: 3, borderRadius: 10, gap: 2, alignSelf: 'flex-start', marginBottom: 4 },
+  sourceTab:      { height: 30, paddingHorizontal: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  sourceTabActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 1 },
+  sourceTabText:  { fontSize: 12, fontWeight: '500' },
+  manualChip:     { marginTop: 2, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: '#F1F0ED', alignSelf: 'flex-start' },
+  manualChipText: { fontSize: 11, fontWeight: '500' },
 
   centre:         { alignItems: 'center', paddingVertical: 40 },
   errorText:      { fontSize: 13, paddingVertical: 8 },

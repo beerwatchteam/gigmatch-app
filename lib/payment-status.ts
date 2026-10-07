@@ -116,8 +116,9 @@ export function paymentStatus(gig: Gig, today: Date): PaymentStatusResult {
     return { status: 'awaiting', dueDate: null, daysOverdue: null };
   }
 
-  // ── NeedsAmount (split gig played, no amount recorded) ───────────────────
-  if (SPLIT_TYPES.has(fee.type) && payment.confirmedAmountCents == null) {
+  // ── NeedsAmount (split gig played, or 'other' with no agreed amount) ────
+  const isVariableFee = SPLIT_TYPES.has(fee.type) || (fee.type === 'other' && fee.amountCents == null);
+  if (isVariableFee && payment.confirmedAmountCents == null) {
     return { status: 'needsAmount', dueDate: storedDueDate, daysOverdue: null };
   }
 

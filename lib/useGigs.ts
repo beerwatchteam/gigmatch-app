@@ -740,6 +740,12 @@ export type ArtistGigInput = {
   isPublic: boolean;
   fee?: GigFee;
   attendance?: number | null;
+  /** Agreed deal terms snapshot — written at creation for dashboard due-date tracking. */
+  terms?: GigTerms;
+  /** Pre-computed ISO due date (YYYY-MM-DD) derived from terms.timing and the gig date. */
+  paymentDueDate?: string | null;
+  /** URL of an uploaded invoice document; sets payment.invoice.status = 'sent'. */
+  invoiceFileUrl?: string | null;
 };
 
 /**
@@ -798,7 +804,14 @@ export async function createArtistGig({
       notes:            null,
       includesGst:      null,
     },
-    payment:        buildFreshPayment(input.fee?.type ?? 'other', null),
+    payment: {
+      ...buildFreshPayment(input.fee?.type ?? 'other', null),
+      ...(input.paymentDueDate != null ? { dueDate: input.paymentDueDate } : {}),
+      ...(input.invoiceFileUrl != null
+        ? { invoice: { status: 'sent' as const, fileUrl: input.invoiceFileUrl } satisfies GigPaymentInvoice }
+        : { invoice: { status: 'notNeeded' as const } satisfies GigPaymentInvoice }),
+    },
+    ...(input.terms ? { terms: input.terms } : {}),
     participantIds: [artistUid],
     createdBy:      artistUid,
     listAsBooked:   true,  // outside gigs default listAsBooked: true
@@ -840,8 +853,12 @@ export async function updateArtistGig({
   if (input.description  != null) updates.description   = input.description;
   if (input.isPublic     != null) updates.isPublic      = input.isPublic;
   if (input.setLengthMinutes != null) updates.setLengthMinutes = input.setLengthMinutes;
-  if (input.ticketUrl != null || input.ticketPriceCents != null) {
-    // partial fee update — read current fee first
+
+  if (input.fee) {
+    // Full fee replacement when provided
+    updates.fee = input.fee;
+  } else if (input.ticketUrl != null || input.ticketPriceCents != null) {
+    // Partial ticket-only update — read current fee first
     const snap = await import('firebase/firestore').then(m =>
       m.getDoc(doc(db, 'gigs', gigId))
     );
@@ -852,6 +869,10 @@ export async function updateArtistGig({
       ...(input.ticketPriceCents != null ? { ticketPriceCents: input.ticketPriceCents } : {}),
     };
   }
+
+  if (input.terms)              updates.terms                  = input.terms;
+  if (input.paymentDueDate)     updates['payment.dueDate']     = input.paymentDueDate;
+  if (input.invoiceFileUrl)     updates['payment.invoice']     = { status: 'sent', fileUrl: input.invoiceFileUrl } satisfies GigPaymentInvoice;
 
   if (input.state && input.localDate && input.localStartTime) {
     const tz = STATE_TZ[input.state] ?? 'Australia/Melbourne';
