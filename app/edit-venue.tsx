@@ -126,6 +126,8 @@ type VenueData = {
     depositRequired: boolean; depositAmount: string; depositDue: string;
     minNotice: string;
     guestList: string; meals: boolean; mealsDetails: string; drinks: boolean; drinksDetails: string;
+    reqAbn: boolean;
+    showPayPublicly: boolean;
   };
 };
 
@@ -161,6 +163,8 @@ const BLANK_BOOKING_TERMS: {
   depositRequired: false, depositAmount: '', depositDue: '',
   minNotice: '1 week',
   guestList: '', meals: false, mealsDetails: '', drinks: false, drinksDetails: '',
+  reqAbn: false,
+  showPayPublicly: false,
 };
 
 const BLANK: VenueData = {
@@ -770,6 +774,7 @@ export default function EditVenueScreen() {
   const [touchedNights, setTouchedNights] = useState<Set<number>>(new Set());
 
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
   const [roomDocUploading, setRoomDocUploading] = useState<number | null>(null);
   const [stageDocUploading, setStageDocUploading] = useState(false);
@@ -1079,6 +1084,25 @@ export default function EditVenueScreen() {
       Alert.alert('Upload failed', String(e));
     } finally {
       setPhotoUploading(false);
+    }
+  }
+
+  async function pickLogoPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.9 });
+    if (result.canceled || !result.assets[0]) return;
+    setLogoUploading(true);
+    try {
+      const uri  = result.assets[0].uri;
+      const res  = await fetch(uri);
+      const blob = await res.blob();
+      const ref  = sRef(storage, `photos/venues/${venueId}/logo`);
+      await uploadBytes(ref, blob);
+      const url  = await getDownloadURL(ref);
+      set('logoUrl', url);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setLogoUploading(false);
     }
   }
 
@@ -2458,6 +2482,13 @@ export default function EditVenueScreen() {
                 <View style={{ flex: 1 }}><Field label="DUE"><Select options={DEPOSIT_DUE_OPTS} value={bt.depositDue || 'On booking'} onSelect={(v: string) => setBt({ depositDue: v })} /></Field></View>
               </View>
             )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, marginBottom: 4 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>Show pay details publicly</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2, lineHeight: 17 }}>Pay figures are visible to non-members by default. Turn this on to show them to everyone, including visitors who haven't signed up.</Text>
+              </View>
+              <Switch value={bt.showPayPublicly || false} onValueChange={(v) => setBt({ showPayPublicly: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
           </View>
         </SectionCard>
 
@@ -2490,7 +2521,14 @@ export default function EditVenueScreen() {
                 <Input value={bt.drinksDetails} onChangeText={(v: string) => setBt({ drinksDetails: v })} placeholder="e.g. 2 drinks each" />
               </View>
             )}
-            <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 17, marginTop: 8, marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 4 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <Text style={{ fontSize: 14, color: colors.black }}>ABN required from acts</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, marginTop: 2, lineHeight: 17 }}>Artists will see "An ABN is required" on your venue profile.</Text>
+              </View>
+              <Switch value={bt.reqAbn || false} onValueChange={(v) => setBt({ reqAbn: v })} trackColor={{ false: colors.border, true: Colors.orange }} thumbColor="#fff" />
+            </View>
+            <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 17, marginTop: 12, marginBottom: 8 }}>
               Backline is set per room. Green room and merch space are in Access and facilities.
             </Text>
           </View>
@@ -2875,8 +2913,8 @@ export default function EditVenueScreen() {
                 </View>
             }
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity onPress={pickBannerPhoto} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>{data.logoUrl ? 'Replace' : 'Upload'}</Text>
+              <TouchableOpacity onPress={pickLogoPhoto} disabled={logoUploading} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black }}>{logoUploading ? 'Uploading...' : data.logoUrl ? 'Replace' : 'Upload'}</Text>
               </TouchableOpacity>
               {data.logoUrl ? (
                 <TouchableOpacity onPress={() => set('logoUrl', '')} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 }}>

@@ -5,10 +5,10 @@ import {
   Modal, TextInput, KeyboardAvoidingView,
 } from 'react-native';
 import { Text } from '@/components/Text';
-import WebView from 'react-native-webview';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { resolveSlotTerms, formatPaySummary } from '@/lib/resolveSlotTerms';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, doc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { Colors } from '@/constants/colors';
@@ -49,15 +49,37 @@ type Slot = {
   startDate?: string;
   endDate?: string;
   continuous?: boolean;
+  loadIn?: string;
+  soundcheck?: string;
+  soundcheckDetails?: string;
+  useDefaultPay?: boolean;
+  useDefaultHospitality?: boolean;
+  feeMin?: number | null;
+  feeMax?: number | null;
+  doorSplit?: string;
+  guaranteeAmount?: string;
+  guaranteeSplit?: string;
+  barSplit?: string;
+  ticketSalesSplit?: string;
+  ticketingHandledBy?: string;
+  negotiable?: boolean;
+  guestList?: string;
+  meals?: boolean;
+  mealsDetails?: string;
+  drinks?: boolean;
+  drinksDetails?: string;
 };
 
 type Room = {
   name?: string;
   capacity?: number | string;
   stage?: string;
+  stageWidth?: number | string;
+  stageDepth?: number | string;
   lighting?: string;
   pa?: string;
   backline?: string;
+  backlineItems?: string[];
   monitoring?: string;
   power?: string;
   notes?: string;
@@ -111,16 +133,23 @@ type Venue = {
   instagram?: string;
   facebook?: string;
   verified?: boolean;
+  listed?: boolean;
   photoUrl?: string;
+  logoUrl?: string;
   photoPosition?: { x: number; y: number };
   photos?: string[];
+  photoObjects?: { url: string; caption?: string }[];
   videos?: string[];
+  videoObjects?: { url: string; title?: string }[];
   capacity?: number;
   feeMin?: number;
   feeMax?: number;
   website?: string;
   email?: string;
   phone?: string;
+  showPhone?: boolean;
+  latitude?: string;
+  longitude?: string;
   bookingContact?: { name?: string; email?: string; phone?: string };
   slots?: Record<string, Slot[]>;
   rooms?: Room[];
@@ -133,6 +162,34 @@ type Venue = {
   gigNights?: GigNight[];
   nightPreferences?: GigNight[];
   payment?: { models?: string[] };
+  invoicingMode?: string;
+  bookingTerms?: {
+    payModels?: string[];
+    negotiable?: boolean;
+    flatFeeMin?: string;
+    flatFeeMax?: string;
+    flatFeeBasis?: string;
+    doorSplit?: string;
+    guaranteeAmount?: string;
+    guaranteeSplit?: string;
+    barSplit?: string;
+    ticketSplitPct?: string;
+    ticketingBy?: string;
+    methods?: string[];
+    paymentTiming?: string;
+    depositRequired?: boolean;
+    depositAmount?: string;
+    depositDue?: string;
+    minNotice?: string;
+    guestList?: string;
+    meals?: boolean;
+    mealsDetails?: string;
+    drinks?: boolean;
+    drinksDetails?: string;
+    reqAbn?: boolean;
+    showPayPublicly?: boolean;
+  };
+  settings?: { listed?: boolean };
 };
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -305,6 +362,23 @@ function getSlotsForDate(venue: Venue, day: string, dateISO: string): Slot[] {
   return mergeSlots(recurOpen, overrides);
 }
 
+// ── Open date count (next 8 weeks) ───────────────────────────────────
+
+function countOpenDatesNext8Weeks(venue: Venue): number {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = new Date(today); end.setDate(end.getDate() + 56);
+  const cur = new Date(today);
+  let count = 0;
+  while (cur <= end) {
+    const day = DOW_TO_DAY[cur.getDay()];
+    const dateISO = isoDate(cur);
+    const slots = getSlotsForDate(venue, day, dateISO);
+    if (slots.some(s => s.status === 'open')) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
 // ── Open slot count (current month) ──────────────────────────────────
 
 function countOpenSlotsThisMonth(venue: Venue): number {
@@ -465,6 +539,58 @@ const pvac = StyleSheet.create({
   btnDim:         { opacity: 0.45 },
 });
 
+// ── Key facts strip ───────────────────────────────────────────────────
+
+function KeyFactsStrip({ venue, isLoggedIn }: { venue: Venue; isLoggedIn: boolean }) {
+  const { colors } = useTheme();
+  const terms = resolveSlotTerms(venue);
+  const showPay = isLoggedIn || !!venue.bookingTerms?.showPayPublicly;
+
+  const rooms = venue.rooms || [];
+  const capacityParts = rooms.map(r => r.capacity).filter(Boolean);
+  const capacityValue = capacityParts.length > 0
+    ? capacityParts.map(c => String(c)).join(' + ')
+    : venue.capacity ? String(venue.capacity) : null;
+  const capacityLabel = rooms.map(r => r.name).filter(Boolean).join(', ') || null;
+
+  const typicalPay = showPay ? formatPaySummary(terms) : null;
+  const payModels = showPay ? (terms.payModels || []).join(', or ') : null;
+
+  const curfew = venue.techSpecs?.curfew || null;
+  const noiseNote = venue.techSpecs?.notes || null;
+
+  const minNotice = terms.minNotice || null;
+  const openDates = countOpenDatesNext8Weeks(venue);
+
+  const cells = [
+    capacityValue ? { value: capacityValue, sub: capacityLabel || 'Total capacity', key: 'cap' } : null,
+    showPay && typicalPay ? { value: typicalPay, sub: payModels || 'Pay', key: 'pay' } : null,
+    curfew ? { value: curfew, sub: noiseNote ? noiseNote.split(/[.,]/)[0].trim().slice(0, 40) : 'Curfew', key: 'curfew' } : null,
+    minNotice ? { value: minNotice, sub: 'Minimum notice', key: 'notice' } : null,
+    { value: String(openDates), sub: 'Next 8 weeks', key: 'dates' },
+  ].filter(Boolean) as { value: string; sub: string; key: string }[];
+
+  if (cells.length === 0) return null;
+
+  return (
+    <View style={[kf.strip, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+      {cells.map((cell, i) => (
+        <View key={cell.key} style={[kf.cell, i < cells.length - 1 && { borderRightWidth: 1, borderRightColor: colors.border }]}>
+          <Text style={[kf.value, { color: colors.black }]} numberOfLines={1}>{cell.value}</Text>
+          <Text style={[kf.sub, { color: colors.grey }]} numberOfLines={1}>{cell.sub}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const kf = StyleSheet.create({
+  strip: { flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: 1, borderBottomWidth: 1, marginBottom: 0 },
+  cell:  { flex: 1, minWidth: 100, paddingVertical: 12, paddingHorizontal: 14 },
+  value: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2, marginBottom: 2 },
+  sub:   { fontSize: 11, fontWeight: '500' },
+});
+
 // ── Main screen ───────────────────────────────────────────────────────
 
 export default function VenueScreen({ _overrideId }: { _overrideId?: string } = {}) {
@@ -534,15 +660,14 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   );
 
   const isMyVenue = !isPublicPreview && profile?.type === 'venue' && profile?.venueId === id;
-  const genres    = venue.genre || venue.genres || [];
-  const address   = [venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ');
+  const genres    = venue.genrePreferences || venue.genre || venue.genres || [];
   const photo     = venue.photoUrl || (venue.photos && venue.photos[0]);
   const hasPhotos = (venue.photos || []).length > 0 || (venue.videos || []).length > 0 || isMyVenue;
   const venueTabs = [
-    { id: 'overview',  label: 'Overview'           },
-    { id: 'timetable', label: 'Timetable'          },
-    { id: 'rooms',     label: 'Rooms & Tech Specs' },
-    ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
+    { id: 'overview',  label: 'Overview'       },
+    { id: 'timetable', label: 'Gig slots'      },
+    { id: 'rooms',     label: 'Rooms & tech'   },
+    ...(hasPhotos ? [{ id: 'photos', label: 'Photos & video' }] : []),
     ...(isMyVenue ? [{ id: 'gigs', label: 'My Gigs' }] : []),
   ] as const;
 
@@ -607,10 +732,10 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             <View style={{ height: 12 }} />
 
             {([
-              { id: 'overview',  label: 'Overview'           },
-              { id: 'timetable', label: 'Timetable'          },
-              { id: 'rooms',     label: 'Rooms & Tech Specs' },
-              ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
+              { id: 'overview',  label: 'Overview'     },
+              { id: 'timetable', label: 'Gig slots'    },
+              { id: 'rooms',     label: 'Rooms & tech' },
+              ...(hasPhotos ? [{ id: 'photos', label: 'Photos & video' }] : []),
             ] as const).map((tab: { id: string; label: string }) => (
               <TouchableOpacity
                 key={tab.id}
@@ -677,7 +802,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 isMyVenue={isMyVenue}
               />
             )}
-            {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
+            {activeTab === 'rooms'     && <RoomsTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} userId={user?.uid} />}
             {activeTab === 'photos'    && <PhotosTab venue={venue} />}
             {activeTab === 'gigs'      && <MyGigsContent embedded />}
             {activeTab === 'dashboard' && <DashboardContent />}
@@ -712,64 +837,117 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
       <ScrollView stickyHeaderIndices={[1]}>
 
-        {/* ── Banner ── */}
+        {/* ── Full header (scrolls away) ── */}
         <View>
-          {photo
-            ? <PositionedBanner uri={photo} position={venue.photoPosition} height={isWeb ? 220 : 240} />
-            : <View style={s.bannerPlaceholder}><Text style={s.bannerPlaceholderText}>venue photo</Text></View>
-          }
-        </View>
+          {/* Cover photo */}
+          <View>
+            {photo
+              ? <PositionedBanner uri={photo} position={venue.photoPosition} height={isWeb ? 260 : 200} />
+              : <View style={[s.bannerPlaceholder, { height: isWeb ? 260 : 200 }]} />
+            }
+          </View>
 
-        {/* ── Sticky header: name + tabs ── */}
-        <View style={[s.stickyHeader, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-          <View style={[s.headerInfo, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
-            <View style={isMobileLayout ? undefined : { flex: 1 }}>
+          {/* Identity row: logo + name + subline */}
+          <View style={[s.identityRow, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+            {/* Logo overlapping the cover */}
+            <View style={s.logoWrap}>
+              {venue.logoUrl ? (
+                <Image source={{ uri: venue.logoUrl }} style={[s.logoImg, { borderColor: colors.bg }]} resizeMode="cover" />
+              ) : (
+                <View style={[s.logoPlaceholder, { borderColor: colors.bg, backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.logoPlaceholderText, { color: colors.grey }]}>
+                    {venue.name?.slice(0, 2).toUpperCase() || '??'}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={s.identityInfo}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
                 {venue.verified && (
                   <View style={s.verifiedBadge}>
-                    <Text style={s.verifiedBadgeText}>Verified</Text>
+                    <Text style={s.verifiedBadgeText}>✓ Verified</Text>
                   </View>
                 )}
               </View>
-              {address ? <Text style={[s.address, { color: colors.grey }]}>{address}</Text> : null}
+              {(() => {
+                const sublineParts = [
+                  venue.venueType,
+                  [venue.suburb, venue.state].filter(Boolean).join(', '),
+                  venue.ageRestriction,
+                ].filter(Boolean);
+                return sublineParts.length > 0
+                  ? <Text style={[s.subline, { color: colors.grey }]}>{sublineParts.join(' · ')}</Text>
+                  : null;
+              })()}
             </View>
+          </View>
+
+          {/* Action buttons */}
+          <View style={[s.actionsRow, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             {isMyVenue ? (
-              <View style={{ flexDirection: 'row', gap: 8, marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4, flexWrap: 'wrap' }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
-                  <Text style={s.editProfileBtnText}>Edit Profile</Text>
+                  <Text style={s.editProfileBtnText}>Edit profile</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.logoutBtn} onPress={async () => { await signOut(auth); router.replace('/'); }}>
                   <Text style={s.logoutBtnText}>Log out</Text>
                 </TouchableOpacity>
               </View>
             ) : isAgentForVenue ? (
-              <TouchableOpacity
-                style={[s.editProfileBtn, { marginLeft: isMobileLayout ? 0 : 12, marginTop: isMobileLayout ? 12 : 4 }]}
-                onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}
-              >
-                <Text style={s.editProfileBtnText}>Edit Profile</Text>
-              </TouchableOpacity>
-            ) : isArtist ? (
-              <TouchableOpacity style={[s.enquireHeaderBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => setActiveTab('timetable')}>
-                <Text style={s.enquireHeaderBtnText}>Enquire about a timeslot</Text>
-              </TouchableOpacity>
-            ) : !user ? (
-              <TouchableOpacity style={[s.enquireHeaderBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => router.push('/login')}>
-                <Text style={s.enquireHeaderBtnText}>Log in to enquire</Text>
+              <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}>
+                <Text style={s.editProfileBtnText}>Edit profile</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[s.viewTimetableBtn, isMobileLayout && { marginLeft: 0, marginTop: 12 }]} onPress={() => setActiveTab('timetable')}>
-                <Text style={s.viewTimetableBtnText}>View Timetable</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <TouchableOpacity
+                  style={s.msgVenueBtn}
+                  onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { newThreadVenueId: id } } as any)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Message venue</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.enquireHeaderBtn}
+                  onPress={() => {
+                    if (!user) { router.push('/login'); return; }
+                    setActiveTab('timetable');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.enquireHeaderBtnText}>See open dates</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabBarContent}>
+
+          {/* Genre chips */}
+          {genres.length > 0 && (
+            <View style={[s.genreChipsRow, { backgroundColor: colors.bg }]}>
+              {genres.map((g, i) => (
+                <View key={i} style={[s.genrePill, { borderColor: colors.border }]}>
+                  <Text style={[s.genreText, { color: colors.black }]}>{g}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Key facts strip */}
+          <KeyFactsStrip venue={venue} isLoggedIn={!!user} />
+
+          {/* Pending agent claims (venue owner only) */}
+          {isMyVenue && <PendingAgentVenueClaims venueId={id} />}
+        </View>
+
+        {/* ── Tab bar (sticky) ── */}
+        <View style={[s.stickyTabBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabBarContent}>
             {([
-              { id: 'overview',  label: 'Overview' },
-              { id: 'timetable', label: 'Timetable' },
-              { id: 'rooms',     label: 'Rooms & Tech Specs' },
-              ...(hasPhotos ? [{ id: 'photos', label: 'Photos & Videos' }] : []),
+              { id: 'overview',  label: 'Overview'     },
+              { id: 'timetable', label: 'Gig slots'    },
+              { id: 'rooms',     label: 'Rooms & tech' },
+              ...(hasPhotos ? [{ id: 'photos', label: 'Photos & video' }] : []),
               ...(isMyVenue ? [{ id: 'gigs', label: 'My Gigs' }, { id: 'dashboard', label: 'Dashboard' }] : []),
             ] as const).map((tab: { id: string; label: string }) => (
               <TouchableOpacity
@@ -784,9 +962,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             ))}
           </ScrollView>
         </View>
-
-        {/* ── Pending agent claims (venue owner only) ── */}
-        {isMyVenue && <PendingAgentVenueClaims venueId={id} />}
 
         {/* ── Tab content ── */}
         {activeTab === 'overview' && (
@@ -828,7 +1003,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             }}
           />
         )}
-        {activeTab === 'rooms'     && <RoomsTab venue={venue} />}
+        {activeTab === 'rooms'     && <RoomsTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} userId={user?.uid} />}
         {activeTab === 'photos'    && <PhotosTab venue={venue} />}
         {activeTab === 'gigs'      && isMyVenue && <MyGigsContent embedded />}
         {activeTab === 'dashboard' && isMyVenue && <DashboardContent />}
@@ -857,22 +1032,9 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
   const [expanded, setExpanded] = useState(false);
   const desc = venue.description || '';
   const shouldTruncate = desc.length > MAX_DESC;
-  const nights = venue.gigNights || venue.nightPreferences || [];
-  const openSlots = countOpenSlotsThisMonth(venue);
-  const recurringSchedule = CANONICAL_DAYS.flatMap(day => {
-    const slots = (venue.slots?.[day] || []).filter(s => !s.date && s.status === 'open');
-    return slots.map(s => ({ day, slot: s }));
-  });
-  const genres    = venue.genrePreferences || venue.genre || venue.genres || [];
+  const showPay = isLoggedIn || !!venue.bookingTerms?.showPayPublicly;
 
-  const StatCard = ({ num, label }: { num: string | number; label: string }) => (
-    <View style={[s.statCard, { borderColor: colors.border }]}>
-      <Text style={[s.statNum, { color: colors.black }]}>{num}</Text>
-      <Text style={[s.statLabel, { color: colors.grey }]}>{label}</Text>
-    </View>
-  );
-
-  const typicalFee = fmtFee(venue.feeMin, venue.feeMax);
+  const terms = resolveSlotTerms(venue);
 
   const addBtn = (tab: string) => (
     <TouchableOpacity onPress={() => router.push(`/edit-venue?tab=${encodeURIComponent(tab)}` as any)} activeOpacity={0.75}>
@@ -880,64 +1042,104 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
     </TouchableOpacity>
   );
 
-  const secHead = (label: string, isEmpty: boolean, tab: string, labelStyle?: any) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-      <Text style={labelStyle ?? [s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2 }]}>{label}</Text>
+  const secHead = (label: string, isEmpty: boolean, tab: string) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <Text style={[ov.sectionHeading, { color: colors.black }]}>{label}</Text>
       {isMyVenue && isEmpty && addBtn(tab)}
     </View>
   );
 
-  const sidebar = (
-    <View style={!isMobileLayout ? s.overviewSidebar : s.overviewSidebarMobile}>
-      {(venue.capacity ?? 0) > 0 && <StatCard num={Number(venue.capacity).toLocaleString()} label="Capacity" />}
-      {isMyVenue && (venue.capacity ?? 0) === 0 && (
-        <View style={[s.statCard, { borderColor: colors.border }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={[s.statLabel, { color: colors.grey }]}>Capacity</Text>
-            {addBtn('Basic Info')}
-          </View>
+  const hasVenueInfo = !!(
+    (venue.phone && venue.showPhone) || venue.website || venue.instagram || venue.facebook
+  );
+
+  // ── Accessibility grid ─────────────────────────────────────────────
+  const ts = venue.techSpecs;
+  const accessItems = [
+    { label: 'Wheelchair access',    on: !!ts?.wheelchairAccess },
+    { label: 'Accessible bathroom',  on: !!ts?.accessibleBathroom },
+    { label: 'Step-free stage',      on: !!ts?.stepFreeStage },
+    { label: 'Wheelchair parking',   on: !!ts?.wheelchairParking },
+  ];
+  const hasAnyAccessData = typeof ts?.wheelchairAccess !== 'undefined'
+    || typeof ts?.accessibleBathroom !== 'undefined'
+    || typeof ts?.stepFreeStage !== 'undefined'
+    || typeof ts?.wheelchairParking !== 'undefined';
+
+  // ── "What acts get" card ──────────────────────────────────────────
+  const payModels = terms.payModels || [];
+  const hasPayTerms = payModels.length > 0;
+  const invoicingLabel = terms.invoicingMode === 'venueRCTI'
+    ? 'The venue issues an RCTI'
+    : 'Send the venue an invoice';
+
+  const hospChips: string[] = [];
+  if (isLoggedIn) {
+    if (terms.guestList) hospChips.push(`Guest list: ${terms.guestList}`);
+    if (terms.meals) hospChips.push(terms.mealsDetails || 'Meals provided');
+    if (terms.drinks) hospChips.push(terms.drinksDetails || 'Drinks provided');
+    if (venue.techSpecs?.soundEngineer) hospChips.push(
+      venue.techSpecs.soundEngineerDetails
+        ? `In-house engineer (${venue.techSpecs.soundEngineerDetails})`
+        : 'In-house engineer, included'
+    );
+  }
+
+  // ── Aside: links card ─────────────────────────────────────────────
+  const aside = (
+    <View style={!isMobileLayout ? ov.aside : ov.asideMobile}>
+      {hasVenueInfo && (
+        <View style={[ov.linksCard, { borderColor: colors.border }]}>
+          <Text style={[ov.linksHeading, { color: colors.grey }]}>Links</Text>
+          {venue.website ? (
+            <TouchableOpacity style={ov.linkRow} onPress={() => Linking.openURL(venue.website!)} activeOpacity={0.7}>
+              <Text style={[ov.linkText, { color: colors.black }]}>Website</Text>
+              <Text style={ov.linkArrow}>→</Text>
+            </TouchableOpacity>
+          ) : null}
+          {venue.instagram ? (
+            <TouchableOpacity style={ov.linkRow} onPress={() => {
+              const raw = venue.instagram!;
+              const url = raw.startsWith('http') ? raw : `https://www.instagram.com/${raw.replace(/^@/, '')}`;
+              Linking.openURL(url);
+            }} activeOpacity={0.7}>
+              <Text style={[ov.linkText, { color: colors.black }]}>Instagram</Text>
+              <Text style={ov.linkArrow}>→</Text>
+            </TouchableOpacity>
+          ) : null}
+          {venue.facebook ? (
+            <TouchableOpacity style={ov.linkRow} onPress={() => Linking.openURL(venue.facebook!)} activeOpacity={0.7}>
+              <Text style={[ov.linkText, { color: colors.black }]}>Facebook</Text>
+              <Text style={ov.linkArrow}>→</Text>
+            </TouchableOpacity>
+          ) : null}
+          {venue.phone && venue.showPhone ? (
+            <TouchableOpacity style={ov.linkRow} onPress={() => Linking.openURL(`tel:${venue.phone}`)} activeOpacity={0.7}>
+              <Text style={[ov.linkText, { color: colors.black }]}>{venue.phone}</Text>
+              <Text style={ov.linkArrow}>→</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
-      {venue.venueType ? <StatCard num={venue.venueType} label="Venue type" /> : null}
-      {venue.ageRestriction ? <StatCard num={venue.ageRestriction} label="Entry" /> : null}
-      {gigsHosted > 0 && <StatCard num={gigsHosted} label="Gigs hosted" />}
-      {openSlots > 0 && <StatCard num={openSlots} label="Open slots this month" />}
-      {recurringSchedule.length > 0 && (
-        <View style={[s.thisWeekCard, { borderColor: colors.border }]}>
-          <Text style={[s.thisWeekTitle, { color: colors.grey }]}>Recurring</Text>
-          {recurringSchedule.map(({ day, slot }, i) => (
-            <View key={i} style={s.thisWeekSlot}>
-              <Text style={[s.thisWeekSlotTime, { color: Colors.orange, fontWeight: '700' }]}>{day.slice(0, 3)}</Text>
-              <Text style={[s.thisWeekSlotTime, { color: colors.black }]}>{slot.time}</Text>
-              {slot.room ? <Text style={[s.thisWeekSlotStatus, { color: colors.grey }]}>{slot.room}</Text> : null}
-            </View>
-          ))}
-        </View>
-      )}
-      {typicalFee && (
-        <View style={[s.statCard, { borderColor: colors.border }]}>
-          <Text style={[s.statLabel, { color: colors.grey }]}>Typical Fee</Text>
-          <Text style={[s.statNum, { color: colors.black }]}>{typicalFee}</Text>
-        </View>
-      )}
+      <View style={[ov.noteCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+        <Text style={[ov.noteText, { color: colors.grey }]}>
+          Questions before you enquire? Message the venue. Booking details are shared once a gig is confirmed.
+        </Text>
+      </View>
     </View>
   );
 
-  const hasBookingContact = !!(venue.bookingContact && (venue.bookingContact.name || venue.bookingContact.email || venue.bookingContact.phone));
-  const hasVenueInfo = !!(venue.phone || venue.email || venue.website || venue.instagram || venue.facebook);
-  const hasPayment = (venue.payment?.models || []).length > 0;
-
   const main = (
-    <View style={!isMobileLayout ? s.overviewMain : null}>
+    <View style={!isMobileLayout ? ov.main : null}>
 
-      {/* Description / About */}
+      {/* About */}
       {(desc || isMyVenue) && (
         <View style={s.section}>
           {secHead('About', !desc, 'Basic Info')}
           {desc ? (
             <>
               <Text style={[s.body, { color: colors.black }]}>
-                {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '…' : desc}
+                {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '...' : desc}
               </Text>
               {shouldTruncate && (
                 <TouchableOpacity onPress={() => setExpanded(e => !e)} style={{ marginTop: 6 }}>
@@ -949,171 +1151,191 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
         </View>
       )}
 
-      {/* Genre Preferences */}
-      {(genres.length > 0 || isMyVenue) && (
+      {/* What acts get */}
+      {(hasPayTerms || hospChips.length > 0 || isMyVenue) && (
         <View style={s.section}>
-          {secHead('Genre Preferences', genres.length === 0, 'Basic Info')}
-          {genres.length > 0 && <Text style={s.genreOrangeText}>{genres.join(' · ')}</Text>}
-        </View>
-      )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text style={[ov.sectionHeading, { color: colors.black }]}>What acts get</Text>
+            {isMyVenue && !hasPayTerms && addBtn('Payments')}
+          </View>
+          <Text style={[ov.sectionSubheading, { color: colors.grey }]}>
+            The venue's standard deal. Some nights have their own terms, shown on each date.
+          </Text>
+          <View style={[ov.termsCard, { borderColor: colors.border }]}>
 
-      {/* Payment */}
-      {(hasPayment || isMyVenue) && (
-        <View style={s.section}>
-          {secHead('Payment', !hasPayment, 'Payments')}
-          {hasPayment && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {Array.from(
-                new Map(
-                  (venue.payment!.models!).map((model) => {
-                    const label = /^set.?fee$/i.test(model.trim()) ? 'Flat fee' : model;
-                    return [label, model] as [string, string];
-                  })
-                ).entries()
-              ).map(([label, key]) => (
-                <View key={key} style={[s.genrePill, { borderColor: colors.border }]}>
-                  <Text style={[s.genreText, { color: colors.black }]}>{label}</Text>
+            {/* Pay */}
+            {(hasPayTerms || isMyVenue) && (
+              <View style={[ov.termsRow, { borderBottomColor: colors.border }]}>
+                <Text style={[ov.termsLabel, { color: colors.grey }]}>Pay</Text>
+                <View style={{ flex: 1 }}>
+                  {showPay && hasPayTerms ? (
+                    <>
+                      {payModels.map((model, i) => {
+                        const line = formatPaySummary({ ...terms, payModels: [model] });
+                        return <Text key={i} style={[ov.termsValue, { color: colors.black }]}>{line || model}</Text>;
+                      })}
+                      {terms.negotiable && (
+                        <View style={[ov.negotiableBadge, { borderColor: '#2F7A4B' }]}>
+                          <Text style={[ov.negotiableBadgeText, { color: '#2F7A4B' }]}>Open to negotiation</Text>
+                        </View>
+                      )}
+                    </>
+                  ) : !showPay ? (
+                    <Text style={[ov.termsValue, { color: colors.grey, fontStyle: 'italic' }]}>
+                      Sign in to see pay details
+                    </Text>
+                  ) : (
+                    <Text style={[ov.termsValue, { color: colors.grey }]}>Not specified</Text>
+                  )}
                 </View>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
+              </View>
+            )}
 
-      {/* Booking Contact */}
-      {(hasBookingContact || isMyVenue) && (
-        <View style={s.section}>
-          {secHead('Booking Contact', !hasBookingContact, 'Basic Info', [s.sectionTitle, { color: colors.grey }])}
-          {hasBookingContact && (
-            <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
-              {venue.bookingContact!.name ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Name</Text>
-                  <Text style={[s.infoValue, { color: colors.black }]}>{venue.bookingContact!.name}</Text>
+            {/* Getting paid */}
+            {isLoggedIn && (terms.paymentTiming || terms.methods?.length > 0 || terms.depositRequired) && (
+              <View style={[ov.termsRow, { borderBottomColor: colors.border }]}>
+                <Text style={[ov.termsLabel, { color: colors.grey }]}>Getting paid</Text>
+                <View style={{ flex: 1, gap: 4 }}>
+                  {(terms.paymentTiming || terms.methods?.length > 0) && (
+                    <Text style={[ov.termsValue, { color: colors.black }]}>
+                      {[terms.paymentTiming, terms.methods?.join(', ')].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
+                  <Text style={[ov.termsValue, { color: colors.black }]}>{invoicingLabel}</Text>
+                  {terms.reqAbn && (
+                    <Text style={[ov.termsValue, { color: colors.grey }]}>An ABN is required</Text>
+                  )}
+                  {terms.depositRequired && terms.depositAmount && (
+                    <Text style={[ov.termsValue, { color: colors.black }]}>
+                      ${terms.depositAmount} deposit{terms.depositDue ? `, due ${terms.depositDue}` : ''}
+                    </Text>
+                  )}
                 </View>
-              ) : null}
-              {venue.bookingContact!.email ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.bookingContact!.email}`)}>
-                    <Text style={s.link}>{venue.bookingContact!.email}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              {venue.bookingContact!.phone ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.bookingContact!.phone}`)}>
-                    <Text style={s.link}>{venue.bookingContact!.phone}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </View>
-          )}
-        </View>
-      )}
+              </View>
+            )}
 
-      {/* Venue Info */}
-      {(hasVenueInfo || isMyVenue) && (
-        <View style={s.section}>
-          {secHead('Venue Info', !hasVenueInfo, 'Basic Info')}
-          {hasVenueInfo && (
-            <View style={[s.infoGrid, { borderTopColor: colors.border }]}>
-              {venue.phone ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Phone</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${venue.phone}`)}>
-                    <Text style={s.link}>{venue.phone}</Text>
-                  </TouchableOpacity>
+            {/* Hospitality */}
+            {isLoggedIn && hospChips.length > 0 && (
+              <View style={[ov.termsRow, { borderBottomColor: 'transparent' }]}>
+                <Text style={[ov.termsLabel, { color: colors.grey }]}>Hospitality</Text>
+                <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {hospChips.map((chip, i) => (
+                    <View key={i} style={[ov.hospChip, { borderColor: colors.border }]}>
+                      <Text style={[ov.hospChipText, { color: colors.black }]}>{chip}</Text>
+                    </View>
+                  ))}
                 </View>
-              ) : null}
-              {venue.email ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Email</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${venue.email}`)}>
-                    <Text style={s.link}>{venue.email}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              {venue.website ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Website</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(venue.website!)}>
-                    <Text style={s.link}>{venue.website}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              {venue.instagram ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Instagram</Text>
-                  <TouchableOpacity onPress={() => {
-                    const raw = venue.instagram!;
-                    const url = raw.startsWith('http') ? raw : `https://www.instagram.com/${raw.replace(/^@/, '')}`;
-                    Linking.openURL(url);
-                  }}>
-                    <Text style={s.link}>Instagram →</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              {venue.facebook ? (
-                <View style={[s.infoRow, { borderBottomColor: colors.border }]}>
-                  <Text style={[s.infoLabel, { color: colors.grey }]}>Facebook</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL(venue.facebook!)}>
-                    <Text style={s.link}>Facebook →</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-            </View>
-          )}
+              </View>
+            )}
+
+          </View>
         </View>
       )}
 
       {/* Accessibility */}
-      {(() => {
-        const ts = venue.techSpecs;
-        const items: string[] = [];
-        if (ts?.wheelchairAccess)    items.push('Wheelchair access');
-        if (ts?.accessibleBathroom)  items.push('Accessible bathroom');
-        if (ts?.stepFreeStage)       items.push('Step-free stage access');
-        if (ts?.wheelchairParking)   items.push('Wheelchair parking');
-        if (items.length === 0) return null;
-        return (
-          <View style={s.section}>
-            <Text style={[s.sectionTitle, { color: colors.black }]}>Accessibility</Text>
-            {items.map((item, i) => (
-              <View key={i} style={s.accessibilityRow}>
-                <Text style={[s.accessibilityCheck, { color: Colors.orange }]}>✓</Text>
-                <Text style={[s.accessibilityLabel, { color: colors.black }]}>{item}</Text>
+      {hasAnyAccessData && (
+        <View style={s.section}>
+          <Text style={[ov.sectionHeading, { color: colors.black, marginBottom: 14 }]}>Accessibility</Text>
+          <View style={ov.accessGrid}>
+            {accessItems.map(item => (
+              <View key={item.label} style={ov.accessItem}>
+                <Text style={[ov.accessIcon, { color: item.on ? '#2F7A4B' : '#9A3B06' }]}>
+                  {item.on ? '✓' : '✕'}
+                </Text>
+                <Text style={[ov.accessLabel, { color: item.on ? colors.black : colors.grey }]}>
+                  {item.label}
+                </Text>
               </View>
             ))}
           </View>
-        );
-      })()}
+        </View>
+      )}
+
+      {/* Location */}
+      {(venue.streetAddress || venue.suburb) && (
+        <View style={s.section}>
+          <Text style={[ov.sectionHeading, { color: colors.black, marginBottom: 14 }]}>Location</Text>
+          <View style={[ov.locationCard, { borderColor: colors.border }]}>
+            <Text style={[ov.locationAddress, { color: colors.black }]}>
+              {[venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ')}
+            </Text>
+            {venue.techSpecs?.loadIn && (
+              <Text style={[ov.locationMeta, { color: colors.grey }]}>Load-in: {venue.techSpecs.loadIn}</Text>
+            )}
+            {venue.techSpecs?.parking && (
+              <Text style={[ov.locationMeta, { color: colors.grey }]}>Parking: {venue.techSpecs.parking}</Text>
+            )}
+            <TouchableOpacity
+              style={[ov.mapsBtn, { borderColor: colors.border }]}
+              onPress={() => {
+                const addr = encodeURIComponent([venue.streetAddress, venue.suburb, venue.state].filter(Boolean).join(', '));
+                Linking.openURL(`https://maps.google.com/?q=${addr}`);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={[ov.mapsBtnText, { color: colors.black }]}>Open in Maps →</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {isMobileLayout && (
         <TouchableOpacity style={s.timetableBtn} onPress={onGoTimetable}>
-          <Text style={s.timetableBtnText}>View Timetable & Available Slots →</Text>
+          <Text style={s.timetableBtnText}>See open dates</Text>
         </TouchableOpacity>
       )}
     </View>
   );
 
   return (
-    <View style={[s.tabBody, !isMobileLayout && s.overviewLayout]}>
+    <View style={[s.tabBody, !isMobileLayout && ov.layout]}>
       {!isMobileLayout ? (
         <>
           {main}
-          {sidebar}
+          {aside}
         </>
       ) : (
         <>
-          {sidebar}
           {main}
+          {aside}
         </>
       )}
     </View>
   );
 }
+
+const ov = StyleSheet.create({
+  layout:           { flexDirection: 'row', alignItems: 'flex-start', gap: 40 },
+  main:             { flex: 1 },
+  aside:            { width: 260, gap: 14 },
+  asideMobile:      { gap: 14, marginTop: 8 },
+  sectionHeading:   { fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
+  sectionSubheading:{ fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  termsCard:        { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  termsRow:         { flexDirection: 'row', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1 },
+  termsLabel:       { width: 100, fontSize: 13, fontWeight: '600', flexShrink: 0, paddingTop: 1 },
+  termsValue:       { fontSize: 14, lineHeight: 21 },
+  negotiableBadge:  { alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  negotiableBadgeText: { fontSize: 12, fontWeight: '600' },
+  hospChip:         { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  hospChipText:     { fontSize: 13, fontWeight: '500' },
+  accessGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  accessItem:       { flexDirection: 'row', alignItems: 'center', gap: 8, width: '48%' as any, minWidth: 160 },
+  accessIcon:       { fontSize: 15, fontWeight: '700', width: 18 },
+  accessLabel:      { fontSize: 14, flex: 1 },
+  locationCard:     { borderWidth: 1, borderRadius: 12, padding: 16, gap: 6 },
+  locationAddress:  { fontSize: 15, fontWeight: '600' },
+  locationMeta:     { fontSize: 13 },
+  mapsBtn:          { marginTop: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, alignSelf: 'flex-start' },
+  mapsBtnText:      { fontSize: 13, fontWeight: '600' },
+  linksCard:        { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  linksHeading:     { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  linkRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 11, borderTopWidth: 1, borderTopColor: '#E7E6E3' },
+  linkText:         { fontSize: 14, fontWeight: '500' },
+  linkArrow:        { fontSize: 14, color: '#888' },
+  noteCard:         { borderWidth: 1, borderRadius: 12, padding: 14 },
+  noteText:         { fontSize: 13, lineHeight: 20 },
+});
 
 // ── Timetable tab ────────────────────────────────────────────────────
 
@@ -1317,6 +1539,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
                         onEnquire={onEnquire}
                         isMyVenue={isMyVenue}
                         onVenueEdit={(s, d, iso) => setOverrideModal({ slot: s, day: d, dateISO: iso, date })}
+                        venue={venue}
                       />
                     ))}
                   </View>
@@ -1480,6 +1703,7 @@ function TimetableTab({ venue, isArtist, isLoggedIn, userEnquiries, onEnquire, i
                       isMyVenue={isMyVenue}
                       onVenueEdit={(s, d, iso) => setOverrideModal({ slot: s, day: d, dateISO: iso, date })}
                       colors={colors}
+                      venue={venue}
                     />
                   );
                 })}
@@ -1570,17 +1794,48 @@ const wr = StyleSheet.create({
 
 // ── All dates slot row (native "All dates" view) ─────────────────────
 
-function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEnquired, onEnquire, isMyVenue, onVenueEdit, colors }: {
+function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEnquired, onEnquire, isMyVenue, onVenueEdit, colors, venue }: {
   slot: Slot; date: Date; dateISO: string; day: string;
   isArtist: boolean; isLoggedIn: boolean; hasEnquired: boolean;
   onEnquire: () => void;
   isMyVenue?: boolean;
   onVenueEdit?: (slot: Slot, day: string, dateISO: string) => void;
   colors: any;
+  venue: Venue;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const isBooked = slot.status === 'booked';
   const isOpen   = slot.status === 'open';
   const isClosed = slot.status === 'closed';
+
+  const terms = resolveSlotTerms(venue, slot);
+  const paySummary = formatPaySummary(terms);
+
+  const metaParts = [
+    slot.time,
+    slot.duration ? `${slot.duration} min sets` : null,
+    slot.room,
+  ].filter(Boolean).join(' · ');
+
+  // Expanded timings
+  const timingLines: string[] = [];
+  if (slot.loadIn) {
+    timingLines.push(`Load-in ${slot.loadIn}${slot.soundcheck ? ' · Soundcheck' : ''}`);
+  } else if (slot.soundcheck) {
+    timingLines.push('Soundcheck');
+  }
+  if (slot.soundcheckDetails) timingLines.push(slot.soundcheckDetails);
+  timingLines.push([`On stage ${slot.time}`, slot.duration ? `for ${slot.duration} min sets` : null].filter(Boolean).join(' '));
+
+  // What you get
+  const whatParts = [
+    terms.guestList ? `Guest list · ${terms.guestList}` : null,
+    terms.meals ? (terms.mealsDetails || 'Meals') : null,
+    terms.drinks ? (terms.drinksDetails || 'Drinks') : null,
+  ].filter(Boolean);
+  const whatYouGet = whatParts.length > 0 ? whatParts.join(', ') : null;
+
+  const bookBy = terms.minNotice && terms.minNotice !== '0' ? terms.minNotice : 'No minimum notice';
 
   let leftBorderColor: string;
   let badgeLabel: string;
@@ -1597,40 +1852,95 @@ function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEn
     leftBorderColor = Colors.orange; badgeLabel = 'Open'; badgeTextColor = Colors.orange; badgeBorderColor = Colors.orange;
   }
 
+  const showDetails = isOpen && !isClosed;
+
   return (
-    <View style={[ad.row, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: isClosed ? colors.bgFaint : colors.bg, opacity: isClosed ? 0.7 : 1 }]}>
-      <View style={ad.dateBox}>
-        <Text style={[ad.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
-        <Text style={[ad.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
-      </View>
-      <Text style={[ad.dayAbbrev, { color: colors.grey }]}>{day.slice(0, 3).toUpperCase()}</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={[ad.time, { color: isClosed ? colors.grey : colors.black }]}>{slot.time}</Text>
-        {slot.room ? <Text style={[ad.room, { color: colors.grey }]}>{slot.room}</Text> : null}
-      </View>
-      {isMyVenue && (
-        <TouchableOpacity style={ad.editBtn} onPress={() => onVenueEdit?.(slot, day, dateISO)} activeOpacity={0.75}>
-          <Text style={ad.editBtnText}>Edit</Text>
-        </TouchableOpacity>
-      )}
-      {isOpen && !hasEnquired && isArtist && !isMyVenue && (
-        <TouchableOpacity style={ad.enquireBtn} onPress={onEnquire}>
-          <Text style={ad.enquireBtnText}>Enquire</Text>
-        </TouchableOpacity>
-      )}
-      {isOpen && !hasEnquired && !isLoggedIn && !isMyVenue && (
-        <TouchableOpacity style={[ad.enquireBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} onPress={onEnquire}>
-          <Text style={[ad.enquireBtnText, { color: Colors.orange }]}>Log in</Text>
-        </TouchableOpacity>
-      )}
-      {(!isOpen || hasEnquired) && !isMyVenue && (
-        <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
-          <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+    <View style={[ad.card, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: isClosed ? colors.bgFaint : colors.bg, opacity: isClosed ? 0.7 : 1 }]}>
+      {/* Top row */}
+      <View style={ad.top}>
+        <View style={ad.dateBlock}>
+          <Text style={[ad.dateBlockDay, { color: colors.grey }]}>{day.slice(0, 3).toUpperCase()}</Text>
+          <Text style={[ad.dateBlockNum, { color: colors.black }]}>{date.getDate()}</Text>
         </View>
-      )}
-      {isClosed && isMyVenue && (
-        <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
-          <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+        <View style={ad.slotInfo}>
+          <View style={ad.nameRow}>
+            {(slot.name || slot.gigName) ? (
+              <Text style={[ad.slotName, { color: isClosed ? colors.grey : colors.black }]} numberOfLines={1}>
+                {slot.name || slot.gigName}
+              </Text>
+            ) : null}
+            {slot.slotType ? (
+              <View style={[ad.typePill, { borderColor: colors.border }]}>
+                <Text style={[ad.typeText, { color: colors.grey }]}>{slot.slotType}</Text>
+              </View>
+            ) : null}
+          </View>
+          {metaParts ? <Text style={[ad.metaText, { color: colors.grey }]}>{metaParts}</Text> : null}
+          {paySummary ? <Text style={[ad.payText, { color: colors.grey }]}>{paySummary}</Text> : null}
+        </View>
+        <View style={ad.actions}>
+          {showDetails && !isMyVenue && (
+            <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.7}>
+              <Text style={ad.detailsLink}>{expanded ? 'Hide details' : 'Details'}</Text>
+            </TouchableOpacity>
+          )}
+          {hasEnquired && !isMyVenue && (
+            <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
+              <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+            </View>
+          )}
+          {!isOpen && !isMyVenue && !hasEnquired && (
+            <View style={[ad.badge, { borderColor: badgeBorderColor }]}>
+              <Text style={[ad.badgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+            </View>
+          )}
+          {isMyVenue && (
+            <TouchableOpacity style={ad.editBtn} onPress={() => onVenueEdit?.(slot, day, dateISO)} activeOpacity={0.75}>
+              <Text style={ad.editBtnText}>Edit</Text>
+            </TouchableOpacity>
+          )}
+          {isOpen && !hasEnquired && isArtist && !isMyVenue && (
+            <TouchableOpacity style={ad.enquireBtn} onPress={onEnquire}>
+              <Text style={ad.enquireBtnText}>Enquire</Text>
+            </TouchableOpacity>
+          )}
+          {isOpen && !hasEnquired && !isLoggedIn && !isMyVenue && (
+            <TouchableOpacity style={[ad.enquireBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} onPress={onEnquire}>
+              <Text style={[ad.enquireBtnText, { color: Colors.orange }]}>Log in</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Expanded details panel */}
+      {expanded && (
+        <View style={[ad.detailsPanel, { borderTopColor: colors.border }]}>
+          <View style={ad.detailsGrid}>
+            <View style={ad.detailsCol}>
+              <Text style={[ad.detailsLabel, { color: colors.grey }]}>Timings</Text>
+              {timingLines.map((line, i) => (
+                <Text key={i} style={[ad.detailsValue, { color: colors.black }]}>{line}</Text>
+              ))}
+            </View>
+            <View style={ad.detailsCol}>
+              <Text style={[ad.detailsLabel, { color: colors.grey }]}>Pay</Text>
+              <Text style={[ad.detailsValue, { color: colors.black }]}>{paySummary || 'Not specified'}</Text>
+            </View>
+            <View style={ad.detailsCol}>
+              <Text style={[ad.detailsLabel, { color: colors.grey }]}>What you get</Text>
+              <Text style={[ad.detailsValue, { color: colors.black }]}>{whatYouGet || 'Nothing listed'}</Text>
+            </View>
+            <View style={ad.detailsCol}>
+              <Text style={[ad.detailsLabel, { color: colors.grey }]}>Book by</Text>
+              <Text style={[ad.detailsValue, { color: colors.black }]}>{bookBy}</Text>
+            </View>
+          </View>
+          {slot.notes ? (
+            <View style={[ad.detailsNotes, { borderTopColor: colors.border }]}>
+              <Text style={[ad.detailsNotesLabel, { color: colors.grey }]}>Notes from the venue</Text>
+              <Text style={[ad.detailsNotesText, { color: colors.black }]}>{slot.notes}</Text>
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -1638,19 +1948,35 @@ function AllDatesSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, hasEn
 }
 
 const ad = StyleSheet.create({
-  row:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderLeftWidth: 4, borderRadius: 10, marginBottom: 10, paddingVertical: 14, paddingHorizontal: 14, gap: 12 },
-  dateBox:      { width: 34, alignItems: 'center', flexShrink: 0 },
-  dateNum:      { fontSize: 22, fontWeight: '800', lineHeight: 24 },
-  dateMonth:    { fontSize: 9, fontWeight: '700', letterSpacing: 0.4, marginTop: 1 },
-  dayAbbrev:    { width: 26, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, flexShrink: 0 },
-  time:         { fontSize: 16, fontWeight: '800' },
-  room:         { fontSize: 12, marginTop: 2 },
-  enquireBtn:   { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexShrink: 0 },
-  enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
-  badge:        { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0 },
-  badgeText:    { fontSize: 11, fontWeight: '600' },
-  editBtn:      { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexShrink: 0 },
-  editBtnText:  { fontSize: 12, fontWeight: '600', color: '#555555' },
+  card:           { borderWidth: 1, borderLeftWidth: 4, borderRadius: 12, marginBottom: 10, overflow: 'hidden' },
+  top:            { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 14, paddingHorizontal: 14, gap: 12 },
+  dateBlock:      { width: 36, alignItems: 'center', flexShrink: 0, paddingTop: 2 },
+  dateBlockDay:   { fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' as const },
+  dateBlockNum:   { fontSize: 22, fontWeight: '800', lineHeight: 26 },
+  slotInfo:       { flex: 1, gap: 3 },
+  nameRow:        { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },
+  slotName:       { fontSize: 15, fontWeight: '700' },
+  typePill:       { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  typeText:       { fontSize: 11, fontWeight: '600' },
+  metaText:       { fontSize: 13 },
+  payText:        { fontSize: 13 },
+  actions:        { flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 },
+  detailsLink:    { fontSize: 13, fontWeight: '600', color: '#16161A', textDecorationLine: 'underline' as const },
+  enquireBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  enquireBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  badge:          { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
+  badgeText:      { fontSize: 11, fontWeight: '600' },
+  editBtn:        { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  editBtnText:    { fontSize: 12, fontWeight: '600', color: '#555555' },
+  // Expanded panel
+  detailsPanel:   { borderTopWidth: 1, paddingHorizontal: 14, paddingVertical: 16, gap: 16 },
+  detailsGrid:    { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 16 },
+  detailsCol:     { minWidth: '40%' as any, flex: 1, gap: 4 },
+  detailsLabel:   { fontSize: 12, fontWeight: '600' },
+  detailsValue:   { fontSize: 14, lineHeight: 21 },
+  detailsNotes:   { borderTopWidth: 1, paddingTop: 14, gap: 4 },
+  detailsNotesLabel: { fontSize: 12, fontWeight: '600' },
+  detailsNotesText:  { fontSize: 14, lineHeight: 21 },
 });
 
 // ── Mini calendar month (web) ─────────────────────────────────────────
@@ -2047,16 +2373,18 @@ const som = StyleSheet.create({
 
 // ── List view slot row (web) ───────────────────────────────────────────
 
-function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiries, onEnquire, isMyVenue, onVenueEdit }: {
+function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiries, onEnquire, isMyVenue, onVenueEdit, venue }: {
   slot: Slot; date: Date; dateISO: string; day: string;
   isArtist: boolean; isLoggedIn: boolean;
   userEnquiries: Enquiry[];
   onEnquire: (s: Slot, d: string, date: string) => void;
   isMyVenue?: boolean;
   onVenueEdit?: (slot: Slot, day: string, dateISO: string) => void;
+  venue: Venue;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
 
   const matchesSlot = (e: Enquiry) =>
     e.requestedSlot?.day === day && e.requestedSlot?.time === slot.time && inferSlotDate(e) === dateISO;
@@ -2066,8 +2394,38 @@ function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiri
   );
   const hasEnquired  = slot.status === 'open' && !!activeEnquiry;
   const isBookedByMe = slot.status === 'booked' && userEnquiries.some(e => e.status === 'accepted' && matchesSlot(e));
-  const canEnquire   = slot.status === 'open' && !hasEnquired && isArtist && !isMyVenue;
+  const isOpen       = slot.status === 'open';
   const isClosed     = slot.status === 'closed';
+
+  const terms = resolveSlotTerms(venue, slot);
+  const paySummary = formatPaySummary(terms);
+
+  const metaParts = [
+    slot.time,
+    slot.duration ? `${slot.duration} min sets` : null,
+    slot.room,
+  ].filter(Boolean).join(' · ');
+
+  // Expanded: timings lines
+  const timingLines: string[] = [];
+  if (slot.loadIn) {
+    timingLines.push(`Load-in ${slot.loadIn}${slot.soundcheck ? ' · Soundcheck' : ''}`);
+  } else if (slot.soundcheck) {
+    timingLines.push('Soundcheck');
+  }
+  if (slot.soundcheckDetails) timingLines.push(slot.soundcheckDetails);
+  timingLines.push([`On stage ${slot.time}`, slot.duration ? `for ${slot.duration} min sets` : null].filter(Boolean).join(' '));
+
+  // Expanded: what you get
+  const whatParts = [
+    terms.guestList ? `Guest list · ${terms.guestList}` : null,
+    terms.meals ? (terms.mealsDetails || 'Meals') : null,
+    terms.drinks ? (terms.drinksDetails || 'Drinks') : null,
+  ].filter(Boolean);
+  const whatYouGet = whatParts.length > 0 ? whatParts.join(', ') : null;
+
+  // Expanded: book by
+  const bookBy = terms.minNotice && terms.minNotice !== '0' ? terms.minNotice : 'No minimum notice';
 
   let leftBorderColor: string;
   let badgeLabel: string;
@@ -2095,34 +2453,106 @@ function LvSlotRow({ slot, date, dateISO, day, isArtist, isLoggedIn, userEnquiri
     badgeLabel = 'Open'; badgeTextColor = Colors.orange; badgeBg = 'transparent'; badgeBorderColor = Colors.orange;
   }
 
+  const showDetails = isOpen && !isClosed;
+
   return (
-    <View style={[lv.slotRow, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: isClosed ? colors.bgFaint : colors.bg, opacity: isClosed ? 0.7 : 1 }]}>
-      <View style={lv.dateBox}>
-        <Text style={[lv.dateNum, { color: colors.black }]}>{date.getDate()}</Text>
-        <Text style={[lv.dateMonth, { color: colors.grey }]}>{SHORT_MONTHS[date.getMonth()].toUpperCase()}</Text>
+    <View style={[lv.slotCard, { borderColor: colors.border, borderLeftColor: leftBorderColor, backgroundColor: isClosed ? colors.bgFaint : colors.bg, opacity: isClosed ? 0.7 : 1 }]}>
+      {/* Top row */}
+      <View style={lv.slotCardTop}>
+        {/* Date block */}
+        <View style={lv.dateBlock}>
+          <Text style={[lv.dateBlockDay, { color: colors.grey }]}>{day.slice(0,3).toUpperCase()}</Text>
+          <Text style={[lv.dateBlockNum, { color: colors.black }]}>{date.getDate()}</Text>
+        </View>
+
+        {/* Slot info */}
+        <View style={lv.slotInfo}>
+          <View style={lv.slotNameRow}>
+            {(slot.name || slot.gigName) ? (
+              <Text style={[lv.slotName, { color: isClosed ? colors.grey : colors.black }]} numberOfLines={1}>
+                {slot.name || slot.gigName}
+              </Text>
+            ) : null}
+            {slot.slotType ? (
+              <View style={[lv.slotTypePill, { borderColor: colors.border }]}>
+                <Text style={[lv.slotTypeText, { color: colors.grey }]}>{slot.slotType}</Text>
+              </View>
+            ) : null}
+          </View>
+          {metaParts ? <Text style={[lv.slotMeta, { color: colors.grey }]}>{metaParts}</Text> : null}
+          {paySummary ? <Text style={[lv.slotPay, { color: colors.grey }]}>{paySummary}</Text> : null}
+        </View>
+
+        {/* Actions */}
+        <View style={lv.slotActions}>
+          {showDetails && !isMyVenue && (
+            <TouchableOpacity onPress={() => setExpanded(e => !e)} activeOpacity={0.7}>
+              <Text style={lv.detailsLink}>{expanded ? 'Hide details' : 'Details'}</Text>
+            </TouchableOpacity>
+          )}
+          {!isOpen && !isMyVenue && (
+            <View style={[lv.statusBadge, { borderColor: badgeBorderColor, backgroundColor: badgeBg }]}>
+              <Text style={[lv.statusBadgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+            </View>
+          )}
+          {hasEnquired && !isMyVenue && (
+            <View style={[lv.statusBadge, { borderColor: badgeBorderColor, backgroundColor: badgeBg }]}>
+              <Text style={[lv.statusBadgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
+            </View>
+          )}
+          {isMyVenue && (
+            <TouchableOpacity style={lv.editBtn} onPress={() => onVenueEdit?.(slot, day, dateISO)} activeOpacity={0.75}>
+              <Text style={lv.editBtnText}>Edit</Text>
+            </TouchableOpacity>
+          )}
+          {isOpen && !hasEnquired && isArtist && !isMyVenue && (
+            <TouchableOpacity style={lv.enquireBtn} onPress={() => onEnquire(slot, day, dateISO)}>
+              <Text style={lv.enquireBtnText}>Enquire</Text>
+            </TouchableOpacity>
+          )}
+          {isOpen && !hasEnquired && !isLoggedIn && !isMyVenue && (
+            <TouchableOpacity style={[lv.enquireBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} onPress={() => onEnquire(slot, day, dateISO)}>
+              <Text style={[lv.enquireBtnText, { color: Colors.orange }]}>Log in</Text>
+            </TouchableOpacity>
+          )}
+          {(hasEnquired || isBookedByMe) && activeEnquiry && (
+            <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { openEnquiryId: activeEnquiry.id } } as any)}>
+              <Text style={lv.viewLink}>View</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
-      <Text style={[lv.dayAbbrev, { color: colors.grey }]}>{day.slice(0,3).toUpperCase()}</Text>
-      <Text style={[lv.slotTime, { color: isClosed ? colors.grey : colors.black }]}>
-        {slot.time}{slot.room ? <Text style={[lv.slotRoom, { color: colors.grey }]}> · {slot.room}</Text> : null}
-      </Text>
-      <View style={{ flex: 1 }} />
-      <View style={[lv.statusBadge, { borderColor: badgeBorderColor, backgroundColor: badgeBg }]}>
-        <Text style={[lv.statusBadgeText, { color: badgeTextColor }]}>{badgeLabel}</Text>
-      </View>
-      {isMyVenue && (
-        <TouchableOpacity style={lv.editBtn} onPress={() => onVenueEdit?.(slot, day, dateISO)} activeOpacity={0.75}>
-          <Text style={lv.editBtnText}>Edit</Text>
-        </TouchableOpacity>
-      )}
-      {canEnquire && (
-        <TouchableOpacity style={lv.enquireBtn} onPress={() => onEnquire(slot, day, dateISO)}>
-          <Text style={lv.enquireBtnText}>Enquire</Text>
-        </TouchableOpacity>
-      )}
-      {(hasEnquired || isBookedByMe) && activeEnquiry && (
-        <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { openEnquiryId: activeEnquiry.id } } as any)}>
-          <Text style={lv.viewLink}>View</Text>
-        </TouchableOpacity>
+
+      {/* Expanded details panel */}
+      {expanded && (
+        <View style={[lv.detailsPanel, { borderTopColor: colors.border }]}>
+          <View style={lv.detailsGrid}>
+            <View style={lv.detailsCol}>
+              <Text style={[lv.detailsLabel, { color: colors.grey }]}>Timings</Text>
+              {timingLines.map((line, i) => (
+                <Text key={i} style={[lv.detailsValue, { color: colors.black }]}>{line}</Text>
+              ))}
+            </View>
+            <View style={lv.detailsCol}>
+              <Text style={[lv.detailsLabel, { color: colors.grey }]}>Pay</Text>
+              <Text style={[lv.detailsValue, { color: colors.black }]}>{paySummary || 'Not specified'}</Text>
+            </View>
+            <View style={lv.detailsCol}>
+              <Text style={[lv.detailsLabel, { color: colors.grey }]}>What you get</Text>
+              <Text style={[lv.detailsValue, { color: colors.black }]}>{whatYouGet || 'Nothing listed'}</Text>
+            </View>
+            <View style={lv.detailsCol}>
+              <Text style={[lv.detailsLabel, { color: colors.grey }]}>Book by</Text>
+              <Text style={[lv.detailsValue, { color: colors.black }]}>{bookBy}</Text>
+            </View>
+          </View>
+          {slot.notes ? (
+            <View style={[lv.detailsNotes, { borderTopColor: colors.border }]}>
+              <Text style={[lv.detailsNotesLabel, { color: colors.grey }]}>Notes from the venue</Text>
+              <Text style={[lv.detailsNotesText, { color: colors.black }]}>{slot.notes}</Text>
+            </View>
+          ) : null}
+        </View>
       )}
     </View>
   );
@@ -2203,150 +2633,73 @@ function NativeSlotCard({ slot, day, isArtist, isLoggedIn, hasEnquired, onEnquir
   );
 }
 
-// ── Media helpers ──────────────────────────────────────────────────────
+// ── VideoThumb ────────────────────────────────────────────────────────
 
-function toEmbedUrl(url: string): string {
+function videoSource(url: string): string {
+  if (/youtube\.com|youtu\.be/.test(url)) return 'YouTube';
+  if (/vimeo\.com/.test(url)) return 'Vimeo';
+  return 'Video';
+}
+
+function VideoThumb({ url, title }: { url: string; title?: string }) {
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}?playsinline=1`;
-  const vimeo = url.match(/vimeo\.com\/(\d+)/);
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
-  return url;
-}
-
-function isEmbedVideo(url: string): boolean {
-  return /youtube\.com|youtu\.be|vimeo\.com/.test(url);
-}
-
-// ── MediaCarousel ──────────────────────────────────────────────────────
-
-function MediaCarousel({
-  items,
-  renderSlide,
-}: {
-  items: string[];
-  renderSlide: (url: string, i: number) => React.ReactNode;
-}) {
-  const [index, setIndex] = useState(0);
-  if (!items.length) return null;
-
-  const prev = () => setIndex(i => (i - 1 + items.length) % items.length);
-  const next = () => setIndex(i => (i + 1) % items.length);
+  const thumbnailUri = yt ? `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg` : null;
+  const source = videoSource(url);
 
   return (
-    <View style={mc.wrap}>
-      {renderSlide(items[index], index)}
-
-      {items.length > 1 && (
-        <>
-          <TouchableOpacity style={[mc.arrow, mc.arrowLeft]} onPress={prev} activeOpacity={0.8}>
-            <Text style={mc.arrowText}>‹</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[mc.arrow, mc.arrowRight]} onPress={next} activeOpacity={0.8}>
-            <Text style={mc.arrowText}>›</Text>
-          </TouchableOpacity>
-          <View style={mc.dots}>
-            {items.map((_, i) => (
-              <TouchableOpacity key={i} onPress={() => setIndex(i)}>
-                <View style={[mc.dot, i === index && mc.dotActive]} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </>
-      )}
-    </View>
+    <TouchableOpacity style={vt.card} onPress={() => Linking.openURL(url)} activeOpacity={0.88}>
+      <View style={vt.thumb}>
+        {thumbnailUri ? (
+          <Image source={{ uri: thumbnailUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, vt.darkPlaceholder]} />
+        )}
+        {/* Dark scrim over thumbnail so play button reads clearly */}
+        <View style={vt.scrim} />
+        <View style={vt.playCircle}>
+          <Text style={vt.playIcon}>▶</Text>
+        </View>
+      </View>
+      <View style={vt.meta}>
+        {title ? <Text style={vt.title} numberOfLines={2}>{title}</Text> : null}
+        <Text style={vt.source}>{source}</Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
-const mc = StyleSheet.create({
-  wrap:      { position: 'relative', borderRadius: 12, overflow: 'hidden', backgroundColor: '#111111', aspectRatio: 16 / 9, width: '100%' },
-  arrow: {
-    position: 'absolute', top: '50%' as any, marginTop: -19,
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center', justifyContent: 'center', zIndex: 2,
-  },
-  arrowLeft:  { left: 10 },
-  arrowRight: { right: 10 },
-  arrowText:  { fontSize: 24, color: '#ffffff', lineHeight: 30 },
-  dots:       { position: 'absolute', bottom: 10, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6, zIndex: 2 },
-  dot:        { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.5)' },
-  dotActive:  { backgroundColor: '#ffffff' },
+const vt = StyleSheet.create({
+  card:        { flex: 1 },
+  thumb:       { aspectRatio: 16/9, borderRadius: 12, overflow: 'hidden', backgroundColor: '#1c1c1e' },
+  darkPlaceholder: { backgroundColor: '#1c1c1e' },
+  scrim:       { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.18)' } as any,
+  playCircle:  { position: 'absolute', top: '50%' as any, left: '50%' as any, marginTop: -28, marginLeft: -28, width: 56, height: 56, borderRadius: 28, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
+  playIcon:    { color: '#111111', fontSize: 20, marginLeft: 4 },
+  meta:        { paddingTop: 10, gap: 3 },
+  title:       { fontSize: 15, fontWeight: '700', color: '#111111', lineHeight: 21 },
+  source:      { fontSize: 13, color: '#888888' },
 });
 
-// ── VideoPlayer ────────────────────────────────────────────────────────
-
-function VideoPlayer({ url }: { url: string }) {
-  const embed    = isEmbedVideo(url);
-  const embedUrl = toEmbedUrl(url);
-
-  // Web: use native browser elements via inline style trick
-  if (isWeb) {
-    if (embed) {
-      return (
-        <WebView
-          source={{ uri: embedUrl }}
-          style={{ flex: 1 }}
-          allowsFullscreenVideo
-          allowsInlineMediaPlayback
-        />
-      );
-    }
-    // Direct video on web — WebView on web renders as iframe, so wrap in HTML
-    return (
-      <WebView
-        source={{
-          html: `<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100vh">
-            <video src="${url}" controls playsinline style="width:100%;max-height:100%;outline:none"></video>
-          </body></html>`,
-        }}
-        style={{ flex: 1 }}
-        allowsFullscreenVideo
-        allowsInlineMediaPlayback
-      />
-    );
-  }
-
-  // Native
-  if (embed) {
-    return (
-      <WebView
-        source={{ uri: embedUrl }}
-        style={{ flex: 1 }}
-        allowsFullscreenVideo
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-      />
-    );
-  }
-
-  // Native direct video — HTML5 video in WebView
-  return (
-    <WebView
-      source={{
-        html: `<html><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100vh">
-          <video src="${url}" controls playsinline style="width:100%;max-height:100%;outline:none"></video>
-        </body></html>`,
-      }}
-      style={{ flex: 1 }}
-      allowsFullscreenVideo
-      allowsInlineMediaPlayback
-      mediaPlaybackRequiresUserAction={false}
-    />
-  );
-}
-
-// ── Photos & Videos tab ───────────────────────────────────────────────
+// ── Photos & video tab ────────────────────────────────────────────────
 
 function PhotosTab({ venue }: { venue: Venue }) {
   const { colors } = useTheme();
-  const photos = [
-    ...(venue.photoUrl ? [venue.photoUrl] : []),
-    ...(venue.photos || []).filter((url: string) => url !== venue.photoUrl),
-  ];
-  const videos = venue.videos || [];
-  const hasContent = photos.length > 0 || videos.length > 0;
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  if (!hasContent) {
+  // Prefer structured photoObjects (with captions) over plain photos array
+  const photoItems: { url: string; caption?: string }[] = venue.photoObjects?.length
+    ? venue.photoObjects
+    : (() => {
+        const raw = (venue.photos || []).filter(u => u !== venue.photoUrl);
+        if (venue.photoUrl) raw.unshift(venue.photoUrl);
+        return raw.map(url => ({ url }));
+      })();
+
+  const videoObjects: { url: string; title?: string }[] = venue.videoObjects?.length
+    ? venue.videoObjects
+    : (venue.videos || []).map(url => ({ url }));
+
+  if (photoItems.length === 0 && videoObjects.length === 0) {
     return (
       <View style={[s.tabBody, { alignItems: 'center', paddingTop: 60 }]}>
         <Text style={[s.noSlotsText, { color: colors.grey }]}>No photos or videos yet.</Text>
@@ -2354,53 +2707,228 @@ function PhotosTab({ venue }: { venue: Venue }) {
     );
   }
 
+  const photoCols = isWeb ? 4 : 2;
+  const tileGap = 8;
+
   return (
-    <View style={[s.tabBody, isWeb && pt.webGrid]}>
-      {photos.length > 0 && (
-        <View style={[pt.mediaSection, isWeb && pt.mediaSectionWeb]}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Photos</Text>
-          <MediaCarousel
-            items={photos}
-            renderSlide={(url) => (
-              <Image source={{ uri: url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-            )}
-          />
+    <View style={s.tabBody}>
+
+      {/* Video grid */}
+      {videoObjects.length > 0 && (
+        <View style={pt.section}>
+          <Text style={[pt.heading, { color: colors.black }]}>Video</Text>
+          <View style={pt.videoGrid}>
+            {videoObjects.map((v, i) => (
+              <View key={i} style={[pt.videoCell, isWeb && { width: `${100 / 2}%` as any, paddingRight: i % 2 === 0 ? tileGap / 2 : 0, paddingLeft: i % 2 !== 0 ? tileGap / 2 : 0 }]}>
+                <VideoThumb url={v.url} title={v.title} />
+              </View>
+            ))}
+          </View>
         </View>
       )}
-      {videos.length > 0 && (
-        <View style={[pt.mediaSection, isWeb && pt.mediaSectionWeb]}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Videos</Text>
-          <MediaCarousel
-            items={videos}
-            renderSlide={(url) => <VideoPlayer url={url} />}
-          />
+
+      {/* Photo grid */}
+      {photoItems.length > 0 && (
+        <View style={pt.section}>
+          <Text style={[pt.heading, { color: colors.black }]}>Photos</Text>
+          <View style={[pt.photoGrid, { gap: tileGap }]}>
+            {photoItems.map((item, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[pt.photoTile, isWeb
+                  ? { width: `calc(${100 / photoCols}% - ${tileGap * (photoCols - 1) / photoCols}px)` as any }
+                  : { width: `${100 / 2 - 1}%` as any }
+                ]}
+                onPress={() => setLightboxIndex(i)}
+                activeOpacity={0.88}
+              >
+                <Image source={{ uri: item.url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                {item.caption ? (
+                  <View style={pt.captionWrap}>
+                    <Text style={pt.captionText} numberOfLines={1}>{item.caption}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
+      )}
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <Modal visible animationType="fade" transparent onRequestClose={() => setLightboxIndex(null)}>
+          <View style={pt.lightboxBackdrop}>
+            <TouchableOpacity style={pt.lightboxClose} onPress={() => setLightboxIndex(null)} activeOpacity={0.8}>
+              <Text style={pt.lightboxCloseText}>✕</Text>
+            </TouchableOpacity>
+            <Image
+              source={{ uri: photoItems[lightboxIndex].url }}
+              style={pt.lightboxImage}
+              resizeMode="contain"
+            />
+            {photoItems[lightboxIndex].caption ? (
+              <Text style={pt.lightboxCaption}>{photoItems[lightboxIndex].caption}</Text>
+            ) : null}
+            {photoItems.length > 1 && (
+              <View style={pt.lightboxNav}>
+                <TouchableOpacity
+                  style={pt.lightboxNavBtn}
+                  onPress={() => setLightboxIndex(i => ((i ?? 0) - 1 + photoItems.length) % photoItems.length)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={pt.lightboxNavText}>‹</Text>
+                </TouchableOpacity>
+                <Text style={pt.lightboxCount}>{(lightboxIndex ?? 0) + 1} / {photoItems.length}</Text>
+                <TouchableOpacity
+                  style={pt.lightboxNavBtn}
+                  onPress={() => setLightboxIndex(i => ((i ?? 0) + 1) % photoItems.length)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={pt.lightboxNavText}>›</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </Modal>
       )}
     </View>
   );
 }
 
-// ── Rooms & Tech Specs tab ───────────────────────────────────────────
+// ── Rooms & Tech tab helpers ───────────────────────────────────────────
 
-function RoomsTab({ venue }: { venue: Venue }) {
+/** Returns the weekday names that have open recurring slots assigned to a specific room. */
+function getRoomNights(venue: Venue, roomName: string): string[] {
+  return CANONICAL_DAYS.filter(day => {
+    const slots = venue.slots?.[day] || [];
+    return slots.some(s => !s.date && s.status === 'open'
+      && s.room?.toLowerCase().trim() === roomName?.toLowerCase().trim());
+  });
+}
+
+function formatNights(days: string[]): string {
+  if (days.length === 0) return '';
+  if (days.length === 1) return days[0] + 's';
+  const last = days[days.length - 1] + 's';
+  const rest = days.slice(0, -1).map(d => d + 's');
+  return [...rest, last].join(' and ');
+}
+
+function parseMonitorMixCount(monitoring?: string): number | null {
+  if (!monitoring) return null;
+  const m = monitoring.match(/(\d+)\s*(mix|mon|wedge|in-ear|iem)/i);
+  return m ? parseInt(m[1]) : null;
+}
+
+function parseStageArea(room: Room): number | null {
+  const w = parseFloat(String(room.stageWidth || ''));
+  const d = parseFloat(String(room.stageDepth || ''));
+  if (!isNaN(w) && !isNaN(d)) return w * d;
+  // Try to parse "6 × 4 m" or "6x4" from room.stage
+  const m = (room.stage || '').match(/([\d.]+)\s*[x×]\s*([\d.]+)/i);
+  if (m) return parseFloat(m[1]) * parseFloat(m[2]);
+  return null;
+}
+
+function backlineList(room: Room): string[] {
+  if (Array.isArray(room.backlineItems) && room.backlineItems.length > 0) return room.backlineItems;
+  if (room.backline) return room.backline.split(/[,;|]+/).map(s => s.trim()).filter(Boolean);
+  return [];
+}
+
+// ── Rider match logic ─────────────────────────────────────────────────
+
+type RiderCheckItem = { label: string; pass: boolean };
+
+function buildRiderChecks(room: Room, artist: any): RiderCheckItem[] {
+  if (!artist) return [];
+  const items: RiderCheckItem[] = [];
+  const rider: Record<string, string> = artist.techRider || {};
+  const riderBools: Record<string, boolean> = artist.techRiderBools || {};
+  const neededBackline: string[] = artist.backlineFromVenue || [];
+  const roomBackline = backlineList(room).map(b => b.toLowerCase());
+
+  // PA system: needed unless artist brings own PA
+  if (!riderBools.ownPA) {
+    items.push({ label: 'PA system', pass: !!room.pa });
+  }
+
+  // Backline items
+  neededBackline.forEach(needed => {
+    const n = needed.toLowerCase();
+    const pass = roomBackline.some(b => b.includes(n) || n.includes(b));
+    items.push({ label: needed, pass });
+  });
+
+  // Monitor mixes
+  const neededMixes = parseMonitorMixCount(rider.monitoring);
+  if (neededMixes !== null) {
+    const availMixes = parseMonitorMixCount(room.monitoring);
+    const pass = availMixes !== null && availMixes >= neededMixes;
+    const label = pass
+      ? `${availMixes} wedge mix${availMixes !== 1 ? 'es' : ''}`
+      : availMixes !== null
+        ? `${availMixes} wedge mix${availMixes !== 1 ? 'es' : ''} only`
+        : `${neededMixes} wedge mix${neededMixes !== 1 ? 'es' : ''} needed`;
+    items.push({ label, pass });
+  }
+
+  // Stage size vs performer count
+  const performerCount = parseInt(String(artist.performerCount || artist.lineupSize || ''));
+  if (!isNaN(performerCount) && performerCount > 0) {
+    const area = parseStageArea(room);
+    const needed = performerCount * 2; // ~2 m² per performer
+    const pass = area !== null && area >= needed;
+    items.push({
+      label: pass ? `Stage fits ${performerCount} performer${performerCount !== 1 ? 's' : ''}` : `Stage fits ${Math.floor((area || 0) / 2)}-${Math.ceil((area || 0) / 2)} performers`,
+      pass,
+    });
+  }
+
+  return items;
+}
+
+// ── Rooms & Tech tab ──────────────────────────────────────────────────
+
+function RoomsTab({ venue, isArtist, isLoggedIn, userId }: {
+  venue: Venue; isArtist: boolean; isLoggedIn: boolean; userId?: string;
+}) {
   const { colors } = useTheme();
   const rooms     = venue.rooms || [];
   const techSpecs = venue.techSpecs;
+  const [artistProfile, setArtistProfile] = useState<any>(null);
 
-  // Venue-level rows: load-in, parking, curfew
-  const venueTechRows = [
-    { label: 'Load-in',        value: techSpecs?.loadIn || techSpecs?.loadInParking },
-    { label: 'Parking',        value: techSpecs?.parking },
-    { label: 'Curfew / Noise', value: techSpecs?.curfew },
+  useEffect(() => {
+    if (!isArtist || !userId) return;
+    getDoc(doc(db, 'bandProfiles', userId))
+      .then(snap => { if (snap.exists()) setArtistProfile(snap.data()); })
+      .catch(() => {});
+  }, [isArtist, userId]);
+
+  const onNightRows = [
+    { label: 'Load-in',    value: techSpecs?.loadIn || techSpecs?.loadInParking },
+    { label: 'Parking',    value: techSpecs?.parking },
+    { label: 'Sound engineer', value:
+        typeof techSpecs?.soundEngineer !== 'undefined'
+          ? techSpecs.soundEngineer
+            ? `Included${techSpecs.soundEngineerDetails ? ` (${techSpecs.soundEngineerDetails})` : ''}`
+            : 'No in-house engineer'
+          : undefined
+    },
+    { label: 'Curfew',    value: techSpecs?.curfew },
+    { label: 'Noise',     value: techSpecs?.notes },
+    { label: 'Green room',value:
+        typeof techSpecs?.greenRoom !== 'undefined'
+          ? techSpecs.greenRoom
+            ? `Available${techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}`
+            : 'No green room'
+          : undefined
+    },
   ].filter(r => r.value);
 
-  const hasVenueTech = venueTechRows.length > 0
-    || typeof techSpecs?.soundEngineer !== 'undefined'
-    || typeof techSpecs?.greenRoom !== 'undefined'
-    || !!techSpecs?.notes
-    || (techSpecs?.documents && techSpecs.documents.length > 0);
+  const hasOnTheNight = onNightRows.length > 0;
 
-  if (rooms.length === 0 && !hasVenueTech) {
+  if (rooms.length === 0 && !hasOnTheNight) {
     return (
       <View style={[s.tabBody, { alignItems: 'center', paddingTop: 60 }]}>
         <Text style={[s.noSlotsText, { color: colors.grey }]}>Rooms and tech specs haven't been listed yet.</Text>
@@ -2408,123 +2936,141 @@ function RoomsTab({ venue }: { venue: Venue }) {
     );
   }
 
+  const hasRider = artistProfile && (
+    !!(artistProfile.techRiderBools || artistProfile.backlineFromVenue?.length || artistProfile.techRider?.monitoring)
+  );
+
   return (
     <View style={s.tabBody}>
-      {rooms.length > 0 && (
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Rooms</Text>
-          {rooms.map((room, i) => {
-            const roomTechRows = [
-              { label: 'PA System',   value: room.pa },
-              { label: 'Stage',       value: room.stage },
-              { label: 'Lighting',    value: room.lighting },
-              { label: 'Backline',    value: room.backline },
-              { label: 'Monitoring',  value: room.monitoring },
-              { label: 'Power',       value: room.power },
-            ].filter(r => r.value);
-            return (
-              <View key={i} style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-                <View style={rt.roomNameRow}>
-                  <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
-                  {i === 0 && rooms.length > 1 && (
-                    <View style={rt.primaryBadge}>
-                      <Text style={rt.primaryBadgeText}>PRIMARY ROOM</Text>
-                    </View>
-                  )}
-                </View>
-                {room.capacity ? (
-                  <View style={{ marginBottom: roomTechRows.length > 0 || room.notes ? 12 : 0 }}>
-                    <Text style={[rt.specLabel, { color: colors.grey }]}>Capacity</Text>
-                    <Text style={[rt.specValue, { color: colors.black }]}>{Number(room.capacity).toLocaleString()}</Text>
-                  </View>
-                ) : null}
-                {roomTechRows.length > 0 && (
-                  <View style={rt.specsGrid}>
-                    {roomTechRows.map(({ label, value }) => (
-                      <View key={label} style={rt.specItem}>
-                        <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
-                        <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                {room.notes ? (
-                  <View style={[rt.notesBox, { backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1, marginTop: 8 }]}>
-                    <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 4 }]}>NOTES FOR ACTS</Text>
-                    <Text style={[rt.notesText, { color: colors.black }]}>{room.notes}</Text>
-                  </View>
-                ) : null}
-                {room.documents && room.documents.length > 0 ? (
-                  <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
-                    <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>TECH SPEC DOCUMENTS</Text>
-                    {room.documents.map((doc, di) => (
-                      <TouchableOpacity key={di} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
-                        <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      )}
 
-      {hasVenueTech && (
-        <View style={s.section}>
-          <Text style={[s.sectionTitle, { color: colors.black, fontSize: 16, textTransform: 'none', letterSpacing: -0.2, marginBottom: 16 }]}>Venue Info</Text>
-          <View style={[rt.roomCard, { borderColor: colors.border, backgroundColor: colors.bgFaint, marginBottom: 0 }]}>
-            {venueTechRows.length > 0 && (
-              <View style={rt.specsGrid}>
-                {venueTechRows.map(({ label, value }) => (
-                  <View key={label} style={rt.specItem}>
+      {rooms.map((room, i) => {
+        const nights   = getRoomNights(venue, room.name || '');
+        const nightStr = formatNights(nights);
+        const stageStr = room.stage
+          || (room.stageWidth && room.stageDepth ? `${room.stageWidth} × ${room.stageDepth} m stage` : null);
+        const headerParts = [
+          room.capacity ? `Capacity ${Number(room.capacity).toLocaleString()}` : null,
+          stageStr ? `${stageStr}${stageStr.toLowerCase().includes('stage') ? '' : ' stage'}` : null,
+          nightStr || null,
+        ].filter(Boolean);
+
+        const riderChecks = hasRider ? buildRiderChecks(room, artistProfile) : [];
+        const chips = backlineList(room);
+
+        const mainSpecs = [
+          { label: 'PA system',  value: room.pa },
+          { label: 'Monitoring', value: room.monitoring },
+          { label: 'Lighting',   value: room.lighting },
+        ].filter(r => r.value);
+        const extraSpecs = [
+          { label: 'Power', value: room.power },
+        ].filter(r => r.value);
+
+        return (
+          <View key={i} style={[rt.card, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+
+            {/* Card header */}
+            <View style={rt.cardHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[rt.roomName, { color: colors.black }]}>{room.name}</Text>
+                {headerParts.length > 0 && (
+                  <Text style={[rt.roomMeta, { color: colors.grey }]}>{headerParts.join(' · ')}</Text>
+                )}
+              </View>
+              {room.documents && room.documents.length > 0 && (
+                <View style={rt.docsRow}>
+                  {room.documents.map((d, di) => (
+                    <TouchableOpacity
+                      key={di}
+                      style={[rt.docBtn, { borderColor: colors.border }]}
+                      onPress={() => Linking.openURL(d.url)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[rt.docBtnText, { color: colors.black }]}>↓ {d.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Against your tech rider */}
+            {isArtist && isLoggedIn && riderChecks.length > 0 && (
+              <View style={[rt.riderBox, { backgroundColor: colors.bgFaint }]}>
+                <Text style={[rt.riderHeading, { color: colors.grey }]}>Against your tech rider</Text>
+                <View style={rt.riderItems}>
+                  {riderChecks.map((item, ci) => (
+                    <View key={ci} style={rt.riderItem}>
+                      <Text style={[rt.riderIcon, { color: item.pass ? '#2F7A4B' : '#9A3B06' }]}>
+                        {item.pass ? '✓' : '✗'}
+                      </Text>
+                      <Text style={[rt.riderLabel, { color: item.pass ? colors.black : '#9A3B06' }]}>
+                        {item.label}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Spec grid: 3 columns */}
+            {mainSpecs.length > 0 && (
+              <View style={rt.specGrid}>
+                {mainSpecs.map(({ label, value }) => (
+                  <View key={label} style={rt.specCell}>
                     <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
                     <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
                   </View>
                 ))}
               </View>
             )}
-            {typeof techSpecs?.soundEngineer !== 'undefined' && (
-              <View style={rt.specItem}>
-                <Text style={[rt.specLabel, { color: colors.grey }]}>In-house Engineer</Text>
-                <Text style={[rt.specValue, { color: techSpecs.soundEngineer ? Colors.orange : '#e94560' }]}>
-                  {techSpecs.soundEngineer
-                    ? `✓ Yes${techSpecs.soundEngineerDetails ? ` — ${techSpecs.soundEngineerDetails}` : ''}`
-                    : '✕ No'}
-                </Text>
+
+            {/* Extra specs: full width */}
+            {extraSpecs.map(({ label, value }) => (
+              <View key={label} style={rt.specFull}>
+                <Text style={[rt.specLabel, { color: colors.grey }]}>{label}</Text>
+                <Text style={[rt.specValue, { color: colors.black }]}>{value}</Text>
+              </View>
+            ))}
+
+            {/* Backline chips */}
+            {chips.length > 0 && (
+              <View style={rt.backlineSection}>
+                <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 10 }]}>Backline you can use</Text>
+                <View style={rt.backlineChips}>
+                  {chips.map((chip, ci) => (
+                    <View key={ci} style={[rt.chip, { borderColor: colors.border }]}>
+                      <Text style={[rt.chipText, { color: colors.black }]}>{chip}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             )}
-            {typeof techSpecs?.greenRoom !== 'undefined' && (
-              <View style={rt.specItem}>
-                <Text style={[rt.specLabel, { color: colors.grey }]}>Green Room</Text>
-                {techSpecs.greenRoom ? (
-                  <Text style={[rt.specValue, { color: Colors.orange }]}>
-                    ✓ Available{techSpecs.greenRoomDetails ? ` — ${techSpecs.greenRoomDetails}` : ''}
-                  </Text>
-                ) : (
-                  <Text style={[rt.specValue, { color: '#e94560' }]}>✕ No green room</Text>
-                )}
-              </View>
-            )}
-            {techSpecs?.notes ? (
-              <View style={[rt.notesBox, { backgroundColor: colors.bg, borderColor: colors.border, borderWidth: 1, marginTop: 8 }]}>
-                <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 4 }]}>VENUE NOTES</Text>
-                <Text style={[rt.notesText, { color: colors.black }]}>{techSpecs.notes}</Text>
+
+            {/* Notes for acts */}
+            {room.notes ? (
+              <View style={rt.notesSection}>
+                <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 6 }]}>Notes for acts</Text>
+                <Text style={[rt.notesText, { color: colors.black }]}>{room.notes}</Text>
               </View>
             ) : null}
-            {(techSpecs?.documents && techSpecs.documents.length > 0) ? (
-              <View style={[rt.notesBox, { backgroundColor: colors.bgFaint, marginTop: 8 }]}>
-                <Text style={[rt.specLabel, { color: colors.grey, marginBottom: 8 }]}>DOCUMENTS</Text>
-                {techSpecs.documents.map((doc, i) => (
-                  <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)} style={{ marginBottom: 6 }}>
-                    <Text style={[s.link, { fontSize: 14 }]}>↓ {doc.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
+
           </View>
+        );
+      })}
+
+      {/* On the night */}
+      {hasOnTheNight && (
+        <View style={[rt.card, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+          <Text style={[rt.roomName, { color: colors.black, marginBottom: 16 }]}>On the night</Text>
+          {onNightRows.map(({ label, value }) => (
+            <View key={label} style={[rt.onNightRow, { borderBottomColor: colors.border }]}>
+              <Text style={[rt.onNightLabel, { color: colors.grey }]}>{label}</Text>
+              <Text style={[rt.onNightValue, { color: colors.black }]}>{value}</Text>
+            </View>
+          ))}
         </View>
       )}
+
     </View>
   );
 }
@@ -2534,7 +3080,7 @@ function RoomsTab({ venue }: { venue: Venue }) {
 const s = StyleSheet.create({
   safe:               { flex: 1, backgroundColor: '#ffffff' },
   banner:             { width: '100%', height: isWeb ? 220 : 240, resizeMode: 'cover' },
-  bannerPlaceholder:  { width: '100%', height: isWeb ? 220 : 240, backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
+  bannerPlaceholder:  { width: '100%', backgroundColor: '#e8e3d8', alignItems: 'center', justifyContent: 'center' },
   bannerPlaceholderText: { color: '#999999', fontSize: 14 },
   backOverlayWrap:    { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   backOverlay:        { alignSelf: 'flex-start', margin: 16, backgroundColor: 'rgba(255,255,255,0.92)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
@@ -2546,13 +3092,20 @@ const s = StyleSheet.create({
   backText:           { fontSize: 15, color: Colors.orange, fontWeight: '600', padding: 20 },
   notFound:           { textAlign: 'center', color: '#888888', marginTop: 40, fontSize: 15 },
 
-  // Sticky header
-  stickyHeader:       { backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
-  headerInfo:         { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: isWeb ? 40 : 20, paddingTop: 20, paddingBottom: 12 },
-  name:               { fontSize: isWeb ? 32 : 26, fontWeight: '800', color: '#111111', letterSpacing: -0.5, marginBottom: 4 },
-  address:            { fontSize: 14, color: '#555555', marginBottom: 10 },
-  verifiedBadge:      { backgroundColor: Colors.orange, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center' },
-  verifiedBadgeText:  { fontSize: 11, fontWeight: '700', color: '#ffffff', letterSpacing: 0.5, textTransform: 'uppercase' },
+  // Profile header
+  identityRow:        { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: isWeb ? 40 : 20, paddingTop: 0, paddingBottom: 14, gap: 16 },
+  logoWrap:           { marginTop: -32, flexShrink: 0 },
+  logoImg:            { width: 72, height: 72, borderRadius: 12, borderWidth: 3 },
+  logoPlaceholder:    { width: 72, height: 72, borderRadius: 12, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  logoPlaceholderText:{ fontSize: 22, fontWeight: '800' },
+  identityInfo:       { flex: 1, paddingBottom: 4 },
+  name:               { fontSize: isWeb ? 28 : 22, fontWeight: '800', color: '#111111', letterSpacing: -0.4, marginBottom: 3 },
+  subline:            { fontSize: 13, color: '#555555' },
+  verifiedBadge:      { backgroundColor: '#2F7A4B', borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center' },
+  verifiedBadgeText:  { fontSize: 11, fontWeight: '700', color: '#ffffff', letterSpacing: 0.3 },
+  actionsRow:         { flexDirection: 'row', alignItems: 'center', paddingHorizontal: isWeb ? 40 : 20, paddingBottom: 16, paddingTop: 4 },
+  genreChipsRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: isWeb ? 40 : 20, paddingBottom: 14 },
+  stickyTabBar:       { borderBottomWidth: 1 },
   accessibilityRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   accessibilityCheck: { fontSize: 14, fontWeight: '700' },
   accessibilityLabel: { fontSize: 14 },
@@ -2564,23 +3117,25 @@ const s = StyleSheet.create({
   genreOrangeText:    { fontSize: 12, color: Colors.black, fontWeight: '500', marginTop: 2 },
   breadcrumb:         { fontSize: 11, fontWeight: '700', color: Colors.orange, letterSpacing: 1.4, marginBottom: 6 },
   editProfileBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start' },
-  editProfileBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+  editProfileBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
   logoutBtn:          { borderWidth: 1, borderColor: Colors.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, alignSelf: 'flex-start' },
   logoutBtnText:      { fontSize: 13, fontWeight: '600', color: Colors.grey },
-  enquireHeaderBtn:     { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
-  enquireHeaderBtnText: { fontSize: 13, fontWeight: '700', color: '#111111' },
-  viewTimetableBtn:     { borderWidth: 1, borderColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, marginLeft: 12, alignSelf: 'flex-start', marginTop: 4 },
+  msgVenueBtn:        { borderWidth: 1, borderColor: '#D0CFC9', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, alignSelf: 'flex-start' },
+  msgVenueBtnText:    { fontSize: 13, fontWeight: '600' },
+  enquireHeaderBtn:   { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, alignSelf: 'flex-start' },
+  enquireHeaderBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  viewTimetableBtn:   { borderWidth: 1, borderColor: Colors.orange, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, alignSelf: 'flex-start' },
   viewTimetableBtnText: { fontSize: 13, fontWeight: '600', color: Colors.orange },
   sidebarEnquireBtn:     { backgroundColor: Colors.orange, borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 12 },
-  sidebarEnquireBtnText: { fontSize: 14, fontWeight: '700', color: '#111111' },
+  sidebarEnquireBtnText: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
 
   // Tab bar
   tabBar:             { borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   tabBarContent:      { flexDirection: 'row' },
   tabBtn:             { paddingVertical: 13, paddingHorizontal: isWeb ? 20 : 16, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabBtnActive:       { borderBottomColor: Colors.orange },
+  tabBtnActive:       { borderBottomColor: '#16161A' },
   tabText:            { fontSize: 13, fontWeight: '600', color: '#888888' },
-  tabTextActive:      { color: Colors.orange },
+  tabTextActive:      { color: '#16161A' },
 
   // Tab body
   tabBody:            { padding: isWeb ? 40 : 20, paddingBottom: 60 },
@@ -2706,21 +3261,37 @@ const lv = StyleSheet.create({
   monthHeader:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   monthLabel:       { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
   monthOpenCount:   { fontSize: 11, color: Colors.orange, fontWeight: '600' },
-  // Slot row
-  slotRow:          { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderLeftWidth: 4, borderRadius: 8, marginBottom: 8, paddingVertical: 14, paddingHorizontal: 16, gap: 14 },
-  dateBox:          { width: 36, alignItems: 'center', flexShrink: 0 },
-  dateNum:          { fontSize: 20, fontWeight: '800', lineHeight: 22 },
-  dateMonth:        { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 1 },
-  dayAbbrev:        { width: 28, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: 0.5, flexShrink: 0 },
-  slotTime:         { fontSize: 16, fontWeight: '700', minWidth: 70, flexShrink: 0 },
-  slotRoom:         { fontSize: 13, fontWeight: '500' },
+  // Slot card
+  slotCard:         { borderWidth: 1, borderLeftWidth: 4, borderRadius: 12, marginBottom: 8, overflow: 'hidden' },
+  slotCardTop:      { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 16, paddingHorizontal: 16, gap: 14 },
+  dateBlock:        { width: 36, alignItems: 'center', flexShrink: 0, paddingTop: 2 },
+  dateBlockDay:     { fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' as const },
+  dateBlockNum:     { fontSize: 22, fontWeight: '800', lineHeight: 26 },
+  slotInfo:         { flex: 1, gap: 4 },
+  slotNameRow:      { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },
+  slotName:         { fontSize: 15, fontWeight: '700' },
+  slotTypePill:     { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  slotTypeText:     { fontSize: 11, fontWeight: '600' },
+  slotMeta:         { fontSize: 13 },
+  slotPay:          { fontSize: 13 },
+  slotActions:      { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 },
+  detailsLink:      { fontSize: 13, fontWeight: '600', color: '#16161A', textDecorationLine: 'underline' as const },
   statusBadge:      { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, flexShrink: 0 },
   statusBadgeText:  { fontSize: 12, fontWeight: '600' },
-  enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 8, flexShrink: 0 },
-  enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#111111' },
+  enquireBtn:       { backgroundColor: Colors.orange, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10, flexShrink: 0 },
+  enquireBtnText:   { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   viewLink:         { fontSize: 13, fontWeight: '600', color: Colors.orange, paddingHorizontal: 4, flexShrink: 0 },
   editBtn:          { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, flexShrink: 0 },
   editBtnText:      { fontSize: 12, fontWeight: '600', color: '#555555' },
+  // Expanded details panel
+  detailsPanel:     { borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 20, gap: 16 },
+  detailsGrid:      { flexDirection: 'row', gap: 0 },
+  detailsCol:       { flex: 1, paddingRight: 12, gap: 6 },
+  detailsLabel:     { fontSize: 12, fontWeight: '600' },
+  detailsValue:     { fontSize: 14, lineHeight: 22 },
+  detailsNotes:     { borderTopWidth: 1, paddingTop: 16, gap: 6 },
+  detailsNotesLabel:{ fontSize: 12, fontWeight: '600' },
+  detailsNotesText: { fontSize: 14, lineHeight: 22 },
 });
 
 // Native timetable styles
@@ -2788,24 +3359,54 @@ const ns = StyleSheet.create({
 
 // Photos & Videos tab styles
 const pt = StyleSheet.create({
-  webGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 32, alignItems: 'flex-start' },
-  mediaSection:     { marginBottom: 24 },
-  mediaSectionWeb:  { flex: 1, minWidth: 280 },
+  section:            { marginBottom: 32 },
+  heading:            { fontSize: 18, fontWeight: '800', letterSpacing: -0.2, marginBottom: 14 },
+  videoGrid:          { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  videoCell:          { flex: 1, minWidth: 280 },
+  photoGrid:          { flexDirection: 'row', flexWrap: 'wrap' },
+  photoTile:          { aspectRatio: 4/3, overflow: 'hidden', borderRadius: 8 },
+  captionWrap:        { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.52)', paddingHorizontal: 10, paddingVertical: 6 },
+  captionText:        { color: '#ffffff', fontSize: 12, fontWeight: '500' },
+  lightboxBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)', justifyContent: 'center', alignItems: 'center' },
+  lightboxImage:      { width: '100%', height: '75%' as any },
+  lightboxCaption:    { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 12, paddingHorizontal: 24, textAlign: 'center' as const },
+  lightboxClose:      { position: 'absolute', top: 48, right: 20, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  lightboxCloseText:  { color: '#ffffff', fontSize: 18, fontWeight: '600' },
+  lightboxNav:        { flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 16 },
+  lightboxNavBtn:     { padding: 12 },
+  lightboxNavText:    { color: '#ffffff', fontSize: 28, lineHeight: 32 },
+  lightboxCount:      { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
 });
 
 // Rooms & tech styles
 const rt = StyleSheet.create({
-  roomCard:       { borderWidth: 1, borderColor: '#e8e8e8', borderRadius: 10, padding: 16, marginBottom: 16, backgroundColor: '#fafafa' },
-  roomNameRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  roomName:       { fontSize: 17, fontWeight: '700', color: '#111111' },
-  primaryBadge:   { backgroundColor: Colors.orange, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
-  primaryBadgeText: { fontSize: 10, fontWeight: '800', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.6 },
-  specsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 0 },
-  specItem:   { width: isWeb ? '50%' : '100%', paddingVertical: 8, paddingRight: 12, gap: 2 },
-  specLabel:  { fontSize: 10, fontWeight: '700', color: '#888888', textTransform: 'uppercase', letterSpacing: 0.6 },
-  specValue:  { fontSize: 14, color: '#111111', fontWeight: '500' },
-  notesBox:   { borderRadius: 8, backgroundColor: '#f8f8f8', padding: 14, marginTop: 12, marginBottom: 8 },
-  notesText:  { fontSize: 13, color: '#555555', lineHeight: 20 },
+  card:           { borderWidth: 1, borderRadius: 14, padding: isWeb ? 24 : 18, marginBottom: 16 },
+  cardHeader:     { flexDirection: isWeb ? 'row' : 'column', alignItems: isWeb ? 'flex-start' : 'stretch', gap: 12, marginBottom: 20 },
+  roomName:       { fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  roomMeta:       { fontSize: 14, marginTop: 4, lineHeight: 20 },
+  docsRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: isWeb ? 0 : 4 },
+  docBtn:         { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, gap: 6 },
+  docBtnText:     { fontSize: 13, fontWeight: '600' },
+  riderBox:       { borderRadius: 10, padding: 14, marginBottom: 20 },
+  riderHeading:   { fontSize: 12, fontWeight: '700', letterSpacing: 0.3, marginBottom: 10 },
+  riderItems:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6, rowGap: 4 },
+  riderItem:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 16 },
+  riderIcon:      { fontSize: 13, fontWeight: '800' },
+  riderLabel:     { fontSize: 14, fontWeight: '500' },
+  specGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 0, marginBottom: 16 },
+  specCell:       { width: isWeb ? '33.33%' : '100%', paddingVertical: 10, paddingRight: 16, gap: 4 },
+  specFull:       { paddingVertical: 10, gap: 4, marginBottom: 6 },
+  specLabel:      { fontSize: 12, fontWeight: '600', color: '#888888', textTransform: 'uppercase' as const, letterSpacing: 0.4 },
+  specValue:      { fontSize: 15, fontWeight: '500', lineHeight: 22 },
+  backlineSection:{ marginTop: 4, marginBottom: 16 },
+  backlineChips:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip:           { borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7 },
+  chipText:       { fontSize: 14, fontWeight: '500' },
+  notesSection:   { paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E7E6E3' },
+  notesText:      { fontSize: 14, lineHeight: 21 },
+  onNightRow:     { flexDirection: 'row', gap: 16, paddingVertical: 11, borderBottomWidth: 1 },
+  onNightLabel:   { width: 110, fontSize: 14, fontWeight: '600', flexShrink: 0 },
+  onNightValue:   { flex: 1, fontSize: 14, lineHeight: 21 },
 });
 
 // ── Venue dashboard styles (web desktop, own venue) ────────────────
