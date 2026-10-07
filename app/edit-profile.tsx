@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, ActivityIndicator, Switch, Image, Platform, Modal, useWindowDimensions,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -2726,6 +2727,10 @@ export default function EditProfileScreen() {
 
   // Mobile section view
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1 }}
+    >
     <SafeAreaView style={[{ flex: 1 }, { backgroundColor: colors.bgFaint }]}>
       <View style={[pd.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => setMobileShowList(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -2793,6 +2798,7 @@ export default function EditProfileScreen() {
         );
       })()}
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -4981,7 +4981,7 @@ const vp = StyleSheet.create({
   radioLabel:         { fontSize: 13, color: '#333333', lineHeight: 18, flex: 1 },
   combinedRow:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
   replyInput:         { flex: 1, paddingHorizontal: 10, paddingVertical: 9, fontSize: 14, color: '#111111', maxHeight: 80, borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, backgroundColor: '#ffffff' },
-  sendBtn:            { width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  sendBtn:            { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.orange, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   sendBtnOff:         { backgroundColor: '#e8e8e8' },
   sendBtnText:        { fontSize: 17, fontWeight: '700', color: '#ffffff', lineHeight: 19, marginTop: -1 },
   sendBtnTextOff:     { color: '#bbbbbb' },
@@ -4996,7 +4996,7 @@ const vp = StyleSheet.create({
   // Confirm booking strip (shown in discussing state)
   confirmStrip:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: isWeb ? 24 : 16, paddingVertical: 8, borderTopWidth: 1, borderBottomWidth: 1, backgroundColor: Colors.orange + '0a' },
   confirmStripLabel:  { fontSize: 13, fontWeight: '500' },
-  confirmStripBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  confirmStripBtn:    { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11 },
   confirmStripBtnText:{ fontSize: 13, fontWeight: '700', color: '#111111' },
   // Pending state: two action buttons
   pendingActionsRow:       { flexDirection: 'row', gap: 10 },

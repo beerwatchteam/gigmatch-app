@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, ActivityIndicator, Platform, Image,
+  TextInput, ActivityIndicator, Platform, Image, KeyboardAvoidingView,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -606,10 +606,15 @@ export default function EnquireScreen() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
-      <View style={s.sheetHandle} />
-      {formContent}
-    </SafeAreaView>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1 }}
+    >
+      <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+        <View style={s.sheetHandle} />
+        {formContent}
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -895,7 +895,7 @@ export default function VenuesScreen() {
       <View style={st.fpOverlay}>
         <Animated.View style={[st.fpPanel, { transform: [{ translateX: slideAnim }] }]}>
           {/* Header */}
-          <View style={st.fpHeader}>
+          <View style={[st.fpHeader, { paddingTop: insets.top + 16 }]}>
             <TouchableOpacity onPress={closeFilterPanel} style={st.fpCloseBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={st.fpCloseText}>✕</Text>
             </TouchableOpacity>
@@ -1986,8 +1986,8 @@ const st = StyleSheet.create({
   sidebarTitle:{ fontSize: 18, fontWeight: '700', color: '#111111' },
   resetAll:   { fontSize: 13, color: Colors.orange, fontWeight: '600' },
   filterSection:{ marginBottom: 24 },
-  filterLabel:{ fontSize: 10, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
-  filterSubLabel:{ fontSize: 10, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  filterLabel:{ fontSize: 12, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10 },
+  filterSubLabel:{ fontSize: 12, fontWeight: '700', color: '#111111', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
   filterInput:{ borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 9, paddingHorizontal: 12, fontSize: 13, color: '#111111', backgroundColor: '#fafafa' },
   filterInputOn:{ borderColor: Colors.orange, backgroundColor: '#ffffff' },
 
@@ -2063,7 +2063,7 @@ const st = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 6, height: 0 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 16,
   },
   fpBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)' },
-  fpHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
+  fpHeader:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#eeeeee' },
   fpCloseBtn:   { width: 32, alignItems: 'flex-start' },
   fpCloseText:  { fontSize: 18, color: '#555555', fontWeight: '400' },
   fpTitle:      { fontSize: 17, fontWeight: '700', color: '#111111' },
