@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { MyGigsContent } from '@/app/(tabs)/gigs';
@@ -1464,13 +1465,52 @@ const pac = StyleSheet.create({
   declineBtnText: { fontSize: 14, fontWeight: '600' },
 });
 
+// ── MusicianHead — web SEO meta tags ─────────────────────────────────────────
+
+function MusicianHead({ musician, slug }: { musician: Musician; slug: string }) {
+  const actType = Array.isArray(musician.artistType)
+    ? musician.artistType.join(' / ')
+    : musician.artistType ?? 'Artist';
+  const genres    = (musician.genre || []).slice(0, 3).join(', ');
+  const rawDesc   = musician.about
+    ? musician.about
+    : `${musician.name}${musician.location ? ` from ${musician.location}` : ''}${genres ? ` · ${genres}` : ''}. Book live music on Twaylo.`;
+  const desc      = rawDesc.length > 155 ? rawDesc.slice(0, 152) + '...' : rawDesc;
+  const canonical = `https://twaylo.com.au/musician/${slug}`;
+  const title     = `${musician.name} | ${actType} | Twaylo`;
+  return (
+    <Head>
+      <title>{title}</title>
+      <meta name="description" content={desc} />
+      <link rel="canonical" href={canonical} />
+      <meta property="og:title" content={title} />
+      <meta property="og:description" content={desc} />
+      <meta property="og:url" content={canonical} />
+      <meta property="og:type" content="website" />
+      {musician.photoUrl ? <meta property="og:image" content={musician.photoUrl} /> : null}
+    </Head>
+  );
+}
+
 // ── Main Screen ───────────────────────────────────────────────────
 
 export default function MusicianScreen({ _overrideId }: { _overrideId?: string } = {}) {
   const { id: paramId, tab: initialTab, preview, scrollTo } = useLocalSearchParams<{ id: string; tab?: string; preview?: string; scrollTo?: string }>();
   const scrollRef    = useRef<ScrollView>(null);
   const hasScrolled  = useRef(false);
-  const id             = _overrideId ?? String(paramId);
+  const rawId = _overrideId ?? String(paramId);
+
+  // Resolve username slugs (e.g. "the-dahlias") to the Firebase doc ID.
+  // Firebase UIDs are exactly 28 base62 chars; anything else is treated as a username slug.
+  const [resolvedId, setResolvedId] = useState('');
+  useEffect(() => {
+    if (!rawId) return;
+    if (/^[A-Za-z0-9]{28}$/.test(rawId)) { setResolvedId(rawId); return; }
+    getDocs(query(collection(db, 'bandProfiles'), where('username', '==', rawId)))
+      .then(snap => setResolvedId(!snap.empty ? snap.docs[0].id : rawId))
+      .catch(() => setResolvedId(rawId));
+  }, [rawId]);
+  const id = resolvedId;
   const isProfileTab   = !!_overrideId;
   const isPublicPreview = !!preview;
   const router       = useRouter();
@@ -1494,6 +1534,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const isMobileLayout = !isWeb || width < 768;
 
   useEffect(() => {
+    if (!id) return;
     getDoc(doc(db, 'bandProfiles', id)).then(snap => {
       if (snap.exists()) setMusician({ id: snap.id, ...snap.data() } as Musician);
     }).catch(console.error).finally(() => setLoading(false));
@@ -1623,6 +1664,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   if (isProfileTab && !isMobileLayout) {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['bottom']}>
+        {isWeb && <MusicianHead musician={musician} slug={musician.username || id} />}
         <View style={dash.container}>
 
           {/* Left sidebar */}
@@ -1722,6 +1764,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={safeEdges ?? ['bottom']}>
+      {isWeb && <MusicianHead musician={musician} slug={musician.username || id} />}
       {isPublicPreview && (
         <View style={[styles.previewBanner, { backgroundColor: colors.black }]}>
           <Text style={styles.previewBannerText}>Previewing as the public would see this profile</Text>

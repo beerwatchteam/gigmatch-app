@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import Head from 'expo-router/head';
 import { resolveSlotTerms, formatPaySummary } from '@/lib/resolveSlotTerms';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
@@ -135,6 +136,7 @@ type Venue = {
   verified?: boolean;
   listed?: boolean;
   photoUrl?: string;
+  username?: string;
   logoUrl?: string;
   photoPosition?: { x: number; y: number };
   photos?: string[];
@@ -593,11 +595,47 @@ const kf = StyleSheet.create({
   sub:   { fontSize: 11, lineHeight: 15, marginTop: 4 },
 });
 
+// ── VenueHead — web SEO meta tags ───────────────────────────────────────────
+
+function VenueHead({ venue, slug }: { venue: Venue; slug: string }) {
+  const genres    = (venue.genrePreferences || venue.genre || []).slice(0, 3).join(', ');
+  const rawDesc   = venue.description
+    ? venue.description
+    : `${venue.name}${venue.suburb ? ` in ${venue.suburb}` : ''}${genres ? ` · ${genres}` : ''}. Book live music on Twaylo.`;
+  const desc      = rawDesc.length > 155 ? rawDesc.slice(0, 152) + '...' : rawDesc;
+  const canonical = `https://twaylo.com.au/venue/${slug}`;
+  const title     = `${venue.name} | Twaylo`;
+  return (
+    <Head>
+      <title>{title}</title>
+      <meta name="description" content={desc} />
+      <link rel="canonical" href={canonical} />
+      <meta property="og:title" content={title} />
+      <meta property="og:description" content={desc} />
+      <meta property="og:url" content={canonical} />
+      <meta property="og:type" content="website" />
+      {venue.photoUrl ? <meta property="og:image" content={venue.photoUrl} /> : null}
+    </Head>
+  );
+}
+
 // ── Main screen ───────────────────────────────────────────────────────
 
 export default function VenueScreen({ _overrideId }: { _overrideId?: string } = {}) {
   const { id: paramId, tab: tabParam, preview } = useLocalSearchParams<{ id: string; tab?: string; preview?: string }>();
-  const id = _overrideId ?? String(paramId);
+  const rawId = _overrideId ?? String(paramId);
+
+  // Resolve username slugs (e.g. "corner-hotel") to the Firebase doc ID.
+  // Firebase UIDs are exactly 28 base62 chars; anything else is treated as a username slug.
+  const [resolvedId, setResolvedId] = useState('');
+  useEffect(() => {
+    if (!rawId) return;
+    if (/^[A-Za-z0-9]{28}$/.test(rawId)) { setResolvedId(rawId); return; }
+    getDocs(query(collection(db, 'venues'), where('username', '==', rawId)))
+      .then(snap => setResolvedId(!snap.empty ? snap.docs[0].id : rawId))
+      .catch(() => setResolvedId(rawId));
+  }, [rawId]);
+  const id = resolvedId;
   const isProfileTab = !!_overrideId;
   const isPublicPreview = !!preview;
   const router = useRouter();
@@ -623,6 +661,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   );
 
   useEffect(() => {
+    if (!id) return;
     return onSnapshot(doc(db, 'venues', id), snap => {
       if (snap.exists()) setVenue({ id: snap.id, ...snap.data() } as Venue);
       setLoading(false);
@@ -703,6 +742,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
+        {isWeb && <VenueHead venue={venue} slug={venue.username || id} />}
         <View style={vd.container}>
 
           {/* Left sidebar */}
@@ -818,6 +858,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: colors.bg }]} edges={safeEdges}>
+      {isWeb && <VenueHead venue={venue} slug={venue.username || id} />}
       {isPublicPreview && (
         <View style={[s.previewBanner, { backgroundColor: colors.black }]}>
           <Text style={s.previewBannerText}>Previewing as the public would see this profile</Text>
