@@ -1203,11 +1203,10 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, onEnquire, is
     return raw.startsWith('/') ? raw : `/${raw}`;
   }
 
-  // ── Maps link ─────────────────────────────────────────────────────
-  const openMaps = () => {
-    const addr = encodeURIComponent([venue.streetAddress, venue.suburb, venue.state].filter(Boolean).join(', '));
-    Linking.openURL(`https://maps.google.com/?q=${addr}`);
-  };
+  // ── Maps links ────────────────────────────────────────────────────
+  const mapsQuery = encodeURIComponent([venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', '));
+  const openGoogleMaps = () => Linking.openURL(`https://www.google.com/maps/search/?q=${mapsQuery}`);
+  const openAppleMaps  = () => Linking.openURL(`maps://maps.apple.com/?q=${mapsQuery}`);
 
   // ── Aside ─────────────────────────────────────────────────────────
   const aside = (
@@ -1428,16 +1427,8 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, onEnquire, is
       {/* Location */}
       {(venue.streetAddress || venue.suburb) && (
         <View style={[ov.section, { marginBottom: 0 }]}>
-          {/* Map placeholder */}
-          <View style={[ov.mapPlaceholder, { backgroundColor: colors.border }]}>
-            <View style={ov.mapPin}>
-              <View style={ov.mapPinHead} />
-              <View style={ov.mapPinTail} />
-            </View>
-          </View>
-          {/* Address row */}
-          <View style={[ov.locationRow, { borderColor: colors.border }]}>
-            <View style={{ flex: 1, gap: 4 }}>
+          <View style={[ov.locationCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
+            <View style={{ flex: 1, gap: 3 }}>
               <Text style={[ov.locationAddress, { color: colors.black }]}>
                 {[venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ')}
               </Text>
@@ -1447,9 +1438,16 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, onEnquire, is
                 </Text>
               ) : null}
             </View>
-            <TouchableOpacity onPress={openMaps} activeOpacity={0.7} style={{ flexShrink: 0 }}>
-              <Text style={ov.mapsLink}>Open in Maps</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8, flexShrink: 0 }}>
+              {Platform.OS === 'ios' && (
+                <TouchableOpacity onPress={openAppleMaps} activeOpacity={0.7}>
+                  <Text style={ov.mapsLink}>Apple Maps</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={openGoogleMaps} activeOpacity={0.7}>
+                <Text style={ov.mapsLink}>Google Maps</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -1499,14 +1497,10 @@ const ov = StyleSheet.create({
   accessIcon:         { fontSize: 12, fontWeight: '800' },
   accessLabel:        { fontSize: 14, flex: 1 },
   // Location
-  mapPlaceholder:     { height: 180, borderRadius: 12, marginBottom: 0, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  mapPin:             { alignItems: 'center' },
-  mapPinHead:         { width: 20, height: 20, borderRadius: 10, backgroundColor: '#16161A' },
-  mapPinTail:         { width: 2, height: 10, backgroundColor: '#16161A', marginTop: -2 },
-  locationRow:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, padding: 16, gap: 12 },
+  locationCard:       { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },
   locationAddress:    { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   locationMeta:       { fontSize: 13, lineHeight: 19 },
-  mapsLink:           { fontSize: 13, fontWeight: '600', color: Colors.orange, textDecorationLine: 'underline' as const },
+  mapsLink:           { fontSize: 13, fontWeight: '600', color: Colors.orange },
   // Aside card
   asideCard:          { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   asideCardHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 },
