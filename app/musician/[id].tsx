@@ -1868,6 +1868,49 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           </ScrollView>
 
         </View>
+
+        {/* Share profile modal */}
+        <Modal visible={showShareModal} transparent animationType="fade" onRequestClose={() => setShowShareModal(false)}>
+          <View style={spm.backdrop}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowShareModal(false)} />
+            <View style={[spm.sheet, { backgroundColor: colors.bg }]}>
+              <View style={spm.header}>
+                <View>
+                  <Text style={[spm.title, { color: colors.black }]}>Share your profile</Text>
+                  <Text style={[spm.subtitle, { color: colors.grey }]}>Copy this pitch and send it to a venue directly.</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowShareModal(false)} style={spm.closeBtn}>
+                  <Text style={[spm.closeBtnText, { color: colors.black }]}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[spm.pitchBox, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
+                  <Text selectable style={[spm.pitchText, { color: colors.black }]}>{sharePitch}</Text>
+                </ScrollView>
+              </View>
+              <TouchableOpacity
+                style={[spm.copyBtn, { backgroundColor: colors.black }]}
+                activeOpacity={0.8}
+                onPress={() => { copyToClipboard(sharePitch, () => { setPitchCopied(true); setTimeout(() => setPitchCopied(false), 2500); }); }}
+              >
+                <Text style={spm.copyBtnText}>{pitchCopied ? 'Copied!' : 'Copy pitch'}</Text>
+              </TouchableOpacity>
+              <View style={[spm.divider, { borderTopColor: colors.border }]}>
+                <Text style={[spm.dividerText, { color: colors.greyLight }]}>or just share the link</Text>
+              </View>
+              <View style={[spm.linkRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <Text style={[spm.linkText, { color: colors.grey }]} numberOfLines={1}>{profileUrl}</Text>
+                <TouchableOpacity
+                  style={[spm.linkCopyBtn, { borderColor: colors.border }]}
+                  activeOpacity={0.75}
+                  onPress={() => { copyToClipboard(profileUrl, () => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2500); }); }}
+                >
+                  <Text style={[spm.linkCopyBtnText, { color: colors.black }]}>{linkCopied ? 'Copied!' : 'Copy link'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
