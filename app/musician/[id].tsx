@@ -1576,38 +1576,64 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   const isOwn = !isPublicPreview && user?.uid === id;
   const { width } = useWindowDimensions();
-  const [shareCopied, setShareCopied] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [pitchCopied,   setPitchCopied]    = useState(false);
+  const [linkCopied,    setLinkCopied]     = useState(false);
 
-  function shareProfile() {
-    if (!musician) return;
-    const profileUrl = `https://twaylo.com.au/musician/${musician.username || id}`;
-    const actT   = Array.isArray(musician.artistType) ? musician.artistType.join(' / ') : musician.artistType;
-    const loc    = musician.location?.split(',')[0]?.trim();
-    const genres = (musician.genre || []).filter((g: string) => g !== 'Other').slice(0, 3).join(', ');
-    const lines: string[] = [];
-    const headline = [musician.name, actT].filter(Boolean).join(' — ');
-    if (headline) lines.push(headline);
-    if (loc)      lines.push(loc);
-    if (genres)   lines.push(genres);
+  function buildSharePitch(m: Musician, profileUrl: string): string {
+    const actT   = Array.isArray(m.artistType) ? m.artistType.join(' / ') : m.artistType;
+    const loc    = m.location?.split(',')[0]?.trim();
+    const genres = (m.genre || []).filter((g: string) => g !== 'Other').slice(0, 4).join(', ');
+
+    const lines: string[] = ['Hi,', ''];
+
+    const intro = [m.name, actT ? `a ${actT}` : null, loc ? `based in ${loc}` : null].filter(Boolean).join(', ');
+    if (intro) lines.push(`${intro}.`);
+    if (genres) lines.push(genres);
     lines.push('');
-    lines.push('Full profile including tracks, tech rider and booking info:');
-    lines.push(profileUrl);
-    const message = lines.join('\n');
 
+    if (m.averageDraw) lines.push(`Average draw: ~${m.averageDraw} people per show`);
+    if (m.feeMin != null && m.feeMax != null) lines.push(`Fee: $${m.feeMin}–$${m.feeMax} per gig excl. GST`);
+    else if (m.feeMin != null) lines.push(`Fee: from $${m.feeMin} per gig excl. GST`);
+    if (m.setLengths?.length) lines.push(`Set lengths: ${m.setLengths.join(', ')}`);
+    if (m.memberCount) lines.push(`Line-up: ${m.memberCount}`);
+
+    const pastGigs = (m.gigHistory || []).filter((g: GigEntry) => g.venue).slice(0, 3).map((g: GigEntry) => g.venue);
+    if (pastGigs.length > 0) {
+      lines.push('');
+      lines.push(`Recent shows: ${pastGigs.join(', ')}`);
+    }
+
+    const pageMap: Record<string, string> = {};
+    (m.artistPages || []).forEach((p: ArtistPage) => { if (p.url) pageMap[p.platform] = p.url; });
+    const listenUrl = pageMap['Spotify'] || m.spotify || pageMap['Apple Music'] || m.appleMusic || m.songs?.find((s: Song) => s.url)?.url;
+    if (listenUrl) {
+      lines.push('');
+      lines.push(`Listen: ${listenUrl}`);
+    }
+
+    lines.push('');
+    lines.push('Full profile (tracks, tech rider, booking info):');
+    lines.push(profileUrl);
+    return lines.join('\n');
+  }
+
+  function copyToClipboard(text: string, onDone: () => void) {
     if (Platform.OS === 'web') {
-      const nav = typeof navigator !== 'undefined' ? navigator : null;
-      if (nav && (nav as any).share) {
-        (nav as any).share({ title: musician.name || 'Twaylo profile', url: profileUrl, text: message }).catch(() => {});
-      } else if (nav?.clipboard) {
-        nav.clipboard.writeText(message).then(() => {
-          setShareCopied(true);
-          setTimeout(() => setShareCopied(false), 2500);
-        }).catch(() => {});
-      }
+      (typeof navigator !== 'undefined' ? navigator : null)?.clipboard?.writeText(text).then(onDone).catch(() => {});
     } else {
-      Share.share({ message, url: profileUrl }).catch(() => {});
+      // On native fall back to share sheet — includes a Copy option
+      Share.share({ message: text }).then(onDone).catch(() => {});
     }
   }
+
+  function shareProfile() {
+    setShowShareModal(true);
+  }
+
+  // Derive pitch + URL whenever modal is open
+  const profileUrl  = `https://twaylo.com.au/musician/${musician?.username || id}`;
+  const sharePitch  = musician ? buildSharePitch(musician, profileUrl) : '';
   const isMobileLayout = !isWeb || width < 768;
 
   useEffect(() => {
@@ -1811,7 +1837,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
               onPress={shareProfile}
               activeOpacity={0.85}
             >
-              <Text style={dash.editBtnText}>{shareCopied ? 'Copied!' : 'Share Profile'}</Text>
+              <Text style={dash.editBtnText}>Share Profile</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[dash.editBtn, { marginTop: 6 }]}
@@ -1914,7 +1940,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.outlineBtnText, { color: colors.black }]}>
-                    {shareCopied ? 'Copied!' : 'Share profile'}
+                    Share profile
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -2056,6 +2082,67 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           </TouchableOpacity>
         </SafeAreaView>
       )}
+
+      {/* Share profile modal */}
+      <Modal visible={showShareModal} transparent animationType="fade" onRequestClose={() => setShowShareModal(false)}>
+        <View style={spm.backdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowShareModal(false)} />
+          <View style={[spm.sheet, { backgroundColor: colors.bg }]}>
+            {/* Header */}
+            <View style={spm.header}>
+              <View>
+                <Text style={[spm.title, { color: colors.black }]}>Share your profile</Text>
+                <Text style={[spm.subtitle, { color: colors.grey }]}>Copy this pitch and send it to a venue directly.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowShareModal(false)} style={spm.closeBtn}>
+                <Text style={[spm.closeBtnText, { color: colors.black }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Pitch block */}
+            <View style={[spm.pitchBox, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+              <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
+                <Text selectable style={[spm.pitchText, { color: colors.black }]}>{sharePitch}</Text>
+              </ScrollView>
+            </View>
+
+            <TouchableOpacity
+              style={[spm.copyBtn, { backgroundColor: colors.black }]}
+              activeOpacity={0.8}
+              onPress={() => {
+                copyToClipboard(sharePitch, () => {
+                  setPitchCopied(true);
+                  setTimeout(() => setPitchCopied(false), 2500);
+                });
+              }}
+            >
+              <Text style={spm.copyBtnText}>{pitchCopied ? 'Copied!' : Platform.OS === 'web' ? 'Copy pitch' : 'Share pitch'}</Text>
+            </TouchableOpacity>
+
+            {/* Divider */}
+            <View style={[spm.divider, { borderTopColor: colors.border }]}>
+              <Text style={[spm.dividerText, { color: colors.greyLight }]}>or just share the link</Text>
+            </View>
+
+            {/* Link row */}
+            <View style={[spm.linkRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+              <Text style={[spm.linkText, { color: colors.grey }]} numberOfLines={1}>{profileUrl}</Text>
+              <TouchableOpacity
+                style={[spm.linkCopyBtn, { borderColor: colors.border }]}
+                activeOpacity={0.75}
+                onPress={() => {
+                  copyToClipboard(profileUrl, () => {
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2500);
+                  });
+                }}
+              >
+                <Text style={[spm.linkCopyBtnText, { color: colors.black }]}>{linkCopied ? 'Copied!' : 'Copy link'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2483,4 +2570,25 @@ const dash = StyleSheet.create({
   logoutText:       { fontSize: 13, fontWeight: '600' },
   main:             { flex: 1 },
   mainContent:      { paddingHorizontal: 40, paddingVertical: 32 },
+});
+
+// ── Share profile modal styles ─────────────────────────────────────
+const spm = StyleSheet.create({
+  backdrop:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  sheet:         { width: '100%', maxWidth: 520, borderRadius: 16, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 40, elevation: 12 },
+  header:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 },
+  title:         { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, marginBottom: 3 },
+  subtitle:      { fontSize: 13, lineHeight: 18 },
+  closeBtn:      { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  closeBtnText:  { fontSize: 16, fontWeight: '500' },
+  pitchBox:      { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 14 },
+  pitchText:     { fontSize: 13, lineHeight: 20 },
+  copyBtn:       { borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginBottom: 20 },
+  copyBtnText:   { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  divider:       { borderTopWidth: 1, marginBottom: 20, alignItems: 'center', paddingTop: 12 },
+  dividerText:   { fontSize: 12 },
+  linkRow:       { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, paddingLeft: 14, paddingRight: 8, paddingVertical: 8 },
+  linkText:      { flex: 1, fontSize: 13 },
+  linkCopyBtn:   { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, flexShrink: 0 },
+  linkCopyBtnText: { fontSize: 12, fontWeight: '600' },
 });
