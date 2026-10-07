@@ -789,7 +789,7 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           <ScrollView style={vd.main} contentContainerStyle={vd.mainContent}>
             <PendingAgentVenueClaims venueId={id} />
             {activeTab === 'overview' && (
-              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={false} isMyVenue={isMyVenue} gigsHosted={gigsHosted} />
+              <OverviewTab venue={venue} isArtist={false} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} onEnquire={enquireHandler} isMobileLayout={false} isMyVenue={isMyVenue} gigsHosted={gigsHosted} />
             )}
             {activeTab === 'timetable' && (
               <TimetableTab
@@ -965,7 +965,41 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
         {/* ── Tab content ── */}
         {activeTab === 'overview' && (
-          <OverviewTab venue={venue} isArtist={isArtist} isLoggedIn={!!user} onGoTimetable={() => setActiveTab('timetable')} isMobileLayout={isMobileLayout} isMyVenue={isMyVenue} gigsHosted={gigsHosted} />
+          <OverviewTab
+            venue={venue}
+            isArtist={isArtist}
+            isLoggedIn={!!user}
+            onGoTimetable={() => setActiveTab('timetable')}
+            onEnquire={(slot, day, dateISO) => {
+              if (!user) { router.push('/login'); return; }
+              const _models = slot.paymentModels?.length ? slot.paymentModels : (slot.paymentModel ? [slot.paymentModel] : []);
+              router.push({
+                pathname: '/enquire',
+                params: {
+                  venueId:        venue.id,
+                  venueName:      venue.name,
+                  day,
+                  date:           dateISO || '',
+                  time:           slot.time,
+                  room:           slot.room || '',
+                  slotType:       slot.slotType || 'Either',
+                  duration:       slot.duration ? String(slot.duration) : '',
+                  capacity:       venue.capacity ? String(venue.capacity) : '',
+                  venueTimezone:  STATE_TZ[venue.state ?? ''] ?? 'Australia/Sydney',
+                  ...(slot.name ? { slotName: slot.name } : {}),
+                  slotNote:       slot.notes || '',
+                  ...(_models.length ? { paymentModels: _models.join(',') } : {}),
+                  ...(slot.feeMin != null ? { feeMin: String(slot.feeMin) } : {}),
+                  ...(slot.feeMax != null ? { feeMax: String(slot.feeMax) } : {}),
+                  ...(slot.paymentMethod ? { paymentMethod: slot.paymentMethod } : {}),
+                  ...(slot.minNotice ? { minNotice: slot.minNotice } : {}),
+                },
+              });
+            }}
+            isMobileLayout={isMobileLayout}
+            isMyVenue={isMyVenue}
+            gigsHosted={gigsHosted}
+          />
         )}
         {activeTab === 'timetable' && (
           <TimetableTab
@@ -1024,8 +1058,39 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
 // ── Overview tab ─────────────────────────────────────────────────────
 
-function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayout, isMyVenue = false, gigsHosted = 0 }: {
-  venue: Venue; isArtist: boolean; isLoggedIn: boolean; onGoTimetable: () => void; isMobileLayout: boolean; isMyVenue?: boolean; gigsHosted?: number;
+/** Returns a {name, detail} pair for a single pay model for display in the What acts get card. */
+function payModelDetail(model: string, terms: ReturnType<typeof resolveSlotTerms>): { name: string; detail: string } {
+  if (model === 'Flat fee') {
+    const min = parseFloat(terms.flatFeeMin);
+    const max = parseFloat(terms.flatFeeMax);
+    const basis = terms.flatFeeBasis || 'Per act';
+    const basisLower = basis.toLowerCase();
+    if (!isNaN(min) && !isNaN(max) && max > min) return { name: 'Flat fee', detail: `$${min}–$${max} ${basisLower}` };
+    if (!isNaN(min)) return { name: 'Flat fee', detail: `$${min} ${basisLower}` };
+    return { name: 'Flat fee', detail: '' };
+  }
+  if (model === 'Door split') return { name: 'Door split', detail: terms.doorSplit || '' };
+  if (model === 'Guarantee + split') {
+    const g = parseFloat(terms.guaranteeAmount);
+    const sp = terms.guaranteeSplit;
+    if (!isNaN(g) && sp) return { name: 'Guarantee + split', detail: `$${g} guarantee + ${sp}% split` };
+    if (!isNaN(g)) return { name: 'Guarantee + split', detail: `$${g} guarantee + split` };
+    return { name: 'Guarantee + split', detail: '' };
+  }
+  if (model === 'Bar split') return { name: 'Bar split', detail: terms.barSplit ? `${terms.barSplit}% of bar` : '' };
+  if (model === 'Ticket split') return { name: 'Ticket split', detail: terms.ticketSplitPct ? `${terms.ticketSplitPct}% of tickets` : '' };
+  if (model === 'Unpaid') {
+    const perk = terms.drinks && terms.drinksDetails ? terms.drinksDetails : terms.drinks ? 'Drinks' : '';
+    return { name: 'Unpaid', detail: perk };
+  }
+  return { name: model, detail: '' };
+}
+
+function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, onEnquire, isMobileLayout, isMyVenue = false, gigsHosted = 0 }: {
+  venue: Venue; isArtist: boolean; isLoggedIn: boolean;
+  onGoTimetable: () => void;
+  onEnquire?: (slot: Slot, day: string, dateISO: string) => void;
+  isMobileLayout: boolean; isMyVenue?: boolean; gigsHosted?: number;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -1042,31 +1107,24 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
     </TouchableOpacity>
   );
 
-  const secHead = (label: string, isEmpty: boolean, tab: string) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-      <Text style={[ov.sectionHeading, { color: colors.black }]}>{label}</Text>
-      {isMyVenue && isEmpty && addBtn(tab)}
-    </View>
-  );
-
   const hasVenueInfo = !!(
     (venue.phone && venue.showPhone) || venue.website || venue.instagram || venue.facebook
   );
 
-  // ── Accessibility grid ─────────────────────────────────────────────
+  // ── Accessibility ──────────────────────────────────────────────────
   const ts = venue.techSpecs;
   const accessItems = [
-    { label: 'Wheelchair access',    on: !!ts?.wheelchairAccess },
-    { label: 'Accessible bathroom',  on: !!ts?.accessibleBathroom },
-    { label: 'Step-free stage',      on: !!ts?.stepFreeStage },
-    { label: 'Wheelchair parking',   on: !!ts?.wheelchairParking },
+    { label: 'Wheelchair access',   on: !!ts?.wheelchairAccess },
+    { label: 'Accessible bathroom', on: !!ts?.accessibleBathroom },
+    { label: 'Step-free stage',     on: !!ts?.stepFreeStage },
+    { label: 'Accessible parking',  on: !!ts?.wheelchairParking },
   ];
   const hasAnyAccessData = typeof ts?.wheelchairAccess !== 'undefined'
     || typeof ts?.accessibleBathroom !== 'undefined'
     || typeof ts?.stepFreeStage !== 'undefined'
     || typeof ts?.wheelchairParking !== 'undefined';
 
-  // ── "What acts get" card ──────────────────────────────────────────
+  // ── What acts get ─────────────────────────────────────────────────
   const payModels = terms.payModels || [];
   const hasPayTerms = payModels.length > 0;
   const invoicingLabel = terms.invoicingMode === 'venueRCTI'
@@ -1075,7 +1133,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
   const hospChips: string[] = [];
   if (isLoggedIn) {
-    if (terms.guestList) hospChips.push(`Guest list: ${terms.guestList}`);
+    if (terms.guestList) hospChips.push(`Guest list · ${terms.guestList} per act`);
     if (terms.meals) hospChips.push(terms.mealsDetails || 'Meals provided');
     if (terms.drinks) hospChips.push(terms.drinksDetails || 'Drinks provided');
     if (venue.techSpecs?.soundEngineer) hospChips.push(
@@ -1085,47 +1143,112 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
     );
   }
 
-  // ── Aside: links card ─────────────────────────────────────────────
+  // ── Next open dates (aside) ────────────────────────────────────────
+  const nextOpenDates = generateAllUpcoming(venue, 2)
+    .filter(({ slot }) => slot.status === 'open')
+    .slice(0, 3);
+
+  // ── Link display helpers ───────────────────────────────────────────
+  function displayUrl(url: string): string {
+    return url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+  }
+  function displayInsta(raw: string): string {
+    return raw.startsWith('http') ? raw.replace(/^https?:\/\/(www\.)?instagram\.com\//, '@').replace(/\/$/, '') : raw.startsWith('@') ? raw : `@${raw}`;
+  }
+  function displayFb(raw: string): string {
+    if (raw.startsWith('http')) return '/' + raw.replace(/^https?:\/\/(www\.)?facebook\.com\//, '').replace(/\/$/, '');
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  }
+
+  // ── Maps link ─────────────────────────────────────────────────────
+  const openMaps = () => {
+    const addr = encodeURIComponent([venue.streetAddress, venue.suburb, venue.state].filter(Boolean).join(', '));
+    Linking.openURL(`https://maps.google.com/?q=${addr}`);
+  };
+
+  // ── Aside ─────────────────────────────────────────────────────────
   const aside = (
     <View style={!isMobileLayout ? ov.aside : ov.asideMobile}>
+
+      {/* Next open dates */}
+      {nextOpenDates.length > 0 && (
+        <View style={[ov.asideCard, { borderColor: colors.border }]}>
+          <View style={ov.asideCardHeader}>
+            <Text style={[ov.asideCardTitle, { color: colors.black }]}>Next open dates</Text>
+            <TouchableOpacity onPress={onGoTimetable} activeOpacity={0.7}>
+              <Text style={ov.asideAllLink}>All dates</Text>
+            </TouchableOpacity>
+          </View>
+          {nextOpenDates.map(({ date, dateISO, day, slot }, i) => {
+            const monthAbbr = SHORT_MONTHS[date.getMonth()];
+            const metaParts = [monthAbbr, slot.time, slot.room].filter(Boolean).join(' · ');
+            return (
+              <View key={`${dateISO}-${i}`} style={[ov.nextDateRow, { borderTopColor: colors.border }]}>
+                <View style={ov.nextDateBlock}>
+                  <Text style={[ov.nextDateDay, { color: colors.grey }]}>{day.slice(0,3).toUpperCase()}</Text>
+                  <Text style={[ov.nextDateNum, { color: colors.black }]}>{date.getDate()}</Text>
+                </View>
+                <View style={ov.nextDateInfo}>
+                  {(slot.name || slot.gigName) ? (
+                    <Text style={[ov.nextDateName, { color: colors.black }]} numberOfLines={1}>
+                      {slot.name || slot.gigName}
+                    </Text>
+                  ) : null}
+                  <Text style={[ov.nextDateMeta, { color: colors.grey }]} numberOfLines={1}>{metaParts}</Text>
+                </View>
+                {onEnquire && (isArtist || !isLoggedIn) && !isMyVenue ? (
+                  <TouchableOpacity
+                    style={ov.nextDateEnquireBtn}
+                    onPress={() => onEnquire(slot, day, dateISO)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={ov.nextDateEnquireBtnText}>Enquire</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Links */}
       {hasVenueInfo && (
-        <View style={[ov.linksCard, { borderColor: colors.border }]}>
-          <Text style={[ov.linksHeading, { color: colors.grey }]}>Links</Text>
+        <View style={[ov.asideCard, { borderColor: colors.border }]}>
           {venue.website ? (
             <TouchableOpacity style={ov.linkRow} onPress={() => Linking.openURL(venue.website!)} activeOpacity={0.7}>
-              <Text style={[ov.linkText, { color: colors.black }]}>Website</Text>
-              <Text style={ov.linkArrow}>→</Text>
+              <Text style={[ov.linkLabel, { color: colors.grey }]}>Website</Text>
+              <Text style={[ov.linkValue, { color: colors.black }]} numberOfLines={1}>{displayUrl(venue.website)}</Text>
             </TouchableOpacity>
           ) : null}
           {venue.instagram ? (
-            <TouchableOpacity style={ov.linkRow} onPress={() => {
+            <TouchableOpacity style={[ov.linkRow, { borderTopWidth: venue.website ? 1 : 0, borderTopColor: colors.border }]} onPress={() => {
               const raw = venue.instagram!;
               const url = raw.startsWith('http') ? raw : `https://www.instagram.com/${raw.replace(/^@/, '')}`;
               Linking.openURL(url);
             }} activeOpacity={0.7}>
-              <Text style={[ov.linkText, { color: colors.black }]}>Instagram</Text>
-              <Text style={ov.linkArrow}>→</Text>
+              <Text style={[ov.linkLabel, { color: colors.grey }]}>Instagram</Text>
+              <Text style={[ov.linkValue, { color: colors.black }]} numberOfLines={1}>{displayInsta(venue.instagram)}</Text>
             </TouchableOpacity>
           ) : null}
           {venue.facebook ? (
-            <TouchableOpacity style={ov.linkRow} onPress={() => Linking.openURL(venue.facebook!)} activeOpacity={0.7}>
-              <Text style={[ov.linkText, { color: colors.black }]}>Facebook</Text>
-              <Text style={ov.linkArrow}>→</Text>
+            <TouchableOpacity style={[ov.linkRow, { borderTopWidth: (venue.website || venue.instagram) ? 1 : 0, borderTopColor: colors.border }]} onPress={() => Linking.openURL(venue.facebook!)} activeOpacity={0.7}>
+              <Text style={[ov.linkLabel, { color: colors.grey }]}>Facebook</Text>
+              <Text style={[ov.linkValue, { color: colors.black }]} numberOfLines={1}>{displayFb(venue.facebook)}</Text>
             </TouchableOpacity>
           ) : null}
           {venue.phone && venue.showPhone ? (
-            <TouchableOpacity style={ov.linkRow} onPress={() => Linking.openURL(`tel:${venue.phone}`)} activeOpacity={0.7}>
-              <Text style={[ov.linkText, { color: colors.black }]}>{venue.phone}</Text>
-              <Text style={ov.linkArrow}>→</Text>
+            <TouchableOpacity style={[ov.linkRow, { borderTopWidth: (venue.website || venue.instagram || venue.facebook) ? 1 : 0, borderTopColor: colors.border }]} onPress={() => Linking.openURL(`tel:${venue.phone}`)} activeOpacity={0.7}>
+              <Text style={[ov.linkLabel, { color: colors.grey }]}>Phone</Text>
+              <Text style={[ov.linkValue, { color: colors.black }]} numberOfLines={1}>{venue.phone}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
       )}
-      <View style={[ov.noteCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-        <Text style={[ov.noteText, { color: colors.grey }]}>
-          Questions before you enquire? Message the venue. Booking details are shared once a gig is confirmed.
-        </Text>
-      </View>
+
+      {/* Note */}
+      <Text style={[ov.noteText, { color: colors.grey }]}>
+        Questions before you enquire? Message the venue. Booking details are shared once a gig is confirmed.
+      </Text>
     </View>
   );
 
@@ -1134,16 +1257,19 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {/* About */}
       {(desc || isMyVenue) && (
-        <View style={s.section}>
-          {secHead('About', !desc, 'Basic Info')}
+        <View style={ov.section}>
+          <View style={ov.sectionHead}>
+            <Text style={[ov.sectionHeading, { color: colors.black }]}>About</Text>
+            {isMyVenue && !desc && addBtn('Basic Info')}
+          </View>
           {desc ? (
             <>
-              <Text style={[s.body, { color: colors.black }]}>
+              <Text style={[ov.body, { color: colors.black }]}>
                 {shouldTruncate && !expanded ? desc.slice(0, MAX_DESC) + '...' : desc}
               </Text>
               {shouldTruncate && (
                 <TouchableOpacity onPress={() => setExpanded(e => !e)} style={{ marginTop: 6 }}>
-                  <Text style={s.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
+                  <Text style={ov.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
                 </TouchableOpacity>
               )}
             </>
@@ -1153,8 +1279,8 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {/* What acts get */}
       {(hasPayTerms || hospChips.length > 0 || isMyVenue) && (
-        <View style={s.section}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <View style={ov.section}>
+          <View style={ov.sectionHead}>
             <Text style={[ov.sectionHeading, { color: colors.black }]}>What acts get</Text>
             {isMyVenue && !hasPayTerms && addBtn('Payments')}
           </View>
@@ -1167,12 +1293,17 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
             {(hasPayTerms || isMyVenue) && (
               <View style={[ov.termsRow, { borderBottomColor: colors.border }]}>
                 <Text style={[ov.termsLabel, { color: colors.grey }]}>Pay</Text>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, gap: 6 }}>
                   {showPay && hasPayTerms ? (
                     <>
                       {payModels.map((model, i) => {
-                        const line = formatPaySummary({ ...terms, payModels: [model] });
-                        return <Text key={i} style={[ov.termsValue, { color: colors.black }]}>{line || model}</Text>;
+                        const { name, detail } = payModelDetail(model, terms);
+                        return (
+                          <View key={i} style={ov.payModelRow}>
+                            <Text style={[ov.termsValue, { color: colors.black }]}>{name}</Text>
+                            {detail ? <Text style={[ov.payModelDetail, { color: colors.grey }]}>{detail}</Text> : null}
+                          </View>
+                        );
                       })}
                       {terms.negotiable && (
                         <View style={[ov.negotiableBadge, { borderColor: '#2F7A4B' }]}>
@@ -1181,9 +1312,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
                       )}
                     </>
                   ) : !showPay ? (
-                    <Text style={[ov.termsValue, { color: colors.grey, fontStyle: 'italic' }]}>
-                      Sign in to see pay details
-                    </Text>
+                    <Text style={[ov.termsValue, { color: colors.grey, fontStyle: 'italic' }]}>Sign in to see pay details</Text>
                   ) : (
                     <Text style={[ov.termsValue, { color: colors.grey }]}>Not specified</Text>
                   )}
@@ -1192,22 +1321,21 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
             )}
 
             {/* Getting paid */}
-            {isLoggedIn && (terms.paymentTiming || terms.methods?.length > 0 || terms.depositRequired) && (
+            {isLoggedIn && (terms.paymentTiming || (terms.methods?.length ?? 0) > 0 || terms.depositRequired) && (
               <View style={[ov.termsRow, { borderBottomColor: colors.border }]}>
                 <Text style={[ov.termsLabel, { color: colors.grey }]}>Getting paid</Text>
-                <View style={{ flex: 1, gap: 4 }}>
-                  {(terms.paymentTiming || terms.methods?.length > 0) && (
+                <View style={{ flex: 1, gap: 3 }}>
+                  {(terms.paymentTiming || (terms.methods?.length ?? 0) > 0) && (
                     <Text style={[ov.termsValue, { color: colors.black }]}>
-                      {[terms.paymentTiming, terms.methods?.join(', ')].filter(Boolean).join(' · ')}
+                      {[terms.paymentTiming, terms.methods?.join(' or ')].filter(Boolean).join(' · ')}
                     </Text>
                   )}
-                  <Text style={[ov.termsValue, { color: colors.black }]}>{invoicingLabel}</Text>
-                  {terms.reqAbn && (
-                    <Text style={[ov.termsValue, { color: colors.grey }]}>An ABN is required</Text>
-                  )}
+                  <Text style={[ov.termsValue, { color: colors.black }]}>
+                    {invoicingLabel}{terms.reqAbn ? '. An ABN is required.' : '.'}
+                  </Text>
                   {terms.depositRequired && terms.depositAmount && (
                     <Text style={[ov.termsValue, { color: colors.black }]}>
-                      ${terms.depositAmount} deposit{terms.depositDue ? `, due ${terms.depositDue}` : ''}
+                      ${terms.depositAmount} deposit{terms.depositDue ? `, due ${terms.depositDue}` : ''}.
                     </Text>
                   )}
                 </View>
@@ -1218,7 +1346,7 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
             {isLoggedIn && hospChips.length > 0 && (
               <View style={[ov.termsRow, { borderBottomColor: 'transparent' }]}>
                 <Text style={[ov.termsLabel, { color: colors.grey }]}>Hospitality</Text>
-                <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {hospChips.map((chip, i) => (
                     <View key={i} style={[ov.hospChip, { borderColor: colors.border }]}>
                       <Text style={[ov.hospChipText, { color: colors.black }]}>{chip}</Text>
@@ -1234,14 +1362,17 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {/* Accessibility */}
       {hasAnyAccessData && (
-        <View style={s.section}>
-          <Text style={[ov.sectionHeading, { color: colors.black, marginBottom: 14 }]}>Accessibility</Text>
+        <View style={ov.section}>
+          <Text style={[ov.sectionHeading, { color: colors.black }]}>Accessibility</Text>
+          <Text style={[ov.sectionSubheading, { color: colors.grey, marginTop: 4 }]}>For performers and audiences.</Text>
           <View style={ov.accessGrid}>
             {accessItems.map(item => (
               <View key={item.label} style={ov.accessItem}>
-                <Text style={[ov.accessIcon, { color: item.on ? '#2F7A4B' : '#9A3B06' }]}>
-                  {item.on ? '✓' : '✕'}
-                </Text>
+                <View style={[ov.accessIconWrap, { backgroundColor: item.on ? '#F0FAF4' : '#FEF3EE' }]}>
+                  <Text style={[ov.accessIcon, { color: item.on ? '#2F7A4B' : '#9A3B06' }]}>
+                    {item.on ? '✓' : '✕'}
+                  </Text>
+                </View>
                 <Text style={[ov.accessLabel, { color: item.on ? colors.black : colors.grey }]}>
                   {item.label}
                 </Text>
@@ -1253,34 +1384,35 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
       {/* Location */}
       {(venue.streetAddress || venue.suburb) && (
-        <View style={s.section}>
-          <Text style={[ov.sectionHeading, { color: colors.black, marginBottom: 14 }]}>Location</Text>
-          <View style={[ov.locationCard, { borderColor: colors.border }]}>
-            <Text style={[ov.locationAddress, { color: colors.black }]}>
-              {[venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ')}
-            </Text>
-            {venue.techSpecs?.loadIn && (
-              <Text style={[ov.locationMeta, { color: colors.grey }]}>Load-in: {venue.techSpecs.loadIn}</Text>
-            )}
-            {venue.techSpecs?.parking && (
-              <Text style={[ov.locationMeta, { color: colors.grey }]}>Parking: {venue.techSpecs.parking}</Text>
-            )}
-            <TouchableOpacity
-              style={[ov.mapsBtn, { borderColor: colors.border }]}
-              onPress={() => {
-                const addr = encodeURIComponent([venue.streetAddress, venue.suburb, venue.state].filter(Boolean).join(', '));
-                Linking.openURL(`https://maps.google.com/?q=${addr}`);
-              }}
-              activeOpacity={0.75}
-            >
-              <Text style={[ov.mapsBtnText, { color: colors.black }]}>Open in Maps →</Text>
+        <View style={[ov.section, { marginBottom: 0 }]}>
+          {/* Map placeholder */}
+          <View style={[ov.mapPlaceholder, { backgroundColor: colors.border }]}>
+            <View style={ov.mapPin}>
+              <View style={ov.mapPinHead} />
+              <View style={ov.mapPinTail} />
+            </View>
+          </View>
+          {/* Address row */}
+          <View style={[ov.locationRow, { borderColor: colors.border }]}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[ov.locationAddress, { color: colors.black }]}>
+                {[venue.streetAddress, venue.suburb, venue.state, venue.postcode].filter(Boolean).join(', ')}
+              </Text>
+              {(ts?.loadIn || ts?.loadInParking) ? (
+                <Text style={[ov.locationMeta, { color: colors.grey }]}>
+                  {ts.loadIn || ts.loadInParking}
+                </Text>
+              ) : null}
+            </View>
+            <TouchableOpacity onPress={openMaps} activeOpacity={0.7} style={{ flexShrink: 0 }}>
+              <Text style={ov.mapsLink}>Open in Maps</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
       {isMobileLayout && (
-        <TouchableOpacity style={s.timetableBtn} onPress={onGoTimetable}>
+        <TouchableOpacity style={[s.timetableBtn, { marginTop: 24 }]} onPress={onGoTimetable}>
           <Text style={s.timetableBtnText}>See open dates</Text>
         </TouchableOpacity>
       )}
@@ -1289,52 +1421,70 @@ function OverviewTab({ venue, isArtist, isLoggedIn, onGoTimetable, isMobileLayou
 
   return (
     <View style={[s.tabBody, !isMobileLayout && ov.layout]}>
-      {!isMobileLayout ? (
-        <>
-          {main}
-          {aside}
-        </>
-      ) : (
-        <>
-          {main}
-          {aside}
-        </>
-      )}
+      {main}
+      {aside}
     </View>
   );
 }
 
 const ov = StyleSheet.create({
-  layout:           { flexDirection: 'row', alignItems: 'flex-start', gap: 40 },
-  main:             { flex: 1 },
-  aside:            { width: 260, gap: 14 },
-  asideMobile:      { gap: 14, marginTop: 8 },
-  sectionHeading:   { fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
-  sectionSubheading:{ fontSize: 13, lineHeight: 19, marginBottom: 14 },
-  termsCard:        { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
-  termsRow:         { flexDirection: 'row', gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1 },
-  termsLabel:       { width: 100, fontSize: 13, fontWeight: '600', flexShrink: 0, paddingTop: 1 },
-  termsValue:       { fontSize: 14, lineHeight: 21 },
-  negotiableBadge:  { alignSelf: 'flex-start', marginTop: 6, borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
-  negotiableBadgeText: { fontSize: 12, fontWeight: '600' },
-  hospChip:         { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
-  hospChipText:     { fontSize: 13, fontWeight: '500' },
-  accessGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  accessItem:       { flexDirection: 'row', alignItems: 'center', gap: 8, width: '48%' as any, minWidth: 160 },
-  accessIcon:       { fontSize: 15, fontWeight: '700', width: 18 },
-  accessLabel:      { fontSize: 14, flex: 1 },
-  locationCard:     { borderWidth: 1, borderRadius: 12, padding: 16, gap: 6 },
-  locationAddress:  { fontSize: 15, fontWeight: '600' },
-  locationMeta:     { fontSize: 13 },
-  mapsBtn:          { marginTop: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, alignSelf: 'flex-start' },
-  mapsBtnText:      { fontSize: 13, fontWeight: '600' },
-  linksCard:        { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
-  linksHeading:     { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
-  linkRow:          { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 11, borderTopWidth: 1, borderTopColor: '#E7E6E3' },
-  linkText:         { fontSize: 14, fontWeight: '500' },
-  linkArrow:        { fontSize: 14, color: '#888' },
-  noteCard:         { borderWidth: 1, borderRadius: 12, padding: 14 },
-  noteText:         { fontSize: 13, lineHeight: 20 },
+  layout:             { flexDirection: 'row', alignItems: 'flex-start', gap: 40 },
+  main:               { flex: 1 },
+  aside:              { width: 260, gap: 14, flexShrink: 0 },
+  asideMobile:        { gap: 14, marginTop: 24 },
+  section:            { marginBottom: 28 },
+  sectionHead:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionHeading:     { fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
+  sectionSubheading:  { fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  body:               { fontSize: 15, lineHeight: 24 },
+  readMore:           { fontSize: 14, color: Colors.orange, fontWeight: '600' },
+  // What acts get
+  termsCard:          { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  termsRow:           { flexDirection: 'row', gap: 16, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1 },
+  termsLabel:         { width: 96, fontSize: 13, fontWeight: '600', flexShrink: 0, paddingTop: 1 },
+  termsValue:         { fontSize: 14, lineHeight: 21 },
+  payModelRow:        { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  payModelDetail:     { fontSize: 13, textAlign: 'right' as const, flex: 1 },
+  negotiableBadge:    { alignSelf: 'flex-start', marginTop: 4, borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  negotiableBadgeText:{ fontSize: 12, fontWeight: '600' },
+  hospChip:           { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  hospChipText:       { fontSize: 13, fontWeight: '500' },
+  // Accessibility
+  accessGrid:         { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  accessItem:         { flexDirection: 'row', alignItems: 'center', gap: 8, width: '48%' as any, minWidth: 160 },
+  accessIconWrap:     { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  accessIcon:         { fontSize: 12, fontWeight: '800' },
+  accessLabel:        { fontSize: 14, flex: 1 },
+  // Location
+  mapPlaceholder:     { height: 180, borderRadius: 12, marginBottom: 0, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  mapPin:             { alignItems: 'center' },
+  mapPinHead:         { width: 20, height: 20, borderRadius: 10, backgroundColor: '#16161A' },
+  mapPinTail:         { width: 2, height: 10, backgroundColor: '#16161A', marginTop: -2 },
+  locationRow:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', borderWidth: 1, borderTopWidth: 0, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, padding: 16, gap: 12 },
+  locationAddress:    { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  locationMeta:       { fontSize: 13, lineHeight: 19 },
+  mapsLink:           { fontSize: 13, fontWeight: '600', color: Colors.orange, textDecorationLine: 'underline' as const },
+  // Aside card
+  asideCard:          { borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
+  asideCardHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 },
+  asideCardTitle:     { fontSize: 14, fontWeight: '700' },
+  asideAllLink:       { fontSize: 13, fontWeight: '600', color: Colors.orange, textDecorationLine: 'underline' as const },
+  // Next open dates rows
+  nextDateRow:        { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, gap: 10 },
+  nextDateBlock:      { width: 30, alignItems: 'center', flexShrink: 0 },
+  nextDateDay:        { fontSize: 10, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' as const },
+  nextDateNum:        { fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  nextDateInfo:       { flex: 1, gap: 1 },
+  nextDateName:       { fontSize: 13, fontWeight: '600' },
+  nextDateMeta:       { fontSize: 12 },
+  nextDateEnquireBtn: { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, flexShrink: 0 },
+  nextDateEnquireBtnText: { fontSize: 12, fontWeight: '700', color: '#ffffff' },
+  // Links
+  linkRow:            { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 11, gap: 8 },
+  linkLabel:          { fontSize: 14, fontWeight: '500', width: 72, flexShrink: 0 },
+  linkValue:          { flex: 1, fontSize: 13, textAlign: 'right' as const },
+  // Note
+  noteText:           { fontSize: 13, lineHeight: 20 },
 });
 
 // ── Timetable tab ────────────────────────────────────────────────────
