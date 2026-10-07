@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal,
-  ActivityIndicator, Image, Linking, Platform, useWindowDimensions,
+  ActivityIndicator, Image, Linking, Platform, Share, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -1531,6 +1531,38 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   const isOwn = !isPublicPreview && user?.uid === id;
   const { width } = useWindowDimensions();
+  const [shareCopied, setShareCopied] = useState(false);
+
+  function shareProfile() {
+    if (!musician) return;
+    const profileUrl = `https://twaylo.com.au/musician/${musician.username || id}`;
+    const actT   = Array.isArray(musician.artistType) ? musician.artistType.join(' / ') : musician.artistType;
+    const loc    = musician.location?.split(',')[0]?.trim();
+    const genres = (musician.genre || []).filter((g: string) => g !== 'Other').slice(0, 3).join(', ');
+    const lines: string[] = [];
+    const headline = [musician.name, actT].filter(Boolean).join(' — ');
+    if (headline) lines.push(headline);
+    if (loc)      lines.push(loc);
+    if (genres)   lines.push(genres);
+    lines.push('');
+    lines.push('Full profile including tracks, tech rider and booking info:');
+    lines.push(profileUrl);
+    const message = lines.join('\n');
+
+    if (Platform.OS === 'web') {
+      const nav = typeof navigator !== 'undefined' ? navigator : null;
+      if (nav && (nav as any).share) {
+        (nav as any).share({ title: musician.name || 'Twaylo profile', url: profileUrl, text: message }).catch(() => {});
+      } else if (nav?.clipboard) {
+        nav.clipboard.writeText(message).then(() => {
+          setShareCopied(true);
+          setTimeout(() => setShareCopied(false), 2500);
+        }).catch(() => {});
+      }
+    } else {
+      Share.share({ message, url: profileUrl }).catch(() => {});
+    }
+  }
   const isMobileLayout = !isWeb || width < 768;
 
   useEffect(() => {
@@ -1731,6 +1763,13 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             <TouchableOpacity
               style={dash.editBtn}
+              onPress={shareProfile}
+              activeOpacity={0.85}
+            >
+              <Text style={dash.editBtnText}>{shareCopied ? 'Copied!' : 'Share Profile'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[dash.editBtn, { marginTop: 6 }]}
               onPress={() => router.push('/edit-profile')}
               activeOpacity={0.85}
             >
@@ -1824,6 +1863,15 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             {/* Action buttons */}
             {isOwn ? (
               <View style={[styles.ownerBtns, isMobileLayout && { marginTop: 10 }]}>
+                <TouchableOpacity
+                  style={[styles.outlineBtn, { borderColor: colors.border }]}
+                  onPress={shareProfile}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.outlineBtnText, { color: colors.black }]}>
+                    {shareCopied ? 'Copied!' : 'Share profile'}
+                  </Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
                   onPress={() => router.push('/edit-profile')}
