@@ -8,8 +8,10 @@ import { type Enquiry, sendMessage, postSystemMessage, confirmHeadliner } from '
 import {
   type GigFee, type GigSource, type GigStatus, type Gig,
   type GigPrivateDoc, type GigDocKind, type GigPayment, type PaymentTiming,
+  type GigTerms, type GigPaymentInvoice, type TimingLabel, TIMING_LABELS,
   toStartAt, STATE_TZ,
 } from './gig-types';
+import { toZonedTime } from 'date-fns-tz';
 
 // ── SlotConflictError ────────────────────────────────────────────────────────
 
@@ -184,7 +186,15 @@ export type ConfirmGigParams = {
   localEndTime?: string;     // HH:MM (optional; defaults to localTime + setLengthMinutes)
   timezone: string;          // IANA
   fee: GigFee;
-  paymentTiming?: PaymentTiming;
+  /**
+   * Full timing label from the venue's resolved booking terms.
+   * Must be one of the TIMING_LABELS values.
+   * Defaults to 'On the night' for callers that don't supply it (e.g. legacy tests).
+   * payment.timing ('before'|'after') is derived from this label.
+   */
+  timingLabel?: string;
+  /** Payment methods from the venue's booking terms. Stored in the terms snapshot. */
+  paymentMethods?: string[];
   setLengthMinutes: number;
   loadInTime?: string;
   soundCheckTime?: string;
@@ -205,15 +215,66 @@ export type ConfirmGigParams = {
  * Throws SlotConflictError if the slot is already taken by a different act.
  * Throws a FirestoreError with code 'unavailable' when offline.
  */
+// ── Terms helpers ─────────────────────────────────────────────────────────────
+
+/** Derives 'before' | 'after' from a full timing label string. */
+function timingFromLabel(label: string): PaymentTiming {
+  return label.toLowerCase().startsWith('before') ? 'before' : 'after';
+}
+
+/** ISO YYYY-MM-DD due date in the gig's own timezone. */
+function computeDueDate(startAt: import('firebase/firestore').Timestamp, timezone: string, timingLabel: string): string {
+  const local = toZonedTime(startAt.toDate(), timezone);
+  const y = local.getFullYear();
+  const m = local.getMonth();
+  const d = local.getDate();
+  const days =
+    timingLabel === 'Within 7 days'  ? 7  :
+    timingLabel === 'Within 14 days' ? 14 :
+    timingLabel === 'Within 30 days' ? 30 : 0;
+  const due = new Date(y, m, d + days);
+  return `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`;
+}
+
+/** Human-readable split description built from the fee. */
+function computeSplitTerms(fee: GigFee): string | null {
+  const pct = fee.doorPercent;
+  switch (fee.type) {
+    case 'door_split':
+      return pct != null ? `${pct}% of door` : null;
+    case 'guarantee_vs_door': {
+      const guar = fee.amountCents != null ? `$${Math.round(fee.amountCents / 100)}` : null;
+      if (guar && pct != null) return `${guar} + ${pct}% of door`;
+      if (pct != null) return `${pct}% of door`;
+      return null;
+    }
+    case 'ticket_split':
+      return pct != null ? `${pct}% of ticket sales` : null;
+    case 'bar_split':
+      return pct != null ? `${pct}% of bar` : null;
+    default:
+      return null;
+  }
+}
+
 export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<string> {
   const {
     enquiry, venueOwnerUid,
     localDate, localTime, localEndTime,
-    timezone, fee, paymentTiming = 'after', setLengthMinutes,
+    timezone, fee,
+    timingLabel: rawTimingLabel = 'On the night',
+    paymentMethods = [],
+    setLengthMinutes,
     loadInTime, soundCheckTime,
     listAsBooked, confirmMessage,
     venueDisplayName, venuePhotoUrl,
   } = params;
+
+  // Validate/clamp timing label to the known set; default to 'On the night'.
+  const timingLabel: TimingLabel = (TIMING_LABELS as readonly string[]).includes(rawTimingLabel)
+    ? rawTimingLabel as TimingLabel
+    : 'On the night';
+  const paymentTiming: PaymentTiming = timingFromLabel(timingLabel);
 
   const existingGigId = (enquiry as any).gigId as string | undefined;
   const gigRef     = existingGigId
@@ -265,17 +326,36 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
       new Set([enquiry.createdBy, venueOwnerUid].filter(Boolean))
     );
 
+    // Build the terms snapshot (immutable after confirmation).
+    const terms: GigTerms = {
+      model:       fee.type,
+      amount:      fee.amountCents ?? null,
+      splitTerms:  computeSplitTerms(fee),
+      doorPercent: fee.doorPercent ?? null,
+      timing:      timingLabel,
+      methods:     paymentMethods,
+    };
+
+    // Due date in the gig's timezone.
+    const dueDate = computeDueDate(startAt, timezone, timingLabel);
+
+    // Invoice initial status: not needed for unpaid gigs or when the venue invoices.
+    const invoicingMode: string = venueSnap.data().invoicingMode ?? 'actsInvoice';
+    const invoiceStatus: GigPaymentInvoice['status'] =
+      fee.type === 'unpaid' || invoicingMode === 'venueInvoices' ? 'notNeeded' : 'notSent';
+    const invoice: GigPaymentInvoice = { status: invoiceStatus };
+
     // On re-accept of a cancelled gig, keep existing payment if already confirmed.
     let paymentForGig: GigPayment;
     if (existingGigData) {
       const existingPayment = existingGigData.payment as GigPayment | undefined;
       if (existingPayment?.status === 'confirmed') {
-        paymentForGig = existingPayment;
+        paymentForGig = { ...existingPayment, dueDate, invoice };
       } else {
-        paymentForGig = buildFreshPayment(fee.type, paymentTiming);
+        paymentForGig = { ...buildFreshPayment(fee.type, paymentTiming), dueDate, invoice };
       }
     } else {
-      paymentForGig = buildFreshPayment(fee.type, paymentTiming);
+      paymentForGig = { ...buildFreshPayment(fee.type, paymentTiming), dueDate, invoice };
     }
 
     const gigData = {
@@ -301,6 +381,7 @@ export async function confirmGigFromEnquiry(params: ConfirmGigParams): Promise<s
       soundCheckTime:   soundCheckTime ?? null,
       room:             enquiry.requestedSlot.room ?? null,
       fee,
+      terms,
       payment:          paymentForGig,
       participantIds,
       createdBy:        venueOwnerUid,

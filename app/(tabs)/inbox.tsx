@@ -3779,8 +3779,9 @@ function extractSectionData(p: Record<string, any>, key: string): Record<string,
     case 'about':
       return p.about ? { about: p.about } : null;
     case 'music':
-      return (p.songs?.length || p.spotify || p.appleMusic)
-        ? { songs: p.songs, spotify: p.spotify, appleMusic: p.appleMusic } : null;
+      return (p.songs?.length || p.spotify || p.appleMusic || p.soundcloud || p.bandcamp || p.artistPages?.length)
+        ? { songs: p.songs, spotify: p.spotify, appleMusic: p.appleMusic,
+            soundcloud: p.soundcloud, bandcamp: p.bandcamp, artistPages: p.artistPages } : null;
     case 'rates': {
       const gigs: any[] = Array.isArray(p.gigHistory) ? p.gigHistory : [];
       const withAtt = gigs.filter((g: any) => g.attendance != null && Number(g.attendance) > 0);
@@ -3864,13 +3865,30 @@ function ProfileSectionBubble({ message, isMine }: { message: any; isMine: boole
       break;
     case 'music': {
       const songs: any[] = data.songs ?? [];
+      const artistPages: any[] = data.artistPages ?? [];
+      // Resolve artistPages into a lookup so we can fall back gracefully
+      const pageMap: Record<string, string> = {};
+      artistPages.forEach((pg: any) => { if (pg.platform && pg.url) pageMap[pg.platform] = pg.url; });
+      const spotify    = data.spotify    || pageMap['Spotify']     || '';
+      const appleMusic = data.appleMusic || pageMap['Apple Music'] || '';
+      const soundcloud = data.soundcloud || pageMap['SoundCloud']  || '';
+      const bandcamp   = data.bandcamp   || pageMap['Bandcamp']    || '';
+      // Any pages not covered by the named fields
+      const KNOWN = new Set(['Spotify', 'Apple Music', 'SoundCloud', 'Bandcamp']);
+      const extraPages = artistPages.filter((pg: any) => pg.url && !KNOWN.has(pg.platform));
+      const hasAnything = songs.length || spotify || appleMusic || soundcloud || bandcamp || extraPages.length;
       content = <>
         {songs.map((s: any, i: number) => (
           <Row key={i} label={s.title || `Track ${i + 1}`} value={[s.url, s.notes].filter(Boolean).join(' · ') || '—'} />
         ))}
-        {data.spotify    && <Row label="Spotify"     value={data.spotify} />}
-        {data.appleMusic && <Row label="Apple Music" value={data.appleMusic} />}
-        {!songs.length && !data.spotify && !data.appleMusic && (
+        {spotify    && <Row label="Spotify"     value={spotify} />}
+        {appleMusic && <Row label="Apple Music" value={appleMusic} />}
+        {soundcloud && <Row label="SoundCloud"  value={soundcloud} />}
+        {bandcamp   && <Row label="Bandcamp"    value={bandcamp} />}
+        {extraPages.map((pg: any, i: number) => (
+          <Row key={`ep-${i}`} label={pg.platform || 'Link'} value={pg.url} />
+        ))}
+        {!hasAnything && (
           <Text style={[bs.emptyText, { color: dim }]}>No music saved.</Text>
         )}
       </>;

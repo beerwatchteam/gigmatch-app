@@ -3,8 +3,54 @@ import { fromZonedTime } from 'date-fns-tz';
 
 export type GigStatus  = 'confirmed' | 'cancelled';
 export type GigSource  = 'enquiry' | 'venue_created' | 'artist_added';
-export type FeeType    = 'flat' | 'door_split' | 'guarantee_vs_door' | 'ticket_split' | 'unpaid' | 'other';
+export type FeeType    = 'flat' | 'door_split' | 'guarantee_vs_door' | 'ticket_split' | 'bar_split' | 'unpaid' | 'other';
 export type GigDocKind = 'contract' | 'tech_spec' | 'stage_plot' | 'run_sheet' | 'invoice' | 'other';
+
+// ── Terms snapshot ────────────────────────────────────────────────────────────
+
+/** The canonical timing label values stored in terms.timing. */
+export const TIMING_LABELS = [
+  'On the night',
+  'Within 7 days',
+  'Within 14 days',
+  'Within 30 days',
+  'Before the gig',
+] as const;
+
+export type TimingLabel = typeof TIMING_LABELS[number];
+
+/**
+ * Immutable snapshot of the agreed deal, written once at confirmation.
+ * Uses the fee.type enum so the dashboard can group and filter without re-mapping.
+ * UI labels are derived from these values; the raw enum is stored.
+ */
+export type GigTerms = {
+  /** Same enum as fee.type — the model chosen at confirmation. */
+  model:       FeeType;
+  /** Agreed amount in cents (flat fee, or guarantee floor). Null for pure splits. */
+  amount:      number | null;
+  /** Human-readable split description, e.g. "70% of door" or "$200 + 60% of door". */
+  splitTerms:  string | null;
+  /** Raw split percentage, kept alongside splitTerms for arithmetic. */
+  doorPercent: number | null;
+  /** Full payment timing string. */
+  timing:      TimingLabel;
+  /** Accepted payment methods from venue booking terms. */
+  methods:     string[];
+};
+
+// ── Payment invoice ───────────────────────────────────────────────────────────
+
+export type GigPaymentInvoice = {
+  status:  'notNeeded' | 'notSent' | 'sent' | 'received';
+  sentAt?: Timestamp;
+  fileUrl?: string;
+};
+
+export type GigPaymentRecordedBy = {
+  artist?: { amount: number; at: Timestamp };
+  venue?:  { amount: number; at: Timestamp };
+};
 
 export type GigFee = {
   type: FeeType;
@@ -44,6 +90,18 @@ export type GigPayment = {
   confirmedAt: Timestamp | null;
   reminderSentAt: Timestamp | null;
   updatedAt: Timestamp;
+  /**
+   * ISO date (YYYY-MM-DD) in the gig's timezone, computed at confirmation.
+   * Missing on legacy gigs — do NOT infer overdue from absence; show "Awaiting payment".
+   */
+  dueDate?: string | null;
+  /** Invoice tracking. Missing on legacy gigs — treat as notNeeded. */
+  invoice?: GigPaymentInvoice;
+  /**
+   * Per-side payment records.
+   * Legacy gigs use venueConfirm/artistConfirm instead; fall back when absent.
+   */
+  recordedBy?: GigPaymentRecordedBy;
 };
 
 /**
@@ -82,6 +140,12 @@ export type Gig = {
   room: string | null;
   fee: GigFee;
   payment: GigPayment;
+  /**
+   * Immutable snapshot of the agreed deal, written at confirmation.
+   * Absent on legacy gigs created before this field was introduced.
+   * Use fee as the fallback source of truth when terms is missing.
+   */
+  terms?: GigTerms;
   participantIds: string[];
   createdBy: string;
   listAsBooked: boolean;

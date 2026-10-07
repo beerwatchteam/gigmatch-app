@@ -76,14 +76,32 @@ export default function EnquireScreen() {
 
   useEffect(() => {
     if (!user) return;
-    getDoc(doc(db, 'bandProfiles', user.uid)).then(snap => {
-      if (snap.exists()) {
-        const d = snap.data();
-        setBand(d);
-        // Default set length from artist's saved set lengths, unless venue has locked one
-        if (!lockedDuration && d.setLengths?.length > 0) {
-          setSetLength(d.setLengths[0]);
-        }
+    Promise.all([
+      getDoc(doc(db, 'bandProfiles', user.uid)),
+      getDoc(doc(db, 'bandProfiles', user.uid, 'private', 'details')),
+    ]).then(([snap, privateSnap]) => {
+      if (!snap.exists()) return;
+      const d    = snap.data();
+      const priv = privateSnap.exists() ? privateSnap.data() : {};
+
+      // Merge private contact fields (email + phone live in private/details)
+      const merged: Record<string, any> = {
+        ...d,
+        email: priv.email ?? d.email ?? '',
+        phone: priv.phone ?? d.phone ?? '',
+      };
+
+      // Resolve artistPages into top-level spotify/appleMusic for backward compat
+      const pageMap: Record<string, string> = {};
+      (merged.artistPages || []).forEach((p: any) => { if (p.url) pageMap[p.platform] = p.url; });
+      merged.spotify    = merged.spotify    || pageMap['Spotify']       || '';
+      merged.appleMusic = merged.appleMusic || pageMap['Apple Music']   || '';
+      merged.soundcloud = merged.soundcloud || pageMap['SoundCloud']    || '';
+      merged.bandcamp   = merged.bandcamp   || pageMap['Bandcamp']      || '';
+
+      setBand(merged);
+      if (!lockedDuration && merged.setLengths?.length > 0) {
+        setSetLength(merged.setLengths[0]);
       }
     }).catch(() => {});
   }, [user?.uid]);
@@ -262,20 +280,33 @@ export default function EnquireScreen() {
         photoUrl:    band.photoUrl,
         feeMin:      band.feeMin,
         feeMax:      band.feeMax,
-        averageDraw: computedDraw ?? undefined,
+        averageDraw: computedDraw ?? (band.averageDraw != null ? Number(band.averageDraw) : undefined),
         ...(sections.gigs && displayGigHistory.length > 0 && { gigHistory: displayGigHistory }),
-        ...(sections.about        && { about:       band.about }),
-        ...(sections.music        && { songs: band.songs, spotify: band.spotify, appleMusic: band.appleMusic }),
-        ...(sections.socials      && { instagram: band.instagram, tiktok: band.tiktok, facebook: band.facebook, customLinks: band.customLinks }),
-        ...(sections.techRider    && {
-          techRider:        band.techRider,
-          backlineFromVenue: band.backlineFromVenue,
-          backlineBring:    band.backlineBring,
-          techRiderBools:   band.techRiderBools,
-          inputChannels:    band.inputChannels,
-          techRiderDocs:    band.techRiderDocs,
+        ...(sections.about     && { about: band.about }),
+        ...(sections.music     && {
+          songs:       band.songs,
+          spotify:     band.spotify,
+          appleMusic:  band.appleMusic,
+          soundcloud:  band.soundcloud,
+          bandcamp:    band.bandcamp,
+          artistPages: band.artistPages,
         }),
-        ...(sections.contact      && { email: band.email, phone: band.phone }),
+        ...(sections.socials   && {
+          instagram:   band.instagram,
+          tiktok:      band.tiktok,
+          youtube:     band.youtube,
+          website:     band.website,
+          customLinks: band.customLinks,
+        }),
+        ...(sections.techRider && {
+          techRider:         band.techRider,
+          backlineFromVenue: band.backlineFromVenue,
+          backlineBring:     band.backlineBring,
+          techRiderBools:    band.techRiderBools,
+          inputChannels:     band.inputChannels,
+          techRiderDocs:     band.techRiderDocs,
+        }),
+        ...(sections.contact   && { email: band.email, phone: band.phone }),
       }) as any);
       setSubmitted(true);
     } catch (e: any) {

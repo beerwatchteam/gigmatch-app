@@ -14,9 +14,10 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { Colors } from '@/constants/colors';
 import { type Enquiry } from '@/lib/useEnquiries';
-import { type GigFee, type FeeType, type PaymentTiming, STATE_TZ, dollarsToCents } from '@/lib/gig-types';
+import { type GigFee, type FeeType, STATE_TZ, dollarsToCents, TIMING_LABELS, type TimingLabel } from '@/lib/gig-types';
 import { type EnquiryFee } from '@/lib/enquiry-fee';
 import { confirmGigFromEnquiry, upgradeGigToBooked, SlotConflictError } from '@/lib/useGigs';
+import { resolveSlotTerms } from '@/lib/resolveSlotTerms';
 import { fromZonedTime } from 'date-fns-tz';
 import { AddToCalendarButton } from '@/components/AddToCalendarButton';
 
@@ -29,6 +30,7 @@ const FEE_TYPES: { value: FeeType; label: string }[] = [
   { value: 'door_split',           label: 'Door split'         },
   { value: 'guarantee_vs_door',    label: 'Guarantee + door'   },
   { value: 'ticket_split',         label: 'Ticket split'       },
+  { value: 'bar_split',            label: 'Bar split'          },
   { value: 'unpaid',               label: 'Unpaid'             },
   { value: 'other',                label: 'Other'              },
 ];
@@ -54,7 +56,7 @@ function slotModelToFeeType(s: string | null | undefined): FeeType | null {
   if (v === 'doorsplit' || v === 'door')                                   return 'door_split';
   if (v.startsWith('guarantee') || v === 'guaranteesplit')                 return 'guarantee_vs_door';
   if (v === 'ticketsplit' || v === 'ticketsalessplit' || v.startsWith('ticket')) return 'ticket_split';
-  if (v === 'bartab' || v === 'bar' || v === 'barsplit')                   return 'door_split';
+  if (v === 'bartab' || v === 'bar' || v === 'barsplit')                   return 'bar_split';
   if (v.includes('unpaid') || v.includes('exposure'))                      return 'unpaid';
   if (v === 'negotiable' || v === 'other')                                 return 'other';
   return null;
@@ -233,7 +235,8 @@ export default function ConfirmGigScreen() {
   const [ticketUrl,      setTicketUrl]      = useState('');
   const [feeNotes,       setFeeNotes]       = useState('');
   const [includesGst,    setIncludesGst]    = useState<boolean | null>(null);
-  const [paymentTiming,  setPaymentTiming]  = useState<PaymentTiming>('after');
+  const [timingLabel,    setTimingLabel]    = useState<TimingLabel>('On the night');
+  const [venueMethods,   setVenueMethods]   = useState<string[]>([]);
   const [setLengthMins,  setSetLengthMins]  = useState(45);
   const [loadInTime,     setLoadInTime]     = useState('');
   const [soundCheckTime, setSoundCheckTime] = useState('');
@@ -313,11 +316,7 @@ export default function ConfirmGigScreen() {
           setVenuePhotoUrl(vd.photoUrl ?? null);
           setTimezone(deriveTimezone(vd));
 
-          // Prefill payment timing from venue settings — all timing options map to 'after'
-          // (same-night, within-N-days, other all mean after the gig). Default: 'after'.
-          setPaymentTiming('after');
-
-          // Find matching slot for paymentModels
+          // Find matching slot
           const { day, date, time, room } = enq.requestedSlot;
           const daySlots: any[] = vd.slots?.[day] ?? [];
           const slotDate = date ?? null;
@@ -330,6 +329,15 @@ export default function ConfirmGigScreen() {
             !s.date && norm(s.time) === norm(time) &&
             (!room || norm(s.room ?? '') === norm(room))
           );
+
+          // Resolve full booking terms from venue + slot, then prefill timing and methods.
+          const resolved = resolveSlotTerms(vd, matchedSlot);
+          const venueTimingStr = resolved.paymentTiming ?? '';
+          if ((TIMING_LABELS as readonly string[]).includes(venueTimingStr)) {
+            setTimingLabel(venueTimingStr as TimingLabel);
+          }
+          setVenueMethods(Array.isArray(resolved.methods) ? resolved.methods : []);
+
           if (matchedSlot) {
             // Payment models (slot-level suggestions shown as dotted border)
             if (matchedSlot.paymentModels?.length) {
@@ -378,7 +386,7 @@ export default function ConfirmGigScreen() {
     : undefined;
 
   const showAmount   = feeType === 'flat' || feeType === 'guarantee_vs_door';
-  const showDoor     = feeType === 'door_split' || feeType === 'guarantee_vs_door';
+  const showDoor     = feeType === 'door_split' || feeType === 'guarantee_vs_door' || feeType === 'bar_split';
   const showTicket   = feeType === 'ticket_split';
 
   // Fee is "complete" when enough info has been entered for the chosen type.
@@ -387,7 +395,7 @@ export default function ConfirmGigScreen() {
       ? true
       : (feeType === 'flat' || feeType === 'guarantee_vs_door')
         ? amountStr.trim() !== ''
-        : feeType === 'door_split'
+        : (feeType === 'door_split' || feeType === 'bar_split')
           ? doorPercent.trim() !== ''
           : feeType === 'ticket_split'
             ? ticketPriceStr.trim() !== ''
@@ -415,7 +423,7 @@ export default function ConfirmGigScreen() {
     if (localTime) parts.push(localTime);
     if (feeType === 'flat' && amountStr) parts.push(`$${amountStr} flat`);
     else if (feeType === 'door_split' && doorPercent) parts.push(`${doorPercent}% door`);
-    parts.push(`pay ${paymentTiming} the gig`);
+    parts.push(`pay ${timingLabel.toLowerCase()}`);
     if (loadInTime.trim()) parts.push(`load-in ${loadInTime.trim()}`);
     return `Gig confirmed: ${parts.join(' · ')}`;
   })();
@@ -464,7 +472,8 @@ export default function ConfirmGigScreen() {
           localTime,
           timezone,
           fee,
-          paymentTiming,
+          timingLabel,
+          paymentMethods: venueMethods,
           setLengthMinutes: setLengthMins,
           loadInTime:   loadInTime.trim()   || undefined,
           soundCheckTime: soundCheckTime.trim() || undefined,
@@ -721,22 +730,20 @@ export default function ConfirmGigScreen() {
         {feeType !== 'unpaid' && (
           <View style={cs.field}>
             <Text style={[cs.label, { color: colors.grey }]}>PAYMENT TIMING</Text>
-            <View style={cs.segmentRow}>
-              {([
-                { value: 'before', label: 'Before the gig' },
-                { value: 'after',  label: 'After the gig'  },
-              ] as const).map(opt => (
+            <View style={{ gap: 8 }}>
+              {TIMING_LABELS.map(opt => (
                 <TouchableOpacity
-                  key={opt.value}
-                  onPress={() => setPaymentTiming(opt.value)}
+                  key={opt}
+                  onPress={() => setTimingLabel(opt)}
                   style={[
                     cs.segment,
-                    { borderColor: paymentTiming === opt.value ? Colors.orange : colors.border },
-                    paymentTiming === opt.value && { backgroundColor: Colors.orange + '18' },
+                    { borderColor: timingLabel === opt ? Colors.orange : colors.border },
+                    timingLabel === opt && { backgroundColor: Colors.orange + '18' },
                   ]}
+                  activeOpacity={0.75}
                 >
-                  <Text style={[cs.segmentText, { color: paymentTiming === opt.value ? Colors.orange : colors.black }]}>
-                    {opt.label}
+                  <Text style={[cs.segmentText, { color: timingLabel === opt ? Colors.orange : colors.black }]}>
+                    {opt}
                   </Text>
                 </TouchableOpacity>
               ))}
