@@ -906,11 +906,48 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             </View>
 
             <View style={s.identityInfo}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
-                {venue.verified && (
-                  <View style={s.verifiedBadge}>
-                    <Text style={s.verifiedBadgeText}>✓ Verified</Text>
+              <View style={[s.identityNameRow, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: isMobileLayout ? undefined : 1 }}>
+                  <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
+                  {venue.verified && (
+                    <View style={s.verifiedBadge}>
+                      <Text style={s.verifiedBadgeText}>✓ Verified</Text>
+                    </View>
+                  )}
+                </View>
+                {/* Action buttons */}
+                {isMyVenue ? (
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
+                      <Text style={s.editProfileBtnText}>Edit profile</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.logoutBtn} onPress={async () => { await signOut(auth); router.replace('/'); }}>
+                      <Text style={s.logoutBtnText}>Log out</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : isAgentForVenue ? (
+                  <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}>
+                    <Text style={s.editProfileBtnText}>Edit profile</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity
+                      style={s.msgVenueBtn}
+                      onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { newThreadVenueId: id } } as any)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Message venue</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.enquireHeaderBtn}
+                      onPress={() => {
+                        if (!user) { router.push('/login'); return; }
+                        setActiveTab('timetable');
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={s.enquireHeaderBtnText}>See open dates</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -925,44 +962,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                   : null;
               })()}
             </View>
-          </View>
-
-          {/* Action buttons */}
-          <View style={[s.actionsRow, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-            {isMyVenue ? (
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
-                  <Text style={s.editProfileBtnText}>Edit profile</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.logoutBtn} onPress={async () => { await signOut(auth); router.replace('/'); }}>
-                  <Text style={s.logoutBtnText}>Log out</Text>
-                </TouchableOpacity>
-              </View>
-            ) : isAgentForVenue ? (
-              <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}>
-                <Text style={s.editProfileBtnText}>Edit profile</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                <TouchableOpacity
-                  style={s.msgVenueBtn}
-                  onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { newThreadVenueId: id } } as any)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Message venue</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={s.enquireHeaderBtn}
-                  onPress={() => {
-                    if (!user) { router.push('/login'); return; }
-                    setActiveTab('timetable');
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={s.enquireHeaderBtnText}>See open dates</Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
 
           {/* Genre chips */}
@@ -3282,10 +3281,11 @@ const s = StyleSheet.create({
   // Profile header
   identityRow:        { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: isWeb ? 40 : 20, paddingTop: 0, paddingBottom: 14, gap: 16 },
   logoWrap:           { marginTop: -32, flexShrink: 0 },
-  logoImg:            { width: 72, height: 72, borderRadius: 12, borderWidth: 3 },
-  logoPlaceholder:    { width: 72, height: 72, borderRadius: 12, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
+  logoImg:            { width: 72, height: 72, borderRadius: 36, borderWidth: 3 },
+  logoPlaceholder:    { width: 72, height: 72, borderRadius: 36, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
   logoPlaceholderText:{ fontSize: 22, fontWeight: '800' },
   identityInfo:       { flex: 1, paddingBottom: 4 },
+  identityNameRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   name:               { fontSize: isWeb ? 28 : 22, fontWeight: '800', color: '#111111', letterSpacing: -0.4, marginBottom: 3 },
   subline:            { fontSize: 13, color: '#555555' },
   verifiedBadge:      { backgroundColor: '#2F7A4B', borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center' },
