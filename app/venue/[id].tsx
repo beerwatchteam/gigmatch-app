@@ -851,8 +851,8 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           <View style={[s.identityRow, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
             {/* Logo overlapping the cover */}
             <View style={s.logoWrap}>
-              {venue.logoUrl ? (
-                <Image source={{ uri: venue.logoUrl }} style={[s.logoImg, { borderColor: colors.bg }]} resizeMode="cover" />
+              {(venue.logoUrl || venue.photoUrl) ? (
+                <Image source={{ uri: venue.logoUrl || venue.photoUrl }} style={[s.logoImg, { borderColor: colors.bg }]} resizeMode="cover" />
               ) : (
                 <View style={[s.logoPlaceholder, { borderColor: colors.bg, backgroundColor: colors.bgFaint }]}>
                   <Text style={[s.logoPlaceholderText, { color: colors.grey }]}>

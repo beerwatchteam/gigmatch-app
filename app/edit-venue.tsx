@@ -2904,7 +2904,7 @@ export default function EditVenueScreen() {
         {renderPageHeader('Photos & video')}
 
         {/* Logo */}
-        <SectionCard title="Logo" subtitle="Square, at least 400 × 400px.">
+        <SectionCard title="Logo" subtitle="Square, at least 400 × 400px. If you don't upload a logo, your cover photo will be used as your profile image.">
           <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             {data.logoUrl
               ? <Image source={{ uri: data.logoUrl }} style={{ width: 64, height: 64, borderRadius: 10 }} resizeMode="cover" />

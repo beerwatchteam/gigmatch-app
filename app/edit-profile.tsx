@@ -84,7 +84,7 @@ type Profile = {
   memberCount: string; members: Member[]; formed: string;
   setType: string; ageRestriction: string; setLengths: string[];
   feeOpenToOffers: boolean; drawEstimateBand: string;
-  about: string; photoUrl: string; photoPosition: { x: number; y: number };
+  about: string; photoUrl: string; photoPosition: { x: number; y: number }; coverPhotoUrl: string;
   instagram: string; tiktok: string; spotify: string; appleMusic: string; youtube: string;
   customLinks: { label: string; url: string }[];
   songs: Song[]; artistPages: ArtistPage[]; photos: string[]; videos: string[];
@@ -116,7 +116,7 @@ const BLANK: Profile = {
   feeOpenToOffers: false, drawEstimateBand: '',
   memberCount: '', members: [], formed: '',
   setType: '', ageRestriction: '', setLengths: [],
-  about: '', photoUrl: '', photoPosition: { x: 50, y: 50 },
+  about: '', photoUrl: '', photoPosition: { x: 50, y: 50 }, coverPhotoUrl: '',
   instagram: '', tiktok: '', spotify: '', appleMusic: '', youtube: '',
   customLinks: [], songs: [], artistPages: [], photos: [], videos: [],
   gigHistory: [], videoObjects: [],
@@ -445,6 +445,7 @@ export default function EditProfileScreen() {
   const [showErrors, setShowErrors] = useState(false);
   const [tabErrors,  setTabErrors]  = useState<string[]>([]);
   const [photoUploading,     setPhotoUploading]     = useState(false);
+  const [coverUploading,     setCoverUploading]     = useState(false);
   const [docUploading,       setDocUploading]       = useState(false);
   const [stagePlotUploading, setStagePlotUploading] = useState(false);
   const [inputListUploading, setInputListUploading] = useState(false);
@@ -619,6 +620,20 @@ export default function EditProfileScreen() {
       set('photoUrl', await getDownloadURL(ref));
     } catch (e) { Alert.alert('Upload failed', String(e)); }
     finally { setPhotoUploading(false); }
+  }
+
+  async function pickCoverPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+    if (result.canceled || !result.assets[0]) return;
+    setCoverUploading(true);
+    try {
+      const uri  = result.assets[0].uri;
+      const blob = await (await fetch(uri)).blob();
+      const ref  = sRef(storage, `photos/bands/${uid}/cover`);
+      await uploadBytes(ref, blob);
+      set('coverPhotoUrl', await getDownloadURL(ref));
+    } catch (e) { Alert.alert('Upload failed', String(e)); }
+    finally { setCoverUploading(false); }
   }
 
   async function addGalleryPhoto() {
@@ -1284,7 +1299,7 @@ export default function EditProfileScreen() {
       <View>
         {renderPageHeader('Photos & videos', 'Your cover photo, gallery, and video clips.')}
 
-        <SectionCard title="Profile photo" subtitle="Square view, as it appears in search and on your profile card. Drag to reposition.">
+        <SectionCard title="Profile photo" subtitle="Your avatar: shown as a circle on your profile and in search results.">
           <View style={{ padding: 16 }}>
             <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
               <View style={{ width: 96, height: 96, borderRadius: 48, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
@@ -1296,8 +1311,7 @@ export default function EditProfileScreen() {
                 }
               </View>
               <View style={{ flex: 1, gap: 6, paddingTop: 4 }}>
-                <Text style={{ fontSize: 13, color: colors.black, fontWeight: '600' }}>Profile card photo</Text>
-                <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 18 }}>The same image is used for both the profile card and the banner below. Upload once, crop both.</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 18 }}>If you don't upload a separate cover photo, this image is also used as your profile banner.</Text>
                 <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border, alignSelf: 'flex-start', marginTop: 4 }]} onPress={pickBannerPhoto}>
                   <Text style={[pd.outlineBtnText, { color: colors.black }]}>{photoUploading ? 'Uploading...' : profile.photoUrl ? 'Replace' : 'Upload photo'}</Text>
                 </TouchableOpacity>
@@ -1306,18 +1320,28 @@ export default function EditProfileScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Cover photo" subtitle="The wide banner across the top of your profile.">
+        <SectionCard title="Cover photo" subtitle="The wide banner across the top of your profile. Upload separately to use a different image from your avatar.">
           <View style={{ padding: 16 }}>
             <RepositionablePhoto
-              uri={profile.photoUrl || null}
+              uri={profile.coverPhotoUrl || profile.photoUrl || null}
               position={profile.photoPosition ?? { x: 50, y: 50 }}
               onPositionChange={pos => set('photoPosition', pos)}
-              onChangePhoto={pickBannerPhoto}
+              onChangePhoto={pickCoverPhoto}
               height={220}
-              uploading={photoUploading}
-              placeholderText="Click or drag to set the focal point"
+              uploading={coverUploading}
+              placeholderText="Upload a cover photo"
             />
-            <Text style={{ fontSize: 12, color: colors.grey, marginTop: 8 }}>Click or drag to set the focal point. It stays in frame on every screen size.</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={pickCoverPhoto} disabled={coverUploading}>
+                <Text style={[pd.outlineBtnText, { color: colors.black }]}>{coverUploading ? 'Uploading...' : profile.coverPhotoUrl ? 'Replace cover' : '+ Upload cover photo'}</Text>
+              </TouchableOpacity>
+              {profile.coverPhotoUrl ? (
+                <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border }]} onPress={() => set('coverPhotoUrl', '')}>
+                  <Text style={[pd.outlineBtnText, { color: colors.grey }]}>Remove (use profile photo)</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <Text style={{ fontSize: 12, color: colors.grey, marginTop: 8 }}>Drag to reposition. The focal point stays in frame on every screen size.</Text>
           </View>
         </SectionCard>
 

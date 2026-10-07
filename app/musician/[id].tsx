@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  View, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+  View, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal,
   ActivityIndicator, Image, Linking, Platform, useWindowDimensions,
 } from 'react-native';
 import { Text } from '@/components/Text';
-import { SpotifyEmbed } from '@/components/SpotifyEmbed';
-import { InstagramPostEmbed } from '@/components/InstagramPostEmbed';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { collection, doc, getDoc, getDocs, orderBy, query, updateDoc, where } from 'firebase/firestore';
@@ -53,37 +51,6 @@ function PositionedBanner({ uri, position, height }: { uri: string; position?: {
 
 const MAX_DESC = 320;
 
-const PLATFORMS = [
-  { key: 'instagram',  label: 'Instagram'   },
-  { key: 'tiktok',     label: 'TikTok'      },
-  { key: 'spotify',    label: 'Spotify'     },
-  { key: 'appleMusic', label: 'Apple Music' },
-];
-
-function toSpotifyEmbedUrl(url: string): string | null {
-  if (!url) return null;
-  const m = url.match(/open\.spotify\.com\/(artist|track|album|playlist|episode)\/([A-Za-z0-9]+)/);
-  if (!m) return null;
-  return `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator`;
-}
-
-function spotifyEmbedHeight(embedUrl: string): number {
-  return embedUrl.includes('/track/') || embedUrl.includes('/episode/') ? 152 : 352;
-}
-
-function toInstagramPostUrl(url: string): string | null {
-  if (!url) return null;
-  const m = url.match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/);
-  return m ? `https://www.instagram.com/${m[1]}/${m[2]}/` : null;
-}
-
-function getInstagramHandle(val: string): string | null {
-  if (!val) return null;
-  const urlMatch = val.match(/instagram\.com\/(?!p\/|reel\/)([^/?#\s]+)/);
-  if (urlMatch) return urlMatch[1].replace(/\/$/, '');
-  if (/^@?[\w.][\w.]{0,28}$/.test(val.trim())) return val.trim().replace(/^@/, '');
-  return null;
-}
 
 type CustomLink = { label: string; url: string };
 type Song       = { title?: string; url?: string; duration?: string };
@@ -102,50 +69,60 @@ type Musician = {
   photoPosition?: { x: number; y: number };
   about?: string;
   photoUrl?: string;
+  coverPhotoUrl?: string;
   email?: string;
   phone?: string;
   instagram?: string;
   tiktok?: string;
   spotify?: string;
   appleMusic?: string;
+  youtube?: string;
   website?: string;
   customLinks?: CustomLink[];
   songs?: Song[];
   photos?: string[];
   videos?: string[];
+  videoObjects?: { url: string; title?: string }[];
   gigHistory?: GigEntry[];
   upcomingGigs?: GigEntry[];
   feeMin?: number;
   feeMax?: number;
-  payment?: { typicalFee?: string; minimumFee?: string; publicLiabilityHeld?: boolean };
+  payment?: {
+    typicalFee?: string;
+    minimumFee?: string;
+    publicLiabilityHeld?: boolean;
+    publicLiabilityCoverage?: string;
+    abn?: string;
+    gstRegistered?: boolean;
+    canProvideInvoice?: boolean;
+  };
   averageDraw?: number;
   gigsPlayed?: number;
   memberCount?: string;
+  members?: { name: string; role: string }[];
+  formed?: string;
   setType?: string;
+  setLengths?: string[];
   ageRestriction?: string;
+  travel?: string;
   backline?: string;
   availability?: string;
   techRider?: {
-    // Stage
     stageWidth?: string;
     stageDepth?: string;
     monitoringType?: string;
     monitoring?: string;
-    // Production
+    monitorMixes?: string;
     ownPA?: boolean;
+    ownEngineer?: boolean;
     lighting?: string;
     power?: string;
-    // Timings
     loadIn?: string;
     soundcheck?: string;
-    // Stage plot
     stagePlotUrl?: string;
-    // Input list
     inputListUrl?: string;
     inputListName?: string;
-    // Notes
     notes?: string;
-    // Legacy fields (kept for backwards compat)
     backlineNeeded?: string;
     stageSize?: string;
   };
@@ -155,11 +132,12 @@ type Musician = {
   backlineBring?: string[];
   inputChannels?: { source?: string; micDi?: string }[];
   instruments?: string[];
+  settings?: { listed?: boolean };
 };
 
 // ── Overview Tab ──────────────────────────────────────────────────
 
-function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraStats = [] }: { m: Musician; isMobileLayout: boolean; publicGigs?: any[]; isOwn?: boolean; extraStats?: { value: string; label: string }[] }) {
+function OverviewTab({ m, isMobileLayout, isOwn = false }: { m: Musician; isMobileLayout: boolean; isOwn?: boolean }) {
   const { colors } = useTheme();
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -179,299 +157,187 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
 
   const about          = m.about || '';
   const shouldTruncate = about.length > MAX_DESC;
-  const now            = new Date();
 
-  // publicGigs is the owner's full gig list (any source/visibility) when
-  // isOwn, or the public-only projection otherwise, decided by the parent.
-  // Public projections never carry a status field (they only ever exist
-  // while confirmed); raw gigs docs (owner's own view) do, so check it there.
-  const confirmedGigs  = publicGigs.filter(g => g.startAt && g.venueName && (g.status == null || g.status === 'confirmed'));
-  const upcomingGigs   = confirmedGigs
-    .filter(g => g.startAt.toDate() >= now)
-    .sort((a, b) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime())
-    .map(g => ({ venue: g.venueName, suburb: g.locationText, date: isoDate(g.startAt.toDate()) } as GigEntry));
-  const gigHistory     = confirmedGigs
-    .filter(g => g.startAt.toDate() < now)
-    .sort((a, b) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime())
-    .map(g => ({
-      venue:      g.venueName,
-      suburb:     g.locationText,
-      date:       isoDate(g.startAt.toDate()),
-      attendance: g.attendance,
-    } as GigEntry));
-  const awayPeriods    = ((m as any).awayPeriods ?? []) as { from: string; to?: string; notes?: string }[];
-  const hasGigsSummary = upcomingGigs.length > 0 || gigHistory.length > 0 || awayPeriods.length > 0;
-  const gigsSectionTitle = isOwn ? 'My Gigs' : `${m.name || 'Artist'} Gigs`;
-  const socialLinks    = PLATFORMS.filter(p => (m as any)[p.key]);
-  const customLinks    = (m.customLinks || []).filter(l => l.label && l.url);
-  const hasContact     = !!(m.email || m.phone);
-  const hasSocials     = socialLinks.length > 0 || customLinks.length > 0;
-  const hasTechRider   = !!(
-    (m.techRider && Object.values(m.techRider).some(v => v)) ||
-    (m.backlineFromVenue && m.backlineFromVenue.length > 0) ||
-    (m.backlineBring && m.backlineBring.length > 0) ||
-    m.techRiderBools?.ownPA
-  );
-  const hasTechDocs    = !!(m.techRiderDocs && m.techRiderDocs.length > 0);
-  const hasSidebar     = hasContact || hasSocials || !!m.availability || hasTechRider || hasTechDocs;
+  // Featured track (first song)
+  const songs = (m.songs || []).filter(s => s.title);
+  const featuredTrack = songs[0] ?? null;
 
-  // Inline "Add +" link to edit-profile tab (owner view only)
-  const addBtn = (tab: string) => (
-    <TouchableOpacity onPress={() => router.push(`/edit-profile?tab=${encodeURIComponent(tab)}` as any)} activeOpacity={0.75}>
-      <Text style={{ color: Colors.orange, fontSize: 12, fontWeight: '700' }}>Add +</Text>
-    </TouchableOpacity>
-  );
+  // Social/custom links (no email)
+  const allLinks: { label: string; url: string }[] = [
+    m.instagram  ? { label: 'Instagram',   url: m.instagram   } : null,
+    m.tiktok     ? { label: 'TikTok',      url: m.tiktok      } : null,
+    m.spotify    ? { label: 'Spotify',     url: m.spotify     } : null,
+    m.appleMusic ? { label: 'Apple Music', url: m.appleMusic  } : null,
+    m.youtube    ? { label: 'YouTube',     url: m.youtube     } : null,
+    m.website    ? { label: 'Website',     url: m.website     } : null,
+    ...(m.customLinks || []).filter(l => l.label && l.url),
+  ].filter(Boolean) as { label: string; url: string }[];
 
-  // Section heading row: label left, optional Add+ right
-  const secHead = (label: string, isEmpty: boolean, tab: string, labelStyle?: any) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-      <Text style={[labelStyle ?? styles.sectionLabel, { color: colors.black }]}>{label}</Text>
-      {isOwn && isEmpty && addBtn(tab)}
-    </View>
-  );
+  // Credentials
+  const isInsured  = m.payment?.publicLiabilityHeld;
+  const coverage   = m.payment?.publicLiabilityCoverage;
+  const hasAbn     = !!(m.payment?.abn);
+  const isGst      = m.payment?.gstRegistered;
+  const canInvoice = m.payment?.canProvideInvoice;
+  const hasCredentials = isInsured || hasAbn || isGst;
 
-  const sidebar = (
-    <View style={!isMobileLayout ? styles.overviewSidebar : styles.mobileSidebar}>
-      {(hasContact || isOwn) && (
-        <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          {secHead('Contact', !hasContact, 'Basic Info', styles.sideSectionLabel)}
-          {m.email && (
-            <TouchableOpacity onPress={() => Linking.openURL(`mailto:${m.email}`)}>
-              <Text style={styles.sideLink}>{m.email}</Text>
+  // Members / line-up
+  const members    = m.members || [];
+  const hasMembers = members.length > 0;
+
+  // About meta line
+  const metaParts = [
+    m.formed       ? `Formed ${m.formed}` : null,
+    m.setType      || null,
+    m.ageRestriction || null,
+  ].filter(Boolean);
+
+  const aside = (
+    <View style={!isMobileLayout ? ov.aside : ov.asideMobile}>
+      {/* Top Track card */}
+      {(featuredTrack || isOwn) && (
+        <View style={[ov.trackCard, { backgroundColor: '#16161A' }]}>
+          <View style={ov.trackCardHeader}>
+            <Text style={ov.trackCardLabel}>FEATURED TRACK</Text>
+            {songs.length > 1 && (
+              <Text style={ov.trackCardAllLink}>All tracks →</Text>
+            )}
+          </View>
+          {featuredTrack ? (
+            <TouchableOpacity style={ov.trackCardRow} onPress={() => featuredTrack.url && Linking.openURL(featuredTrack.url!)} activeOpacity={0.75} disabled={!featuredTrack.url}>
+              <View style={ov.trackCardPlayBtn}>
+                <Text style={ov.trackCardPlayText}>▶</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={ov.trackCardTitle} numberOfLines={1}>{featuredTrack.title}</Text>
+                {(featuredTrack as any).notes ? <Text style={ov.trackCardNotes} numberOfLines={1}>{(featuredTrack as any).notes}</Text> : null}
+              </View>
             </TouchableOpacity>
-          )}
-          {m.phone && (
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${m.phone}`)}>
-              <Text style={styles.sideLink}>{m.phone}</Text>
+          ) : isOwn ? (
+            <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Music' as any)}>
+              <Text style={[ov.trackCardNotes, { textAlign: 'center', paddingVertical: 8 }]}>Add a track +</Text>
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
       )}
-      {(hasSocials || isOwn) && (
-        <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          {secHead('Socials', !hasSocials, 'Basic Info', styles.sideSectionLabel)}
-          {socialLinks.map(p => (
-            <TouchableOpacity key={p.key} onPress={() => Linking.openURL((m as any)[p.key])}>
-              <Text style={styles.sideLink}>{p.label} →</Text>
+
+      {/* Links */}
+      {(allLinks.length > 0 || isOwn) && (
+        <View style={[ov.asideCard, { borderColor: colors.border }]}>
+          <Text style={[ov.asideCardTitle, { color: colors.black }]}>Links</Text>
+          {allLinks.map((link, i) => (
+            <TouchableOpacity key={i} style={[ov.linkRow, { borderBottomColor: colors.border }]} onPress={() => Linking.openURL(link.url)} activeOpacity={0.75}>
+              <Text style={[ov.linkLabel, { color: colors.grey }]}>{link.label}</Text>
+              <Text style={[ov.linkArrow, { color: colors.black }]}>→</Text>
             </TouchableOpacity>
           ))}
-          {customLinks.map((link, i) => (
-            <TouchableOpacity key={i} onPress={() => Linking.openURL(link.url)}>
-              <Text style={styles.sideLink}>{link.label} →</Text>
+          {isOwn && allLinks.length === 0 && (
+            <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Basic+Info' as any)}>
+              <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Add links +</Text>
             </TouchableOpacity>
-          ))}
+          )}
         </View>
       )}
-      {(m.availability || isOwn) && (
-        <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          {secHead('Availability', !m.availability, 'Basic Info', styles.sideSectionLabel)}
-          {m.availability && <Text style={[styles.sideBody, { color: colors.black }]}>{m.availability}</Text>}
-        </View>
-      )}
-      {(hasTechRider || hasTechDocs || isOwn) && (
-        <View style={[styles.sideCard, { borderColor: colors.border }]}>
-          {secHead('Tech Rider', !hasTechRider && !hasTechDocs, 'Tech Rider', styles.sideSectionLabel)}
 
-          {/* Stage size */}
-          {(m.techRider?.stageWidth || m.techRider?.stageDepth || m.techRider?.stageSize) && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Min stage: </Text>
-              {m.techRider.stageWidth && m.techRider.stageDepth
-                ? `${m.techRider.stageWidth}m × ${m.techRider.stageDepth}m`
-                : m.techRider.stageSize}
-            </Text>
-          )}
-
-          {/* Monitoring */}
-          {(m.techRider?.monitoringType || m.techRider?.monitoring) && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Monitoring: </Text>
-              {[m.techRider.monitoringType, m.techRider.monitoring].filter(Boolean).join(' · ')}
-            </Text>
-          )}
-
-          {/* Backline from venue */}
-          {((m.backlineFromVenue && m.backlineFromVenue.length > 0) || m.techRider?.backlineNeeded) && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Needs from venue: </Text>
-              {m.backlineFromVenue && m.backlineFromVenue.length > 0
-                ? m.backlineFromVenue.join(', ')
-                : m.techRider!.backlineNeeded}
-            </Text>
-          )}
-
-          {/* Backline they bring */}
-          {m.backlineBring && m.backlineBring.length > 0 && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Brings own: </Text>{m.backlineBring.join(', ')}
-            </Text>
-          )}
-
-          {/* Own PA */}
-          {(m.techRiderBools?.ownPA || (m as any).techRider?.ownPA) && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>PA: </Text>Touring with own PA and engineer
-            </Text>
-          )}
-
-          {/* Soundcheck */}
-          {m.techRider?.soundcheck && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Soundcheck: </Text>{m.techRider.soundcheck}
-            </Text>
-          )}
-
-          {/* Load-in */}
-          {m.techRider?.loadIn && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Load-in: </Text>{m.techRider.loadIn}
-            </Text>
-          )}
-
-          {/* Lighting */}
-          {m.techRider?.lighting && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Lighting: </Text>{m.techRider.lighting}
-            </Text>
-          )}
-
-          {/* Power */}
-          {m.techRider?.power && (
-            <Text style={[styles.sideBody, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>Power: </Text>{m.techRider.power}
-            </Text>
-          )}
-
-          {/* Notes */}
-          {m.techRider?.notes && (
-            <Text style={[styles.sideBody, { color: colors.greyLight, marginTop: 4, marginBottom: hasTechDocs ? 8 : 0 }]}>
-              {m.techRider.notes}
-            </Text>
-          )}
-
-          {/* Downloads: stage plot, input list + spec sheets */}
-          {(m.techRider?.stagePlotUrl || m.techRider?.inputListUrl || hasTechDocs) && (
-            <View style={{ marginTop: 10 }}>
-              <Text style={[styles.sideSectionLabel, { color: colors.black, marginBottom: 6 }]}>Downloads</Text>
-              {m.techRider?.stagePlotUrl && (
-                <TouchableOpacity onPress={() => Linking.openURL(m.techRider!.stagePlotUrl!)}>
-                  <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ Stage Plot</Text>
-                </TouchableOpacity>
-              )}
-              {m.techRider?.inputListUrl && (
-                <TouchableOpacity onPress={() => Linking.openURL(m.techRider!.inputListUrl!)}>
-                  <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {m.techRider.inputListName || 'Input List'}</Text>
-                </TouchableOpacity>
-              )}
-              {(m.techRiderDocs || []).map((doc, i) => (
-                <TouchableOpacity key={i} onPress={() => Linking.openURL(doc.url)}>
-                  <Text style={[styles.sideLink, { marginBottom: 6 }]}>↓ {doc.name}</Text>
-                </TouchableOpacity>
-              ))}
+      {/* Credentials */}
+      {(hasCredentials || isOwn) && (
+        <View style={[ov.asideCard, { borderColor: colors.border }]}>
+          <Text style={[ov.asideCardTitle, { color: colors.black }]}>Credentials</Text>
+          {isInsured && (
+            <View style={ov.credRow}>
+              <Text style={[ov.credIcon, { color: '#2B3A67' }]}>✓</Text>
+              <Text style={[ov.credText, { color: colors.black }]}>
+                Public liability insured{coverage ? ` · $${coverage}` : ''} · certificate on request
+              </Text>
             </View>
           )}
+          {hasAbn && (
+            <View style={ov.credRow}>
+              <Text style={[ov.credIcon, { color: '#2B3A67' }]}>✓</Text>
+              <Text style={[ov.credText, { color: colors.black }]}>
+                Has an ABN{canInvoice ? ', can invoice' : ''}
+                {isGst ? ' · GST registered' : ''}
+              </Text>
+            </View>
+          )}
+          {isOwn && !hasCredentials && (
+            <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Invoicing' as any)}>
+              <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Add credentials +</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
+
+      {/* Small print */}
+      <Text style={[ov.noteText, { color: colors.grey }]}>
+        Contact details, hospitality rider and invoicing details are shared once a booking is confirmed.
+      </Text>
     </View>
   );
 
   const main = (
-    <View style={!isMobileLayout ? styles.overviewMain : undefined}>
+    <View style={ov.main}>
       {agentName ? (
-        <Text style={[styles.managedBy, { color: colors.grey }]}>Managed by {agentName}</Text>
+        <Text style={[styles.managedBy, { color: colors.grey }]}>Represented by {agentName}</Text>
       ) : null}
 
       {/* About */}
-      {(about || isOwn) ? (
-        <View style={styles.section}>
-          {secHead('About', !about, 'About')}
+      {(about || isOwn) && (
+        <View style={ov.section}>
+          <Text style={[ov.sectionHeading, { color: colors.black }]}>About</Text>
           {about ? (
             <>
-              <Text style={[styles.body, { color: colors.black }]}>
+              <Text style={[ov.body, { color: colors.black }]}>
                 {shouldTruncate && !expanded ? about.slice(0, MAX_DESC) + '…' : about}
               </Text>
               {shouldTruncate && (
                 <TouchableOpacity onPress={() => setExpanded(e => !e)}>
-                  <Text style={styles.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
+                  <Text style={ov.readMore}>{expanded ? 'Read less' : 'Read more'}</Text>
                 </TouchableOpacity>
               )}
             </>
           ) : null}
+          {metaParts.length > 0 && (
+            <Text style={[ov.metaLine, { color: colors.grey }]}>{metaParts.join(' · ')}</Text>
+          )}
+          {isOwn && !about && (
+            <TouchableOpacity onPress={() => router.push('/edit-profile?tab=About' as any)}>
+              <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Add bio +</Text>
+            </TouchableOpacity>
+          )}
         </View>
-      ) : null}
+      )}
 
-      {/* Instruments */}
-      {((m.instruments && m.instruments.length > 0) || isOwn) ? (
-        <View style={styles.section}>
-          {secHead('Instruments', !(m.instruments && m.instruments.length > 0), 'Basic Info')}
+      {/* Line-up */}
+      {(hasMembers || (m.instruments && m.instruments.length > 0) || isOwn) && (
+        <View style={ov.section}>
+          <Text style={[ov.sectionHeading, { color: colors.black }]}>
+            Line-up{m.actSize ? ` · ${m.actSize}` : ''}
+          </Text>
+          {members.map((member, i) => (
+            <View key={i} style={[ov.memberRow, { borderBottomColor: colors.border }]}>
+              <Text style={[ov.memberName, { color: colors.black }]}>{member.name}</Text>
+              <Text style={[ov.memberRole, { color: colors.grey }]}>{member.role}</Text>
+            </View>
+          ))}
           {m.instruments && m.instruments.length > 0 && (
-            <View style={styles.genres}>
+            <View style={[ov.chipRow, { marginTop: members.length > 0 ? 10 : 0 }]}>
               {m.instruments.map(inst => (
-                <View key={inst} style={[styles.genrePill, { borderColor: colors.border }]}>
-                  <Text style={[styles.genreText, { color: colors.black }]}>{inst}</Text>
+                <View key={inst} style={[ov.chip, { borderColor: colors.border }]}>
+                  <Text style={[ov.chipText, { color: colors.black }]}>{inst}</Text>
                 </View>
               ))}
             </View>
           )}
-        </View>
-      ) : null}
-
-      {/* Gigs: a lightweight summary reading from the same data as My Gigs.
-          Never shows fee or payment status here, that's for My Gigs itself. */}
-      {(hasGigsSummary || isOwn) ? (
-        <View style={styles.section}>
-          {secHead(gigsSectionTitle, !hasGigsSummary, 'My Gigs')}
-
-          {upcomingGigs.length > 0 && (
-            <View style={styles.gigGroup}>
-              <Text style={[styles.gigGroupLabel, { color: colors.greyLight }]}>UPCOMING</Text>
-              {upcomingGigs.map((gig, i) => (
-                <Text key={i} style={[styles.gigLine, { color: colors.black }]} numberOfLines={1}>
-                  {gig.venue}{gig.suburb ? `, ${gig.suburb}` : ''}{gig.date ? ` · ${gig.date}` : ''}
-                </Text>
-              ))}
-            </View>
-          )}
-
-          {gigHistory.length > 0 && (
-            <View style={styles.gigGroup}>
-              <Text style={[styles.gigGroupLabel, { color: colors.greyLight }]}>PAST</Text>
-              {gigHistory.map((gig, i) => (
-                <Text key={i} style={[styles.gigLine, { color: colors.black }]} numberOfLines={1}>
-                  {gig.venue}{gig.suburb ? `, ${gig.suburb}` : ''}{gig.date ? ` · ${gig.date}` : ''}{gig.attendance != null ? ` · ~${gig.attendance} draw` : ''}
-                </Text>
-              ))}
-            </View>
-          )}
-
-          {awayPeriods.length > 0 && (
-            <View style={styles.gigGroup}>
-              <Text style={[styles.gigGroupLabel, { color: colors.greyLight }]}>AWAY</Text>
-              {awayPeriods.map((p, i) => (
-                <Text key={i} style={[styles.gigLine, { color: colors.black }]} numberOfLines={1}>
-                  {p.to && p.to !== p.from ? `${prettyAwayDate(p.from)} to ${prettyAwayDate(p.to)}` : prettyAwayDate(p.from)}
-                </Text>
-              ))}
-            </View>
+          {isOwn && !hasMembers && (
+            <TouchableOpacity onPress={() => router.push('/edit-profile?tab=About' as any)}>
+              <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600', marginTop: 4 }}>Add members +</Text>
+            </TouchableOpacity>
           )}
         </View>
-      ) : null}
+      )}
 
-      {/* More info */}
-      {(extraStats.length > 0 || isOwn) ? (
-        <View style={styles.section}>
-          {secHead('More info', extraStats.length === 0, 'Basic Info')}
-          {extraStats.map(stat => (
-            <Text key={stat.label} style={[styles.body, { color: colors.black, marginBottom: 4 }]}>
-              <Text style={{ fontWeight: '700' }}>{stat.label.charAt(0) + stat.label.slice(1).toLowerCase()}: </Text>
-              {stat.value}
-            </Text>
-          ))}
-        </View>
-      ) : null}
-
-      {/* Public empty state (never shown to owner) */}
-      {!isOwn && !about && !hasGigsSummary && extraStats.length === 0 && !(m.instruments && m.instruments.length > 0) && (
+      {!isOwn && !about && !hasMembers && !(m.instruments && m.instruments.length > 0) && (
         <Text style={[styles.emptyState, { color: colors.greyLight }]}>No info listed yet.</Text>
       )}
     </View>
@@ -480,141 +346,310 @@ function OverviewTab({ m, isMobileLayout, publicGigs = [], isOwn = false, extraS
   if (isMobileLayout) {
     return (
       <>
-        <View style={styles.mobileContent}>{main}</View>
-        {(hasSidebar || isOwn) && <View style={styles.mobileContent}>{sidebar}</View>}
+        <View style={ov.layout}>{main}</View>
+        <View style={ov.layout}>{aside}</View>
       </>
     );
   }
 
   return (
-    <View style={styles.overviewLayout}>
+    <View style={[ov.layout, { flexDirection: 'row', alignItems: 'flex-start', gap: 32 }]}>
       {main}
-      {(hasSidebar || isOwn) && <View>{sidebar}</View>}
+      {aside}
     </View>
   );
 }
 
-// ── Music & Social Tab ────────────────────────────────────────────
+// ── Music & Media Tab ─────────────────────────────────────────────
 
-function MusicTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
+function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
   const { colors } = useTheme();
   const router = useRouter();
-  const songs = (m.songs || []).filter(s => s.title);
+  const songs  = (m.songs || []).filter(s => s.title);
+  const photos = m.photos || [];
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
-  const spotifyEmbedUrl = toSpotifyEmbedUrl(m.spotify || '');
-  const igPostUrl       = toInstagramPostUrl(m.instagram || '');
-  const igHandle        = igPostUrl ? null : getInstagramHandle(m.instagram || '');
-  const spHeight        = spotifyEmbedUrl ? spotifyEmbedHeight(spotifyEmbedUrl) : 0;
-
-  const linkItems = [
-    m.instagram  ? { label: 'Instagram',   url: m.instagram         } : null,
-    m.spotify    ? { label: 'Spotify',     url: m.spotify           } : null,
-    m.appleMusic ? { label: 'Apple Music', url: m.appleMusic        } : null,
-    m.tiktok     ? { label: 'TikTok',      url: m.tiktok            } : null,
-    m.website    ? { label: 'Website',     url: m.website           } : null,
-    m.email      ? { label: 'Email',       url: `mailto:${m.email}` } : null,
-    ...(m.customLinks || []).filter(l => l.label && l.url),
-  ].filter(Boolean) as { label: string; url: string }[];
-
-  const hasMusic = songs.length > 0 || !!spotifyEmbedUrl;
-  const hasIg    = !!(igPostUrl || igHandle);
-  const hasLinks = linkItems.length > 0;
-
-  const addBtn = (tab: string) => (
-    <TouchableOpacity onPress={() => router.push(`/edit-profile?tab=${encodeURIComponent(tab)}` as any)} activeOpacity={0.75}>
-      <Text style={{ color: Colors.orange, fontSize: 12, fontWeight: '700' }}>Add +</Text>
-    </TouchableOpacity>
-  );
-
-  const secHead = (label: string, isEmpty: boolean, tab: string) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-      <Text style={[styles.sectionLabel, { color: colors.greyLight }]}>{label}</Text>
-      {isOwn && isEmpty && addBtn(tab)}
-    </View>
-  );
+  function detectSource(url: string): string {
+    if (!url) return 'Link';
+    if (url.includes('spotify.com'))                      return 'Spotify';
+    if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
+    if (url.includes('soundcloud.com'))                   return 'SoundCloud';
+    if (url.includes('bandcamp.com'))                     return 'Bandcamp';
+    return 'Link';
+  }
 
   return (
     <View style={styles.tabContent}>
 
-      {/* TOP TRACKS */}
+      {/* Tracks */}
       <View style={styles.section}>
-        {secHead('TOP TRACKS', !hasMusic, 'Music')}
-        {spotifyEmbedUrl && (
-          <View style={[styles.embedWrap, { borderColor: colors.border, marginBottom: songs.length > 0 ? 16 : 0 }]}>
-            <SpotifyEmbed url={spotifyEmbedUrl} height={spHeight} />
-          </View>
-        )}
-        {songs.length > 0 ? (
-          songs.map((song, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[styles.trackRow, { borderBottomColor: colors.borderFaint }]}
-              onPress={() => song.url && Linking.openURL(song.url)}
-              disabled={!song.url}
-              activeOpacity={song.url ? 0.7 : 1}
-            >
-              <View style={[styles.trackNum, { backgroundColor: colors.bgFaint }]}>
-                <Text style={[styles.trackNumText, { color: colors.grey }]}>{i + 1}</Text>
-              </View>
-              <Text style={[styles.trackTitle, { color: colors.black }]}>{song.title}</Text>
-              <View style={styles.trackMeta}>
-                {song.duration ? <Text style={[styles.trackDuration, { color: colors.grey }]}>{song.duration}</Text> : null}
-                {song.url && <View style={styles.playBtn}><Text style={styles.playBtnText}>▶</Text></View>}
-              </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <Text style={[mm.sectionHeading, { color: colors.black }]}>Tracks</Text>
+          {isOwn && songs.length === 0 && (
+            <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Music' as any)}>
+              <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '700' }}>Add +</Text>
             </TouchableOpacity>
-          ))
-        ) : !spotifyEmbedUrl && !isOwn ? (
+          )}
+        </View>
+        {songs.length > 0 ? songs.map((song, i) => (
+          <View key={i} style={[mm.trackRow, { borderBottomColor: colors.border }]}>
+            <View style={[mm.trackNumWrap, { backgroundColor: colors.bgFaint }]}>
+              {i === 0
+                ? <Text style={[mm.featuredLabel, { color: Colors.orange }]}>★</Text>
+                : <Text style={[mm.trackNum, { color: colors.grey }]}>{i + 1}</Text>
+              }
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[mm.trackTitle, { color: colors.black }]} numberOfLines={1}>{song.title}</Text>
+              {(song as any).notes ? (
+                <Text style={[mm.trackNotes, { color: colors.grey }]} numberOfLines={1}>{(song as any).notes}</Text>
+              ) : null}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              {song.duration ? <Text style={[mm.trackDuration, { color: colors.grey }]}>{song.duration}</Text> : null}
+              {song.url && (
+                <TouchableOpacity
+                  style={[mm.openBtn, { borderColor: colors.border }]}
+                  onPress={() => Linking.openURL(song.url!)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[mm.openBtnText, { color: colors.black }]}>Open in {detectSource(song.url)}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )) : !isOwn ? (
           <Text style={[styles.emptyState, { color: colors.greyLight }]}>No tracks listed yet.</Text>
         ) : null}
       </View>
 
-      {/* INSTAGRAM */}
-      {(hasIg || isOwn) && (
+      {/* Photos */}
+      {(photos.length > 0 || isOwn) && (
         <View style={styles.section}>
-          {secHead('INSTAGRAM', !hasIg, 'Basic Info')}
-          {igPostUrl ? (
-            <View style={[styles.embedWrap, { borderColor: colors.border }]}>
-              <InstagramPostEmbed postUrl={igPostUrl} />
-            </View>
-          ) : igHandle ? (
-            <TouchableOpacity
-              style={[styles.igCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
-              onPress={() => Linking.openURL(`https://www.instagram.com/${igHandle}`)}
-              activeOpacity={0.75}
-            >
-              <View style={styles.igCardLeft}>
-                <View style={styles.igAvatar}><Text style={styles.igAvatarText}>IG</Text></View>
-                <View>
-                  <Text style={[styles.igHandle, { color: colors.black }]}>@{igHandle}</Text>
-                  <Text style={[styles.igSub, { color: colors.grey }]}>View profile on Instagram</Text>
-                </View>
-              </View>
-              <Text style={[styles.igArrow, { color: Colors.orange }]}>→</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      )}
-
-      {/* LINKS */}
-      {(hasLinks || isOwn) && (
-        <View style={styles.section}>
-          {secHead('LINKS', !hasLinks, 'Basic Info')}
-          {hasLinks && (
-            <View style={styles.linksGrid}>
-              {linkItems.map((link, i) => (
-                <TouchableOpacity
-                  key={i}
-                  style={[styles.linkCard, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}
-                  onPress={() => Linking.openURL(link.url)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.linkCardLabel, { color: colors.black }]}>{link.label}</Text>
-                  <Text style={[styles.linkCardArrow, { color: Colors.orange }]}>→</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={[mm.sectionHeading, { color: colors.black }]}>Photos</Text>
+            {isOwn && (
+              <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Photos+%26+videos' as any)}>
+                <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '700' }}>{photos.length === 0 ? 'Add +' : 'Manage'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {photos.length > 0 ? (
+            <View style={mm.photoGrid}>
+              {photos.map((url, i) => (
+                <TouchableOpacity key={i} style={mm.photoTile} onPress={() => setLightboxIdx(i)} activeOpacity={0.85}>
+                  <Image source={{ uri: url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                 </TouchableOpacity>
               ))}
             </View>
+          ) : (
+            <Text style={[styles.emptyState, { color: colors.greyLight }]}>No photos yet.</Text>
           )}
         </View>
+      )}
+
+      {/* Lightbox */}
+      {lightboxIdx !== null && (
+        <Modal transparent animationType="fade" onRequestClose={() => setLightboxIdx(null)}>
+          <TouchableOpacity style={mm.lightboxBack} activeOpacity={1} onPress={() => setLightboxIdx(null)}>
+            <Image source={{ uri: photos[lightboxIdx] }} style={mm.lightboxImg} resizeMode="contain" />
+            <TouchableOpacity style={mm.lightboxClose} onPress={() => setLightboxIdx(null)}>
+              <Text style={mm.lightboxCloseText}>✕</Text>
+            </TouchableOpacity>
+            {lightboxIdx > 0 && (
+              <TouchableOpacity style={[mm.lightboxNav, mm.lightboxNavL]} onPress={() => setLightboxIdx(i => i! - 1)}>
+                <Text style={mm.lightboxNavText}>‹</Text>
+              </TouchableOpacity>
+            )}
+            {lightboxIdx < photos.length - 1 && (
+              <TouchableOpacity style={[mm.lightboxNav, mm.lightboxNavR]} onPress={() => setLightboxIdx(i => i! + 1)}>
+                <Text style={mm.lightboxNavText}>›</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </Modal>
+      )}
+    </View>
+  );
+}
+
+// ── Tech Rider Tab ────────────────────────────────────────────────
+
+function TechRiderTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const tr = m.techRider || {};
+  const hasStage            = !!(tr.stageWidth || tr.stageDepth || tr.stageSize);
+  const hasMonitoring       = !!(tr.monitoringType || tr.monitoring || tr.monitorMixes);
+  const hasInputs           = !!(m.inputChannels && m.inputChannels.length > 0);
+  const hasDocs             = !!(m.techRiderDocs && m.techRiderDocs.length > 0) || !!(tr.stagePlotUrl || tr.inputListUrl);
+  const hasBacklineFromVenue= !!(m.backlineFromVenue && m.backlineFromVenue.length > 0);
+  const hasBacklineBring    = !!(m.backlineBring && m.backlineBring.length > 0);
+  const hasProduction       = !!(tr.ownPA || m.techRiderBools?.ownPA || tr.ownEngineer || tr.lighting || tr.power || tr.loadIn || tr.soundcheck);
+  const hasAny              = hasStage || hasMonitoring || hasInputs || hasDocs || hasBacklineFromVenue || hasBacklineBring || hasProduction;
+
+  if (!hasAny && !isOwn) {
+    return (
+      <View style={[styles.tabContent, { alignItems: 'center', paddingTop: 60 }]}>
+        <Text style={[styles.emptyState, { color: colors.greyLight }]}>No tech rider listed yet.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.tabContent}>
+
+      {/* Stage card */}
+      <View style={[tr_.card, { borderColor: colors.border }]}>
+        <Text style={[tr_.cardTitle, { color: colors.black }]}>Stage</Text>
+
+        {hasDocs && (
+          <View style={tr_.docsRow}>
+            {tr.stagePlotUrl && (
+              <TouchableOpacity style={[tr_.docBtn, { borderColor: colors.border }]} onPress={() => Linking.openURL(tr.stagePlotUrl!)}>
+                <Text style={[tr_.docBtnText, { color: colors.black }]}>↓ Stage plot</Text>
+              </TouchableOpacity>
+            )}
+            {tr.inputListUrl && (
+              <TouchableOpacity style={[tr_.docBtn, { borderColor: colors.border }]} onPress={() => Linking.openURL(tr.inputListUrl!)}>
+                <Text style={[tr_.docBtnText, { color: colors.black }]}>↓ {tr.inputListName || 'Input list'}</Text>
+              </TouchableOpacity>
+            )}
+            {(m.techRiderDocs || []).map((d, i) => (
+              <TouchableOpacity key={i} style={[tr_.docBtn, { borderColor: colors.border }]} onPress={() => Linking.openURL(d.url)}>
+                <Text style={[tr_.docBtnText, { color: colors.black }]}>↓ {d.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {m.memberCount && (
+          <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+            <Text style={[tr_.specLabel, { color: colors.grey }]}>Performers</Text>
+            <Text style={[tr_.specValue, { color: colors.black }]}>{m.memberCount}</Text>
+          </View>
+        )}
+        {hasStage && (
+          <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+            <Text style={[tr_.specLabel, { color: colors.grey }]}>Minimum stage</Text>
+            <Text style={[tr_.specValue, { color: colors.black }]}>
+              {tr.stageWidth && tr.stageDepth ? `${tr.stageWidth}m x ${tr.stageDepth}m` : tr.stageSize}
+            </Text>
+          </View>
+        )}
+        {hasMonitoring && (
+          <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+            <Text style={[tr_.specLabel, { color: colors.grey }]}>Monitoring</Text>
+            <Text style={[tr_.specValue, { color: colors.black }]}>
+              {[tr.monitoringType, tr.monitoring, tr.monitorMixes ? `${tr.monitorMixes} mixes` : null].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        )}
+        {(tr.ownPA || m.techRiderBools?.ownPA) && (
+          <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+            <Text style={[tr_.specLabel, { color: colors.grey }]}>PA</Text>
+            <Text style={[tr_.specValue, { color: colors.black }]}>Touring with own PA{tr.ownEngineer ? ' and engineer' : ''}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Input list */}
+      {hasInputs && (
+        <View style={[tr_.card, { borderColor: colors.border }]}>
+          <Text style={[tr_.cardTitle, { color: colors.black }]}>Input list</Text>
+          <View style={[tr_.inputTable, { borderColor: colors.border }]}>
+            <View style={[tr_.inputRow, tr_.inputHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[tr_.inputCell, tr_.inputChNum, tr_.headerText, { color: colors.grey }]}>Ch</Text>
+              <Text style={[tr_.inputCell, { flex: 1 }, tr_.headerText, { color: colors.grey }]}>Source</Text>
+              <Text style={[tr_.inputCell, tr_.inputMicDi, tr_.headerText, { color: colors.grey }]}>Mic / DI</Text>
+            </View>
+            {m.inputChannels!.map((ch, i) => (
+              <View key={i} style={[tr_.inputRow, { borderBottomColor: colors.border, borderBottomWidth: i < m.inputChannels!.length - 1 ? 1 : 0 }]}>
+                <Text style={[tr_.inputCell, tr_.inputChNum, { color: colors.black }]}>{i + 1}</Text>
+                <Text style={[tr_.inputCell, { flex: 1 }, { color: colors.black }]}>{ch.source || ''}</Text>
+                <Text style={[tr_.inputCell, tr_.inputMicDi, { color: colors.black }]}>{ch.micDi || ''}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Backline */}
+      {(hasBacklineFromVenue || hasBacklineBring) && (
+        <View style={[tr_.card, { borderColor: colors.border }]}>
+          <Text style={[tr_.cardTitle, { color: colors.black }]}>Backline</Text>
+          {hasBacklineFromVenue && (
+            <View style={tr_.backlineSection}>
+              <Text style={[tr_.backlineLabel, { color: colors.black }]}>Needs from the venue</Text>
+              <View style={tr_.chipRow}>
+                {m.backlineFromVenue!.map(item => (
+                  <View key={item} style={[tr_.chip, tr_.chipOutline, { borderColor: '#16161A' }]}>
+                    <Text style={[tr_.chipText, { color: '#16161A' }]}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+          {hasBacklineBring && (
+            <View style={[tr_.backlineSection, { marginTop: hasBacklineFromVenue ? 12 : 0 }]}>
+              <Text style={[tr_.backlineLabel, { color: colors.black }]}>Brings their own</Text>
+              <View style={tr_.chipRow}>
+                {m.backlineBring!.map(item => (
+                  <View key={item} style={[tr_.chip, { borderColor: colors.border }]}>
+                    <Text style={[tr_.chipText, { color: colors.black }]}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Production and timings */}
+      {hasProduction && (
+        <View style={[tr_.card, { borderColor: colors.border }]}>
+          <Text style={[tr_.cardTitle, { color: colors.black }]}>Production and timings</Text>
+          {tr.loadIn && (
+            <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+              <Text style={[tr_.specLabel, { color: colors.grey }]}>Load-in</Text>
+              <Text style={[tr_.specValue, { color: colors.black }]}>{tr.loadIn}</Text>
+            </View>
+          )}
+          {tr.soundcheck && (
+            <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+              <Text style={[tr_.specLabel, { color: colors.grey }]}>Soundcheck</Text>
+              <Text style={[tr_.specValue, { color: colors.black }]}>{tr.soundcheck}</Text>
+            </View>
+          )}
+          {tr.lighting && (
+            <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+              <Text style={[tr_.specLabel, { color: colors.grey }]}>Lighting</Text>
+              <Text style={[tr_.specValue, { color: colors.black }]}>{tr.lighting}</Text>
+            </View>
+          )}
+          {tr.power && (
+            <View style={[tr_.specRow, { borderBottomColor: colors.border }]}>
+              <Text style={[tr_.specLabel, { color: colors.grey }]}>Power</Text>
+              <Text style={[tr_.specValue, { color: colors.black }]}>{tr.power}</Text>
+            </View>
+          )}
+          {tr.notes && (
+            <Text style={[tr_.notesText, { color: colors.grey }]}>{tr.notes}</Text>
+          )}
+        </View>
+      )}
+
+      {/* Locked note */}
+      <View style={[tr_.lockedNote, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+        <Text style={[tr_.lockedNoteText, { color: colors.grey }]}>
+          Their hospitality rider (meals, dietary needs, drinks) is shared when you confirm a booking.
+        </Text>
+      </View>
+
+      {isOwn && (
+        <TouchableOpacity style={[tr_.editBtn, { borderColor: colors.border }]} onPress={() => router.push('/edit-profile?tab=Tech+Rider' as any)}>
+          <Text style={[tr_.editBtnText, { color: colors.black }]}>Edit tech rider</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -839,263 +874,160 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
   );
 }
 
-// ── Timetable Tab ─────────────────────────────────────────────────
+// ── Shows & Availability Tab ──────────────────────────────────────
 
-function TimetableTab({ m, isOwn, isMobileLayout, publicGigs = [], awayPeriods = [] }: { m: Musician; isOwn: boolean; isMobileLayout: boolean; publicGigs?: any[]; awayPeriods?: any[] }) {
+function ShowsAvailabilityTab({ m, isOwn, publicGigs = [], awayPeriods = [] }: { m: Musician; isOwn: boolean; isMobileLayout?: boolean; publicGigs?: any[]; awayPeriods?: any[] }) {
   const { colors } = useTheme();
-  const router = useRouter();
-  const today = new Date();
-  const [filterTab, setFilterTab]   = useState<'all' | 'gigs' | 'away'>('all');
+  const now = new Date();
+  const [showAllPast, setShowAllPast] = useState(false);
   const [monthOffset, setMonthOffset] = useState(0);
 
-  const gigEntries: EntryItem[] = publicGigs
-    // publicGigs projections never carry a status field (they only ever exist
-    // while confirmed); raw gigs docs (owner's own view) do, so check it there.
-    .filter(pg => !!pg.startAt && pg.venueName && (pg.status == null || pg.status === 'confirmed'))
+  const confirmedGigs = publicGigs.filter(
+    pg => !!pg.startAt && pg.venueName && (pg.status == null || pg.status === 'confirmed')
+  );
+
+  const upcomingShows = confirmedGigs
+    .filter(g => g.startAt.toDate() >= now)
+    .sort((a: any, b: any) => a.startAt.toDate().getTime() - b.startAt.toDate().getTime());
+
+  const pastShows = confirmedGigs
+    .filter(g => g.startAt.toDate() < now)
+    .sort((a: any, b: any) => b.startAt.toDate().getTime() - a.startAt.toDate().getTime());
+
+  const visiblePast = showAllPast ? pastShows : pastShows.slice(0, 5);
+
+  const windowStart = new Date(now);
+  windowStart.setMonth(windowStart.getMonth() + monthOffset);
+  windowStart.setDate(1);
+  windowStart.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(windowStart);
+  windowEnd.setMonth(windowEnd.getMonth() + 3);
+  windowEnd.setHours(23, 59, 59, 999);
+
+  const gigEntries: EntryItem[] = confirmedGigs
+    .filter(pg => !!pg.startAt && pg.venueName)
     .map(pg => {
       const d = pg.startAt.toDate();
-      const entry: GigEntry = {
-        venue: pg.venueName ?? undefined,
-        suburb: pg.locationText ?? undefined,
-        date: isoDate(d),
-        ticketUrl: pg.ticketUrl ?? undefined,
-        notes: pg.description ?? undefined,
-        type: 'gig',
-      };
-      return { date: d, dateISO: isoDate(d), entry };
+      return { date: d, dateISO: isoDate(d), entry: { venue: pg.venueName, date: isoDate(d), type: 'gig' } as GigEntry };
     });
 
   const awayEntries: EntryItem[] = awayPeriods.map((p: any) => {
     const d = new Date(p.from + 'T00:00:00');
-    const entry: GigEntry = { date: p.from, type: 'away', endDate: p.to ?? undefined, notes: p.notes ?? undefined };
-    return { date: d, dateISO: p.from, entry };
+    return { date: d, dateISO: p.from, entry: { date: p.from, type: 'away', endDate: p.to } as GigEntry };
   });
 
-  const allEntries: EntryItem[] = [...gigEntries, ...awayEntries]
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  const allEntries = [...gigEntries, ...awayEntries].sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  const windowStart = new Date(today);
-  windowStart.setMonth(windowStart.getMonth() + monthOffset);
-  windowStart.setHours(0,0,0,0);
-  const windowEnd = new Date(windowStart);
-  windowEnd.setMonth(windowEnd.getMonth() + 3);
-  windowEnd.setHours(23,59,59,999);
+  const formatShowDate = (startAt: any) => {
+    const d = startAt.toDate();
+    return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
-  const windowEntries = allEntries.filter(({ date }) => date >= windowStart && date <= windowEnd);
-  const filtered = windowEntries.filter(({ entry }) => {
-    const t = entry.type || 'gig';
-    if (filterTab === 'gigs') return t === 'gig';
-    if (filterTab === 'away') return t === 'away';
-    return true;
-  });
-  const monthGroups = groupByMonth(filtered);
-
-  const countLabel = filterTab === 'gigs'
-    ? `${filtered.length} gig${filtered.length !== 1 ? 's' : ''}`
-    : filterTab === 'away'
-      ? `${filtered.length} away date${filtered.length !== 1 ? 's' : ''}`
-      : `${filtered.length} entr${filtered.length !== 1 ? 'ies' : 'y'}`;
-
-  const rangeLabel = `(${LONG_MO[windowStart.getMonth()]} – ${LONG_MO[windowEnd.getMonth()]} ${windowEnd.getFullYear()})`;
-  const musicianId   = m.id;
-  const musicianName = m.name || 'Musician';
-
-  if (!isMobileLayout) {
-    return (
-      <View style={mt.tabBody}>
-        {/* Filter row */}
-        <View style={mt.filterRow}>
-          <View style={[mt.filterTabs, { borderColor: colors.border }]}>
-            {(['all', 'gigs', 'away'] as const).map(tab => (
-              <TouchableOpacity
-                key={tab}
-                style={[mt.filterTab, filterTab === tab && mt.filterTabActive]}
-                onPress={() => setFilterTab(tab)}
-              >
-                <Text style={[mt.filterTabText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
-                  {tab === 'all' ? 'All' : tab === 'gigs' ? 'Gigs' : 'Away'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={mt.countRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={[mt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
-              <Text style={[mt.countLabel, { color: colors.grey, fontWeight: '400' }]}>{rangeLabel}</Text>
-            </View>
-            <View style={mt.monthNavRow}>
-              {monthOffset > 0 && (
-                <TouchableOpacity style={mt.monthNavBtn} onPress={() => setMonthOffset(o => o - 3)}>
-                  <Text style={[mt.monthNavText, { color: colors.grey }]}>&larr; Previous 3 Months</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={mt.monthNavBtn} onPress={() => setMonthOffset(o => o + 3)}>
-                <Text style={[mt.monthNavText, { color: colors.grey }]}>Next 3 Months &rarr;</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Body: calendar + list */}
-        <View style={mt.body}>
-          {/* Calendar panel */}
-          <View style={[mt.calPanel, { borderColor: colors.border }]}>
-            <Text style={[mt.calPanelTitle, { color: colors.grey }]}>AVAILABILITY AT A GLANCE</Text>
-            <View style={mt.calLegend}>
-              <View style={mt.calLegendItem}>
-                <View style={[mt.calDot, { backgroundColor: '#22c55e' }]} />
-                <Text style={[mt.calLegendText, { color: colors.grey }]}>Booked</Text>
-              </View>
-              <View style={mt.calLegendItem}>
-                <Text style={[mt.calLegendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', fontSize: 13, marginRight: 2 }]}>15</Text>
-                <Text style={[mt.calLegendText, { color: colors.grey }]}>Away</Text>
-              </View>
-            </View>
-            {(() => {
-              const calMonths: { year: number; month: number }[] = [];
-              const cur = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
-              const end = new Date(windowEnd.getFullYear(), windowEnd.getMonth(), 1);
-              while (cur <= end) {
-                calMonths.push({ year: cur.getFullYear(), month: cur.getMonth() });
-                cur.setMonth(cur.getMonth() + 1);
-              }
-              return calMonths.map(({ year, month }) => (
-                <MusicianCalendarMonth
-                  key={`${year}-${month}`}
-                  entries={allEntries.map(e => e.entry)}
-                  month={month} year={year} today={today}
-                  windowStart={windowStart} windowEnd={windowEnd}
-                  colors={colors}
-                />
-              ));
-            })()}
-          </View>
-
-          {/* List area */}
-          <View style={mt.listArea}>
-            {monthGroups.length === 0 ? (
-              allEntries.length === 0 && isOwn ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={[mt.emptyText, { color: colors.grey }]}>No schedule yet.</Text>
-                  <TouchableOpacity onPress={() => router.push('/(tabs)/gigs' as any)} activeOpacity={0.75}>
-                    <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>Add +</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Text style={[mt.emptyText, { color: colors.grey }]}>
-                  {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
-                </Text>
-              )
-            ) : (
-              monthGroups.map(group => {
-                return (
-                  <View key={`${group.year}-${group.month}`} style={mt.monthGroup}>
-                    <View style={mt.monthHeader}>
-                      <Text style={[mt.monthLabel, { color: colors.black }]}>
-                        {LONG_MO[group.month].toUpperCase()} {group.year}
-                      </Text>
-                    </View>
-                    {group.items.map(({ date, dateISO, entry }, i) => (
-                      <MusEntryRow
-                        key={`${dateISO}-${i}`}
-                        entry={entry} date={date}
-                        isOwn={isOwn} musicianId={musicianId} musicianName={musicianName}
-                      />
-                    ))}
-                  </View>
-                );
-              })
-            )}
-          </View>
-        </View>
-      </View>
-    );
+  const calMonths: { year: number; month: number }[] = [];
+  {
+    const cur = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
+    const end = new Date(windowEnd.getFullYear(), windowEnd.getMonth(), 1);
+    while (cur <= end) {
+      calMonths.push({ year: cur.getFullYear(), month: cur.getMonth() });
+      cur.setMonth(cur.getMonth() + 1);
+    }
   }
 
-  // ── Native ──
   return (
-    <View>
-      <View style={nmt.filterRow}>
-        <View style={[nmt.filterControl, { borderColor: colors.border }]}>
-          {(['all', 'gigs', 'away'] as const).map((tab, i, arr) => (
-            <TouchableOpacity
-              key={tab}
-              style={[
-                nmt.filterBtn,
-                filterTab === tab && nmt.filterBtnActive,
-                i < arr.length - 1 && { borderRightWidth: 1, borderRightColor: colors.border },
-              ]}
-              onPress={() => setFilterTab(tab)}
-            >
-              <Text style={[nmt.filterText, { color: filterTab === tab ? '#111111' : colors.grey }]}>
-                {tab === 'all' ? 'All' : tab === 'gigs' ? 'Gigs' : 'Away'}
+    <View style={styles.tabContent}>
+
+      {/* Upcoming shows */}
+      <View style={sa_.section}>
+        <Text style={[sa_.sectionHeading, { color: colors.black }]}>Upcoming shows</Text>
+        {upcomingShows.length > 0 ? (
+          upcomingShows.map((g: any, i: number) => (
+            <View key={i} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[sa_.showVenue, { color: colors.black }]}>{g.venueName}</Text>
+                {g.locationText ? <Text style={[sa_.showMeta, { color: colors.grey }]}>{g.locationText}</Text> : null}
+                <Text style={[sa_.showDate, { color: colors.grey }]}>{formatShowDate(g.startAt)}</Text>
+              </View>
+              {g.slotType ? (
+                <View style={[sa_.slotBadge, { borderColor: colors.border }]}>
+                  <Text style={[sa_.slotBadgeText, { color: colors.grey }]}>{g.slotType}</Text>
+                </View>
+              ) : null}
+            </View>
+          ))
+        ) : (
+          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No upcoming shows on Twaylo yet.</Text>
+        )}
+      </View>
+
+      {/* Played on Twaylo */}
+      {pastShows.length > 0 && (
+        <View style={sa_.section}>
+          <Text style={[sa_.sectionHeading, { color: colors.black }]}>
+            Played on Twaylo ({pastShows.length})
+          </Text>
+          {visiblePast.map((g: any, i: number) => (
+            <View key={i} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[sa_.showVenue, { color: colors.black }]}>{g.venueName}</Text>
+                {g.locationText ? <Text style={[sa_.showMeta, { color: colors.grey }]}>{g.locationText}</Text> : null}
+                <Text style={[sa_.showDate, { color: colors.grey }]}>{formatShowDate(g.startAt)}</Text>
+              </View>
+              {g.slotType ? (
+                <View style={[sa_.slotBadge, { borderColor: colors.border }]}>
+                  <Text style={[sa_.slotBadgeText, { color: colors.grey }]}>{g.slotType}</Text>
+                </View>
+              ) : null}
+            </View>
+          ))}
+          {pastShows.length > 5 && (
+            <TouchableOpacity onPress={() => setShowAllPast(v => !v)} style={{ marginTop: 10 }}>
+              <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>
+                {showAllPast ? 'Show less' : `Show all ${pastShows.length}`}
               </Text>
             </TouchableOpacity>
-          ))}
+          )}
         </View>
-        <View style={[nmt.legend, { marginTop: 10 }]}>
-          <View style={nmt.legendItem}>
-            <View style={[nmt.legendDot, { backgroundColor: '#22c55e' }]} />
-            <Text style={[nmt.legendText, { color: colors.grey }]}>Booked</Text>
-          </View>
-          <View style={nmt.legendItem}>
-            <Text style={[nmt.legendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
-            <Text style={[nmt.legendText, { color: colors.grey }]}>Away</Text>
-          </View>
-        </View>
-      </View>
-      <View style={nmt.countNav}>
-        <View style={{ gap: 4 }}>
-          <View style={nmt.countRow}>
-            <Text style={[nmt.countLabel, { color: colors.grey }]}>{countLabel}</Text>
-            <Text style={[nmt.dateRange, { color: colors.grey }]}>{rangeLabel}</Text>
-          </View>
-          <View style={[nmt.navBtns, { justifyContent: 'flex-end' }]}>
-            {monthOffset > 0 && (
-              <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o - 3)}>
-                <Text style={[nmt.navBtnText, { color: colors.grey }]}>← Prev 3 months</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={nmt.navBtn} onPress={() => setMonthOffset(o => o + 3)}>
-              <Text style={[nmt.navBtnText, { color: colors.grey }]}>Next 3 months →</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-      {monthGroups.length === 0 ? (
-        allEntries.length === 0 && isOwn ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingTop: 12 }}>
-            <Text style={[nmt.emptyText, { color: colors.grey }]}>No schedule yet.</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/gigs' as any)} activeOpacity={0.75}>
-              <Text style={{ color: Colors.orange, fontSize: 13, fontWeight: '700' }}>Add +</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <Text style={[nmt.emptyText, { color: colors.grey }]}>
-            {allEntries.length === 0 ? 'No schedule listed yet.' : 'Nothing to show for this period.'}
-          </Text>
-        )
-      ) : (
-        monthGroups.map(group => (
-          <View key={`${group.year}-${group.month}`} style={nmt.monthGroup}>
-            <Text style={[nmt.monthLabel, { color: colors.grey }]}>
-              {LONG_MO[group.month].toUpperCase()} {group.year}
-            </Text>
-            <View style={{ paddingHorizontal: 16, gap: 10 }}>
-              {group.items.map(({ date, dateISO, entry }, i) => (
-                <NativeMusEntryCard
-                  key={`${dateISO}-${i}`}
-                  entry={entry} date={date}
-                  isOwn={isOwn} musicianId={musicianId} musicianName={musicianName}
-                />
-              ))}
-            </View>
-          </View>
-        ))
       )}
-      <View style={{ height: 20 }} />
+
+      {/* Availability calendar */}
+      <View style={sa_.section}>
+        <Text style={[sa_.sectionHeading, { color: colors.black }]}>Availability</Text>
+
+        <View style={sa_.calLegend}>
+          <View style={sa_.calLegendItem}>
+            <View style={[sa_.calLegendDot, { backgroundColor: '#16161A' }]} />
+            <Text style={[sa_.calLegendText, { color: colors.grey }]}>Gig</Text>
+          </View>
+          <View style={sa_.calLegendItem}>
+            <Text style={[sa_.calLegendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
+            <Text style={[sa_.calLegendText, { color: colors.grey }]}>Unavailable</Text>
+          </View>
+        </View>
+
+        {monthOffset > 0 && (
+          <TouchableOpacity onPress={() => setMonthOffset(0)} style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Back to today</Text>
+          </TouchableOpacity>
+        )}
+
+        {calMonths.map(({ year, month }) => (
+          <MusicianCalendarMonth
+            key={`${year}-${month}`}
+            entries={allEntries.map(e => e.entry)}
+            month={month} year={year} today={now}
+            windowStart={windowStart} windowEnd={windowEnd}
+            colors={colors}
+          />
+        ))}
+
+        <Text style={[sa_.calFooter, { color: colors.grey }]}>
+          Gigs here are confirmed Twaylo bookings. Unavailable days are set by the artist.
+        </Text>
+      </View>
+
     </View>
   );
+
 }
 
 // ── Pending Agent Claims (shown on own profile) ───────────────────
@@ -1487,8 +1419,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
   const [musician, setMusician]   = useState<Musician | null>(null);
   const [loading, setLoading]     = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'timetable' | 'gigs' | 'dashboard'>(
-    initialTab === 'music' ? 'music' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : initialTab === 'dashboard' ? 'dashboard' : 'overview'
+  const [activeTab, setActiveTab] = useState<'overview' | 'music' | 'techrider' | 'timetable' | 'gigs' | 'dashboard'>(
+    initialTab === 'music' ? 'music' : initialTab === 'techrider' ? 'techrider' : initialTab === 'timetable' ? 'timetable' : initialTab === 'gigs' ? 'gigs' : initialTab === 'dashboard' ? 'dashboard' : 'overview'
   );
   const [publicGigs, setPublicGigs]         = useState<any[]>([]);
   const [ownGigs, setOwnGigs]               = useState<any[]>([]);
@@ -1652,8 +1584,9 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
             {([
               { id: 'overview',   label: 'Overview'       },
-              { id: 'music',      label: 'Music & Social' },
-              { id: 'timetable',  label: 'Timetable'      },
+              { id: 'music',      label: 'Music & Media'       },
+              { id: 'techrider',  label: 'Tech Rider'           },
+              { id: 'timetable',  label: 'Shows & availability' },
             ] as const).map(tab => (
               <TouchableOpacity
                 key={tab.id}
@@ -1709,9 +1642,10 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           {/* Main content */}
           <ScrollView style={dash.main} contentContainerStyle={dash.mainContent}>
             {isOwn && <PendingAgentClaims musicianId={id} />}
-            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
-            {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
-            {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={false} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+            {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} isOwn={isOwn} />}
+            {activeTab === 'music'      && <MusicMediaTab m={musician} isOwn={isOwn} />}
+            {activeTab === 'techrider'  && <TechRiderTab m={musician} isOwn={isOwn} />}
+            {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
             {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
@@ -1745,37 +1679,44 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
       <ScrollView ref={scrollRef}>
 
-        {/* Hero banner */}
-        {musician.photoUrl ? (
-          <PositionedBanner uri={musician.photoUrl} position={musician.photoPosition} height={isWeb ? 360 : 280} />
-        ) : (
-          <View style={[styles.bannerPlaceholder, { backgroundColor: colors.bgFaint }]} />
-        )}
-
-        {/* Profile header */}
-        <View style={[styles.profileHead, { borderBottomColor: colors.border }]}>
-
-          {/* Breadcrumb */}
-          {breadcrumbParts.length > 0 && (
-            <Text style={styles.breadcrumb}>
-              {breadcrumbParts.join(' · ').toUpperCase()}
-            </Text>
+        {/* Cover photo */}
+        <View>
+          {(musician.coverPhotoUrl || musician.photoUrl) ? (
+            <PositionedBanner
+              uri={musician.coverPhotoUrl || musician.photoUrl!}
+              position={musician.photoPosition}
+              height={isWeb ? 300 : 220}
+            />
+          ) : (
+            <View style={[styles.bannerPlaceholder, { backgroundColor: colors.bgFaint }]} />
           )}
 
-          {/* Name + action buttons */}
+          {/* Profile avatar overlapping the cover */}
+          {musician.photoUrl && (
+            <View style={[styles.avatarWrap, { borderColor: colors.bg, backgroundColor: colors.bgFaint }]}>
+              <Image source={{ uri: musician.photoUrl }} style={styles.avatarImg} resizeMode="cover" />
+            </View>
+          )}
+        </View>
+
+        {/* Profile header */}
+        <View style={[styles.profileHead, { borderBottomColor: colors.border, paddingTop: musician.photoUrl ? 68 : 22 }]}>
+
+          {/* Name + insured badge */}
           <View style={[styles.nameRow, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
-            <Text style={[styles.name, { color: colors.black, flex: isMobileLayout ? undefined : 1 }]} numberOfLines={2}>
-              {musician.name || 'Unnamed Act'}
-            </Text>
-            {isOwn && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: isMobileLayout ? undefined : 1 }}>
+              <Text style={[styles.name, { color: colors.black }]} numberOfLines={2}>
+                {musician.name || 'Unnamed Act'}
+              </Text>
+              {musician.payment?.publicLiabilityHeld && (
+                <View style={styles.insuredBadge}>
+                  <Text style={styles.insuredBadgeText}>✓ Insured</Text>
+                </View>
+              )}
+            </View>
+            {/* Action buttons */}
+            {isOwn ? (
               <View style={[styles.ownerBtns, isMobileLayout && { marginTop: 10 }]}>
-                <TouchableOpacity
-                  style={[styles.outlineBtn, { borderColor: colors.border }]}
-                  onPress={() => router.push('/(tabs)/gigs' as any)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[styles.outlineBtnText, { color: colors.black }]}>My Gigs</Text>
-                </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.outlineBtn, { borderColor: colors.border }]}
                   onPress={() => router.push('/edit-profile')}
@@ -1783,29 +1724,48 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
                 >
                   <Text style={[styles.outlineBtnText, { color: colors.black }]}>Edit profile</Text>
                 </TouchableOpacity>
-
+              </View>
+            ) : user ? (
+              <View style={[styles.ownerBtns, isMobileLayout && { marginTop: 10 }]}>
+                {musician.songs && musician.songs.filter(s => s.title && s.url).length > 0 && (
+                  <TouchableOpacity
+                    style={[styles.outlineBtn, { borderColor: colors.border }]}
+                    onPress={() => { const s = musician.songs!.find(s => s.title && s.url); if (s?.url) Linking.openURL(s.url); }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.outlineBtnText, { color: colors.black }]}>▶ Listen</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
-                  style={[styles.outlineBtn, { borderColor: colors.border }]}
-                  onPress={async () => { await signOut(auth); router.replace('/'); }}
-                  activeOpacity={0.75}
+                  style={styles.primaryBtn}
+                  onPress={() => router.push({ pathname: '/messages', params: { recipientId: musician.id, recipientName: musician.name || 'Artist' } } as any)}
+                  activeOpacity={0.85}
                 >
-                  <Text style={[styles.outlineBtnText, { color: colors.grey }]}>Log out</Text>
+                  <Text style={styles.primaryBtnText}>Message artist</Text>
                 </TouchableOpacity>
               </View>
-            )}
+            ) : null}
           </View>
 
-          {/* Handle */}
-          {musician.username
-            ? <Text style={[styles.username, { color: colors.grey }]}>@{musician.username}</Text>
-            : null}
+          {/* Subline */}
+          {(() => {
+            const subParts = [
+              actType || null,
+              musician.location ? musician.location.split(',')[0]?.trim() : null,
+              musician.actSize || null,
+              musician.username ? `@${musician.username}` : null,
+            ].filter(Boolean);
+            return subParts.length > 0 ? (
+              <Text style={[styles.subline, { color: colors.grey }]}>{subParts.join(' · ')}</Text>
+            ) : null;
+          })()}
 
-          {/* Genre pills */}
+          {/* Genre chips — neutral */}
           {allGenres.length > 0 && (
             <View style={styles.genres}>
               {allGenres.map(g => (
-                <View key={g} style={styles.genrePill}>
-                  <Text style={styles.genreText}>{g}</Text>
+                <View key={g} style={[styles.genrePill, { borderColor: colors.border }]}>
+                  <Text style={[styles.genreText, { color: colors.black }]}>{g}</Text>
                 </View>
               ))}
             </View>
@@ -1815,31 +1775,38 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {/* Pending agent claim requests (own profile only) */}
         {isOwn && <PendingAgentClaims musicianId={id} />}
 
-        {/* Stats row */}
-        {statsItems.length > 0 && (
-          <View style={[styles.statsRow, { borderBottomColor: colors.border }]}>
-            {statsItems.map((stat, i) => (
-              <View
-                key={stat.label}
-                style={[
-                  styles.statCell,
-                  { borderRightColor: colors.border },
-                  i === statsItems.length - 1 && { borderRightWidth: 0 },
-                ]}
-              >
-                <Text style={[styles.statValue, { color: colors.black }]}>{stat.value}</Text>
-                <Text style={[styles.statLabel, { color: colors.greyLight }]}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        {/* Key facts strip */}
+        {(() => {
+          const kfItems: { value: string; sub: string }[] = [];
+          if (feeStr) kfItems.push({ value: feeStr, sub: 'Per gig' });
+          if (musician.averageDraw != null) kfItems.push({ value: String(musician.averageDraw), sub: 'Avg draw' });
+          if (musician.setLengths && musician.setLengths.length > 0) kfItems.push({ value: musician.setLengths.join(' · '), sub: musician.setType || 'Set lengths' });
+          if (musician.travel) kfItems.push({ value: musician.travel, sub: musician.location ? `From ${musician.location.split(',')[0]?.trim()}` : 'Travel' });
+          const confirmedCount = gigsForTabs.filter(g => g.startAt && g.venueName && (g.status == null || g.status === 'confirmed')).length;
+          if (confirmedCount > 0) kfItems.push({ value: String(confirmedCount), sub: 'Shows on Twaylo' });
+          if (kfItems.length === 0) return null;
+          return (
+            <View style={[styles.statsRow, { borderBottomColor: colors.border }]}>
+              {kfItems.map((kf, i) => (
+                <View
+                  key={kf.sub}
+                  style={[styles.statCell, { borderRightColor: colors.border }, i === kfItems.length - 1 && { borderRightWidth: 0 }]}
+                >
+                  <Text style={[styles.statValue, { color: colors.black }]}>{kf.value}</Text>
+                  <Text style={[styles.statLabel, { color: colors.greyLight }]}>{kf.sub}</Text>
+                </View>
+              ))}
+            </View>
+          );
+        })()}
 
         {/* Tab bar */}
         <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
           {([
             { id: 'overview',   label: 'Overview'       },
-            { id: 'music',      label: 'Music & Social' },
-            { id: 'timetable',  label: 'Timetable'      },
+            { id: 'music',      label: 'Music & Media'       },
+            { id: 'techrider',  label: 'Tech Rider'           },
+            { id: 'timetable',  label: 'Shows & availability' },
             ...(isOwn ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
           ] as const).map((tab: { id: string; label: string }) => (
             <TouchableOpacity
@@ -1859,9 +1826,10 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         </View>
 
         {/* Tab content */}
-        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} isOwn={isOwn} extraStats={overviewStatsItems} />}
-        {activeTab === 'music'      && <MusicTab m={musician} isOwn={isOwn} />}
-        {activeTab === 'timetable'  && <TimetableTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+        {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} isOwn={isOwn} />}
+        {activeTab === 'music'      && <MusicMediaTab m={musician} isOwn={isOwn} />}
+        {activeTab === 'techrider'  && <TechRiderTab m={musician} isOwn={isOwn} />}
+        {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
         {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
@@ -1880,6 +1848,114 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   );
 }
 
+// ── Overview tab styles ────────────────────────────────────────────
+const ov = StyleSheet.create({
+  layout:           { paddingHorizontal: isWeb ? 40 : 20, paddingTop: 28, paddingBottom: 40 },
+  main:             { flex: 1 },
+  aside:            { width: 300, flexShrink: 0 },
+  asideMobile:      { width: '100%' as any },
+  section:          { marginBottom: 28 },
+  sectionHeading:   { fontSize: 17, fontWeight: '700', letterSpacing: -0.2, marginBottom: 12 },
+  body:             { fontSize: 15, lineHeight: 22 },
+  readMore:         { fontSize: 14, color: Colors.orange, fontWeight: '600', marginTop: 8 },
+  metaLine:         { fontSize: 13, marginTop: 8, lineHeight: 18 },
+  memberRow:        { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
+  memberName:       { fontSize: 14, fontWeight: '600' },
+  memberRole:       { fontSize: 14 },
+  chipRow:          { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip:             { borderWidth: 1, borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4 },
+  chipText:         { fontSize: 12, fontWeight: '500' },
+  trackCard:        { borderRadius: 12, padding: 14, marginBottom: 12 },
+  trackCardHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  trackCardLabel:   { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const },
+  trackCardAllLink: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
+  trackCardRow:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  trackCardPlayBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#B84A06', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  trackCardPlayText:{ fontSize: 11, color: '#ffffff', marginLeft: 2 },
+  trackCardTitle:   { fontSize: 14, fontWeight: '600', color: '#ffffff' },
+  trackCardNotes:   { fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
+  asideCard:        { borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 },
+  asideCardTitle:   { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  linkRow:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  linkLabel:        { fontSize: 13 },
+  linkArrow:        { fontSize: 13 },
+  credRow:          { flexDirection: 'row', gap: 8, marginBottom: 6, alignItems: 'flex-start' },
+  credIcon:         { fontSize: 14, fontWeight: '700', marginTop: 1, flexShrink: 0 },
+  credText:         { fontSize: 13, lineHeight: 18, flex: 1 },
+  noteText:         { fontSize: 12, lineHeight: 17, marginTop: 4 },
+});
+
+// ── Music & Media tab styles ───────────────────────────────────────
+const mm = StyleSheet.create({
+  sectionHeading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  trackRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, gap: 12 },
+  trackNumWrap:   { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  trackNum:       { fontSize: 12, fontWeight: '600' },
+  featuredLabel:  { fontSize: 12, fontWeight: '700' },
+  trackTitle:     { fontSize: 14, fontWeight: '600' },
+  trackNotes:     { fontSize: 12, marginTop: 2, lineHeight: 17 },
+  trackDuration:  { fontSize: 13 },
+  openBtn:        { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  openBtnText:    { fontSize: 12, fontWeight: '600' },
+  photoGrid:      { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  photoTile:      { width: isWeb ? '23%' as any : '47%' as any, aspectRatio: 4 / 3, borderRadius: 8, overflow: 'hidden' },
+  lightboxBack:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  lightboxImg:    { width: '100%', height: '80%' },
+  lightboxClose:  { position: 'absolute', top: 48, right: 20, padding: 10 },
+  lightboxCloseText: { fontSize: 22, color: '#ffffff', fontWeight: '300' },
+  lightboxNav:    { position: 'absolute', top: '40%' as any, padding: 16 },
+  lightboxNavL:   { left: 0 },
+  lightboxNavR:   { right: 0 },
+  lightboxNavText:{ fontSize: 32, color: '#ffffff', fontWeight: '300' },
+});
+
+// ── Tech rider tab styles ──────────────────────────────────────────
+const tr_ = StyleSheet.create({
+  card:           { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  cardTitle:      { fontSize: 15, fontWeight: '700', marginBottom: 12 },
+  docsRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  docBtn:         { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  docBtnText:     { fontSize: 13, fontWeight: '600' },
+  specRow:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  specLabel:      { fontSize: 13 },
+  specValue:      { fontSize: 13, fontWeight: '600', textAlign: 'right' as const, flex: 1, marginLeft: 16 },
+  inputTable:     { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  inputRow:       { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 10 },
+  inputHeader:    { borderBottomWidth: 1 },
+  headerText:     { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  inputCell:      { fontSize: 13 },
+  inputChNum:     { width: 30 },
+  inputMicDi:     { width: 80, textAlign: 'right' as const },
+  backlineSection:{ },
+  backlineLabel:  { fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  chipRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip:           { borderWidth: 1, borderRadius: 20, paddingHorizontal: 11, paddingVertical: 4 },
+  chipOutline:    { borderWidth: 1.5 },
+  chipText:       { fontSize: 12, fontWeight: '500' },
+  notesText:      { fontSize: 13, lineHeight: 19, marginTop: 10 },
+  lockedNote:     { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 16 },
+  lockedNoteText: { fontSize: 13, lineHeight: 19, fontStyle: 'italic' as const },
+  editBtn:        { borderWidth: 1, borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginBottom: 24 },
+  editBtnText:    { fontSize: 14, fontWeight: '600' },
+});
+
+// ── Shows & availability tab styles ───────────────────────────────
+const sa_ = StyleSheet.create({
+  section:        { marginBottom: 32 },
+  sectionHeading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2, marginBottom: 12 },
+  showRow:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, gap: 12 },
+  showVenue:      { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  showMeta:       { fontSize: 13, marginBottom: 2 },
+  showDate:       { fontSize: 13 },
+  slotBadge:      { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0, marginTop: 2 },
+  slotBadgeText:  { fontSize: 12, fontWeight: '600' },
+  calLegend:      { flexDirection: 'row', gap: 16, marginBottom: 14 },
+  calLegendItem:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  calLegendDot:   { width: 8, height: 8, borderRadius: 4 },
+  calLegendText:  { fontSize: 12 },
+  calFooter:      { fontSize: 12, lineHeight: 17, marginTop: 10, fontStyle: 'italic' as const },
+});
+
 // ── Styles ────────────────────────────────────────────────────────
 
 const BANNER_H = isWeb ? 360 : 280;
@@ -1887,6 +1963,28 @@ const BANNER_H = isWeb ? 360 : 280;
 const styles = StyleSheet.create({
   safe:              { flex: 1 },
   bannerPlaceholder: { width: '100%', height: BANNER_H },
+
+  // Profile avatar overlapping cover
+  avatarWrap: {
+    position: 'absolute',
+    bottom: -56, left: isWeb ? 40 : 20,
+    width: 112, height: 112,
+    borderRadius: 56, borderWidth: 3,
+    overflow: 'hidden',
+    zIndex: 2,
+  },
+  avatarImg: { width: '100%', height: '100%' },
+
+  // Insured badge
+  insuredBadge:     { backgroundColor: '#EEF0F7', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  insuredBadgeText: { fontSize: 11, fontWeight: '700', color: '#2B3A67' },
+
+  // Subline
+  subline: { fontSize: 13, marginBottom: 10, marginTop: 2 },
+
+  // Primary action button
+  primaryBtn:     { backgroundColor: '#B84A06', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 9 },
+  primaryBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 
   backOverlayWrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
   backOverlay: {
@@ -1933,8 +2031,8 @@ const styles = StyleSheet.create({
   orangeBtnText:  { fontSize: 13, fontWeight: '700', color: '#111111' },
   username:       { fontSize: 13, marginBottom: 10 },
   genres:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
-  genrePill:      { borderWidth: 1, borderColor: Colors.orange, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
-  genreText:      { fontSize: 12, color: Colors.orange, fontWeight: '500' },
+  genrePill:      { borderWidth: 1, borderColor: '#E7E6E3', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  genreText:      { fontSize: 12, color: '#16161A', fontWeight: '500' },
 
   // Stats row
   statsRow: {
@@ -1957,7 +2055,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: isWeb ? 40 : 0,
   },
   tab:           { paddingVertical: 14, paddingHorizontal: isWeb ? 20 : 18, borderBottomWidth: 2, borderBottomColor: 'transparent' },
-  tabActive:     { borderBottomColor: Colors.orange },
+  tabActive:     { borderBottomColor: '#16161A' },
   tabText:       { fontSize: 14, fontWeight: '600' },
   tabTextActive: { fontWeight: '700' },
 
