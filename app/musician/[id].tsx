@@ -385,6 +385,18 @@ function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
   const photos = m.photos || [];
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
+  // Artist pages: prefer new artistPages array, fall back to legacy top-level fields
+  const pageMap: Record<string, string> = {};
+  (m.artistPages || []).forEach(p => { if (p.url) pageMap[p.platform] = p.url; });
+  const artistPageLinks = [
+    { label: 'Spotify',       url: pageMap['Spotify']       || m.spotify    || '' },
+    { label: 'Apple Music',   url: pageMap['Apple Music']   || m.appleMusic || '' },
+    { label: 'SoundCloud',    url: pageMap['SoundCloud']    || '' },
+    { label: 'Bandcamp',      url: pageMap['Bandcamp']      || '' },
+    { label: 'YouTube Music', url: pageMap['YouTube Music'] || '' },
+    { label: 'Other',         url: pageMap['Other']         || '' },
+  ].filter(l => l.url);
+
   function detectSource(url: string): string {
     if (!url) return 'Link';
     if (url.includes('spotify.com'))                      return 'Spotify';
@@ -396,6 +408,39 @@ function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
 
   return (
     <View style={styles.tabContent}>
+
+      {/* Artist Pages */}
+      {(artistPageLinks.length > 0 || isOwn) && (
+        <View style={styles.section}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={[mm.sectionHeading, { color: colors.black }]}>Artist Pages</Text>
+            {isOwn && (
+              <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Music' as any)}>
+                <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '700' }}>
+                  {artistPageLinks.length === 0 ? 'Add +' : 'Manage'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {artistPageLinks.length > 0 ? (
+            <View style={[mm.artistPagesCard, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+              {artistPageLinks.map((link, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[mm.artistPageRow, { borderBottomColor: colors.border }, i === artistPageLinks.length - 1 && { borderBottomWidth: 0 }]}
+                  onPress={() => Linking.openURL(link.url)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[mm.artistPageLabel, { color: colors.black }]}>{link.label}</Text>
+                  <Text style={{ fontSize: 16, color: colors.grey }}>→</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : isOwn ? (
+            <Text style={[styles.emptyState, { color: colors.greyLight }]}>No streaming links added yet.</Text>
+          ) : null}
+        </View>
+      )}
 
       {/* Tracks */}
       <View style={styles.section}>
@@ -2054,8 +2099,11 @@ const ov = StyleSheet.create({
 
 // ── Music & Media tab styles ───────────────────────────────────────
 const mm = StyleSheet.create({
-  sectionHeading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
-  trackRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, gap: 12 },
+  sectionHeading:   { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  artistPagesCard:  { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  artistPageRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: 1 },
+  artistPageLabel:  { fontSize: 14, fontWeight: '600' },
+  trackRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, gap: 12 },
   trackNumWrap:   { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   trackNum:       { fontSize: 12, fontWeight: '600' },
   featuredLabel:  { fontSize: 12, fontWeight: '700' },
