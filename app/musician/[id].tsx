@@ -2082,7 +2082,7 @@ const ov = StyleSheet.create({
   trackCardLabel:   { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' as const },
   trackCardAllLink: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
   trackCardRow:     { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  trackCardPlayBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#B84A06', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  trackCardPlayBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#fa830c', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   trackCardPlayText:{ fontSize: 11, color: '#ffffff', marginLeft: 2 },
   trackCardTitle:   { fontSize: 14, fontWeight: '600', color: '#ffffff' },
   trackCardNotes:   { fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 2 },
@@ -2208,7 +2208,7 @@ const styles = StyleSheet.create({
   subline: { fontSize: 13, marginBottom: 10, marginTop: 2 },
 
   // Primary action button
-  primaryBtn:     { backgroundColor: '#B84A06', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 9 },
+  primaryBtn:     { backgroundColor: '#fa830c', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 9 },
   primaryBtnText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
 
   backOverlayWrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
