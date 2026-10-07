@@ -2527,90 +2527,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       })}
                     </View>
 
-                    {/* Signature status */}
-                    {(mySig || otherSig || bothSigned) && (
-                      <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
-                        {[
-                          { label: myLabel,    sig: mySig    },
-                          { label: otherLabel, sig: otherSig },
-                        ].map((row, i) => (
-                          <View
-                            key={row.label}
-                            style={[
-                              { paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-                              i === 0 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                            ]}
-                          >
-                            <Text style={{ fontSize: 14, color: row.sig ? '#22c55e' : colors.greyLight, width: 18 }}>
-                              {row.sig ? '✓' : '○'}
-                            </Text>
-                            <View style={{ flex: 1 }}>
-                              <Text style={{ fontSize: 12, fontWeight: '700', color: row.sig ? colors.black : colors.grey }}>
-                                {row.label}
-                              </Text>
-                              {row.sig ? (
-                                <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>
-                                  Signed by {row.sig.signatoryName} · {new Date(row.sig.signedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                </Text>
-                              ) : (
-                                <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>Pending signature</Text>
-                              )}
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-
-                    {/* Action buttons */}
-                    {allReady && !mySig ? (
-                      <TouchableOpacity
-                        style={{
-                          marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
-                          borderColor: colors.black, alignItems: 'center', backgroundColor: colors.bgFaint,
-                        }}
-                        onPress={() => {
-                          setSignName(myLegalIdentity?.signatoryName ?? '');
-                          setSignAgreed(false);
-                          setShowSignModal(true);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.black }}>
-                          Review and sign
-                        </Text>
-                        <Text style={{ fontSize: 11, color: colors.grey, marginTop: 2 }}>
-                          {otherSig ? 'Other party has already signed' : 'Both parties must sign to execute'}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : allReady && mySig && !otherSig ? (
-                      <View
-                        style={{
-                          marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
-                          borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint,
-                          opacity: 0.6,
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.grey }}>
-                          Waiting for {otherLabel.toLowerCase()} to sign
-                        </Text>
-                      </View>
-                    ) : bothSigned ? (
-                      <View
-                        style={{
-                          marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
-                          borderColor: '#22c55e' + '55', alignItems: 'center', backgroundColor: '#22c55e' + '0a',
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#22c55e' }}>
-                          Contract fully executed
-                        </Text>
-                        <Text style={{ fontSize: 11, color: '#22c55e' + 'aa', marginTop: 2 }}>
-                          Both parties have signed
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {/* Download button — always shown */}
+                    {/* Download button */}
                     <TouchableOpacity
                       style={{
                         marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
@@ -2631,6 +2548,138 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                         </Text>
                       )}
                     </TouchableOpacity>
+                  </>
+                );
+              })()}
+
+              {/* ── Signing ───────────────────────────────────── */}
+              {(() => {
+                const stageMap = (enquiry as any).stages as Record<string, StageData> | undefined;
+                const stagesDone = {
+                  gigDetails:      computeStageStatus('gigDetails',     'both', stageMap?.['gigDetails'],     enquiry) === 'complete',
+                  setTimesLocked:  computeStageStatus('setTimesLocked', 'both', stageMap?.['setTimesLocked'], enquiry) === 'complete',
+                  paymentTermsSet: computeStageStatus('paymentTermsSet','both', stageMap?.['paymentTermsSet'],enquiry) === 'complete',
+                  techRiderReviewed: (() => { const d = stageMap?.['techRiderReviewed']; return !!(d?.skipped || d?.venueConfirmed); })(),
+                };
+                const myLegalOk    = myLegalIdentity ? isLegalIdentityComplete(myLegalIdentity) : legalFetched ? false : null;
+                const otherSnapKey = isVenue ? 'artistLegalSnapshot' : 'venueLegalSnapshot';
+                const otherLegalRaw = (enquiry as any)[otherSnapKey] as Partial<LegalIdentity> | null | undefined;
+                const otherLegalOk  = otherLegalRaw ? isLegalIdentityComplete({ ...BLANK_LEGAL, ...otherLegalRaw }) : false;
+                const legalDone     = myLegalOk === true && otherLegalOk;
+                const allReady = stagesDone.gigDetails && stagesDone.setTimesLocked &&
+                  stagesDone.paymentTermsSet && stagesDone.techRiderReviewed && legalDone;
+
+                const mySignKey    = isVenue ? 'venueSignature'  : 'artistSignature';
+                const otherSignKey = isVenue ? 'artistSignature' : 'venueSignature';
+                const mySig    = (enquiry as any)[mySignKey]    as { signatoryName: string; signedAt: number } | null | undefined;
+                const otherSig = (enquiry as any)[otherSignKey] as { signatoryName: string; signedAt: number } | null | undefined;
+                const bothSigned = !!(mySig && otherSig);
+                const myLabel    = isVenue ? 'Venue'  : 'Artist';
+                const otherLabel = isVenue ? 'Artist' : 'Venue';
+
+                return (
+                  <>
+                    <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Signing</Text>
+
+                    {/* Both-party signature status — always visible */}
+                    <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                      {([
+                        { label: myLabel,    sig: mySig    },
+                        { label: otherLabel, sig: otherSig },
+                      ] as { label: string; sig: { signatoryName: string; signedAt: number } | null | undefined }[]).map((row, i) => (
+                        <View
+                          key={row.label}
+                          style={[
+                            { paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+                            i === 0 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                          ]}
+                        >
+                          <View style={{
+                            width: 28, height: 28, borderRadius: 14,
+                            backgroundColor: row.sig ? '#22c55e18' : colors.bgFaint,
+                            borderWidth: 1, borderColor: row.sig ? '#22c55e66' : colors.border,
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Text style={{ fontSize: 13, color: row.sig ? '#22c55e' : colors.greyLight }}>
+                              {row.sig ? '✓' : '○'}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: row.sig ? colors.black : colors.grey }}>
+                              {row.label}
+                            </Text>
+                            {row.sig ? (
+                              <Text style={{ fontSize: 11, color: colors.grey, marginTop: 1 }}>
+                                {row.sig.signatoryName} · {new Date(row.sig.signedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </Text>
+                            ) : (
+                              <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>
+                                {!allReady ? 'Complete checklist first' : 'Pending signature'}
+                              </Text>
+                            )}
+                          </View>
+                          {row.sig && (
+                            <View style={{ backgroundColor: '#22c55e18', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: '#16a34a' }}>Signed</Text>
+                            </View>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* Fully executed banner */}
+                    {bothSigned && (
+                      <View style={{
+                        marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
+                        borderColor: '#22c55e55', alignItems: 'center', backgroundColor: '#22c55e0a',
+                      }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#22c55e' }}>Contract fully executed</Text>
+                        <Text style={{ fontSize: 11, color: '#22c55eaa', marginTop: 2 }}>Both parties have signed</Text>
+                      </View>
+                    )}
+
+                    {/* Sign / waiting CTA */}
+                    {allReady && !mySig ? (
+                      <TouchableOpacity
+                        style={{
+                          marginTop: 8, paddingVertical: 14, borderRadius: 10,
+                          backgroundColor: colors.black, alignItems: 'center',
+                        }}
+                        onPress={() => {
+                          setSignName(myLegalIdentity?.signatoryName ?? '');
+                          setSignAgreed(false);
+                          setShowSignModal(true);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#ffffff' }}>
+                          {otherSig ? 'Sign now — other party is waiting' : 'Review and sign'}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>
+                          Both parties must sign to execute the contract
+                        </Text>
+                      </TouchableOpacity>
+                    ) : allReady && mySig && !otherSig ? (
+                      <View style={{
+                        marginTop: 8, paddingVertical: 13, borderRadius: 10, borderWidth: 1,
+                        borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint,
+                        opacity: 0.65,
+                      }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.grey }}>
+                          Waiting for {otherLabel.toLowerCase()} to sign
+                        </Text>
+                      </View>
+                    ) : !allReady ? (
+                      <View style={{
+                        marginTop: 8, paddingVertical: 12, borderRadius: 10, borderWidth: 1,
+                        borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint,
+                        opacity: 0.55,
+                      }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.grey }}>
+                          Complete contract checklist above to unlock signing
+                        </Text>
+                      </View>
+                    ) : null}
                   </>
                 );
               })()}
