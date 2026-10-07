@@ -1580,23 +1580,40 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const [pitchCopied,   setPitchCopied]    = useState(false);
   const [linkCopied,    setLinkCopied]     = useState(false);
 
-  function buildSharePitch(m: Musician, profileUrl: string): string {
+  function buildSharePitch(m: Musician, profileUrl: string, avgDraw: number | null): string {
     const actT   = Array.isArray(m.artistType) ? m.artistType.join(' / ') : m.artistType;
     const loc    = m.location?.split(',')[0]?.trim();
-    const genres = (m.genre || []).filter((g: string) => g !== 'Other').slice(0, 4).join(', ');
+    const genres = (m.genre || []).filter((g: string) => g !== 'Other').join(', ');
+    const isSolo = m.memberCount === 'Solo' ||
+      (typeof m.artistType === 'string' && ['Solo', 'Solo artist', 'Singer-songwriter', 'DJ'].includes(m.artistType));
+    const we   = isSolo ? "I'm"  : "We're";
+    const ours = isSolo ? 'my'   : 'our';
+    const wed  = isSolo ? "I'd"  : "We'd";
+    const wewere = isSolo ? "I was" : "We were";
 
-    const lines: string[] = ['Hi,', ''];
+    // "We're The Dahlias, an Indie, Rock Band based in Mount Eliza."
+    const genreActPart = [genres, actT].filter(Boolean).join(' ');
+    const article = /^[aeiouAEIOU]/.test(genreActPart) ? 'an' : 'a';
+    const introParts = [
+      `${we} ${m.name || 'an artist'}`,
+      genreActPart ? `${article} ${genreActPart}` : null,
+      loc ? `based in ${loc}` : null,
+    ].filter(Boolean);
 
-    const intro = [m.name, actT ? `a ${actT}` : null, loc ? `based in ${loc}` : null].filter(Boolean).join(', ');
-    if (intro) lines.push(`${intro}.`);
-    if (genres) lines.push(genres);
-    lines.push('');
+    const lines: string[] = [
+      'Hi,',
+      '',
+      `${introParts.join(', ')}.`,
+      '',
+      `${wed} love to play at your venue. ${wewere} thinking [dates/times].`,
+      '',
+    ];
 
-    if (m.averageDraw) lines.push(`Average draw: ~${m.averageDraw} people per show`);
-    if (m.feeMin != null && m.feeMax != null) lines.push(`Fee: $${m.feeMin}–$${m.feeMax} per gig excl. GST`);
-    else if (m.feeMin != null) lines.push(`Fee: from $${m.feeMin} per gig excl. GST`);
+    const draw = avgDraw ?? m.averageDraw ?? null;
+    if (draw) lines.push(`Average draw: ~${draw} people per show`);
+    if (m.feeMin != null && m.feeMax != null) lines.push(`Fee: $${m.feeMin}–$${m.feeMax} per gig`);
+    else if (m.feeMin != null) lines.push(`Fee: from $${m.feeMin} per gig`);
     if (m.setLengths?.length) lines.push(`Set lengths: ${m.setLengths.join(', ')}`);
-    if (m.memberCount) lines.push(`Line-up: ${m.memberCount}`);
 
     const pastGigs = (m.gigHistory || []).filter((g: GigEntry) => g.venue).slice(0, 3).map((g: GigEntry) => g.venue);
     if (pastGigs.length > 0) {
@@ -1607,14 +1624,15 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     const pageMap: Record<string, string> = {};
     (m.artistPages || []).forEach((p: ArtistPage) => { if (p.url) pageMap[p.platform] = p.url; });
     const listenUrl = pageMap['Spotify'] || m.spotify || pageMap['Apple Music'] || m.appleMusic || m.songs?.find((s: Song) => s.url)?.url;
+
+    lines.push('');
+    lines.push(`Attached is some of ${ours} music and general info. All ${ours} details and full profile (tracks, tech rider, booking info) can be found at:`);
+    lines.push(profileUrl);
     if (listenUrl) {
       lines.push('');
       lines.push(`Listen: ${listenUrl}`);
     }
 
-    lines.push('');
-    lines.push('Full profile (tracks, tech rider, booking info):');
-    lines.push(profileUrl);
     return lines.join('\n');
   }
 
@@ -1631,9 +1649,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     setShowShareModal(true);
   }
 
-  // Derive pitch + URL whenever modal is open
   const profileUrl  = `https://twaylo.com.au/musician/${musician?.username || id}`;
-  const sharePitch  = musician ? buildSharePitch(musician, profileUrl) : '';
   const isMobileLayout = !isWeb || width < 768;
 
   useEffect(() => {
@@ -1734,6 +1750,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     ? Math.round(gigsWithAttendance.reduce((sum: number, g: any) => sum + g.attendance, 0) / gigsWithAttendance.length)
     : null;
   const gigsThisYear        = confirmedPastGigs.filter(g => g.startAt.toDate().getFullYear() === year).length;
+  const sharePitch          = buildSharePitch(musician, profileUrl, liveAverageDraw);
 
   const typicalFeeText = musician.payment?.typicalFee?.trim() || null;
   const feeStr = typicalFeeText
