@@ -43,8 +43,7 @@ service cloud.firestore {
 
     // ── Users ────────────────────────────────────────────────────────────────
     // Public read is needed for username uniqueness checks before signup (unauthenticated).
-    // display names, usernames, and user types are not sensitive, and email
-    // is already exposed on the publicly readable bandProfiles/agentProfiles collections.
+    // display names, usernames, and user types are not sensitive.
     match /users/{uid} {
       allow read:   if true;
       allow create: if isOwner(uid);
@@ -60,9 +59,10 @@ service cloud.firestore {
         (isSignedIn() && exists(/databases/$(database)/documents/agentRoster/$(request.auth.uid + '_' + uid)));
       allow delete: if isOwner(uid) || isAdmin();
 
-      // Private legal identity — owner-only, never publicly readable
+      // Private fields (invoicing, contact, hospitality) — owner and admin only
       match /private/{docId} {
-        allow read, write: if isOwner(uid);
+        allow read:  if isOwner(uid) || isAdmin();
+        allow write: if isOwner(uid);
       }
     }
 
@@ -120,9 +120,10 @@ service cloud.firestore {
         allow write: if isVenueOwner(venueId) || isAdmin();
       }
 
-      // Private legal identity — venue owner-only, never publicly readable
+      // Private fields (contact, invoicing) — venue owner and admin only
       match /private/{docId} {
-        allow read, write: if isVenueOwner(venueId);
+        allow read:  if isVenueOwner(venueId) || isAdmin();
+        allow write: if isVenueOwner(venueId);
       }
     }
 

@@ -166,13 +166,18 @@ function buildContractHtml({
   // ── Parties ───────────────────────────────────────────────────────────────
   const venueLegalName  = venueLegal.legalName  || enquiry.venueName;
   const artistLegalName = artistLegal.legalName || enquiry.bandName;
+  // Venue ABN is stored in the payment object on the public venue doc.
   const venueAbn  = venueData.payment?.abn || '';
   const venueAcn  = venueLegal.acn || '';
-  const artistAbn = artistProfile.payment?.abn || '';
-  const artistAcn = artistLegal.acn || '';
-  const artistAbnStatus    = artistProfile.payment?.abnStatus as string || '';
-  const artistGstRegistered = !!artistProfile.payment?.gstRegistered;
-  const canProvideInvoice   = !!artistProfile.payment?.canProvideInvoice;
+  // Artist payment: prefer the snapshot stored on the enquiry at submission
+  // (artistPayment), fall back to the public profile fields for old enquiries
+  // that predate the privacy split.
+  const ap = (enquiry as any).artistPayment || {};
+  const artistAbn           = ap.abn              || artistProfile.payment?.abn        || '';
+  const artistAcn           = artistLegal.acn || '';
+  const artistAbnStatus     = ap.abnStatus         || artistProfile.payment?.abnStatus  as string || '';
+  const artistGstRegistered = ap.gstRegistered     ?? !!artistProfile.payment?.gstRegistered;
+  const canProvideInvoice   = ap.canProvideInvoice ?? !!artistProfile.payment?.canProvideInvoice;
   const artistEntityType    = artistLegal.entityType || '';
 
   const venueAddr  = venueLegal.addressLine

@@ -85,7 +85,7 @@ type Profile = {
   setType: string; ageRestriction: string; setLengths: string[];
   feeOpenToOffers: boolean; drawEstimateBand: string;
   about: string; photoUrl: string; photoPosition: { x: number; y: number }; coverPhotoUrl: string;
-  instagram: string; tiktok: string; spotify: string; appleMusic: string; youtube: string;
+  instagram: string; tiktok: string; spotify: string; appleMusic: string; youtube: string; website: string;
   customLinks: { label: string; url: string }[];
   songs: Song[]; artistPages: ArtistPage[]; photos: string[]; videos: string[];
   gigHistory: GigHistoryEntry[]; videoObjects?: VideoObject[];
@@ -117,7 +117,7 @@ const BLANK: Profile = {
   memberCount: '', members: [], formed: '',
   setType: '', ageRestriction: '', setLengths: [],
   about: '', photoUrl: '', photoPosition: { x: 50, y: 50 }, coverPhotoUrl: '',
-  instagram: '', tiktok: '', spotify: '', appleMusic: '', youtube: '',
+  instagram: '', tiktok: '', spotify: '', appleMusic: '', youtube: '', website: '',
   customLinks: [], songs: [], artistPages: [], photos: [], videos: [],
   gigHistory: [], videoObjects: [],
   techRider: {}, techRiderDocs: [], techRiderBools: {},
@@ -530,6 +530,47 @@ export default function EditProfileScreen() {
           setSavedLegal(l);
         }
       }).catch(() => {});
+
+      // Load private contact + payment details (may not exist yet — falls back to
+      // what was already merged from the public doc above via BLANK_PAYMENT).
+      getDoc(doc(db, 'bandProfiles', uid, 'private', 'details')).then(dSnap => {
+        if (!dSnap.exists()) return;
+        const pd = dSnap.data() as Record<string, any>;
+        setProfile(prev => ({
+          ...prev,
+          email:       pd.email       ?? prev.email,
+          phone:       pd.phone       ?? prev.phone,
+          hospitality: { ...BLANK_HOSP, ...(pd.hospitality || {}), ...prev.hospitality },
+          payment: {
+            ...prev.payment,
+            abn:                  pd.payment?.abn                  ?? prev.payment.abn,
+            abnStatus:            pd.payment?.abnStatus            ?? prev.payment.abnStatus,
+            methods:              pd.payment?.methods              ?? prev.payment.methods,
+            invoicingName:        pd.payment?.invoicingName        ?? prev.payment.invoicingName,
+            timing:               pd.payment?.timing               ?? prev.payment.timing,
+            timingOther:          pd.payment?.timingOther          ?? prev.payment.timingOther,
+            paymentNotes:         pd.payment?.paymentNotes         ?? prev.payment.paymentNotes,
+            insuranceCertAvailable: pd.payment?.insuranceCertAvailable ?? prev.payment.insuranceCertAvailable,
+          },
+        }));
+        setSaved(prev => ({
+          ...prev,
+          email:       pd.email       ?? prev.email,
+          phone:       pd.phone       ?? prev.phone,
+          hospitality: { ...BLANK_HOSP, ...(pd.hospitality || {}), ...prev.hospitality },
+          payment: {
+            ...prev.payment,
+            abn:                  pd.payment?.abn                  ?? prev.payment.abn,
+            abnStatus:            pd.payment?.abnStatus            ?? prev.payment.abnStatus,
+            methods:              pd.payment?.methods              ?? prev.payment.methods,
+            invoicingName:        pd.payment?.invoicingName        ?? prev.payment.invoicingName,
+            timing:               pd.payment?.timing               ?? prev.payment.timing,
+            timingOther:          pd.payment?.timingOther          ?? prev.payment.timingOther,
+            paymentNotes:         pd.payment?.paymentNotes         ?? prev.payment.paymentNotes,
+            insuranceCertAvailable: pd.payment?.insuranceCertAvailable ?? prev.payment.insuranceCertAvailable,
+          },
+        }));
+      }).catch(() => {});
     }).catch(() => {}).finally(() => setLoading(false));
   }, [uid]);
 
@@ -748,15 +789,32 @@ export default function EditProfileScreen() {
     let didError = false;
     try {
       const toNum = (v: string) => { const n = Number(v); return isNaN(n) || v === '' ? null : n; };
+
+      // Split public vs private fields.
+      // Public payment: only what visitors need to see (credentials, fee display).
+      // Private details: ABN number, payment terms, contact, hospitality.
+      const cleanAbn = profile.payment.abn.replace(/\s/g, '');
+      const { email, phone, hospitality, payment, ...publicRest } = profile;
+      const { abn, abnStatus, methods, invoicingName, timing, timingOther, paymentNotes, insuranceCertAvailable, ...publicPayment } = payment;
+      const hasAbn = (abnStatus === 'has_abn') && !!cleanAbn;
+
       const payload = {
-        ...profile,
+        ...publicRest,
         username: newUsername,
         feeMin: toNum(profile.feeMin),
         feeMax: toNum(profile.feeMax),
         averageDraw: toNum(profile.averageDraw),
-        // Store ABN digits-only in Firestore; display formatting is client-side only
-        payment: { ...profile.payment, abn: profile.payment.abn.replace(/\s/g, '') },
+        payment: { ...publicPayment, hasAbn },
       };
+
+      const privateDetails = {
+        email,
+        phone,
+        hospitality,
+        payment: { abn: cleanAbn, abnStatus, methods, invoicingName, timing, timingOther, paymentNotes, insuranceCertAvailable },
+        updatedAt: Date.now(),
+      };
+
       const legalPayload: LegalIdentity = {
         ...legalIdentity,
         acn: legalIdentity.acn.replace(/\s/g, ''),
@@ -764,6 +822,7 @@ export default function EditProfileScreen() {
       };
       await Promise.all([
         setDoc(doc(db, 'bandProfiles', uid), payload, { merge: true }),
+        setDoc(doc(db, 'bandProfiles', uid, 'private', 'details'), privateDetails),
         updateDoc(doc(db, 'users', uid), { username: newUsername }),
       ]);
       setDoc(doc(db, 'bandProfiles', uid, 'private', 'legal'), legalPayload)
@@ -1055,20 +1114,17 @@ export default function EditProfileScreen() {
 
         <SectionCard title="Social links" subtitle="Paste a handle, full URL or @name. We'll clean it up.">
           {[
-            { key: 'instagram', label: 'Instagram' },
-            { key: 'tiktok',    label: 'TikTok'    },
-            { key: 'youtube',   label: 'YouTube'   },
+            { key: 'instagram', label: 'Instagram', placeholder: 'https://www.instagram.com/yourhandle' },
+            { key: 'tiktok',    label: 'TikTok',    placeholder: 'https://www.tiktok.com/@yourhandle'   },
+            { key: 'youtube',   label: 'YouTube',   placeholder: 'https://www.youtube.com/@yourhandle'  },
+            { key: 'website',   label: 'Website',   placeholder: 'https://yourbandname.com'             },
           ].map((p, i, arr) => (
             <FieldRow key={p.key} label={p.label} last={i === arr.length - 1 && profile.customLinks.length === 0}>
               <Input
                 value={(profile as any)[p.key] || ''}
                 onChangeText={(v: string) => set(p.key as any, v)}
                 onBlur={() => set(p.key as any, normaliseHandle((profile as any)[p.key] || '', p.key))}
-                placeholder={
-                  p.key === 'instagram' ? 'https://www.instagram.com/yourhandle'
-                  : p.key === 'tiktok'  ? 'https://www.tiktok.com/@yourhandle'
-                  :                       'https://www.youtube.com/@yourhandle'
-                }
+                placeholder={p.placeholder}
               />
             </FieldRow>
           ))}
@@ -1768,6 +1824,17 @@ export default function EditProfileScreen() {
             <View style={{ gap: 8 }}>
               <Pills options={MONITORING_OPTS} value={profile.techRider?.monitoringType || ''} onSelect={v => setRider('monitoringType', v)} />
               <Input value={profile.techRider?.monitoring || ''} onChangeText={(v: string) => setRider('monitoring', v)} placeholder="Mixes needed, e.g. 3 wedge mixes, vocals in all" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={{ fontSize: 13, color: colors.grey, flex: 1 }}>Number of monitor mixes</Text>
+                <TextInput
+                  style={[sh.input, { width: 64, backgroundColor: colors.bgFaint, borderColor: colors.border, color: colors.black, textAlign: 'center' }]}
+                  value={profile.techRider?.monitorMixes || ''}
+                  onChangeText={(v: string) => setRider('monitorMixes', v.replace(/[^0-9]/g, ''))}
+                  placeholder="2"
+                  placeholderTextColor={Colors.greyLight}
+                  keyboardType="number-pad"
+                />
+              </View>
             </View>
           </FieldRow>
         </SectionCard>
@@ -1857,9 +1924,14 @@ export default function EditProfileScreen() {
         </SectionCard>
 
         <SectionCard title="Production">
-          <FieldRow label="Touring with own PA and engineer" sublabel="Venues without in-house sound will see you're self-sufficient.">
+          <FieldRow label="Touring with own PA" sublabel="Venues without in-house sound will see you're self-sufficient.">
             <View style={{ alignItems: 'flex-end' }}>
               <Switch value={profile.techRiderBools?.ownPA || false} onValueChange={(v: boolean) => setRiderBool('ownPA', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#fff" />
+            </View>
+          </FieldRow>
+          <FieldRow label="Touring with own engineer" sublabel="You bring your FOH or monitor engineer.">
+            <View style={{ alignItems: 'flex-end' }}>
+              <Switch value={profile.techRiderBools?.ownEngineer || false} onValueChange={(v: boolean) => setRiderBool('ownEngineer', v)} trackColor={{ false: '#e0e0e0', true: Colors.orange }} thumbColor="#fff" />
             </View>
           </FieldRow>
           <FieldRow label="Lighting">

@@ -649,7 +649,9 @@ export default function VenuesScreen() {
         !!(v as any).username?.trim() &&
         !!(v as any).venueType?.trim() &&
         !!(v as any).streetAddress?.trim() &&
-        !!(v as any).email?.trim()
+        // hasBookingContact is set when a venue owner has entered their email.
+        // Falls back to the legacy email field for venues not yet re-saved.
+        ((v as any).hasBookingContact || !!(v as any).email?.trim())
       ));
     } catch (e) { console.error(e); }
     finally { setLoading(false); setRefreshing(false); }

@@ -51,9 +51,18 @@ function PositionedBanner({ uri, position, height }: { uri: string; position?: {
 
 const MAX_DESC = 320;
 
+/** Derives a display-ready act size from the structured member list or memberCount field.
+ *  `actSize` was a legacy stored field never written by settings; this replaces it. */
+function getActSize(m: { memberCount?: string; members?: any[] }): string | null {
+  if (m.memberCount?.trim()) return m.memberCount.trim();
+  if (m.members && m.members.length > 0) return `${m.members.length}-piece`;
+  return null;
+}
+
 
 type CustomLink = { label: string; url: string };
-type Song       = { title?: string; url?: string; duration?: string };
+type Song       = { title?: string; url?: string; notes?: string };
+type ArtistPage = { platform: string; url: string };
 type GigEntry   = { venue?: string; suburb?: string; date?: string; endDate?: string; attendance?: number; notes?: string; socialPostUrl?: string; ticketUrl?: string; type?: string };
 
 type Musician = {
@@ -61,7 +70,6 @@ type Musician = {
   name?: string;
   username?: string;
   artistType?: string | string[];
-  actSize?: string;
   location?: string;
   genre?: string[];
   otherGenres?: string;
@@ -70,8 +78,6 @@ type Musician = {
   about?: string;
   photoUrl?: string;
   coverPhotoUrl?: string;
-  email?: string;
-  phone?: string;
   instagram?: string;
   tiktok?: string;
   spotify?: string;
@@ -79,6 +85,7 @@ type Musician = {
   youtube?: string;
   website?: string;
   customLinks?: CustomLink[];
+  artistPages?: ArtistPage[];
   songs?: Song[];
   photos?: string[];
   videos?: string[];
@@ -92,6 +99,9 @@ type Musician = {
     minimumFee?: string;
     publicLiabilityHeld?: boolean;
     publicLiabilityCoverage?: string;
+    /** New: boolean flag (abn itself is private). Falls back to legacy abn string for old data. */
+    hasAbn?: boolean;
+    /** Legacy field — present on old data before migration. Use hasAbn going forward. */
     abn?: string;
     gstRegistered?: boolean;
     canProvideInvoice?: boolean;
@@ -162,21 +172,26 @@ function OverviewTab({ m, isMobileLayout, isOwn = false }: { m: Musician; isMobi
   const songs = (m.songs || []).filter(s => s.title);
   const featuredTrack = songs[0] ?? null;
 
-  // Social/custom links (no email)
+  // Social/custom links (no email).
+  // Prefer artistPages (new storage), fall back to top-level fields (legacy).
+  const pageMap: Record<string, string> = {};
+  (m.artistPages || []).forEach(p => { if (p.url) pageMap[p.platform] = p.url; });
   const allLinks: { label: string; url: string }[] = [
-    m.instagram  ? { label: 'Instagram',   url: m.instagram   } : null,
-    m.tiktok     ? { label: 'TikTok',      url: m.tiktok      } : null,
-    m.spotify    ? { label: 'Spotify',     url: m.spotify     } : null,
-    m.appleMusic ? { label: 'Apple Music', url: m.appleMusic  } : null,
-    m.youtube    ? { label: 'YouTube',     url: m.youtube     } : null,
-    m.website    ? { label: 'Website',     url: m.website     } : null,
-    ...(m.customLinks || []).filter(l => l.label && l.url),
-  ].filter(Boolean) as { label: string; url: string }[];
+    { label: 'Instagram',   url: pageMap['Instagram']   || m.instagram  || '' },
+    { label: 'TikTok',      url: pageMap['TikTok']      || m.tiktok     || '' },
+    { label: 'Spotify',     url: pageMap['Spotify']     || m.spotify    || '' },
+    { label: 'Apple Music', url: pageMap['Apple Music'] || m.appleMusic || '' },
+    { label: 'YouTube',     url: pageMap['YouTube']     || m.youtube    || '' },
+    { label: 'Website',     url: pageMap['Website']     || m.website    || '' },
+  ].filter(l => l.url).concat(
+    (m.customLinks || []).filter(l => l.label && l.url)
+  );
 
   // Credentials
   const isInsured  = m.payment?.publicLiabilityHeld;
   const coverage   = m.payment?.publicLiabilityCoverage;
-  const hasAbn     = !!(m.payment?.abn);
+  // hasAbn uses the new boolean flag; falls back to the legacy abn string for old data
+  const hasAbn     = !!(m.payment?.hasAbn ?? !!(m.payment?.abn));
   const isGst      = m.payment?.gstRegistered;
   const canInvoice = m.payment?.canProvideInvoice;
   const hasCredentials = isInsured || hasAbn || isGst;
@@ -312,7 +327,7 @@ function OverviewTab({ m, isMobileLayout, isOwn = false }: { m: Musician; isMobi
       {(hasMembers || (m.instruments && m.instruments.length > 0) || isOwn) && (
         <View style={ov.section}>
           <Text style={[ov.sectionHeading, { color: colors.black }]}>
-            Line-up{m.actSize ? ` · ${m.actSize}` : ''}
+            Line-up{getActSize(m) ? ` · ${getActSize(m)}` : ''}
           </Text>
           {members.map((member, i) => (
             <View key={i} style={[ov.memberRow, { borderBottomColor: colors.border }]}>
@@ -406,7 +421,7 @@ function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
               ) : null}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-              {song.duration ? <Text style={[mm.trackDuration, { color: colors.grey }]}>{song.duration}</Text> : null}
+              {(song as any).duration ? <Text style={[mm.trackDuration, { color: colors.grey }]}>{(song as any).duration}</Text> : null}
               {song.url && (
                 <TouchableOpacity
                   style={[mm.openBtn, { borderColor: colors.border }]}
@@ -876,11 +891,32 @@ function NativeMusEntryCard({ entry, date, isOwn, musicianId, musicianName }: {
 
 // ── Shows & Availability Tab ──────────────────────────────────────
 
-function ShowsAvailabilityTab({ m, isOwn, publicGigs = [], awayPeriods = [] }: { m: Musician; isOwn: boolean; isMobileLayout?: boolean; publicGigs?: any[]; awayPeriods?: any[] }) {
+function ShowsAvailabilityTab({ m, isOwn, isMobileLayout = false, musicianId = '', publicGigs = [], awayPeriods = [] }: { m: Musician; isOwn: boolean; isMobileLayout?: boolean; musicianId?: string; publicGigs?: any[]; awayPeriods?: any[] }) {
   const { colors } = useTheme();
   const now = new Date();
   const [showAllPast, setShowAllPast] = useState(false);
-  const [monthOffset, setMonthOffset] = useState(0);
+  const [pendingEnqs, setPendingEnqs] = useState<any[]>([]);
+
+  // Fetch pending enquiries for the owner only — not shown to other visitors
+  useEffect(() => {
+    if (!isOwn || !musicianId) return;
+    const PENDING = ['enquired', 'pending', 'discussing'];
+    getDocs(query(collection(db, 'inquiries'), where('createdBy', '==', musicianId)))
+      .then(snap => {
+        const nowTs = new Date();
+        setPendingEnqs(
+          snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter((e: any) => {
+              if (!PENDING.includes(e.status)) return false;
+              const slotDate = e.requestedSlot?.date;
+              if (slotDate) return new Date(slotDate + 'T23:59:59') >= nowTs;
+              return true;
+            })
+        );
+      })
+      .catch(() => {});
+  }, [isOwn, musicianId]);
 
   const confirmedGigs = publicGigs.filter(
     pg => !!pg.startAt && pg.venueName && (pg.status == null || pg.status === 'confirmed')
@@ -897,7 +933,6 @@ function ShowsAvailabilityTab({ m, isOwn, publicGigs = [], awayPeriods = [] }: {
   const visiblePast = showAllPast ? pastShows : pastShows.slice(0, 5);
 
   const windowStart = new Date(now);
-  windowStart.setMonth(windowStart.getMonth() + monthOffset);
   windowStart.setDate(1);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(windowStart);
@@ -911,6 +946,7 @@ function ShowsAvailabilityTab({ m, isOwn, publicGigs = [], awayPeriods = [] }: {
       return { date: d, dateISO: isoDate(d), entry: { venue: pg.venueName, date: isoDate(d), type: 'gig' } as GigEntry };
     });
 
+  // Away periods come from bandProfiles/{uid}.awayPeriods, same field My Gigs reads
   const awayEntries: EntryItem[] = awayPeriods.map((p: any) => {
     const d = new Date(p.from + 'T00:00:00');
     return { date: d, dateISO: p.from, entry: { date: p.from, type: 'away', endDate: p.to } as GigEntry };
@@ -923,6 +959,13 @@ function ShowsAvailabilityTab({ m, isOwn, publicGigs = [], awayPeriods = [] }: {
     return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   };
 
+  const formatEnqDate = (e: any) => {
+    const slotDate = e.requestedSlot?.date;
+    const slotDay  = e.requestedSlot?.day;
+    if (slotDate) return new Date(slotDate + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    return slotDay || 'Date TBC';
+  };
+
   const calMonths: { year: number; month: number }[] = [];
   {
     const cur = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
@@ -933,101 +976,122 @@ function ShowsAvailabilityTab({ m, isOwn, publicGigs = [], awayPeriods = [] }: {
     }
   }
 
-  return (
-    <View style={styles.tabContent}>
-
-      {/* Upcoming shows */}
-      <View style={sa_.section}>
-        <Text style={[sa_.sectionHeading, { color: colors.black }]}>Upcoming shows</Text>
-        {upcomingShows.length > 0 ? (
-          upcomingShows.map((g: any, i: number) => (
-            <View key={i} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[sa_.showVenue, { color: colors.black }]}>{g.venueName}</Text>
-                {g.locationText ? <Text style={[sa_.showMeta, { color: colors.grey }]}>{g.locationText}</Text> : null}
-                <Text style={[sa_.showDate, { color: colors.grey }]}>{formatShowDate(g.startAt)}</Text>
-              </View>
-              {g.slotType ? (
-                <View style={[sa_.slotBadge, { borderColor: colors.border }]}>
-                  <Text style={[sa_.slotBadgeText, { color: colors.grey }]}>{g.slotType}</Text>
-                </View>
-              ) : null}
-            </View>
-          ))
-        ) : (
-          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No upcoming shows on Twaylo yet.</Text>
-        )}
-      </View>
-
-      {/* Played on Twaylo */}
-      {pastShows.length > 0 && (
-        <View style={sa_.section}>
-          <Text style={[sa_.sectionHeading, { color: colors.black }]}>
-            Played on Twaylo ({pastShows.length})
-          </Text>
-          {visiblePast.map((g: any, i: number) => (
-            <View key={i} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[sa_.showVenue, { color: colors.black }]}>{g.venueName}</Text>
-                {g.locationText ? <Text style={[sa_.showMeta, { color: colors.grey }]}>{g.locationText}</Text> : null}
-                <Text style={[sa_.showDate, { color: colors.grey }]}>{formatShowDate(g.startAt)}</Text>
-              </View>
-              {g.slotType ? (
-                <View style={[sa_.slotBadge, { borderColor: colors.border }]}>
-                  <Text style={[sa_.slotBadgeText, { color: colors.grey }]}>{g.slotType}</Text>
-                </View>
-              ) : null}
-            </View>
-          ))}
-          {pastShows.length > 5 && (
-            <TouchableOpacity onPress={() => setShowAllPast(v => !v)} style={{ marginTop: 10 }}>
-              <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>
-                {showAllPast ? 'Show less' : `Show all ${pastShows.length}`}
-              </Text>
-            </TouchableOpacity>
-          )}
+  const calendarPanel = (
+    <View style={[sa_.calPanel, { borderColor: colors.border }]}>
+      <Text style={[sa_.calPanelTitle, { color: colors.grey }]}>AVAILABILITY AT A GLANCE</Text>
+      <View style={sa_.calLegend}>
+        <View style={sa_.calLegendItem}>
+          <View style={[sa_.calLegendDot, { backgroundColor: '#16161A' }]} />
+          <Text style={[sa_.calLegendText, { color: colors.grey }]}>Gig</Text>
         </View>
-      )}
-
-      {/* Availability calendar */}
-      <View style={sa_.section}>
-        <Text style={[sa_.sectionHeading, { color: colors.black }]}>Availability</Text>
-
-        <View style={sa_.calLegend}>
-          <View style={sa_.calLegendItem}>
-            <View style={[sa_.calLegendDot, { backgroundColor: '#16161A' }]} />
-            <Text style={[sa_.calLegendText, { color: colors.grey }]}>Gig</Text>
-          </View>
-          <View style={sa_.calLegendItem}>
-            <Text style={[sa_.calLegendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
-            <Text style={[sa_.calLegendText, { color: colors.grey }]}>Unavailable</Text>
-          </View>
+        <View style={sa_.calLegendItem}>
+          <Text style={[sa_.calLegendText, { color: colors.greyLight, textDecorationLine: 'line-through', fontWeight: '700', marginRight: 2 }]}>15</Text>
+          <Text style={[sa_.calLegendText, { color: colors.grey }]}>Unavailable</Text>
         </View>
-
-        {monthOffset > 0 && (
-          <TouchableOpacity onPress={() => setMonthOffset(0)} style={{ marginBottom: 12 }}>
-            <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>Back to today</Text>
-          </TouchableOpacity>
-        )}
-
-        {calMonths.map(({ year, month }) => (
-          <MusicianCalendarMonth
-            key={`${year}-${month}`}
-            entries={allEntries.map(e => e.entry)}
-            month={month} year={year} today={now}
-            windowStart={windowStart} windowEnd={windowEnd}
-            colors={colors}
-          />
-        ))}
-
-        <Text style={[sa_.calFooter, { color: colors.grey }]}>
-          Gigs here are confirmed Twaylo bookings. Unavailable days are set by the artist.
-        </Text>
       </View>
-
+      {calMonths.map(({ year, month }) => (
+        <MusicianCalendarMonth
+          key={`${year}-${month}`}
+          entries={allEntries.map(e => e.entry)}
+          month={month} year={year} today={now}
+          windowStart={windowStart} windowEnd={windowEnd}
+          colors={colors}
+        />
+      ))}
+      <Text style={[sa_.calFooter, { color: colors.grey }]}>
+        Gigs here are confirmed Twaylo bookings. Unavailable days are set by the artist.
+      </Text>
     </View>
   );
 
+  const hasUpcoming = upcomingShows.length > 0 || pendingEnqs.length > 0;
+
+  const showsList = (
+    <View style={{ flex: 1 }}>
+      {/* Upcoming */}
+      <View style={sa_.section}>
+        <Text style={[sa_.sectionHeading, { color: colors.black }]}>Upcoming shows</Text>
+        {!hasUpcoming && (
+          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No upcoming shows on Twaylo yet.</Text>
+        )}
+        {pendingEnqs.map((e: any) => (
+          <View key={e.id} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[sa_.showVenue, { color: colors.black }]}>{e.venueName || 'Venue'}</Text>
+              <Text style={[sa_.showDate, { color: colors.grey }]}>{formatEnqDate(e)}</Text>
+            </View>
+            <View style={sa_.badgePending}>
+              <Text style={sa_.badgePendingText}>Pending</Text>
+            </View>
+          </View>
+        ))}
+        {upcomingShows.map((g: any, i: number) => (
+          <View key={i} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[sa_.showVenue, { color: colors.black }]}>{g.venueName}</Text>
+              {g.locationText ? <Text style={[sa_.showMeta, { color: colors.grey }]}>{g.locationText}</Text> : null}
+              <Text style={[sa_.showDate, { color: colors.grey }]}>{formatShowDate(g.startAt)}</Text>
+            </View>
+            <View style={sa_.badgeBooked}>
+              <Text style={sa_.badgeBookedText}>Booked</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Past shows */}
+      <View style={sa_.section}>
+        <Text style={[sa_.sectionHeading, { color: colors.black }]}>
+          Past shows{pastShows.length > 0 ? ` (${pastShows.length})` : ''}
+        </Text>
+        {pastShows.length === 0 ? (
+          <Text style={[styles.emptyState, { color: colors.greyLight }]}>No past shows on Twaylo yet.</Text>
+        ) : (
+          <>
+            {visiblePast.map((g: any, i: number) => (
+              <View key={i} style={[sa_.showRow, { borderBottomColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[sa_.showVenue, { color: colors.black }]}>{g.venueName}</Text>
+                  {g.locationText ? <Text style={[sa_.showMeta, { color: colors.grey }]}>{g.locationText}</Text> : null}
+                  <Text style={[sa_.showDate, { color: colors.grey }]}>{formatShowDate(g.startAt)}</Text>
+                </View>
+                {g.source === 'enquiry' && (
+                  <View style={sa_.badgeTwaylo}>
+                    <Text style={sa_.badgeTwayloText}>Twaylo</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+            {pastShows.length > 5 && (
+              <TouchableOpacity onPress={() => setShowAllPast(v => !v)} style={{ marginTop: 10 }}>
+                <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }}>
+                  {showAllPast ? 'Show less' : `Show all ${pastShows.length}`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </View>
+    </View>
+  );
+
+  if (!isMobileLayout) {
+    return (
+      <View style={styles.tabContent}>
+        <View style={sa_.body}>
+          {calendarPanel}
+          {showsList}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.tabContent}>
+      {showsList}
+      {calendarPanel}
+    </View>
+  );
 }
 
 // ── Pending Agent Claims (shown on own profile) ───────────────────
@@ -1514,7 +1578,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   const allGenres = [...baseGenres, ...customGenres];
 
   // Breadcrumb: e.g. BAND · 4PC · MELBOURNE
-  const breadcrumbParts = [actType, musician.actSize, musician.location].filter(Boolean) as string[];
+  const breadcrumbParts = [actType, getActSize(musician), musician.location].filter(Boolean) as string[];
 
   // Compute stats live from actual past gig data rather than relying on
   // server-computed aggregates stored on the profile document.
@@ -1544,7 +1608,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     gigsThisYear > 0                  ? { value: String(gigsThisYear),                        label: `GIGS ${year}`     } : null,
     liveAverageDraw != null           ? { value: `~${liveAverageDraw}`,                        label: 'AVG DRAW'         } : null,
     feeStr                            ? { value: feeStr,                                      label: 'FEE'              } : null,
-    musician.actSize                  ? { value: musician.actSize,                            label: 'ACT SIZE'         } : null,
+    getActSize(musician)              ? { value: getActSize(musician)!,                        label: 'ACT SIZE'         } : null,
     musician.backline                 ? { value: musician.backline,                           label: 'BACKLINE'         } : null,
   ].filter(Boolean) as { value: string; label: string }[];
 
@@ -1645,7 +1709,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={false} isOwn={isOwn} />}
             {activeTab === 'music'      && <MusicMediaTab m={musician} isOwn={isOwn} />}
             {activeTab === 'techrider'  && <TechRiderTab m={musician} isOwn={isOwn} />}
-            {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+            {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} isMobileLayout={false} musicianId={id} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
             {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
             {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
             <View style={{ height: 40 }} />
@@ -1752,7 +1816,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
             const subParts = [
               actType || null,
               musician.location ? musician.location.split(',')[0]?.trim() : null,
-              musician.actSize || null,
+              getActSize(musician),
               musician.username ? `@${musician.username}` : null,
             ].filter(Boolean);
             return subParts.length > 0 ? (
@@ -1777,23 +1841,35 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
         {/* Key facts strip */}
         {(() => {
-          const kfItems: { value: string; sub: string }[] = [];
-          if (feeStr) kfItems.push({ value: feeStr, sub: 'Per gig' });
-          if (musician.averageDraw != null) kfItems.push({ value: String(musician.averageDraw), sub: 'Avg draw' });
-          if (musician.setLengths && musician.setLengths.length > 0) kfItems.push({ value: musician.setLengths.join(' · '), sub: musician.setType || 'Set lengths' });
-          if (musician.travel) kfItems.push({ value: musician.travel, sub: musician.location ? `From ${musician.location.split(',')[0]?.trim()}` : 'Travel' });
-          const confirmedCount = gigsForTabs.filter(g => g.startAt && g.venueName && (g.status == null || g.status === 'confirmed')).length;
-          if (confirmedCount > 0) kfItems.push({ value: String(confirmedCount), sub: 'Shows on Twaylo' });
+          const kfItems: { title: string; value: string; sub?: string }[] = [];
+          const gstText = musician.payment?.gstRegistered ? 'incl. GST' : 'excl. GST';
+          if (feeStr) kfItems.push({ title: 'Fee', value: feeStr, sub: `Per gig, ${gstText}` });
+          if (musician.averageDraw != null) kfItems.push({ title: 'Average draw', value: String(musician.averageDraw), sub: 'People per show' });
+          if (musician.setLengths && musician.setLengths.length > 0) {
+            const setLabel = musician.setType ? `Minutes · ${musician.setType}` : 'Minutes';
+            kfItems.push({ title: 'Sets', value: musician.setLengths.join(' · '), sub: setLabel });
+          }
+          if (musician.travel) {
+            const suburb = musician.location ? musician.location.split(',')[0]?.trim() : null;
+            kfItems.push({ title: 'Travel', value: musician.travel, sub: suburb ? `From ${suburb}` : undefined });
+          }
+          const confirmedAll = gigsForTabs.filter(g => g.startAt && g.venueName && (g.status == null || g.status === 'confirmed'));
+          const confirmedCount = confirmedAll.length;
+          const upcomingCount = confirmedAll.filter(g => g.startAt.toDate() >= now).length;
+          const showsValue = confirmedCount > 0 ? String(confirmedCount) : 'New to Twaylo';
+          const showsSub   = confirmedCount > 0 ? `${upcomingCount} coming up` : undefined;
+          kfItems.push({ title: 'Shows on Twaylo', value: showsValue, sub: showsSub });
           if (kfItems.length === 0) return null;
           return (
             <View style={[styles.statsRow, { borderBottomColor: colors.border }]}>
               {kfItems.map((kf, i) => (
                 <View
-                  key={kf.sub}
+                  key={kf.title}
                   style={[styles.statCell, { borderRightColor: colors.border }, i === kfItems.length - 1 && { borderRightWidth: 0 }]}
                 >
+                  <Text style={[styles.statTitle, { color: colors.grey }]}>{kf.title}</Text>
                   <Text style={[styles.statValue, { color: colors.black }]}>{kf.value}</Text>
-                  <Text style={[styles.statLabel, { color: colors.greyLight }]}>{kf.sub}</Text>
+                  {kf.sub ? <Text style={[styles.statSub, { color: colors.grey }]}>{kf.sub}</Text> : null}
                 </View>
               ))}
             </View>
@@ -1829,7 +1905,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} isOwn={isOwn} />}
         {activeTab === 'music'      && <MusicMediaTab m={musician} isOwn={isOwn} />}
         {activeTab === 'techrider'  && <TechRiderTab m={musician} isOwn={isOwn} />}
-        {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+        {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} isMobileLayout={true} musicianId={id} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
         {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
@@ -1941,19 +2017,29 @@ const tr_ = StyleSheet.create({
 
 // ── Shows & availability tab styles ───────────────────────────────
 const sa_ = StyleSheet.create({
-  section:        { marginBottom: 32 },
-  sectionHeading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2, marginBottom: 12 },
-  showRow:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, gap: 12 },
-  showVenue:      { fontSize: 14, fontWeight: '600', marginBottom: 2 },
-  showMeta:       { fontSize: 13, marginBottom: 2 },
-  showDate:       { fontSize: 13 },
-  slotBadge:      { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0, marginTop: 2 },
-  slotBadgeText:  { fontSize: 12, fontWeight: '600' },
-  calLegend:      { flexDirection: 'row', gap: 16, marginBottom: 14 },
-  calLegendItem:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  calLegendDot:   { width: 8, height: 8, borderRadius: 4 },
-  calLegendText:  { fontSize: 12 },
-  calFooter:      { fontSize: 12, lineHeight: 17, marginTop: 10, fontStyle: 'italic' as const },
+  body:             { flexDirection: 'row', gap: 28, alignItems: 'flex-start' },
+  calPanel:         { width: 210, borderWidth: 1, borderRadius: 12, padding: 16, flexShrink: 0 },
+  calPanelTitle:    { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 10, textTransform: 'uppercase' as const },
+  section:          { marginBottom: 32 },
+  sectionHeading:   { fontSize: 17, fontWeight: '700', letterSpacing: -0.2, marginBottom: 12 },
+  showRow:          { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, gap: 12 },
+  showVenue:        { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  showMeta:         { fontSize: 13, marginBottom: 2 },
+  showDate:         { fontSize: 13 },
+  slotBadge:        { borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0, marginTop: 2 },
+  slotBadgeText:    { fontSize: 12, fontWeight: '600' },
+  // Status badges matching My Gigs
+  badgePending:     { backgroundColor: Colors.orange + '22', borderWidth: 1, borderColor: Colors.orange + '66', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0, marginTop: 2 },
+  badgePendingText: { fontSize: 11, fontWeight: '700', color: Colors.orange },
+  badgeBooked:      { backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#bbf7d0', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0, marginTop: 2 },
+  badgeBookedText:  { fontSize: 11, fontWeight: '700', color: '#16a34a' },
+  badgeTwaylo:      { backgroundColor: Colors.orange, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, flexShrink: 0, marginTop: 2 },
+  badgeTwayloText:  { fontSize: 11, fontWeight: '700', color: '#111' },
+  calLegend:        { gap: 6, marginBottom: 14 },
+  calLegendItem:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  calLegendDot:     { width: 8, height: 8, borderRadius: 4 },
+  calLegendText:    { fontSize: 12 },
+  calFooter:        { fontSize: 12, lineHeight: 17, marginTop: 10, fontStyle: 'italic' as const },
 });
 
 // ── Styles ────────────────────────────────────────────────────────
@@ -2041,11 +2127,14 @@ const styles = StyleSheet.create({
   },
   statCell: {
     flex: 1,
-    alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 16,
+    alignItems: 'flex-start', justifyContent: 'flex-start',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
     borderRightWidth: 1,
   },
-  statValue: { fontSize: isWeb ? 18 : 15, fontWeight: '800', letterSpacing: -0.2 },
+  statTitle: { fontSize: 12, marginBottom: 6 },
+  statValue: { fontSize: isWeb ? 22 : 17, fontWeight: '800', letterSpacing: -0.5 },
+  statSub:   { fontSize: 11, lineHeight: 15, marginTop: 4 },
   statLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 3 },
 
   // Tab bar

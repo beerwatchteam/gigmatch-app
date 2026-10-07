@@ -320,6 +320,29 @@ export function useMessages(enquiryId: string | null) {
 
 export async function addEnquiry(inquiry: Omit<Enquiry, 'id'>): Promise<string> {
   const now = new Date().toISOString();
+
+  // Snapshot the artist's private payment fields into the enquiry so the
+  // contract generator can read them later (venues cannot read the private
+  // subcollection directly).
+  let artistPayment: Record<string, any> = {};
+  try {
+    const privSnap = await getDoc(doc(db, 'bandProfiles', inquiry.createdBy, 'private', 'details'));
+    if (privSnap.exists()) {
+      const p = (privSnap.data() as any).payment || {};
+      artistPayment = {
+        abn:              p.abn              || '',
+        abnStatus:        p.abnStatus        || '',
+        gstRegistered:    p.gstRegistered    || false,
+        canProvideInvoice:p.canProvideInvoice|| false,
+        methods:          p.methods          || [],
+        timing:           p.timing           || '',
+        timingOther:      p.timingOther      || '',
+      };
+    }
+  } catch {
+    // Private doc not yet created; contract generator falls back to public fields.
+  }
+
   const ref = await addDoc(collection(db, 'inquiries'), {
     ...inquiry,
     status: 'enquired',
@@ -328,6 +351,8 @@ export async function addEnquiry(inquiry: Omit<Enquiry, 'id'>): Promise<string> 
     lastReadAt: { [inquiry.createdBy]: now },
     // denormalised array so support-act inbox queries can filter cheaply
     participantUids: [inquiry.createdBy],
+    // Snapshot used by the contract generator once confirmed
+    artistPayment,
   });
 
   // Create the headliner participant record

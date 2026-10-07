@@ -851,6 +851,33 @@ export default function EditVenueScreen() {
             setSavedLegal(l);
           }
         }).catch(() => {});
+
+        // Load private contact details (may not exist yet — falls back to what
+        // was merged from the public doc above).
+        getDoc(doc(db, 'venues', venueId, 'private', 'details')).then(dSnap => {
+          if (!dSnap.exists()) return;
+          const pd = dSnap.data() as Record<string, any>;
+          setData(prev => ({
+            ...prev,
+            email:               pd.email               ?? prev.email,
+            bookingContactName:  pd.bookingContactName  ?? prev.bookingContactName,
+            bookingContactPhone: pd.bookingContactPhone ?? prev.bookingContactPhone,
+            accountsContactName: pd.accountsContactName ?? prev.accountsContactName,
+            accountsContactEmail:pd.accountsContactEmail?? prev.accountsContactEmail,
+            legalEntityName:     pd.legalEntityName     ?? prev.legalEntityName,
+            invoicingNotes:      pd.invoicingNotes      ?? prev.invoicingNotes,
+          }));
+          setSaved(prev => ({
+            ...prev,
+            email:               pd.email               ?? prev.email,
+            bookingContactName:  pd.bookingContactName  ?? prev.bookingContactName,
+            bookingContactPhone: pd.bookingContactPhone ?? prev.bookingContactPhone,
+            accountsContactName: pd.accountsContactName ?? prev.accountsContactName,
+            accountsContactEmail:pd.accountsContactEmail?? prev.accountsContactEmail,
+            legalEntityName:     pd.legalEntityName     ?? prev.legalEntityName,
+            invoicingNotes:      pd.invoicingNotes      ?? prev.invoicingNotes,
+          }));
+        }).catch(() => {});
       }
     }).finally(() => setLoading(false));
   }, [venueId]);
@@ -1189,7 +1216,35 @@ export default function EditVenueScreen() {
         acn: legalIdentity.acn.replace(/\s/g, ''),
         updatedAt: Date.now(),
       };
-      await updateDoc(doc(db, 'venues', venueId), { ...fields, slots: newSlots });
+
+      // Strip private contact fields from the public document and save them
+      // in the private subcollection instead.
+      const {
+        email, bookingContactName, bookingContactPhone,
+        accountsContactName, accountsContactEmail,
+        legalEntityName, invoicingNotes,
+        ...publicFields
+      } = fields as any;
+
+      const privateDetails = {
+        email:               email               ?? '',
+        bookingContactName:  bookingContactName  ?? '',
+        bookingContactPhone: bookingContactPhone ?? '',
+        accountsContactName: accountsContactName ?? '',
+        accountsContactEmail:accountsContactEmail?? '',
+        legalEntityName:     legalEntityName     ?? '',
+        invoicingNotes:      invoicingNotes      ?? '',
+        updatedAt: Date.now(),
+      };
+
+      // Keep a public boolean so the venues list can still filter "set up" venues
+      // without reading a private subcollection.
+      publicFields.hasBookingContact = !!(email?.trim());
+
+      await updateDoc(doc(db, 'venues', venueId), { ...publicFields, slots: newSlots });
+      await Promise.all([
+        setDoc(doc(db, 'venues', venueId, 'private', 'details'), privateDetails),
+      ]);
       setDoc(doc(db, 'venues', venueId, 'private', 'legal'), legalPayload)
         .then(() => setSavedLegal(legalIdentity))
         .catch(() => {});

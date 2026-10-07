@@ -563,12 +563,12 @@ function KeyFactsStrip({ venue, isLoggedIn }: { venue: Venue; isLoggedIn: boolea
   const openDates = countOpenDatesNext8Weeks(venue);
 
   const cells = [
-    capacityValue ? { value: capacityValue, sub: capacityLabel || 'Total capacity', key: 'cap' } : null,
-    showPay && typicalPay ? { value: typicalPay, sub: payModels || 'Pay', key: 'pay' } : null,
-    curfew ? { value: curfew, sub: noiseNote ? noiseNote.split(/[.,]/)[0].trim().slice(0, 40) : 'Curfew', key: 'curfew' } : null,
-    minNotice ? { value: minNotice, sub: 'Minimum notice', key: 'notice' } : null,
-    { value: String(openDates), sub: 'Next 8 weeks', key: 'dates' },
-  ].filter(Boolean) as { value: string; sub: string; key: string }[];
+    capacityValue ? { title: 'Capacity',    value: capacityValue, sub: capacityLabel || undefined,                                     key: 'cap'    } : null,
+    showPay && typicalPay ? { title: 'Typical pay', value: typicalPay,    sub: payModels || undefined,                                key: 'pay'    } : null,
+    curfew ? { title: 'Curfew',       value: curfew,        sub: noiseNote ? noiseNote.split(/[.,]/)[0].trim().slice(0, 50) : undefined, key: 'curfew' } : null,
+    minNotice ? { title: 'Book ahead', value: minNotice,     sub: 'Minimum notice',                                                   key: 'notice' } : null,
+    { title: 'Open dates', value: String(openDates), sub: 'Next 8 weeks', key: 'dates' },
+  ].filter(Boolean) as { title: string; value: string; sub?: string; key: string }[];
 
   if (cells.length === 0) return null;
 
@@ -576,8 +576,9 @@ function KeyFactsStrip({ venue, isLoggedIn }: { venue: Venue; isLoggedIn: boolea
     <View style={[kf.strip, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
       {cells.map((cell, i) => (
         <View key={cell.key} style={[kf.cell, i < cells.length - 1 && { borderRightWidth: 1, borderRightColor: colors.border }]}>
-          <Text style={[kf.value, { color: colors.black }]} numberOfLines={1}>{cell.value}</Text>
-          <Text style={[kf.sub, { color: colors.grey }]} numberOfLines={1}>{cell.sub}</Text>
+          <Text style={[kf.title, { color: colors.grey }]}>{cell.title}</Text>
+          <Text style={[kf.value, { color: colors.black }]}>{cell.value}</Text>
+          {cell.sub ? <Text style={[kf.sub, { color: colors.grey }]} numberOfLines={2}>{cell.sub}</Text> : null}
         </View>
       ))}
     </View>
@@ -586,9 +587,10 @@ function KeyFactsStrip({ venue, isLoggedIn }: { venue: Venue; isLoggedIn: boolea
 
 const kf = StyleSheet.create({
   strip: { flexDirection: 'row', flexWrap: 'wrap', borderTopWidth: 1, borderBottomWidth: 1, marginBottom: 0 },
-  cell:  { flex: 1, minWidth: 100, paddingVertical: 12, paddingHorizontal: 14 },
-  value: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2, marginBottom: 2 },
-  sub:   { fontSize: 11, fontWeight: '500' },
+  cell:  { flex: 1, minWidth: 140, paddingVertical: 18, paddingHorizontal: 20, alignItems: 'flex-start', justifyContent: 'flex-start' },
+  title: { fontSize: 12, marginBottom: 6 },
+  value: { fontSize: isWeb ? 22 : 17, fontWeight: '800', letterSpacing: -0.5, marginBottom: 0 },
+  sub:   { fontSize: 11, lineHeight: 15, marginTop: 4 },
 });
 
 // ── Main screen ───────────────────────────────────────────────────────
