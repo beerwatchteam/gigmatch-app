@@ -1499,14 +1499,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     // called after an await, treating it as an unsolicited popup.
     let newWin: Window | null = null;
     if (Platform.OS === 'web') {
+      // Open the tab now (before any await) so browsers treat it as user-initiated.
       newWin = (window as any).open('', '_blank') as Window | null;
-      if (newWin) {
-        newWin.document.write(
-          '<html><body style="font-family:sans-serif;padding:48px;color:#444">' +
-          '<p style="font-size:16px;margin:0">Generating contract\u2026</p>' +
-          '</body></html>'
-        );
-      }
     }
 
     setContractLoading(true);
@@ -1583,22 +1577,26 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       });
 
       if (Platform.OS === 'web') {
-        if (newWin) {
-          newWin.document.open();
-          newWin.document.write(html);
-          newWin.document.close();
+        const blob    = new Blob([html], { type: 'text/html' });
+        const blobUrl = URL.createObjectURL(blob);
+        // Schedule revocation after 60 s — enough time for the tab or download to read it.
+        const cleanup = () => URL.revokeObjectURL(blobUrl);
+        setTimeout(cleanup, 60_000);
+
+        if (newWin && !newWin.closed) {
+          // Navigate the pre-opened tab to the blob URL (avoids document.write issues).
+          newWin.location.replace(blobUrl);
           newWin.focus();
         } else {
-          // Popup was blocked — fall back to downloading as an HTML file
-          const blob = new Blob([html], { type: 'text/html' });
-          const url = URL.createObjectURL(blob);
+          // Popup was blocked or never opened — trigger a download instead.
+          if (newWin) { try { newWin.close(); } catch (_) {} }
           const a = document.createElement('a');
-          a.href = url;
-          a.download = contractIsDraft ? 'contract-draft.html' : 'gigmatch-contract.html';
+          a.href     = blobUrl;
+          a.download = contractIsDraft ? 'contract-draft.html' : 'contract.html';
+          a.style.display = 'none';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          URL.revokeObjectURL(url);
         }
       } else {
         const { uri } = await Print.printToFileAsync({ html, base64: false });
@@ -2466,12 +2464,19 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   return null;
                 }
 
-                const CHECKLIST: { label: string; done: boolean; hint: string | null; section?: string }[] = [
+                const CHECKLIST: { label: string; done: boolean; hint: string | null; section?: string; action?: () => void }[] = [
                   { label: 'General Gig Details',  done: stagesDone.gigDetails,       hint: stagesDone.gigDetails       ? null : stageHint('gigDetails'),      section: 'Gig Details' },
                   { label: 'Set Times Locked',     done: stagesDone.setTimesLocked,   hint: stagesDone.setTimesLocked   ? null : stageHint('setTimesLocked'),   section: 'Set Times' },
                   { label: 'Payment Terms',        done: stagesDone.paymentTermsSet,  hint: stagesDone.paymentTermsSet  ? null : stageHint('paymentTermsSet'),  section: 'Payment Method' },
                   { label: 'Tech Rider Reviewed',  done: stagesDone.techRiderReviewed,hint: stagesDone.techRiderReviewed? null : techHint(),                    section: 'Tech Rider' },
-                  { label: 'Legal details (both parties)', done: legalDone, hint: legalDone ? null : legalHint() },
+                  {
+                    label: 'Legal details (both parties)',
+                    done: legalDone,
+                    hint: legalDone ? null : legalHint(),
+                    action: (!myLegalOk && myLegalOk !== null)
+                      ? () => router.push(isVenue ? '/edit-venue?tab=Invoicing' as any : '/edit-profile?tab=Invoicing' as any)
+                      : undefined,
+                  },
                 ];
 
                 const mySignKey    = isVenue ? 'venueSignature'  : 'artistSignature';
@@ -2505,9 +2510,17 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                               </Text>
                             </View>
                             {!item.done && !!item.hint && (
-                              <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 3, paddingLeft: 28 }}>
-                                {item.hint}{item.section ? ` — see ${item.section} above` : ''}
-                              </Text>
+                              item.action ? (
+                                <TouchableOpacity onPress={item.action} activeOpacity={0.7} style={{ paddingLeft: 28, marginTop: 3 }}>
+                                  <Text style={{ fontSize: 11, color: Colors.orange, fontWeight: '600' }}>
+                                    {item.hint} →
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : (
+                                <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 3, paddingLeft: 28 }}>
+                                  {item.hint}{item.section ? ` — see ${item.section} above` : ''}
+                                </Text>
+                              )
                             )}
                           </View>
                         );

@@ -1557,10 +1557,10 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
   }, [rawId]);
   const id = resolvedId;
   const isProfileTab   = !!_overrideId;
-  const isPublicPreview = !!preview;
   const router       = useRouter();
   const { user }     = useAuth();
   const { colors }   = useTheme();
+  const isPublicPreview = !!preview || (!isProfileTab && !!id && user?.uid === id);
   const year         = new Date().getFullYear();
   const now          = new Date();
 

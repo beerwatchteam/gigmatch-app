@@ -637,11 +637,11 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   }, [rawId]);
   const id = resolvedId;
   const isProfileTab = !!_overrideId;
-  const isPublicPreview = !!preview;
   const router = useRouter();
   const { profile, user } = useAuth();
   const { colors } = useTheme();
   const isArtist = profile?.type === 'artist';
+  const isPublicPreview = !!preview || (!isProfileTab && !!id && profile?.type === 'venue' && profile?.venueId === id);
   const { width } = useWindowDimensions();
   const isMobileLayout = !isWeb || width < 768;
   const handleBack = () => router.canGoBack() ? router.back() : router.replace('/(tabs)/venues');
