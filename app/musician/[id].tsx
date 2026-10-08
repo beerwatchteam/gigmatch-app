@@ -942,6 +942,7 @@ function ShowsAvailabilityTab({ m, isOwn, isMobileLayout = false, musicianId = '
   const now = new Date();
   const [showAllPast, setShowAllPast] = useState(false);
   const [pendingEnqs, setPendingEnqs] = useState<any[]>([]);
+  const [monthOffset, setMonthOffset] = useState(0);
 
   // Fetch pending enquiries for the owner only — not shown to other visitors
   useEffect(() => {
@@ -980,6 +981,7 @@ function ShowsAvailabilityTab({ m, isOwn, isMobileLayout = false, musicianId = '
 
   const windowStart = new Date(now);
   windowStart.setDate(1);
+  windowStart.setMonth(windowStart.getMonth() + monthOffset);
   windowStart.setHours(0, 0, 0, 0);
   const windowEnd = new Date(windowStart);
   windowEnd.setMonth(windowEnd.getMonth() + 3);
@@ -1047,6 +1049,16 @@ function ShowsAvailabilityTab({ m, isOwn, isMobileLayout = false, musicianId = '
       <Text style={[sa_.calFooter, { color: colors.grey }]}>
         Gigs here are confirmed Twaylo bookings. Unavailable days are set by the artist.
       </Text>
+      <View style={[sa_.monthNavRow, { marginTop: 12, justifyContent: 'space-between' }]}>
+        {monthOffset > 0 ? (
+          <TouchableOpacity style={[sa_.monthNavBtn, { borderColor: colors.border }]} onPress={() => setMonthOffset(o => o - 3)}>
+            <Text style={[sa_.monthNavText, { color: colors.grey }]}>{'\u2190'} Previous</Text>
+          </TouchableOpacity>
+        ) : <View />}
+        <TouchableOpacity style={[sa_.monthNavBtn, { borderColor: colors.border }]} onPress={() => setMonthOffset(o => o + 3)}>
+          <Text style={[sa_.monthNavText, { color: colors.grey }]}>Next 3 months {'\u2192'}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
