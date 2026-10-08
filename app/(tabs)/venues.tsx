@@ -786,7 +786,7 @@ export default function VenuesScreen() {
     }
     return true;
   }).sort((a, b) => {
-    const pinned = ['twaylovenue', 'test-venue'];
+    const pinned = ['twaylovenue', 'test-venue', 'ICUus2kBFladEZiC6KNI', 'b0gYAvjbgfnioRD3z9UN'];
     const ai = pinned.indexOf(a.id), bi = pinned.indexOf(b.id);
     if (ai !== -1 && bi !== -1) return ai - bi;
     if (ai !== -1) return -1;
