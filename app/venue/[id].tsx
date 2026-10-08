@@ -701,6 +701,38 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   );
 
   const isMyVenue = !isPublicPreview && profile?.type === 'venue' && profile?.venueId === id;
+
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [pitchCopied,    setPitchCopied]   = useState(false);
+  const [linkCopied,     setLinkCopied]    = useState(false);
+
+  const profileUrl = `https://twaylo.com.au/venue/${venue.username || id}`;
+
+  function buildVenueSharePitch(v: Venue, url: string): string {
+    const lines: string[] = [];
+    lines.push(`Hi,`);
+    lines.push('');
+    lines.push(`Thanks for reaching out. You can view all of our available gig slots, room details, and tech specs directly on our Twaylo profile:`);
+    lines.push('');
+    lines.push(url);
+    lines.push('');
+    lines.push(`Feel free to browse our open dates and send an enquiry through the platform. We look forward to hearing from you.`);
+    lines.push('');
+    const name = v.contactName?.trim() || v.name;
+    lines.push(`${name}`);
+    return lines.join('\n');
+  }
+
+  function copyToClipboard(text: string, onDone: () => void) {
+    if (Platform.OS === 'web') {
+      (typeof navigator !== 'undefined' ? navigator : null)?.clipboard?.writeText(text).then(onDone).catch(() => {});
+    } else {
+      import('expo-clipboard').then(Clipboard => { Clipboard.setStringAsync(text).then(onDone).catch(() => {}); }).catch(() => {});
+    }
+  }
+
+  const venuePitch = buildVenueSharePitch(venue, profileUrl);
+
   const genres    = venue.genrePreferences || venue.genre || venue.genres || [];
   const photo     = venue.photoUrl || (venue.photos && venue.photos[0]);
   const hasPhotos = (venue.photos || []).length > 0 || (venue.videos || []).length > 0 || isMyVenue;
@@ -812,6 +844,13 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             <View style={[vd.divider, { backgroundColor: colors.border }]} />
 
             <TouchableOpacity
+              style={[vd.editBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border, marginBottom: 8 }]}
+              onPress={() => setShowShareModal(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={[vd.editBtnText, { color: colors.black }]}>Share Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={vd.editBtn}
               onPress={() => router.push('/edit-venue')}
               activeOpacity={0.85}
@@ -852,6 +891,50 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           </ScrollView>
 
         </View>
+
+        {/* Share profile modal — desktop owner */}
+        <Modal visible={showShareModal} transparent animationType="fade" onRequestClose={() => setShowShareModal(false)}>
+          <View style={vsm.backdrop}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowShareModal(false)} />
+            <View style={[vsm.sheet, { backgroundColor: colors.bg }]}>
+              <View style={vsm.header}>
+                <View>
+                  <Text style={[vsm.title, { color: colors.black }]}>Share your profile</Text>
+                  <Text style={[vsm.subtitle, { color: colors.grey }]}>Copy this pitch and send it to artists who reach out externally.</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowShareModal(false)} style={vsm.closeBtn}>
+                  <Text style={[vsm.closeBtnText, { color: colors.black }]}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={[vsm.pitchBox, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
+                  <Text selectable style={[vsm.pitchText, { color: colors.black }]}>{venuePitch}</Text>
+                </ScrollView>
+              </View>
+              <TouchableOpacity
+                style={[vsm.copyBtn, { backgroundColor: colors.black }]}
+                activeOpacity={0.8}
+                onPress={() => { copyToClipboard(venuePitch, () => { setPitchCopied(true); setTimeout(() => setPitchCopied(false), 2500); }); }}
+              >
+                <Text style={vsm.copyBtnText}>{pitchCopied ? 'Copied!' : 'Copy pitch'}</Text>
+              </TouchableOpacity>
+              <View style={[vsm.divider, { borderTopColor: colors.border }]}>
+                <Text style={[vsm.dividerText, { color: colors.greyLight }]}>or just share the link</Text>
+              </View>
+              <View style={[vsm.linkRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <Text style={[vsm.linkText, { color: colors.grey }]} numberOfLines={1}>{profileUrl}</Text>
+                <TouchableOpacity
+                  style={[vsm.linkCopyBtn, { borderColor: colors.border }]}
+                  activeOpacity={0.75}
+                  onPress={() => { copyToClipboard(profileUrl, () => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2500); }); }}
+                >
+                  <Text style={[vsm.linkCopyBtnText, { color: colors.black }]}>{linkCopied ? 'Copied!' : 'Copy link'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
       </SafeAreaView>
     );
   }
@@ -918,6 +1001,9 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 {/* Action buttons */}
                 {isMyVenue ? (
                   <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity style={s.msgVenueBtn} onPress={() => setShowShareModal(true)} activeOpacity={0.8}>
+                      <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Share profile</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                       <Text style={s.editProfileBtnText}>Edit profile</Text>
                     </TouchableOpacity>
@@ -1094,6 +1180,50 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
           </TouchableOpacity>
         </SafeAreaView>
       )}
+
+      {/* Share profile modal */}
+      <Modal visible={showShareModal} transparent animationType="fade" onRequestClose={() => setShowShareModal(false)}>
+        <View style={vsm.backdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowShareModal(false)} />
+          <View style={[vsm.sheet, { backgroundColor: colors.bg }]}>
+            <View style={vsm.header}>
+              <View>
+                <Text style={[vsm.title, { color: colors.black }]}>Share your profile</Text>
+                <Text style={[vsm.subtitle, { color: colors.grey }]}>Copy this pitch and send it to artists who reach out externally.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowShareModal(false)} style={vsm.closeBtn}>
+                <Text style={[vsm.closeBtnText, { color: colors.black }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[vsm.pitchBox, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+              <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
+                <Text selectable style={[vsm.pitchText, { color: colors.black }]}>{venuePitch}</Text>
+              </ScrollView>
+            </View>
+            <TouchableOpacity
+              style={[vsm.copyBtn, { backgroundColor: colors.black }]}
+              activeOpacity={0.8}
+              onPress={() => { copyToClipboard(venuePitch, () => { setPitchCopied(true); setTimeout(() => setPitchCopied(false), 2500); }); }}
+            >
+              <Text style={vsm.copyBtnText}>{pitchCopied ? 'Copied!' : Platform.OS === 'web' ? 'Copy pitch' : 'Share pitch'}</Text>
+            </TouchableOpacity>
+            <View style={[vsm.divider, { borderTopColor: colors.border }]}>
+              <Text style={[vsm.dividerText, { color: colors.greyLight }]}>or just share the link</Text>
+            </View>
+            <View style={[vsm.linkRow, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+              <Text style={[vsm.linkText, { color: colors.grey }]} numberOfLines={1}>{profileUrl}</Text>
+              <TouchableOpacity
+                style={[vsm.linkCopyBtn, { borderColor: colors.border }]}
+                activeOpacity={0.75}
+                onPress={() => { copyToClipboard(profileUrl, () => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2500); }); }}
+              >
+                <Text style={[vsm.linkCopyBtnText, { color: colors.black }]}>{linkCopied ? 'Copied!' : 'Copy link'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -3616,4 +3746,25 @@ const vd = StyleSheet.create({
   logoutText:       { fontSize: 13, fontWeight: '600' },
   main:             { flex: 1 },
   mainContent:      { paddingHorizontal: 40, paddingVertical: 32 },
+});
+
+// ── Venue share profile modal styles ──────────────────────────────────
+const vsm = StyleSheet.create({
+  backdrop:       { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  sheet:          { width: '100%', maxWidth: 520, borderRadius: 16, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 40, elevation: 12 },
+  header:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 },
+  title:          { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, marginBottom: 3 },
+  subtitle:       { fontSize: 13, lineHeight: 18 },
+  closeBtn:       { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  closeBtnText:   { fontSize: 16, fontWeight: '500' },
+  pitchBox:       { borderWidth: 1, borderRadius: 10, padding: 14, marginBottom: 14 },
+  pitchText:      { fontSize: 13, lineHeight: 20 },
+  copyBtn:        { borderRadius: 10, paddingVertical: 13, alignItems: 'center', marginBottom: 20 },
+  copyBtnText:    { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  divider:        { borderTopWidth: 1, marginBottom: 20, alignItems: 'center', paddingTop: 12 },
+  dividerText:    { fontSize: 12 },
+  linkRow:        { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 10, paddingLeft: 14, paddingRight: 8, paddingVertical: 8 },
+  linkText:       { flex: 1, fontSize: 13 },
+  linkCopyBtn:    { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, flexShrink: 0 },
+  linkCopyBtnText:{ fontSize: 12, fontWeight: '600' },
 });
