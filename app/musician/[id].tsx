@@ -1700,7 +1700,11 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
     });
   }, [scrollTo, musician]);
 
-  const gigsForTabs = isOwn ? ownGigs : publicGigs;
+  // For the Shows tab: merge ownGigs (private Twaylo bookings) with publicGigs
+  // (external shows) so the owner sees everything. Deduplicate by gigId.
+  const gigsForTabs = isOwn
+    ? [...ownGigs, ...publicGigs.filter(pg => !ownGigs.some((og: any) => og.id === pg.gigId || og.id === pg.id))]
+    : publicGigs;
 
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
