@@ -1789,8 +1789,8 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
 
           {/* Left sidebar */}
           <View style={[dash.sidebar, { backgroundColor: colors.bgFaint, borderRightColor: colors.border }]}>
-            {musician.photoUrl ? (
-              <Image source={{ uri: musician.photoUrl }} style={dash.photo} resizeMode="cover" />
+            {(musician.photoUrl || musician.coverPhotoUrl) ? (
+              <Image source={{ uri: musician.photoUrl || musician.coverPhotoUrl! }} style={dash.photo} resizeMode="cover" />
             ) : (
               <View style={[dash.photoPlaceholder, { backgroundColor: colors.border }]} />
             )}
@@ -1969,15 +1969,15 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           )}
 
           {/* Profile avatar overlapping the cover */}
-          {musician.photoUrl && (
+          {(musician.photoUrl || musician.coverPhotoUrl) && (
             <View style={[styles.avatarWrap, { borderColor: colors.bg, backgroundColor: colors.bgFaint }]}>
-              <Image source={{ uri: musician.photoUrl }} style={styles.avatarImg} resizeMode="cover" />
+              <Image source={{ uri: musician.photoUrl || musician.coverPhotoUrl! }} style={styles.avatarImg} resizeMode="cover" />
             </View>
           )}
         </View>
 
         {/* Profile header */}
-        <View style={[styles.profileHead, { borderBottomColor: colors.border, paddingTop: musician.photoUrl ? 68 : 22 }]}>
+        <View style={[styles.profileHead, { borderBottomColor: colors.border, paddingTop: (musician.photoUrl || musician.coverPhotoUrl) ? 68 : 22 }]}>
 
           {/* Name + insured badge */}
           <View style={[styles.nameRow, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
