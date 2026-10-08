@@ -785,7 +785,14 @@ export default function VenuesScreen() {
       if (!hasOpen) return false;
     }
     return true;
-  }).sort((a, b) => (a.id === 'test-venue' ? -1 : b.id === 'test-venue' ? 1 : 0));
+  }).sort((a, b) => {
+    const pinned = ['twaylovenue', 'test-venue'];
+    const ai = pinned.indexOf(a.id), bi = pinned.indexOf(b.id);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return 0;
+  });
 
   // ── Active filter state ───────────────────────────────────────────
   const feeActive  = feeRanges.length > 0;
