@@ -21,6 +21,7 @@ import { doc, setDoc, getDoc, addDoc, collection, getDocs, query, where, serverT
 import { auth, db } from '@/lib/firebase';
 import { Colors } from '@/constants/colors';
 import { useTheme } from '@/lib/theme-context';
+import { isValidABN, formatABN } from '@/lib/abn';
 
 const isWeb = Platform.OS === 'web';
 const ARTIST_TYPES = ['Solo Artist', 'Duo', 'Trio', 'Band', 'Cover Band', 'Acoustic Act', 'DJ', 'Choir / Vocal Group', 'Other'];
@@ -100,6 +101,8 @@ export default function LoginScreen() {
   const [vManualNotes, setVManualNotes]         = useState('');
   const [vAlreadyClaimed, setVAlreadyClaimed]   = useState(false);
   const [vCurrentOwnerId, setVCurrentOwnerId]   = useState('');
+  const [vAbnStatus, setVAbnStatus]             = useState<'has_abn' | 'no_abn' | 'applying' | ''>('');
+  const [vAbn, setVAbn]                         = useState('');
   const vUserRef = useRef<any>(null);
 
   // ── Agent signup ────────────────────────────────────────────────────────
@@ -296,6 +299,12 @@ export default function LoginScreen() {
         verificationContactType: contactType,
         notes: vManualNotes.trim() || '',
         isDispute: vAlreadyClaimed,
+        ...(vAbnStatus ? {
+          payment: {
+            abnStatus: vAbnStatus,
+            abn: vAbnStatus === 'has_abn' ? vAbn.replace(/\s/g, '') : '',
+          },
+        } : {}),
       });
 
       // If claiming an already-claimed venue, start a dispute
@@ -328,6 +337,7 @@ export default function LoginScreen() {
     setVUsernameTouched(false); vUserRef.current = null;
     setVManualReview(false); setVManualNotes('');
     setVAlreadyClaimed(false); setVCurrentOwnerId('');
+    setVAbnStatus(''); setVAbn('');
   }
 
   function validateAgent() {
@@ -653,6 +663,46 @@ export default function LoginScreen() {
                 </View>
               )}
 
+              {/* ABN section */}
+              <View style={{ marginBottom: 4, marginTop: 4 }}>
+                <Text style={[s.hint, { marginBottom: 8, color: colors.text }]}>ABN status</Text>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  {(['has_abn', 'no_abn', 'applying'] as const).map(opt => {
+                    const labels = { has_abn: 'Has ABN', no_abn: 'No ABN', applying: 'Applying' };
+                    const active = vAbnStatus === opt;
+                    return (
+                      <TouchableOpacity
+                        key={opt}
+                        onPress={() => { setVAbnStatus(opt); if (opt !== 'has_abn') setVAbn(''); }}
+                        style={[s.abnPill, active && s.abnPillActive]}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[s.abnPillText, active && s.abnPillTextActive]}>{labels[opt]}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {vAbnStatus === 'has_abn' && (
+                  <>
+                    <TextInput
+                      style={s.input}
+                      placeholder="ABN (e.g. 51 824 753 556)"
+                      placeholderTextColor="#999"
+                      value={vAbn}
+                      onChangeText={v => setVAbn(v.replace(/[^\d\s]/g, ''))}
+                      keyboardType="number-pad"
+                      maxLength={14}
+                    />
+                    {vAbn.replace(/\s/g, '').length === 11 && !isValidABN(vAbn) && (
+                      <Text style={s.fieldError}>Invalid ABN — please check the number</Text>
+                    )}
+                    {vAbn.replace(/\s/g, '').length === 11 && isValidABN(vAbn) && (
+                      <Text style={[s.hint, { color: '#22c55e' }]}>{formatABN(vAbn)} looks valid</Text>
+                    )}
+                  </>
+                )}
+              </View>
+
               <View style={s.termsRow}>
                 <TouchableOpacity onPress={() => setVTerms(v => !v)}>
                   <View style={[s.checkbox, vTerms && s.checkboxOn]}>
@@ -954,4 +1004,14 @@ const s = StyleSheet.create({
   },
   manualReviewTitle: { fontSize: 13, fontWeight: '700', color: '#92400e' },
   manualReviewBody:  { fontSize: 12, color: '#78350f', lineHeight: 18 },
+
+  abnPill: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1, borderColor: '#ddd', backgroundColor: 'transparent',
+  },
+  abnPillActive: {
+    borderColor: Colors.orange, backgroundColor: Colors.orange,
+  },
+  abnPillText: { fontSize: 13, color: '#666' },
+  abnPillTextActive: { color: '#fff', fontWeight: '600' },
 });

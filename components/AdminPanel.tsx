@@ -42,6 +42,7 @@ type VenueApplication = {
   verificationContactType: 'email' | 'phone' | 'manual';
   notes?: string;
   isDispute?: boolean;
+  payment?: { abn?: string; abnStatus?: string };
 };
 
 type VenueDispute = {
@@ -201,6 +202,9 @@ export default function AdminPanel({ visible, onClose }: Props) {
     setBusy(app.uid);
     try {
       let venueId = app.selectedVenueId;
+      const paymentFields = app.payment?.abnStatus
+        ? { payment: { abn: app.payment.abn ?? '', abnStatus: app.payment.abnStatus } }
+        : {};
       if (!venueId) {
         const venueRef = await addDoc(collection(db, 'venues'), {
           name: app.venueName,
@@ -210,6 +214,7 @@ export default function AdminPanel({ visible, onClose }: Props) {
           claimedByEmail: app.email,
           claimedAt: serverTimestamp(),
           createdAt: serverTimestamp(),
+          ...paymentFields,
         });
         venueId = venueRef.id;
       } else {
@@ -220,6 +225,7 @@ export default function AdminPanel({ visible, onClose }: Props) {
           // Backfill signup data if not already on the existing venue doc
           ...(app.email ? { email: app.email } : {}),
           ...(app.username ? { username: app.username } : {}),
+          ...paymentFields,
         });
       }
       await updateDoc(doc(db, 'venueApplications', app.uid), {
