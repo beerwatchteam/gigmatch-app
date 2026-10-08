@@ -2131,7 +2131,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
         {activeTab === 'overview'   && <OverviewTab m={musician} isMobileLayout={isMobileLayout} isOwn={isOwn} />}
         {activeTab === 'music'      && <MusicMediaTab m={musician} isOwn={isOwn} />}
         {activeTab === 'techrider'  && <TechRiderTab m={musician} isOwn={isOwn} />}
-        {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} isMobileLayout={true} musicianId={id} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
+        {activeTab === 'timetable'  && <ShowsAvailabilityTab m={musician} isOwn={isOwn} isMobileLayout={isMobileLayout} musicianId={id} publicGigs={gigsForTabs} awayPeriods={(musician as any).awayPeriods ?? []} />}
         {activeTab === 'gigs'       && isOwn && <MyGigsContent embedded />}
         {activeTab === 'dashboard'  && isOwn && <DashboardContent />}
 
