@@ -86,6 +86,14 @@
         { "fieldPath": "payment.reminderSentAt","order": "ASCENDING" },
         { "fieldPath": "endAt",                "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "publicGigs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "artistUid", "order": "ASCENDING" },
+        { "fieldPath": "startAt",   "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

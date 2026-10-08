@@ -20,7 +20,9 @@ const { getAuth }                      = require('firebase-admin/auth');
 
 // ── Firebase setup ────────────────────────────────────────────────────────────
 
-const keyPath = resolve(__dirname, 'scripts1serviceAccountKey.json');
+// IMPORTANT: use scripts:scripts1serviceAccountKey.json (gigmatchweb-aus — the live project)
+// NEVER use scripts1serviceAccountKey.json — that belongs to gigmatch-6343a (wrong/dead project)
+const keyPath = resolve(__dirname, 'scripts:scripts1serviceAccountKey.json');
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(readFileSync(keyPath, 'utf8'));
@@ -58,7 +60,7 @@ async function getOrCreateUser(email, password, displayName) {
 async function seedArtist() {
   console.log('\n--- Seeding Twaylo Artist ---');
 
-  const email    = 'twayloartist@twaylo.test';
+  const email    = 'twayloartist@example.com';
   const password = 'twayloartist';
   const username = 'twayloartist';
 
@@ -218,7 +220,7 @@ async function seedArtist() {
 async function seedVenue() {
   console.log('\n--- Seeding Twaylo Venue ---');
 
-  const email    = 'twaylovenue@twaylo.test';
+  const email    = 'twaylovenue@example.com';
   const password = 'twaylovenue';
   const username = 'twaylovenue';
   const venueId  = 'twaylovenue';
@@ -252,9 +254,9 @@ async function seedVenue() {
     bookingContactName:   'Cal Mercer',
     bookingContactPhone:  '+61 412 987 654',
     invoicingMode:        'actsInvoice',
-    invoicingNotes:       'Invoices to accounts@twaylo.test. ABN on request.',
+    invoicingNotes:       'Invoices to accounts@example.com. ABN on request.',
     accountsContactName:  'Petra Vane',
-    accountsContactEmail: 'accounts@twaylo.test',
+    accountsContactEmail: 'accounts@example.com',
     legalEntityName:      'The Coalface Pty Ltd',
     claimedBy:      uid,
     claimedByEmail: email,
@@ -431,7 +433,7 @@ async function seedVenue() {
       invoiceDocs:          [],
       cancellationTerms:    '48 hours notice required for cancellation. No-shows forfeit the agreed fee.',
       publicLiability:      'Preferred',
-      latePaymentContact:   'accounts@twaylo.test',
+      latePaymentContact:   'accounts@example.com',
       additionalNotes:      'We respond to all enquiries within 48 hours. Preferred acts are Melbourne-based with at least 1 year of gigging history.',
     },
     bookingTerms: {
@@ -480,7 +482,7 @@ async function seedVenue() {
     phone:                '+61 3 9417 2345',
     email,
     bookingContactPhone:  '+61 412 987 654',
-    accountsContactEmail: 'accounts@twaylo.test',
+    accountsContactEmail: 'accounts@example.com',
   });
 
   await db.doc('users/' + uid).set({
@@ -503,8 +505,8 @@ async function main() {
     await seedArtist();
     await seedVenue();
     console.log('\nDone. Both test accounts are ready.');
-    console.log('  Artist  — email: twayloartist@twaylo.test   password: twayloartist');
-    console.log('  Venue   — email: twaylovenue@twaylo.test    password: twaylovenue');
+    console.log('  Artist  — email: twayloartist@example.com   password: twayloartist');
+    console.log('  Venue   — email: twaylovenue@example.com    password: twaylovenue');
   } catch (e) {
     console.error('\nError:', e);
     process.exit(1);
