@@ -2601,7 +2601,8 @@ export default function EditProfileScreen() {
                   <Text style={[pd.navGroupLabel, { color: colors.grey }]}>{group.label}</Text>
                   {group.tabs.map(tab => {
                     const active = activeTab === tab;
-                    const showDot = tab === 'Rates & reach' && (!profile.feeMin || !profile.feeMax || !profile.averageDraw || !profile.travel);
+                    const feeSet = profile.feeOpenToOffers || (profile.feeMin && profile.feeMax);
+                    const showDot = tab === 'Rates & reach' && (!feeSet || !profile.travel);
                     return (
                       <TouchableOpacity
                         key={tab}
@@ -2700,7 +2701,7 @@ export default function EditProfileScreen() {
             <View key={group.label}>
               <Text style={[pd.navGroupLabel, { color: colors.grey, paddingHorizontal: 20 }]}>{group.label}</Text>
               {group.tabs.map(tab => {
-                const showDot = tab === 'Rates & reach' && (!profile.feeMin || !profile.feeMax);
+                const showDot = tab === 'Rates & reach' && !(profile.feeOpenToOffers || (profile.feeMin && profile.feeMax));
                 return (
                   <TouchableOpacity key={tab} style={[pd.mobileListItem, { backgroundColor: colors.bg, borderBottomColor: colors.border }]} onPress={() => { setActiveTab(tab); setMobileShowList(false); }} activeOpacity={0.7}>
                     <Text style={[pd.navText, { color: colors.black }]}>{tab}</Text>
