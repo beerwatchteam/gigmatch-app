@@ -277,7 +277,7 @@ export default function EnquireScreen() {
         genre:       band.genre,
         location:    band.location,
         artistType:  band.artistType,
-        photoUrl:    band.photoUrl,
+        photoUrl:    band.photoUrl || band.coverPhotoUrl,
         feeMin:      band.feeMin,
         feeMax:      band.feeMax,
         averageDraw: computedDraw ?? (band.averageDraw != null ? Number(band.averageDraw) : undefined),
@@ -490,8 +490,8 @@ export default function EnquireScreen() {
 
         {/* ── Band row ──────────────────────────────────────────── */}
         <View style={[s.bandRow, { borderColor: colors.border, backgroundColor: colors.bgFaint }]}>
-          {band.photoUrl ? (
-            <Image source={{ uri: band.photoUrl }} style={s.bandPhoto} />
+          {(band.photoUrl || band.coverPhotoUrl) ? (
+            <Image source={{ uri: band.photoUrl || band.coverPhotoUrl }} style={s.bandPhoto} />
           ) : (
             <View style={[s.bandPhotoPlaceholder, { backgroundColor: colors.border }]}>
               <Text style={s.bandPhotoLabel}>photo</Text>
