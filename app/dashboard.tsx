@@ -128,7 +128,7 @@ function fyStartYear(periodStart: Date): number {
 
 /** Full-year Period for a given FY start year. */
 function fyPeriodFor(fyStart: number): Period {
-  const label = `FY${String(fyStart + 1).slice(2)}`;
+  const label = `${String(fyStart).slice(2)}/${String(fyStart + 1).slice(2)}`;
   return {
     start: Timestamp.fromDate(new Date(fyStart,     6, 1, 0, 0, 0)),
     end:   Timestamp.fromDate(new Date(fyStart + 1, 6, 1, 0, 0, 0)),
@@ -1263,8 +1263,11 @@ export function DashboardContent() {
                 {/* Tax time (artist) */}
                 {!isVenue && (
                   <View style={[db.sideCard, { backgroundColor: D.bg, borderColor: D.border }]}>
-                    <Text style={db.sideCardTitle}>Tax time</Text>
-                    <Text style={[db.taxSub, { color: D.muted }]}>{fyLabel} so far, from payments you've recorded.</Text>
+                    <View style={db.sideCardHdr}>
+                      <Text style={db.sideCardTitle}>Tax time</Text>
+                      <Text style={[{ fontSize: 13, color: D.muted }]}>{fyLabel}</Text>
+                    </View>
+                    <Text style={[db.taxSub, { color: D.muted }]}>Confirmed payments you've recorded this year.</Text>
                     {[
                       ['Gig income', fmtAud(fyPaidCents), true],
                       ['GST included', fmtAud(Math.round(fyPaidCents / 11)), false],
@@ -1289,7 +1292,9 @@ export function DashboardContent() {
                 {/* Spend by night (venue) */}
                 {isVenue && byNight.length > 0 && (
                   <View style={[db.sideCard, { backgroundColor: D.bg, borderColor: D.border }]}>
-                    <Text style={db.sideCardTitle}>Spend by night</Text>
+                    <View style={db.sideCardHdr}>
+                      <Text style={db.sideCardTitle}>Spend by night</Text>
+                    </View>
                     <Text style={[db.taxSub, { color: D.muted }]}>Paid and owed, this period.</Text>
                     {byNight.map(n => (
                       <View key={n.name} style={[db.nightRow, { borderTopColor: D.borderFaint }]}>
