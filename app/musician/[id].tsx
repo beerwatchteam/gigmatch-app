@@ -382,7 +382,13 @@ function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
   const { colors } = useTheme();
   const router = useRouter();
   const songs  = (m.songs || []).filter(s => s.title);
-  const photos = m.photos || [];
+  // Include cover/profile photos as fallback so grid is never empty when a photo exists
+  const rawPhotos = m.photos || [];
+  const extraPhotos = [m.photoUrl, m.coverPhotoUrl].filter((u): u is string => !!u && !rawPhotos.includes(u));
+  const photos = [...rawPhotos, ...extraPhotos];
+  const videos = (m as any).videoObjects?.length
+    ? (m as any).videoObjects as { url: string; title?: string }[]
+    : ((m as any).videos || []).map((url: string) => ({ url }));
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   // Artist pages: prefer new artistPages array, fall back to legacy top-level fields
@@ -491,7 +497,7 @@ function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
             <Text style={[mm.sectionHeading, { color: colors.black }]}>Photos</Text>
             {isOwn && (
               <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Photos+%26+videos' as any)}>
-                <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '700' }}>{photos.length === 0 ? 'Add +' : 'Manage'}</Text>
+                <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '700' }}>{rawPhotos.length === 0 ? 'Add +' : 'Manage'}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -505,6 +511,39 @@ function MusicMediaTab({ m, isOwn = false }: { m: Musician; isOwn?: boolean }) {
             </View>
           ) : (
             <Text style={[styles.emptyState, { color: colors.greyLight }]}>No photos yet.</Text>
+          )}
+        </View>
+      )}
+
+      {/* Videos */}
+      {(videos.length > 0 || isOwn) && (
+        <View style={styles.section}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+            <Text style={[mm.sectionHeading, { color: colors.black }]}>Videos</Text>
+            {isOwn && (
+              <TouchableOpacity onPress={() => router.push('/edit-profile?tab=Photos+%26+videos' as any)}>
+                <Text style={{ fontSize: 12, color: Colors.orange, fontWeight: '700' }}>{videos.length === 0 ? 'Add +' : 'Manage'}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {videos.length > 0 ? (
+            <View style={{ gap: 10 }}>
+              {videos.map((v, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={[mm.artistPageRow, { borderBottomColor: colors.border, borderBottomWidth: i < videos.length - 1 ? 1 : 0 }]}
+                  onPress={() => Linking.openURL(v.url)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[mm.artistPageLabel, { color: colors.black, flex: 1 }]} numberOfLines={1}>
+                    {v.title || v.url}
+                  </Text>
+                  <Text style={{ fontSize: 16, color: colors.grey }}>→</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <Text style={[styles.emptyState, { color: colors.greyLight }]}>No videos yet.</Text>
           )}
         </View>
       )}
