@@ -415,8 +415,8 @@ export default function MusiciansScreen() {
           onMouseLeave: () => setHovered(false),
         } : {})}
       >
-        {item.photoUrl
-          ? <CardPhoto uri={item.photoUrl} position={item.photoPosition} />
+        {(item.photoUrl || item.coverPhotoUrl)
+          ? <CardPhoto uri={item.photoUrl || item.coverPhotoUrl!} position={item.photoPosition} />
           : <View style={[st.cardPhotoEmpty, { backgroundColor: colors.bgFaint }]}><Text style={[st.cardPhotoLabel, { color: colors.grey }]}>artist photo</Text></View>
         }
         <View style={st.cardBody}>

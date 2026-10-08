@@ -1360,15 +1360,15 @@ export default function EditProfileScreen() {
           <View style={{ padding: 16 }}>
             <View style={{ flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
               <View style={{ width: 96, height: 96, borderRadius: 48, overflow: 'hidden', borderWidth: 1, borderColor: colors.border }}>
-                {profile.photoUrl
-                  ? <Image source={{ uri: profile.photoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                {(profile.photoUrl || profile.coverPhotoUrl)
+                  ? <Image source={{ uri: profile.photoUrl || profile.coverPhotoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   : <View style={{ flex: 1, backgroundColor: colors.bgFaint, alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ fontSize: 11, color: Colors.greyLight }}>No photo</Text>
                     </View>
                 }
               </View>
               <View style={{ flex: 1, gap: 6, paddingTop: 4 }}>
-                <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 18 }}>If you don't upload a separate cover photo, this image is also used as your profile banner.</Text>
+                <Text style={{ fontSize: 12, color: colors.grey, lineHeight: 18 }}>Shown as a circle on your profile and in search results. If you only upload one photo, it will be used for both your avatar and cover banner.</Text>
                 <TouchableOpacity style={[pd.outlineBtn, { borderColor: colors.border, alignSelf: 'flex-start', marginTop: 4 }]} onPress={pickBannerPhoto}>
                   <Text style={[pd.outlineBtnText, { color: colors.black }]}>{photoUploading ? 'Uploading...' : profile.photoUrl ? 'Replace' : 'Upload photo'}</Text>
                 </TouchableOpacity>
@@ -1377,7 +1377,7 @@ export default function EditProfileScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard title="Cover photo" subtitle="The wide banner across the top of your profile. Upload separately to use a different image from your avatar.">
+        <SectionCard title="Cover photo" subtitle="The wide banner at the top of your profile. If none is uploaded, your profile photo is used instead.">
           <View style={{ padding: 16 }}>
             <RepositionablePhoto
               uri={profile.coverPhotoUrl || profile.photoUrl || null}
