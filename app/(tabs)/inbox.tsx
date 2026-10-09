@@ -2425,73 +2425,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 )
               )}
 
-              {/* Important Notes */}
-              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Important Notes</Text>
-              <TextInput
-                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border }]}
-                value={notes}
-                onChangeText={t => { setNotes(t); autoSaveNotes(t); }}
-                placeholder="Add key details, agreements, requirements, anything worth pinning..."
-                placeholderTextColor="#aaaaaa"
-                multiline
-                textAlignVertical="top"
-              />
-
-              {/* Notes document */}
-              {notesDoc ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginTop: 10 }}>
-                  <TouchableOpacity style={{ flex: 1 }} onPress={() => Linking.openURL(notesDoc.url)}>
-                    <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }} numberOfLines={1}>↓ {notesDoc.name}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={async () => {
-                      await updateDoc(doc(db, 'inquiries', enquiry.id), { notesDoc: null });
-                      setNotesDoc(null);
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={{ fontSize: 14, color: '#e94560', fontWeight: '700' }}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={{ marginTop: 10, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint }}
-                  onPress={pickNotesDocument}
-                  disabled={notesDocUploading}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.orange }}>
-                    {notesDocUploading ? 'Uploading…' : '+ Attach Document'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Post-Gig */}
-              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Post-Gig</Text>
-              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Attendance</Text>
-                  <TextInput
-                    style={[eh.drawerInlineInput, { color: colors.black }]}
-                    value={postGigAttendance}
-                    onChangeText={t => { const v = t.replace(/[^0-9]/g, ''); setPostGigAttendance(v); postGigAttRef.current = v; autoSavePostGig(); }}
-                    placeholder="e.g. 120"
-                    placeholderTextColor="#aaaaaa"
-                    keyboardType="number-pad"
-                  />
-                </View>
-                <StageConfirmRow stage={BOOKING_STAGES[10]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-                <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-              </View>
-              <TextInput
-                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
-                value={postGigNotes}
-                onChangeText={t => { setPostGigNotes(t); postGigNotesRef.current = t; autoSavePostGig(); }}
-                placeholder="How did it go? Attendance, crowd response, any notes for next time..."
-                placeholderTextColor="#aaaaaa"
-                multiline
-                textAlignVertical="top"
-              />
-
               {/* Contract */}
               {(() => {
                 const stageMap = (enquiry as any).stages as Record<string, StageData> | undefined;
@@ -2756,6 +2689,73 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   </>
                 );
               })()}
+
+              {/* Important Notes */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Important Notes</Text>
+              <TextInput
+                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border }]}
+                value={notes}
+                onChangeText={t => { setNotes(t); autoSaveNotes(t); }}
+                placeholder="Add key details, agreements, requirements, anything worth pinning..."
+                placeholderTextColor="#aaaaaa"
+                multiline
+                textAlignVertical="top"
+              />
+
+              {/* Notes document */}
+              {notesDoc ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, marginTop: 10 }}>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => Linking.openURL(notesDoc.url)}>
+                    <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }} numberOfLines={1}>↓ {notesDoc.name}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      await updateDoc(doc(db, 'inquiries', enquiry.id), { notesDoc: null });
+                      setNotesDoc(null);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={{ fontSize: 14, color: '#e94560', fontWeight: '700' }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{ marginTop: 10, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint }}
+                  onPress={pickNotesDocument}
+                  disabled={notesDocUploading}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.orange }}>
+                    {notesDocUploading ? 'Uploading…' : '+ Attach Document'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Post-Gig */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Post-Gig</Text>
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
+                <View style={[eh.drawerInfoRow, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                  <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Attendance</Text>
+                  <TextInput
+                    style={[eh.drawerInlineInput, { color: colors.black }]}
+                    value={postGigAttendance}
+                    onChangeText={t => { const v = t.replace(/[^0-9]/g, ''); setPostGigAttendance(v); postGigAttRef.current = v; autoSavePostGig(); }}
+                    placeholder="e.g. 120"
+                    placeholderTextColor="#aaaaaa"
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <StageConfirmRow stage={BOOKING_STAGES[10]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
+              <TextInput
+                style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
+                value={postGigNotes}
+                onChangeText={t => { setPostGigNotes(t); postGigNotesRef.current = t; autoSavePostGig(); }}
+                placeholder="How did it go? Attendance, crowd response, any notes for next time..."
+                placeholderTextColor="#aaaaaa"
+                multiline
+                textAlignVertical="top"
+              />
 
               {/* Extra */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Extra</Text>
