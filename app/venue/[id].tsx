@@ -683,6 +683,10 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
       .catch(() => {});
   }, [id]);
 
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [pitchCopied,    setPitchCopied]   = useState(false);
+  const [linkCopied,     setLinkCopied]    = useState(false);
+
   const safeEdges = isProfileTab ? (['bottom'] as const) : undefined;
 
   if (loading) return (
@@ -701,10 +705,6 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
   );
 
   const isMyVenue = !isPublicPreview && profile?.type === 'venue' && profile?.venueId === id;
-
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [pitchCopied,    setPitchCopied]   = useState(false);
-  const [linkCopied,     setLinkCopied]    = useState(false);
 
   const profileUrl = `https://twaylo.com.au/venue/${venue.username || id}`;
 
