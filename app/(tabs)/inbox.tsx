@@ -1797,22 +1797,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   />
                 </View>
                 <StageConfirmRow stage={stageByKey('gigDetails')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-                {isVenue && normalizeEnquiryStatus(enquiry.status) === 'confirmed' && !enquiry.listAsBooked && (
-                  <TouchableOpacity
-                    style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 13 }]}
-                    onPress={async () => {
-                      const gigId = (enquiry as any).gigId as string | undefined;
-                      if (!gigId) return;
-                      const { upgradeGigToBooked } = await import('@/lib/useGigs');
-                      const fee = (enquiry as any).fee ?? { type: 'flat' };
-                      await upgradeGigToBooked(enquiry, fee).catch(() => {});
-                    }}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#16a34a' }}>Mark as Booked</Text>
-                    <Text style={{ fontSize: 11, color: colors.grey, marginTop: 1 }}>Confirms this gig 100% — locks the slot as booked</Text>
-                  </TouchableOpacity>
-                )}
               </View>
 
               {/* Participants — always shown for venues; also shown when participants exist */}
