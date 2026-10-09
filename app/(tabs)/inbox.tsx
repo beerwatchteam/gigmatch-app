@@ -52,7 +52,10 @@ function useVenuePhoto(venueId: string | null | undefined): string | null {
   useEffect(() => {
     if (!venueId) return;
     getDoc(doc(db, 'venues', venueId)).then(snap => {
-      if (snap.exists()) setPhoto(snap.data().photoUrl ?? null);
+      if (snap.exists()) {
+        const d = snap.data();
+        setPhoto(d.photoUrl || d.coverPhotoUrl || null);
+      }
     }).catch(() => {});
   }, [venueId]);
   return photo;
@@ -3752,7 +3755,7 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
             <Text style={[tt.name, isSelected && { color: Colors.orange }, isUnread && { fontWeight: '800' }]} numberOfLines={1}>{groupTitle ?? who}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
               {isUnread && <View style={tt.unreadDot} />}
-              <Text style={tt.time}>{formatTileDate(item.submittedAt)}</Text>
+              <Text style={tt.time}>{formatTileDate(item.lastMessageAt || item.submittedAt)}</Text>
             </View>
           </View>
           <Text style={tt.slot} numberOfLines={1}>
@@ -5742,7 +5745,7 @@ export default function InboxScreen() {
     : enquiries;
 
   const FILTERS = getFilterConfig(effectiveIsVenue);
-  const sorted   = [...rosterFilteredEnquiries].filter(e => !(effectiveIsVenue && e.status === 'declined')).sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+  const sorted   = [...rosterFilteredEnquiries].filter(e => !(effectiveIsVenue && e.status === 'declined')).sort((a, b) => new Date(b.lastMessageAt || b.submittedAt).getTime() - new Date(a.lastMessageAt || a.submittedAt).getTime());
   const filtered = sorted.filter(e => matchesFilter(e, filter));
   const enquiryNotifCount = !effectiveIsVenue
     ? rosterFilteredEnquiries.filter(e => e.status !== 'declined' && e.status !== 'cancelled').length
