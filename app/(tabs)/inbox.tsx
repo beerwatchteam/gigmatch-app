@@ -493,7 +493,7 @@ function getInitials(name: string): string {
 
 type StatusCfg = { label: string; color: string; bg: string };
 
-function getStatusCfg(status: string, isVenue: boolean): StatusCfg {
+function getStatusCfg(status: string, isVenue: boolean, listAsBooked?: boolean): StatusCfg {
   const s = normalizeEnquiryStatus(status as Enquiry['status']);
   switch (s) {
     case 'enquired':
@@ -503,7 +503,9 @@ function getStatusCfg(status: string, isVenue: boolean): StatusCfg {
     case 'discussing':
       return { label: 'DISCUSSING', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' };
     case 'confirmed':
-      return { label: 'CONFIRMED',  color: '#16a34a', bg: 'rgba(22,163,74,0.1)'  };
+      return listAsBooked
+        ? { label: 'BOOKED',   color: '#16a34a', bg: 'rgba(22,163,74,0.1)'   }
+        : { label: 'PENDING',  color: '#f59e0b', bg: 'rgba(245,158,11,0.1)'  };
     case 'declined':
       return { label: 'DECLINED',   color: '#dc2626', bg: 'rgba(220,38,38,0.1)'  };
     case 'cancelled':
@@ -589,8 +591,8 @@ function parseFeeType(s: string | null | undefined): FeeType | null {
   return null;
 }
 
-function StatusBadge({ status, isVenue }: { status: string; isVenue: boolean }) {
-  const cfg = getStatusCfg(status, isVenue);
+function StatusBadge({ status, isVenue, listAsBooked }: { status: string; isVenue: boolean; listAsBooked?: boolean }) {
+  const cfg = getStatusCfg(status, isVenue, listAsBooked);
   return (
     <View style={sb.wrap}>
       <Text style={[sb.text, { color: cfg.color }]}>{cfg.label}</Text>
@@ -609,10 +611,8 @@ const sb = StyleSheet.create({
 // ── Booking stages ──────────────────────────────────────────────────────────
 
 type StageKey =
-  | 'enquirySent' | 'discussing' | 'gigDetails' | 'techRiderReviewed'
-  | 'supportActsConfirmed' | 'setTimesLocked' | 'paymentTermsSet'
-  | 'hospitalityConfirmed' | 'confirmedPending' | 'invoiceSubmitted'
-  | 'confirmedBooked' | 'performed' | 'paymentSettled';
+  | 'gigDetails' | 'techRiderReviewed' | 'supportActsConfirmed'
+  | 'paymentTermsSet' | 'performed' | 'invoiceSubmitted' | 'paymentSettled';
 
 type StageControl = 'auto' | 'venue' | 'artist' | 'both';
 type StageStatus  = 'complete' | 'waiting_venue' | 'waiting_artist' | 'pending' | 'skipped';
@@ -620,20 +620,18 @@ type StageData    = { venueConfirmed?: boolean; artistConfirmed?: boolean; skipp
 type StageDef     = { key: StageKey; label: string; control: StageControl };
 
 const BOOKING_STAGES: StageDef[] = [
-  { key: 'enquirySent',          label: 'Enquiry Sent',           control: 'auto'   },
-  { key: 'discussing',           label: 'Discussing',             control: 'auto'   },
-  { key: 'gigDetails',           label: 'General Gig Details',    control: 'both'   },
+  { key: 'gigDetails',           label: 'Gig Details Confirmed',  control: 'both'   },
   { key: 'techRiderReviewed',    label: 'Tech Rider Reviewed',    control: 'venue'  },
   { key: 'supportActsConfirmed', label: 'Support Acts Confirmed', control: 'both'   },
-  { key: 'setTimesLocked',       label: 'Set Times Locked',       control: 'both'   },
   { key: 'paymentTermsSet',      label: 'Payment Terms',          control: 'both'   },
-  { key: 'hospitalityConfirmed', label: 'Hospitality Confirmed',  control: 'venue'  },
-  { key: 'confirmedPending',     label: 'Confirmed: Pending',     control: 'auto'   },
-  { key: 'confirmedBooked',      label: 'Confirmed: Booked',      control: 'auto'   },
   { key: 'performed',            label: 'Performed',              control: 'both'   },
   { key: 'invoiceSubmitted',     label: 'Invoice Submitted',      control: 'artist' },
   { key: 'paymentSettled',       label: 'Payment Settled',        control: 'both'   },
 ];
+
+function stageByKey(key: StageKey): StageDef {
+  return BOOKING_STAGES.find(s => s.key === key)!;
+}
 
 
 function computeStageStatus(
@@ -655,11 +653,6 @@ function computeStageStatus(
     return 'pending';
   }
   if (control === 'auto') {
-    const norm = normalizeEnquiryStatus(enquiry.status);
-    if (key === 'enquirySent')      return 'complete';
-    if (key === 'discussing')       return (norm === 'discussing' || norm === 'confirmed') ? 'complete' : 'pending';
-    if (key === 'confirmedPending') return norm === 'confirmed' ? 'complete' : 'pending';
-    if (key === 'confirmedBooked')  return (!!(enquiry as any).gigId && norm === 'confirmed') ? 'complete' : 'pending';
     return 'pending';
   }
   if (control === 'venue')  return data?.venueConfirmed  ? 'complete' : 'pending';
@@ -1709,7 +1702,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
           <View style={eh.titleInfo}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
               <Text style={[eh.name, { color: colors.black }]} numberOfLines={1}>{who}</Text>
-              <StatusBadge status={enquiry.status} isVenue={isVenue} />
+              <StatusBadge status={enquiry.status} isVenue={isVenue} listAsBooked={!!(enquiry as any).listAsBooked} />
             </View>
             {slotStr ? (
               <Text style={[eh.slot, { color: colors.grey }]} numberOfLines={1}>{slotStr}</Text>
@@ -1803,8 +1796,23 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     placeholderTextColor="#aaaaaa"
                   />
                 </View>
-                <StageConfirmRow stage={BOOKING_STAGES[2]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-                <StageConfirmRow stage={BOOKING_STAGES[5]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={stageByKey('gigDetails')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                {isVenue && normalizeEnquiryStatus(enquiry.status) === 'confirmed' && !enquiry.listAsBooked && (
+                  <TouchableOpacity
+                    style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 13 }]}
+                    onPress={async () => {
+                      const gigId = (enquiry as any).gigId as string | undefined;
+                      if (!gigId) return;
+                      const { upgradeGigToBooked } = await import('@/lib/useGigs');
+                      const fee = (enquiry as any).fee ?? { type: 'flat' };
+                      await upgradeGigToBooked(enquiry, fee).catch(() => {});
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#16a34a' }}>Mark as Booked</Text>
+                    <Text style={{ fontSize: 11, color: colors.grey, marginTop: 1 }}>Confirms this gig 100% — locks the slot as booked</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Participants — always shown for venues; also shown when participants exist */}
@@ -1855,7 +1863,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.orange }}>+ Invite Support Act</Text>
                         </TouchableOpacity>
                       )}
-                      <StageConfirmRow stage={BOOKING_STAGES[4]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                      <StageConfirmRow stage={stageByKey('supportActsConfirmed')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                     </View>
                   </>
                 );
@@ -1939,7 +1947,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           ))}
                         </View>
                       ) : null}
-                      <StageConfirmRow stage={BOOKING_STAGES[3]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                      <StageConfirmRow stage={stageByKey('techRiderReviewed')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                     </View>
                   </>
                 );
@@ -1988,7 +1996,6 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                           </TouchableOpacity>
                         </View>
                       ) : null}
-                      <StageConfirmRow stage={BOOKING_STAGES[7]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                     </View>
                   </>
                 );
@@ -2311,7 +2318,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                         )}
                       </View>
                       <StageConfirmRow
-                        stage={BOOKING_STAGES[6]}
+                        stage={stageByKey('paymentTermsSet')}
                         enquiry={enquiry}
                         isVenue={isVenue}
                         colors={colors}
@@ -2426,7 +2433,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 )
               )}
               <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
-                <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={stageByKey('invoiceSubmitted')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
 
               {/* Contract */}
@@ -2435,9 +2442,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
                 // Stage readiness
                 const stagesDone = {
-                  gigDetails:      computeStageStatus('gigDetails',     'both',  stageMap?.['gigDetails'],     enquiry) === 'complete',
-                  setTimesLocked:  computeStageStatus('setTimesLocked', 'both',  stageMap?.['setTimesLocked'], enquiry) === 'complete',
-                  paymentTermsSet: computeStageStatus('paymentTermsSet','both',  stageMap?.['paymentTermsSet'],enquiry) === 'complete',
+                  gigDetails:        computeStageStatus('gigDetails',      'both',   stageMap?.['gigDetails'],      enquiry) === 'complete',
+                  paymentTermsSet:   computeStageStatus('paymentTermsSet', 'both',   stageMap?.['paymentTermsSet'], enquiry) === 'complete',
                   techRiderReviewed: (() => {
                     const d = stageMap?.['techRiderReviewed'];
                     return !!(d?.skipped || d?.venueConfirmed);
@@ -2451,11 +2457,11 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 const otherLegalOk  = otherLegalRaw ? isLegalIdentityComplete({ ...BLANK_LEGAL, ...otherLegalRaw }) : false;
                 const legalDone     = myLegalOk === true && otherLegalOk;
 
-                const allReady = stagesDone.gigDetails && stagesDone.setTimesLocked &&
-                  stagesDone.paymentTermsSet && stagesDone.techRiderReviewed && legalDone;
+                const allReady = stagesDone.gigDetails && stagesDone.paymentTermsSet &&
+                  stagesDone.techRiderReviewed && legalDone;
 
                 // Per-stage "who's blocking" hints
-                function stageHint(key: 'gigDetails' | 'setTimesLocked' | 'paymentTermsSet'): string | null {
+                function stageHint(key: 'gigDetails' | 'paymentTermsSet'): string | null {
                   const d = stageMap?.[key];
                   if (!d || (!d.venueConfirmed && !d.artistConfirmed)) return 'Waiting on both parties';
                   if (!d.venueConfirmed) return isVenue ? 'Needs your confirmation' : 'Waiting on venue';
@@ -2475,10 +2481,9 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 }
 
                 const CHECKLIST: { label: string; done: boolean; hint: string | null; section?: string; action?: () => void }[] = [
-                  { label: 'General Gig Details',  done: stagesDone.gigDetails,       hint: stagesDone.gigDetails       ? null : stageHint('gigDetails'),      section: 'Gig Details' },
-                  { label: 'Set Times Locked',     done: stagesDone.setTimesLocked,   hint: stagesDone.setTimesLocked   ? null : stageHint('setTimesLocked'),   section: 'Set Times' },
-                  { label: 'Payment Terms',        done: stagesDone.paymentTermsSet,  hint: stagesDone.paymentTermsSet  ? null : stageHint('paymentTermsSet'),  section: 'Payment Method' },
-                  { label: 'Tech Rider Reviewed',  done: stagesDone.techRiderReviewed,hint: stagesDone.techRiderReviewed? null : techHint(),                    section: 'Tech Rider' },
+                  { label: 'Gig Details Confirmed', done: stagesDone.gigDetails,       hint: stagesDone.gigDetails      ? null : stageHint('gigDetails'),     section: 'Gig Info' },
+                  { label: 'Payment Terms',         done: stagesDone.paymentTermsSet,  hint: stagesDone.paymentTermsSet ? null : stageHint('paymentTermsSet'), section: 'Payment' },
+                  { label: 'Tech Rider Reviewed',   done: stagesDone.techRiderReviewed,hint: stagesDone.techRiderReviewed ? null : techHint(),                 section: 'Tech Rider' },
                   {
                     label: 'Legal details (both parties)',
                     done: legalDone,
@@ -2566,9 +2571,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
               {(() => {
                 const stageMap = (enquiry as any).stages as Record<string, StageData> | undefined;
                 const stagesDone = {
-                  gigDetails:      computeStageStatus('gigDetails',     'both', stageMap?.['gigDetails'],     enquiry) === 'complete',
-                  setTimesLocked:  computeStageStatus('setTimesLocked', 'both', stageMap?.['setTimesLocked'], enquiry) === 'complete',
-                  paymentTermsSet: computeStageStatus('paymentTermsSet','both', stageMap?.['paymentTermsSet'],enquiry) === 'complete',
+                  gigDetails:        computeStageStatus('gigDetails',      'both', stageMap?.['gigDetails'],      enquiry) === 'complete',
+                  paymentTermsSet:   computeStageStatus('paymentTermsSet', 'both', stageMap?.['paymentTermsSet'], enquiry) === 'complete',
                   techRiderReviewed: (() => { const d = stageMap?.['techRiderReviewed']; return !!(d?.skipped || d?.venueConfirmed); })(),
                 };
                 const myLegalOk    = myLegalIdentity ? isLegalIdentityComplete(myLegalIdentity) : legalFetched ? false : null;
@@ -2576,8 +2580,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 const otherLegalRaw = (enquiry as any)[otherSnapKey] as Partial<LegalIdentity> | null | undefined;
                 const otherLegalOk  = otherLegalRaw ? isLegalIdentityComplete({ ...BLANK_LEGAL, ...otherLegalRaw }) : false;
                 const legalDone     = myLegalOk === true && otherLegalOk;
-                const allReady = stagesDone.gigDetails && stagesDone.setTimesLocked &&
-                  stagesDone.paymentTermsSet && stagesDone.techRiderReviewed && legalDone;
+                const allReady = stagesDone.gigDetails && stagesDone.paymentTermsSet &&
+                  stagesDone.techRiderReviewed && legalDone;
 
                 const mySignKey    = isVenue ? 'venueSignature'  : 'artistSignature';
                 const otherSignKey = isVenue ? 'artistSignature' : 'venueSignature';
@@ -2748,8 +2752,8 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                     keyboardType="number-pad"
                   />
                 </View>
-                <StageConfirmRow stage={BOOKING_STAGES[10]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-                <StageConfirmRow stage={BOOKING_STAGES[12]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={stageByKey('performed')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={stageByKey('paymentSettled')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
               <TextInput
                 style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
@@ -3687,7 +3691,7 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
   const dateStr = date ? fmtSlotDate(date) : '';
   const slotStr      = [day, dateStr, time, slotType].filter(Boolean).join(' · ');
   const tileTzLbl    = tzLabel(getVenueTz(item));
-  const cfg = getStatusCfg(item.status, isVenue);
+  const cfg = getStatusCfg(item.status, isVenue, !!item.listAsBooked);
   const fee = (item as any).fee ? `$${(item as any).fee}` : null;
 
   const badgeRef   = useRef<View>(null);
@@ -5634,21 +5638,24 @@ const dm = StyleSheet.create({
 
 // ── Filter config ──────────────────────────────────────────────────────────
 
-type FilterKey = 'enquired' | 'discussing' | 'confirmed';
+type FilterKey = 'enquired' | 'discussing' | 'confirmed_pending' | 'confirmed_booked';
 
 function getFilterConfig(isVenue: boolean) {
   return [
-    { key: 'enquired'   as FilterKey, label: isVenue ? 'Awaiting Response' : 'Enquired', statuses: ['enquired', 'pending'] },
-    { key: 'discussing' as FilterKey, label: 'Discussing', statuses: ['discussing'] },
-    { key: 'confirmed'  as FilterKey, label: 'Confirmed',  statuses: ['confirmed', 'accepted'] },
+    { key: 'enquired'          as FilterKey, label: isVenue ? 'Awaiting Response' : 'Enquired', },
+    { key: 'discussing'        as FilterKey, label: 'Discussing',  },
+    { key: 'confirmed_pending' as FilterKey, label: 'Pending',     },
+    { key: 'confirmed_booked'  as FilterKey, label: 'Booked',      },
   ];
 }
 
 function matchesFilter(enquiry: Enquiry, filter: FilterKey): boolean {
-  const cfg = getFilterConfig(true).find(f => f.key === filter);
-  if (!cfg) return true;
   const norm = normalizeEnquiryStatus(enquiry.status);
-  return cfg.statuses.includes(enquiry.status) || cfg.statuses.includes(norm);
+  if (filter === 'enquired')          return norm === 'enquired';
+  if (filter === 'discussing')        return norm === 'discussing';
+  if (filter === 'confirmed_pending') return norm === 'confirmed' && !enquiry.listAsBooked;
+  if (filter === 'confirmed_booked')  return norm === 'confirmed' && !!enquiry.listAsBooked;
+  return false;
 }
 
 // ── Main inbox screen ──────────────────────────────────────────────────────
