@@ -7,7 +7,7 @@ import {
 import { Text } from '@/components/Text';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { doc, getDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc, setDoc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import SuburbSearch from '@/components/SuburbSearch';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -1246,6 +1246,18 @@ export default function EditVenueScreen() {
       await Promise.all([
         setDoc(doc(db, 'venues', venueId, 'private', 'details'), privateDetails),
       ]);
+
+      // Sync updated venue name to all related enquiries
+      if (publicFields.name) {
+        try {
+          const enqSnap = await getDocs(query(collection(db, 'inquiries'), where('venueId', '==', venueId)));
+          if (!enqSnap.empty) {
+            const b = writeBatch(db);
+            enqSnap.docs.forEach(d => b.update(d.ref, { venueName: publicFields.name }));
+            await b.commit();
+          }
+        } catch { /* non-critical — enquiries will show stale name until next save */ }
+      }
       setDoc(doc(db, 'venues', venueId, 'private', 'legal'), legalPayload)
         .then(() => setSavedLegal(legalIdentity))
         .catch(() => {});

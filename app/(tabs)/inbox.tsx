@@ -1836,17 +1836,20 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       {allRows.map((p, i) => {
                         const isMe = !p.isFallback && p.userId === currentUserUid;
                         const pending = !p.isFallback && p.state === 'invited';
+                        // Venue row always shows the enquiry's venue name (participant displayName
+                        // stores the owner's user name, not the venue name)
+                        const rowName = p.role === 'venue' ? enquiry.venueName : p.displayName;
                         return (
                           <TouchableOpacity
                             key={p.id}
                             style={[eh.drawerInfoRow, i < allRows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                            onPress={() => { if (!p.isFallback && !isMe && p.userId && onOpenSubThread) { closeDetails(() => onOpenSubThread(p.userId!, p.displayName, p.photoUrl)); } }}
+                            onPress={() => { if (!p.isFallback && !isMe && p.userId && onOpenSubThread) { closeDetails(() => onOpenSubThread(p.userId!, rowName, p.photoUrl)); } }}
                             activeOpacity={p.isFallback || isMe ? 1 : 0.7}
                           >
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                              <Avatar photoUrl={p.photoUrl} name={p.displayName} size={28} />
+                              <Avatar photoUrl={p.photoUrl} name={rowName} size={28} />
                               <View>
-                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }} numberOfLines={1}>{p.displayName}</Text>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }} numberOfLines={1}>{rowName}</Text>
                                 <Text style={{ fontSize: 11, color: colors.grey }}>
                                   {p.role === 'venue' ? 'Venue' : p.role === 'headliner' ? 'Headliner' : 'Support Act'}
                                 </Text>
@@ -1948,6 +1951,56 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       ) : null}
                       <StageConfirmRow stage={stageByKey('techRiderReviewed')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
                     </View>
+
+                    {/* Support act tech riders */}
+                    {(participants ?? []).filter(p => p.role === 'support' && p.state !== 'left').map(p => {
+                      const sp = p as any;
+                      const str = sp.techRider && typeof sp.techRider === 'object' ? sp.techRider as Record<string, any> : null;
+                      const sbfv: string[] = Array.isArray(sp.backlineFromVenue) ? sp.backlineFromVenue : [];
+                      const sbb: string[]  = Array.isArray(sp.backlineBring)     ? sp.backlineBring     : [];
+                      const strb           = sp.techRiderBools && typeof sp.techRiderBools === 'object' ? sp.techRiderBools as Record<string, boolean> : {};
+                      const schs: any[]    = Array.isArray(sp.inputChannels)     ? sp.inputChannels     : [];
+                      const sDocs: any[]   = Array.isArray(sp.techRiderDocs)     ? sp.techRiderDocs     : [];
+                      const sRows: { label: string; value: string }[] = [];
+                      if (str?.stageWidth || str?.stageDepth)
+                        sRows.push({ label: 'Min stage', value: str.stageWidth && str.stageDepth ? `${str.stageWidth}m × ${str.stageDepth}m` : str.stageWidth || str.stageDepth });
+                      if (str?.monitoringType || str?.monitoring)
+                        sRows.push({ label: 'Monitoring', value: [str.monitoringType, str.monitoring].filter(Boolean).join(' · ') });
+                      if (sbfv.length)      sRows.push({ label: 'Needs from venue', value: sbfv.join(', ') });
+                      if (sbb.length)       sRows.push({ label: 'Brings own',       value: sbb.join(', ') });
+                      if (strb.ownPA)       sRows.push({ label: 'PA',               value: 'Touring with own PA and engineer' });
+                      if (str?.soundcheck)  sRows.push({ label: 'Soundcheck',        value: str.soundcheck });
+                      if (str?.loadIn)      sRows.push({ label: 'Load-in',           value: str.loadIn });
+                      if (str?.lighting)    sRows.push({ label: 'Lighting',          value: str.lighting });
+                      if (str?.power)       sRows.push({ label: 'Power',             value: str.power });
+                      if (schs.length)      sRows.push({ label: 'Input channels',    value: `${schs.length} ch` });
+                      return (
+                        <View key={p.id} style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
+                          <View style={[eh.drawerInfoRow, { borderBottomWidth: sRows.length > 0 ? 1 : 0, borderBottomColor: colors.border }]}>
+                            <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{p.displayName}</Text>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.grey }}>Support Act</Text>
+                          </View>
+                          {sRows.length === 0 ? (
+                            <View style={eh.drawerInfoRow}>
+                              <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Not listed</Text>
+                            </View>
+                          ) : sRows.map((r, i) => (
+                            <View key={r.label} style={[eh.drawerInfoRow, i < sRows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                              <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{r.label}</Text>
+                              <Text style={[eh.drawerInfoVal, { color: colors.black }]} numberOfLines={2}>{r.value}</Text>
+                            </View>
+                          ))}
+                          {(str?.stagePlotUrl || str?.inputListUrl || sDocs.length > 0) ? (
+                            <View style={[eh.drawerInfoRow, { flexDirection: 'column', alignItems: 'flex-start', gap: 6, borderTopWidth: 1, borderTopColor: colors.border }]}>
+                              <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Downloads</Text>
+                              {str?.stagePlotUrl && <TouchableOpacity onPress={() => Linking.openURL(str.stagePlotUrl)}><Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>↓ Stage Plot</Text></TouchableOpacity>}
+                              {str?.inputListUrl && <TouchableOpacity onPress={() => Linking.openURL(str.inputListUrl)}><Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>↓ {str.inputListName || 'Input List'}</Text></TouchableOpacity>}
+                              {sDocs.map((d: any, idx: number) => <TouchableOpacity key={idx} onPress={() => Linking.openURL(d.url)}><Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>↓ {d.name}</Text></TouchableOpacity>)}
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </>
                 );
               })()}
@@ -1991,6 +2044,39 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                         </View>
                       ) : null}
                     </View>
+
+                    {/* Support act hospitality */}
+                    {(participants ?? []).filter(p => p.role === 'support' && p.state !== 'left').map(p => {
+                      const sp = p as any;
+                      const sh = sp.hospitality && typeof sp.hospitality === 'object' ? sp.hospitality as Record<string, any> : null;
+                      const sHRows: { label: string; value: string }[] = [];
+                      if (sh?.mealsRequired) sHRows.push({ label: 'Meals',         value: 'Required' });
+                      if (sh?.mealCount)     sHRows.push({ label: 'Meal count',    value: String(sh.mealCount) });
+                      if (sh?.dietaryReqs)   sHRows.push({ label: 'Dietary',       value: sh.dietaryReqs });
+                      if (sh?.drinks)        sHRows.push({ label: 'Drinks',        value: sh.drinks });
+                      if (sh?.greenRoom)     sHRows.push({ label: 'Green room',    value: 'Required' });
+                      if (sh?.merchTable)    sHRows.push({ label: 'Merch table',   value: 'Required' });
+                      if (sh?.parkingLoading) sHRows.push({ label: 'Parking',      value: sh.parkingLoading });
+                      if (sh?.accommodation) sHRows.push({ label: 'Accommodation', value: sh.accommodation });
+                      return (
+                        <View key={p.id} style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
+                          <View style={[eh.drawerInfoRow, { borderBottomWidth: sHRows.length > 0 ? 1 : 0, borderBottomColor: colors.border }]}>
+                            <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{p.displayName}</Text>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.grey }}>Support Act</Text>
+                          </View>
+                          {sHRows.length === 0 ? (
+                            <View style={eh.drawerInfoRow}>
+                              <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Not listed</Text>
+                            </View>
+                          ) : sHRows.map((r, i) => (
+                            <View key={r.label} style={[eh.drawerInfoRow, i < sHRows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                              <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>{r.label}</Text>
+                              <Text style={[eh.drawerInfoVal, { color: colors.black }]}>{r.value}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      );
+                    })}
                   </>
                 );
               })()}
