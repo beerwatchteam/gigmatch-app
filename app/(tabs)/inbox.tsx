@@ -1805,16 +1805,25 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 const myPart    = (participants ?? []).find(p => p.userId === currentUserUid);
                 const canInvite = isVenue || myPart?.role === 'headliner';
 
-                // Always show venue + headliner, deriving from enquiry when not in subcollection
-                type DisplayRow = { id: string; displayName: string; role: string; isFallback: boolean; userId?: string; photoUrl?: string; state?: string };
+                // Always show venue + headliner, deriving from enquiry when not in subcollection.
+                // Deduplicate venue/headliner roles in case of stale subcollection data.
+                type DisplayRow = { id: string; displayName: string; role: string; isFallback: boolean; userId?: string; photoUrl?: string | null; state?: string };
+                const seenRoles = new Set<string>();
+                const deduped = visible.filter(p => {
+                  if (p.role === 'venue' || p.role === 'headliner') {
+                    if (seenRoles.has(p.role)) return false;
+                    seenRoles.add(p.role);
+                  }
+                  return true;
+                });
                 const fallbacks: DisplayRow[] = [];
-                if (!visible.some(p => p.role === 'venue'))
+                if (!deduped.some(p => p.role === 'venue'))
                   fallbacks.push({ id: 'fb-venue', displayName: enquiry.venueName, role: 'venue', isFallback: true });
-                if (!visible.some(p => p.role === 'headliner'))
+                if (!deduped.some(p => p.role === 'headliner'))
                   fallbacks.push({ id: 'fb-headliner', displayName: enquiry.bandName, role: 'headliner', isFallback: true });
                 const allRows: DisplayRow[] = [
                   ...fallbacks,
-                  ...visible.map(p => ({ ...p, isFallback: false })),
+                  ...deduped.map(p => ({ ...p, isFallback: false })),
                 ];
 
                 return (
