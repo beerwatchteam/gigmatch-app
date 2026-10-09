@@ -611,7 +611,7 @@ const sb = StyleSheet.create({
 type StageKey =
   | 'enquirySent' | 'discussing' | 'gigDetails' | 'techRiderReviewed'
   | 'supportActsConfirmed' | 'setTimesLocked' | 'paymentTermsSet'
-  | 'hospitalityConfirmed' | 'confirmedPending'
+  | 'hospitalityConfirmed' | 'confirmedPending' | 'invoiceSubmitted'
   | 'confirmedBooked' | 'performed' | 'paymentSettled';
 
 type StageControl = 'auto' | 'venue' | 'artist' | 'both';
@@ -631,6 +631,7 @@ const BOOKING_STAGES: StageDef[] = [
   { key: 'confirmedPending',     label: 'Confirmed: Pending',     control: 'auto'   },
   { key: 'confirmedBooked',      label: 'Confirmed: Booked',      control: 'auto'   },
   { key: 'performed',            label: 'Performed',              control: 'both'   },
+  { key: 'invoiceSubmitted',     label: 'Invoice Submitted',      control: 'artist' },
   { key: 'paymentSettled',       label: 'Payment Settled',        control: 'both'   },
 ];
 
@@ -2424,6 +2425,9 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   </View>
                 )
               )}
+              <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border, marginTop: 8 }]}>
+                <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+              </View>
 
               {/* Contract */}
               {(() => {
@@ -2745,7 +2749,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                   />
                 </View>
                 <StageConfirmRow stage={BOOKING_STAGES[10]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
-                <StageConfirmRow stage={BOOKING_STAGES[11]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
+                <StageConfirmRow stage={BOOKING_STAGES[12]} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
               <TextInput
                 style={[eh.drawerNotesInput, { color: colors.black, backgroundColor: colors.bgFaint, borderColor: colors.border, minHeight: 80, marginTop: 8 }]}
