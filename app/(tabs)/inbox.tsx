@@ -3724,7 +3724,7 @@ function ThreadTile({ item, isVenue, isSelected, myUid, onPress, onDelete, roste
   const avatarPhoto = isVenue ? (item.photoUrl ?? null) : venuePhoto;
 
   // Group gig detection: enquiry has more than 2 participantUids (venue + headliner + support)
-  const isGroup = Array.isArray(item.participantUids) && item.participantUids.length > 2;
+  const isGroup = Array.isArray(item.participantUids) && item.participantUids.length >= 2;
   const participants = useParticipants(isGroup ? item.id : null);
 
   // Build group title (Instagram-style): exclude self, show named members + overflow count
