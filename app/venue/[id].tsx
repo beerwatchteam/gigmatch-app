@@ -844,11 +844,11 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
             <View style={[vd.divider, { backgroundColor: colors.border }]} />
 
             <TouchableOpacity
-              style={[vd.editBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border, marginBottom: 8 }]}
+              style={[vd.editBtn, { backgroundColor: Colors.orange, marginBottom: 8 }]}
               onPress={() => setShowShareModal(true)}
               activeOpacity={0.85}
             >
-              <Text style={[vd.editBtnText, { color: colors.black }]}>Share Profile</Text>
+              <Text style={vd.editBtnText}>Share Profile</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={vd.editBtn}
@@ -1001,8 +1001,8 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
                 {/* Action buttons */}
                 {isMyVenue ? (
                   <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                    <TouchableOpacity style={s.msgVenueBtn} onPress={() => setShowShareModal(true)} activeOpacity={0.8}>
-                      <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Share profile</Text>
+                    <TouchableOpacity style={[s.msgVenueBtn, { backgroundColor: Colors.orange, borderColor: Colors.orange }]} onPress={() => setShowShareModal(true)} activeOpacity={0.8}>
+                      <Text style={[s.msgVenueBtnText, { color: '#ffffff' }]}>Share profile</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
                       <Text style={s.editProfileBtnText}>Edit profile</Text>
