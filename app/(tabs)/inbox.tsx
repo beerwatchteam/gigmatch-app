@@ -1075,8 +1075,10 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [notes,            setNotes]            = useState<string>((enquiry as any).importantNotes ?? '');
-  const [notesDoc,         setNotesDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
-  const [notesDocUploading,setNotesDocUploading]= useState(false);
+  const [notesDoc,           setNotesDoc]           = useState<{ url: string; name: string } | null>((enquiry as any).notesDoc ?? null);
+  const [notesDocUploading,  setNotesDocUploading]  = useState(false);
+  const [invoiceDoc,         setInvoiceDoc]         = useState<{ url: string; name: string } | null>((enquiry as any).invoiceDoc ?? null);
+  const [invoiceDocUploading,setInvoiceDocUploading]= useState(false);
   const [contractLoading,  setContractLoading]  = useState(false);
   const [showSignModal,    setShowSignModal]    = useState(false);
   const [signAgreed,       setSignAgreed]       = useState(false);
@@ -1658,6 +1660,31 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
       Alert.alert('Upload failed', String(e));
     } finally {
       setNotesDocUploading(false);
+    }
+  }
+
+  async function pickInvoiceDocument() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    setInvoiceDocUploading(true);
+    try {
+      const asset = result.assets[0];
+      const res   = await fetch(asset.uri);
+      const blob  = await res.blob();
+      const ext   = asset.name.split('.').pop() || 'pdf';
+      const ref   = sRef(storage, `enquiry-invoices/${enquiry.id}/${Date.now()}.${ext}`);
+      await uploadBytes(ref, blob);
+      const url    = await getDownloadURL(ref);
+      const newDoc = { url, name: asset.name };
+      await updateDoc(doc(db, 'inquiries', enquiry.id), { invoiceDoc: newDoc });
+      setInvoiceDoc(newDoc);
+    } catch (e) {
+      Alert.alert('Upload failed', String(e));
+    } finally {
+      setInvoiceDocUploading(false);
     }
   }
 
@@ -2351,6 +2378,52 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                  );
                })()
               }
+
+              {/* Invoice */}
+              <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Invoice</Text>
+              {invoiceDoc ? (
+                <View style={{ backgroundColor: colors.bgFaint, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, gap: 10 }}>
+                  <TouchableOpacity onPress={() => Linking.openURL(invoiceDoc.url)} activeOpacity={0.7}>
+                    <Text style={{ fontSize: 13, color: Colors.orange, fontWeight: '600' }} numberOfLines={1}>↓ {invoiceDoc.name}</Text>
+                  </TouchableOpacity>
+                  {!isVenue && (
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint }}
+                        onPress={pickInvoiceDocument}
+                        disabled={invoiceDocUploading}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.black }}>{invoiceDocUploading ? 'Uploading…' : 'Replace'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: '#e94560' + '44', alignItems: 'center' }}
+                        onPress={async () => { await updateDoc(doc(db, 'inquiries', enquiry.id), { invoiceDoc: null }); setInvoiceDoc(null); }}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#e94560' }}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                !isVenue ? (
+                  <TouchableOpacity
+                    style={{ paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint }}
+                    onPress={pickInvoiceDocument}
+                    disabled={invoiceDocUploading}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.orange }}>
+                      {invoiceDocUploading ? 'Uploading…' : '+ Attach Invoice'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', backgroundColor: colors.bgFaint }}>
+                    <Text style={{ fontSize: 13, color: colors.greyLight }}>No invoice attached yet</Text>
+                  </View>
+                )
+              )}
 
               {/* Important Notes */}
               <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Important Notes</Text>
