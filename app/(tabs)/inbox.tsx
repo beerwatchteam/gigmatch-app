@@ -1799,29 +1799,37 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                 <StageConfirmRow stage={stageByKey('gigDetails')} enquiry={enquiry} isVenue={isVenue} colors={colors} />
               </View>
 
-              {/* Participants — always shown for venues; also shown when participants exist */}
-              {(isVenue || (participants && participants.length > 0)) && onInvite && (() => {
+              {/* Participants — always shown; venue + headliner always visible */}
+              {onInvite && (() => {
                 const visible   = (participants ?? []).filter(p => p.state !== 'left');
                 const myPart    = (participants ?? []).find(p => p.userId === currentUserUid);
                 const canInvite = isVenue || myPart?.role === 'headliner';
+
+                // Always show venue + headliner, deriving from enquiry when not in subcollection
+                type DisplayRow = { id: string; displayName: string; role: string; isFallback: boolean; userId?: string; photoUrl?: string; state?: string };
+                const fallbacks: DisplayRow[] = [];
+                if (!visible.some(p => p.role === 'venue'))
+                  fallbacks.push({ id: 'fb-venue', displayName: enquiry.venueName, role: 'venue', isFallback: true });
+                if (!visible.some(p => p.role === 'headliner'))
+                  fallbacks.push({ id: 'fb-headliner', displayName: enquiry.bandName, role: 'headliner', isFallback: true });
+                const allRows: DisplayRow[] = [
+                  ...fallbacks,
+                  ...visible.map(p => ({ ...p, isFallback: false })),
+                ];
+
                 return (
                   <>
                     <Text style={[eh.drawerSectionLabel, { color: colors.black }]}>Participants</Text>
                     <View style={[eh.drawerInfoCard, { backgroundColor: colors.bgFaint, borderColor: colors.border }]}>
-                      {visible.length === 0 && (
-                        <View style={eh.drawerInfoRow}>
-                          <Text style={{ fontSize: 14, color: colors.grey }}>No participants yet.</Text>
-                        </View>
-                      )}
-                      {visible.map((p, i) => {
-                        const isMe = p.userId === currentUserUid;
-                        const pending = p.state === 'invited';
+                      {allRows.map((p, i) => {
+                        const isMe = !p.isFallback && p.userId === currentUserUid;
+                        const pending = !p.isFallback && p.state === 'invited';
                         return (
                           <TouchableOpacity
                             key={p.id}
-                            style={[eh.drawerInfoRow, i < visible.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                            onPress={() => { if (!isMe && onOpenSubThread) { closeDetails(() => onOpenSubThread(p.userId, p.displayName, p.photoUrl)); } }}
-                            activeOpacity={isMe ? 1 : 0.7}
+                            style={[eh.drawerInfoRow, i < allRows.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                            onPress={() => { if (!p.isFallback && !isMe && p.userId && onOpenSubThread) { closeDetails(() => onOpenSubThread(p.userId!, p.displayName, p.photoUrl)); } }}
+                            activeOpacity={p.isFallback || isMe ? 1 : 0.7}
                           >
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
                               <Avatar photoUrl={p.photoUrl} name={p.displayName} size={28} />
@@ -1840,7 +1848,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       })}
                       {canInvite && (
                         <TouchableOpacity
-                          style={[eh.drawerInfoRow, { borderTopWidth: visible.length > 0 ? 1 : 0, borderTopColor: colors.border }]}
+                          style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border }]}
                           onPress={() => closeDetails(onInvite)}
                           activeOpacity={0.7}
                         >
@@ -1889,16 +1897,11 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       {!hasTR && (
                         <View style={eh.drawerInfoRow}>
                           <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Tech Rider</Text>
-                          {techSpecLink
-                            ? <TouchableOpacity onPress={() => closeDetails(techSpecLink.onPress ?? undefined)} activeOpacity={0.7}>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View →</Text>
-                              </TouchableOpacity>
-                            : <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Not shared</Text>
-                          }
+                          <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Artist has not listed</Text>
                         </View>
                       )}
                       {hasTR && techSpecLink ? (
-                        <View style={[eh.drawerInfoRow, { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                        <View style={[eh.drawerInfoRow, { borderTopWidth: rows.length > 0 ? 1 : 0, borderTopColor: colors.border }]}>
                           <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Full rider</Text>
                           <TouchableOpacity onPress={() => closeDetails(techSpecLink.onPress ?? undefined)} activeOpacity={0.7}>
                             <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View →</Text>
@@ -1964,12 +1967,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                       {!hasH && (
                         <View style={eh.drawerInfoRow}>
                           <Text style={[eh.drawerInfoKey, { color: colors.grey }]}>Requirements</Text>
-                          {profileLink
-                            ? <TouchableOpacity onPress={() => { closeDetails(); profileLink(); }} activeOpacity={0.7}>
-                                <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.orange }}>View profile →</Text>
-                              </TouchableOpacity>
-                            : <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Not shared</Text>
-                          }
+                          <Text style={[eh.drawerInfoVal, { color: colors.greyLight }]}>Artist has not listed</Text>
                         </View>
                       )}
                       {hasH && profileLink ? (
@@ -2025,7 +2023,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
                         {/* Structured fields — shown once a method is chosen */}
                         {selectedFeeType && selectedFeeType !== 'other' && (
-                          <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+                          <View style={{ gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginHorizontal: -12, paddingHorizontal: 12 }}>
 
                             {/* Amount / guarantee */}
                             {(selectedFeeType === 'flat' || selectedFeeType === 'guarantee_vs_door') && (
@@ -2177,7 +2175,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
                             {/* GST toggle (not for unpaid) */}
                             {selectedFeeType !== 'unpaid' && (
-                              <View style={[eh.payToggleRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }]}>
+                              <View style={[eh.payToggleRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginHorizontal: -12, paddingHorizontal: 12 }]}>
                                 <View style={{ flex: 1 }}>
                                   <Text style={[eh.payFieldLabel, { color: colors.grey }]}>GST APPLIES</Text>
                                   {artistPayInfo && (
@@ -2266,7 +2264,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
 
                         {/* Artist ABN / invoice info (read-only) */}
                         {artistPayInfo && (
-                          <View style={{ gap: 4, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+                          <View style={{ gap: 4, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginHorizontal: -12, paddingHorizontal: 12 }}>
                             {(() => {
                               const abnLabel: Record<string, string> = {
                                 has_abn: 'Has ABN', no_abn_hobby: 'No ABN (hobby)', applying: 'Applying for ABN',
@@ -4674,7 +4672,7 @@ function ThreadPanel({ enquiry, isVenue, venueId, onBack }: {
         onDelete={handleDelete}
         onScrollToProfile={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, scrollTo: 'content' } })}
         onScrollToMusic={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'music', scrollTo: 'content' } })}
-        onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, scrollTo: 'content' } })}
+        onScrollToTech={() => router.push({ pathname: '/musician/[id]', params: { id: enquiry.createdBy, tab: 'techrider' } })}
         participants={participants}
         currentUserUid={user?.uid}
         onOpenSubThread={handleOpenSubThread}
