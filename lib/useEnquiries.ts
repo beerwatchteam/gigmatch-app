@@ -546,7 +546,14 @@ export async function inviteParticipants(
   const now = new Date().toISOString();
   const batch = writeBatch(db);
 
-  for (const invitee of invitees) {
+  // Fetch each support act's public profile to snapshot alongside their participant record
+  const profiles = await Promise.all(
+    invitees.map(inv => getDoc(doc(db, 'bandProfiles', inv.userId)).catch(() => null))
+  );
+
+  for (let i = 0; i < invitees.length; i++) {
+    const invitee = invitees[i];
+    const p = profiles[i]?.exists() ? (profiles[i]!.data() as Record<string, any>) : {};
     const ref = doc(collection(db, 'inquiries', enquiryId, 'participants'));
     batch.set(ref, {
       userId:      invitee.userId,
@@ -554,10 +561,36 @@ export async function inviteParticipants(
       state:       'invited',
       invitedBy,
       displayName: invitee.displayName,
-      photoUrl:    invitee.photoUrl ?? null,
+      photoUrl:    invitee.photoUrl ?? p.photoUrl ?? p.coverPhotoUrl ?? null,
       joinedAt:    now,
       respondedAt: null,
       leftAt:      null,
+      // Profile snapshot — same fields as the enquiry form
+      genre:             p.genre             ?? null,
+      location:          p.location          ?? null,
+      artistType:        p.artistType        ?? null,
+      feeMin:            p.feeMin            ?? null,
+      feeMax:            p.feeMax            ?? null,
+      averageDraw:       p.averageDraw       ?? null,
+      about:             p.about             ?? null,
+      gigHistory:        p.gigHistory        ?? null,
+      songs:             p.songs             ?? null,
+      spotify:           p.spotify           ?? null,
+      appleMusic:        p.appleMusic        ?? null,
+      soundcloud:        p.soundcloud        ?? null,
+      bandcamp:          p.bandcamp          ?? null,
+      artistPages:       p.artistPages       ?? null,
+      instagram:         p.instagram         ?? null,
+      tiktok:            p.tiktok            ?? null,
+      youtube:           p.youtube           ?? null,
+      website:           p.website           ?? null,
+      customLinks:       p.customLinks       ?? null,
+      techRider:         p.techRider         ?? null,
+      backlineFromVenue: p.backlineFromVenue ?? null,
+      backlineBring:     p.backlineBring     ?? null,
+      techRiderBools:    p.techRiderBools    ?? null,
+      inputChannels:     p.inputChannels     ?? null,
+      techRiderDocs:     p.techRiderDocs     ?? null,
     });
   }
 
