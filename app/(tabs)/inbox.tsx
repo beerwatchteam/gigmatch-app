@@ -128,14 +128,15 @@ function getVenueTz(enquiry: Enquiry): string | undefined {
 
 function fmtSlotDate(date?: string | null): string {
   if (!date) return '';
-  const d = new Date(date);
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  const [y, m, d] = date.split('-');
+  return `${d}/${m}/${y}`;
 }
 
 function fmtSlotDateFull(date?: string | null): string {
   if (!date) return '';
-  const d = new Date(date);
-  return d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
+  const [y, m, d] = date.split('-');
+  const weekday = new Date(`${date}T12:00:00`).toLocaleDateString('en-AU', { weekday: 'short' });
+  return `${weekday}, ${d}/${m}/${y}`;
 }
 
 function buildContractHtml({
@@ -467,7 +468,8 @@ function getDateLabel(iso: string): string {
   const diffMs = now.getTime() - d.getTime();
   if (diffMs < 7 * 24 * 60 * 60 * 1000)
     return d.toLocaleDateString('en-AU', { weekday: 'long' });
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+  const [y, m, dy] = iso.slice(0, 10).split('-');
+  return `${dy}/${m}/${y}`;
 }
 
 
@@ -480,7 +482,8 @@ function formatTileDate(iso: string): string {
   if (d.toDateString() === today.toDateString())
     return d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
   if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  const [y, m, dy] = iso.slice(0, 10).split('-');
+  return `${dy}/${m}/${y}`;
 }
 
 function getInitials(name: string): string {
@@ -2704,7 +2707,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
                             </Text>
                             {row.sig ? (
                               <Text style={{ fontSize: 11, color: colors.grey, marginTop: 1 }}>
-                                {row.sig.signatoryName} · {new Date(row.sig.signedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {row.sig.signatoryName} · {new Date(row.sig.signedAt).toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                               </Text>
                             ) : (
                               <Text style={{ fontSize: 11, color: colors.greyLight, marginTop: 1 }}>

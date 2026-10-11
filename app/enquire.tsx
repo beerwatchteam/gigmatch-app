@@ -332,9 +332,14 @@ export default function EnquireScreen() {
   const selectedCount = Object.values(sections).filter(Boolean).length;
 
   // Slot detail line
+  const fmtDate = (iso?: string) => {
+    if (!iso) return null;
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  };
   const slotParts = [
     params.day,
-    params.date,
+    fmtDate(params.date),
     params.time,
     params.room,
     params.capacity ? `${params.capacity} cap` : null,
