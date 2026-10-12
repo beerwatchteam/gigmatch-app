@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, StyleSheet, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image,
 } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -413,7 +413,12 @@ export default function LoginScreen() {
     <>
       {/* Logo */}
       <View style={s.logoRow}>
-        <Text style={s.logoText}>Twaylo Gigs</Text>
+        <Image
+          source={require('../assets/logo.png')}
+          style={s.logoImage}
+          resizeMode="contain"
+          accessibilityLabel="Twaylo"
+        />
         <Text style={s.logoSub}>Connect bands with venues</Text>
       </View>
 
@@ -905,9 +910,9 @@ const s = StyleSheet.create({
   backText: { fontSize: 15, color: Colors.orange, fontWeight: '600' },
 
   // Shared
-  logoRow: { alignItems: 'center', marginBottom: 8 },
-  logoText: { fontSize: isWeb ? 26 : 32, fontWeight: '800', color: '#111111', letterSpacing: -1 },
-  logoSub:  { fontSize: 14, color: '#666666', marginTop: 4, marginBottom: isWeb ? 16 : 28 },
+  logoRow:   { alignItems: 'center', marginBottom: 8 },
+  logoImage: { width: isWeb ? 160 : 180, height: isWeb ? 63 : 71, marginBottom: 4 },
+  logoSub:   { fontSize: 14, color: '#666666', marginTop: 4, marginBottom: isWeb ? 16 : 28 },
 
   tabRow: {
     flexDirection: 'row', gap: 6, marginBottom: isWeb ? 16 : 24,
