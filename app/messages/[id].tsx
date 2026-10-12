@@ -161,7 +161,7 @@ export default function MessagesScreen() {
   // Details panel
   const [detailsOpen, setDetailsOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const DRAWER_W  = isWeb ? 340 : windowWidth;
+  const DRAWER_W  = isWeb ? Math.min(340, windowWidth) : windowWidth;
 
   function openDetails() {
     setDetailsOpen(true);

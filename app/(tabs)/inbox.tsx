@@ -1694,7 +1694,7 @@ function EnquiryHeader({ enquiry, isVenue, onBack, onDelete, onScrollToProfile, 
     { label: 'Tech Specs', onPress: onScrollToTech    },
   ].filter(l => l.onPress);
 
-  const DRAWER_WIDTH = isWeb ? 480 : windowWidth;
+  const DRAWER_WIDTH = isWeb ? Math.min(480, windowWidth) : windowWidth;
 
   return (
     <>
@@ -5621,8 +5621,8 @@ function DMThreadPanel({ conv, myUid, onBack, colors }: {
           <TouchableOpacity style={eh.drawerBackdrop} activeOpacity={1} onPress={() => closeDetails()} />
           <Animated.View style={[
             eh.drawerPanel,
-            { width: isWeb ? 480 : windowWidth, backgroundColor: colors.bg, borderLeftColor: colors.border },
-            { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [isWeb ? 480 : windowWidth, 0] }) }] },
+            { width: isWeb ? Math.min(480, windowWidth) : windowWidth, backgroundColor: colors.bg, borderLeftColor: colors.border },
+            { transform: [{ translateX: slideAnim.interpolate({ inputRange: [0, 1], outputRange: [isWeb ? Math.min(480, windowWidth) : windowWidth, 0] }) }] },
           ]}>
             <View style={[eh.drawerHeader, { borderBottomColor: colors.border, paddingTop: (isWeb ? 0 : insets.top) + 16 }]}>
               <TouchableOpacity onPress={() => closeDetails()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 60 }}>
