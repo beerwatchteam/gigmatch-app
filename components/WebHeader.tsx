@@ -1,4 +1,4 @@
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Text } from '@/components/Text';
 import { useRouter, usePathname } from 'expo-router';
 import { signOut } from 'firebase/auth';
@@ -38,7 +38,7 @@ export default function WebHeader() {
     <View style={[styles.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       {/* Logo */}
       <TouchableOpacity onPress={() => router.push('/landing')} style={styles.logoWrap}>
-        <Text style={[styles.logo, { color: colors.black }]}>Twaylo Gigs</Text>
+        <Image source={require('@/assets/logo.jpg')} style={styles.logoImg} resizeMode="contain" />
         <View style={styles.beta}>
           <Text style={styles.betaText}>Beta</Text>
         </View>
@@ -122,12 +122,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginRight: 40,
   },
-  logo: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: Colors.black,
-    letterSpacing: -0.3,
-  },
+  logoImg: { height: 30, width: 120 },
   beta: {
     backgroundColor: Colors.bgFaint,
     borderRadius: 4,

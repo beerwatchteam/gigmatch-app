@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Modal } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform, useWindowDimensions, Modal, Image } from 'react-native';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Ticket, Microphone, Compass, Envelope } from 'phosphor-react-native';
 import { Text } from '@/components/Text';
@@ -36,7 +36,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
     <View style={[wb.bar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       {/* Logo */}
       <TouchableOpacity style={wb.logo} onPress={() => router.push('/')} activeOpacity={0.8}>
-        <Text style={[wb.logoText, { color: colors.black }]}>Twaylo Gigs</Text>
+        <Image source={require('@/assets/logo.jpg')} style={wb.logoImg} resizeMode="contain" />
         <View style={wb.betaBadge}><Text style={wb.betaText}>Beta</Text></View>
       </TouchableOpacity>
 
@@ -104,7 +104,7 @@ function TopTabBar(_props: any) {
   return (
     <View style={[tb.bar, { top: insets.top, backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
       <TouchableOpacity style={tb.logo} onPress={() => router.push('/')} activeOpacity={0.8}>
-        <Text style={tb.logoText}>Twaylo Gigs</Text>
+        <Image source={require('@/assets/logo.jpg')} style={tb.logoImg} resizeMode="contain" />
       </TouchableOpacity>
 
       {tabUser ? (
@@ -211,7 +211,7 @@ const wb = StyleSheet.create({
     paddingHorizontal: 24,
   },
   logo:       { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  logoText:   { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  logoImg:    { height: 30, width: 120 },
   betaBadge:  { backgroundColor: '#f0f0f0', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   betaText:   { fontSize: 10, fontWeight: '600', color: Colors.grey },
   tabsCenter: { position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'box-none' as any },
@@ -262,7 +262,7 @@ const tb = StyleSheet.create({
   label:        { fontSize: 14, fontWeight: '500' },
   labelFocused: { fontWeight: '700' },
   logo:         { position: 'absolute', left: 16 },
-  logoText:     { fontSize: 16, fontWeight: '800', color: Colors.orange, letterSpacing: -0.5 },
+  logoImg:      { height: 28, width: 112 },
   loginBtn:      { position: 'absolute', right: 16, backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
   loginText:     { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   myProfileBtn:  { position: 'absolute', right: 16, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
