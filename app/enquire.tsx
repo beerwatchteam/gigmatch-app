@@ -26,7 +26,7 @@ const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'socials',   label: 'Socials'        },
   { key: 'techRider', label: 'Tech rider'     },
   { key: 'gigs',      label: 'My Gigs'        },
-  { key: 'contact',   label: 'Contact'        },
+  { key: 'contact',   label: 'Downloads'      },
 ];
 
 function truncate(str: string | undefined, n: number): string {
@@ -234,9 +234,11 @@ export default function EnquireScreen() {
           ? displayGigHistory.map(g => g.venue).filter(Boolean).join(' · ')
           : 'None listed';
       case 'contact': {
+        const tr = band.techRider || {};
         const parts: string[] = [];
-        if (band.email) parts.push('Email');
-        if (band.phone) parts.push('Mobile');
+        if (tr.stagePlotUrl)                         parts.push('Stage plot');
+        if (tr.inputListUrl)                         parts.push('Input list');
+        if ((band.techRiderDocs || []).length > 0)   parts.push(`${band.techRiderDocs.length} rider doc${band.techRiderDocs.length > 1 ? 's' : ''}`);
         return parts.join(' · ') || 'None listed';
       }
       default: return '';
@@ -306,7 +308,11 @@ export default function EnquireScreen() {
           inputChannels:     band.inputChannels,
           techRiderDocs:     band.techRiderDocs,
         }),
-        ...(sections.contact   && { email: band.email, phone: band.phone }),
+        ...(sections.contact   && {
+          stagePlotUrl:  band.techRider?.stagePlotUrl,
+          inputListUrl:  band.techRider?.inputListUrl,
+          techRiderDocs: band.techRiderDocs,
+        }),
       }) as any);
       setSubmitted(true);
     } catch (e: any) {

@@ -610,7 +610,7 @@ export default function HomeScreen() {
                     <View>
                       <Text style={s.enqSectionLabel}>WHAT YOU'RE SENDING</Text>
                       <View style={s.enqCheckGrid}>
-                        {['About', 'Music', 'Socials', 'Tech rider', 'My Gigs', 'Contact'].map(label => (
+                        {['About', 'Music', 'Socials', 'Tech rider', 'My Gigs', 'Downloads'].map(label => (
                           <View key={label} style={[s.enqCheckItem, { borderColor: Colors.orange, backgroundColor: 'rgba(250,131,12,0.07)' }]}>
                             <View style={s.enqCheckbox}>
                               <Text style={s.enqCheckmark}>✓</Text>

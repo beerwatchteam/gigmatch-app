@@ -1165,7 +1165,7 @@ export default function VenuesScreen() {
               activeOpacity={0.8}
               {...(isWeb ? { onClick: (e: any) => e.stopPropagation() } : {})}
             >
-              <Text style={[st.cardBtnOutlinedText, { color: colors.black }]}>Timetable</Text>
+              <Text style={[st.cardBtnOutlinedText, { color: colors.black }]}>Gig slots</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1420,7 +1420,7 @@ export default function VenuesScreen() {
               onPress={() => router.push({ pathname: '/venue/[id]', params: { id: item.id, tab: 'timetable' } })}
               activeOpacity={0.8}
             >
-              <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Timetable</Text>
+              <Text style={[st.webTimetableBtnText, { color: colors.black }]}>Gig slots</Text>
             </TouchableOpacity>
           </View>
         </View>

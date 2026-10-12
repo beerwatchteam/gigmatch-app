@@ -906,7 +906,7 @@ export default function EditProfileScreen() {
     { label: 'Stage name',    done: !!profile.name?.trim() },
     { label: 'Genres',        done: profile.genre?.length > 0 },
     { label: 'Bio',           done: !!profile.about?.trim() },
-    { label: 'Profile photo', done: !!profile.photoUrl },
+    { label: 'Profile photo', done: !!(profile.photoUrl || profile.coverPhotoUrl) },
     { label: 'Location',      done: !!profile.location?.trim() },
     { label: 'Music tracks',  done: profile.songs?.length > 0 || profile.artistPages?.length > 0 },
     { label: 'Fee range',     done: !!profile.feeMin && !!profile.feeMax },

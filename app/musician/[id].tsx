@@ -2138,7 +2138,7 @@ export default function MusicianScreen({ _overrideId }: { _overrideId?: string }
           kfItems.push({ title: 'Shows on Twaylo', value: showsValue, sub: showsSub });
           if (kfItems.length === 0) return null;
           return (
-            <View style={[styles.statsRow, { borderBottomColor: colors.border }]}>
+            <View style={[styles.statsRow, { borderTopColor: colors.border, borderBottomColor: colors.border, backgroundColor: colors.bgFaint }]}>
               {kfItems.map((kf, i) => (
                 <View
                   key={kf.title}
@@ -2464,10 +2464,13 @@ const styles = StyleSheet.create({
   // Stats row
   statsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderTopWidth: 1,
     borderBottomWidth: 1,
   },
   statCell: {
     flex: 1,
+    minWidth: 140,
     alignItems: 'flex-start', justifyContent: 'flex-start',
     paddingVertical: 18,
     paddingHorizontal: 20,

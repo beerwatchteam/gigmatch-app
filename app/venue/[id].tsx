@@ -965,89 +965,86 @@ export default function VenueScreen({ _overrideId }: { _overrideId?: string } = 
 
         {/* ── Full header (scrolls away) ── */}
         <View>
-          {/* Cover photo */}
-          <View>
+          {/* Cover photo + avatar overlap */}
+          <View style={{ overflow: 'visible', zIndex: 10 } as any}>
             {photo
               ? <PositionedBanner uri={photo} position={venue.photoPosition} height={isWeb ? 260 : 200} />
               : <View style={[s.bannerPlaceholder, { height: isWeb ? 260 : 200 }]} />
             }
-          </View>
 
-          {/* Identity row: logo + name + subline */}
-          <View style={[s.identityRow, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-            {/* Logo overlapping the cover */}
-            <View style={s.logoWrap}>
+            {/* Avatar overlapping the cover */}
+            <View style={[s.avatarWrap, { borderColor: colors.bg, backgroundColor: colors.bgFaint }]}>
               {(venue.logoUrl || venue.photoUrl) ? (
-                <Image source={{ uri: venue.logoUrl || venue.photoUrl }} style={[s.logoImg, { borderColor: colors.bg }]} resizeMode="cover" />
+                <Image source={{ uri: venue.logoUrl || venue.photoUrl }} style={s.avatarImg} resizeMode="cover" />
               ) : (
-                <View style={[s.logoPlaceholder, { borderColor: colors.bg, backgroundColor: colors.bgFaint }]}>
-                  <Text style={[s.logoPlaceholderText, { color: colors.grey }]}>
+                <View style={[s.avatarPlaceholder, { backgroundColor: colors.bgFaint }]}>
+                  <Text style={[s.avatarPlaceholderText, { color: colors.grey }]}>
                     {venue.name?.slice(0, 2).toUpperCase() || '??'}
                   </Text>
                 </View>
               )}
             </View>
+          </View>
 
-            <View style={s.identityInfo}>
-              <View style={[s.identityNameRow, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start', gap: 10 }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: isMobileLayout ? undefined : 1 }}>
-                  <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
-                  {venue.verified && (
-                    <View style={s.verifiedBadge}>
-                      <Text style={s.verifiedBadgeText}>✓ Verified</Text>
-                    </View>
-                  )}
-                </View>
-                {/* Action buttons */}
-                {isMyVenue ? (
-                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                    <TouchableOpacity style={[s.msgVenueBtn, { backgroundColor: Colors.orange, borderColor: Colors.orange }]} onPress={() => setShowShareModal(true)} activeOpacity={0.8}>
-                      <Text style={[s.msgVenueBtnText, { color: '#ffffff' }]}>Share profile</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push('/edit-venue')}>
-                      <Text style={s.editProfileBtnText}>Edit profile</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.logoutBtn} onPress={async () => { await signOut(auth); router.replace('/'); }}>
-                      <Text style={s.logoutBtnText}>Log out</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : isAgentForVenue ? (
-                  <TouchableOpacity style={s.editProfileBtn} onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}>
-                    <Text style={s.editProfileBtnText}>Edit profile</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                    <TouchableOpacity
-                      style={s.msgVenueBtn}
-                      onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { newThreadVenueId: id } } as any)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Message venue</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={s.enquireHeaderBtn}
-                      onPress={() => {
-                        if (!user) { router.push('/login'); return; }
-                        setActiveTab('timetable');
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={s.enquireHeaderBtnText}>See open dates</Text>
-                    </TouchableOpacity>
+          {/* Profile header */}
+          <View style={[s.profileHead, { borderBottomColor: colors.border, backgroundColor: colors.bg, paddingTop: (venue.logoUrl || venue.photoUrl) ? 68 : 22 }]}>
+            <View style={[s.nameRow, isMobileLayout && { flexDirection: 'column', alignItems: 'flex-start' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: isMobileLayout ? undefined : 1 }}>
+                <Text style={[s.name, { color: colors.black }]}>{venue.name}</Text>
+                {venue.verified && (
+                  <View style={s.verifiedBadge}>
+                    <Text style={s.verifiedBadgeText}>✓ Verified</Text>
                   </View>
                 )}
               </View>
-              {(() => {
-                const sublineParts = [
-                  venue.venueType,
-                  [venue.suburb, venue.state].filter(Boolean).join(', '),
-                  venue.ageRestriction,
-                ].filter(Boolean);
-                return sublineParts.length > 0
-                  ? <Text style={[s.subline, { color: colors.grey }]}>{sublineParts.join(' · ')}</Text>
-                  : null;
-              })()}
+
+              {/* Action buttons */}
+              {isMyVenue ? (
+                <View style={[s.actionBtns, { flexWrap: 'nowrap' }, isMobileLayout && { marginTop: 10 }]}>
+                  <TouchableOpacity style={[s.msgVenueBtn, { backgroundColor: Colors.orange, borderColor: Colors.orange, paddingHorizontal: 12, paddingVertical: 8 }]} onPress={() => setShowShareModal(true)} activeOpacity={0.8}>
+                    <Text style={[s.msgVenueBtnText, { color: '#ffffff', fontSize: 12 }]}>Share profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.editProfileBtn, { paddingHorizontal: 12, paddingVertical: 8 }]} onPress={() => router.push('/edit-venue')}>
+                    <Text style={[s.editProfileBtnText, { fontSize: 12 }]}>Edit profile</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : isAgentForVenue ? (
+                <TouchableOpacity style={[s.editProfileBtn, isMobileLayout && { marginTop: 10 }]} onPress={() => router.push(`/edit-venue?agentVenueId=${id}` as any)}>
+                  <Text style={s.editProfileBtnText}>Edit profile</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={[s.actionBtns, isMobileLayout && { marginTop: 10 }]}>
+                  <TouchableOpacity
+                    style={s.msgVenueBtn}
+                    onPress={() => router.push({ pathname: '/(tabs)/inbox', params: { newThreadVenueId: id } } as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[s.msgVenueBtnText, { color: colors.black }]}>Message venue</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.enquireHeaderBtn}
+                    onPress={() => {
+                      if (!user) { router.push('/login'); return; }
+                      setActiveTab('timetable');
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.enquireHeaderBtnText}>See open dates</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
+
+            {(() => {
+              const sublineParts = [
+                venue.venueType,
+                [venue.suburb, venue.state].filter(Boolean).join(', '),
+                venue.ageRestriction,
+              ].filter(Boolean);
+              return sublineParts.length > 0
+                ? <Text style={[s.subline, { color: colors.grey }]}>{sublineParts.join(' · ')}</Text>
+                : null;
+            })()}
           </View>
 
           {/* Genre chips */}
@@ -3409,13 +3406,28 @@ const s = StyleSheet.create({
   notFound:           { textAlign: 'center', color: '#888888', marginTop: 40, fontSize: 15 },
 
   // Profile header
-  identityRow:        { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: isWeb ? 40 : 20, paddingTop: 0, paddingBottom: 14, gap: 16 },
-  logoWrap:           { marginTop: -32, flexShrink: 0 },
-  logoImg:            { width: 72, height: 72, borderRadius: 36, borderWidth: 3 },
-  logoPlaceholder:    { width: 72, height: 72, borderRadius: 36, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  logoPlaceholderText:{ fontSize: 22, fontWeight: '800' },
-  identityInfo:       { flex: 1, paddingBottom: 4 },
-  identityNameRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  avatarWrap: {
+    position: 'absolute',
+    bottom: -56, left: isWeb ? 40 : 20,
+    width: 112, height: 112,
+    borderRadius: 56, borderWidth: 3,
+    overflow: 'hidden',
+    zIndex: 2,
+  },
+  avatarImg:            { width: '100%', height: '100%' },
+  avatarPlaceholder:    { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  avatarPlaceholderText:{ fontSize: 28, fontWeight: '800' },
+  profileHead: {
+    paddingHorizontal: isWeb ? 40 : 20,
+    paddingTop: 22,
+    paddingBottom: 18,
+  },
+  nameRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12, marginBottom: 6,
+  },
+  actionBtns:           { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   name:               { fontSize: isWeb ? 28 : 22, fontWeight: '800', color: '#111111', letterSpacing: -0.4, marginBottom: 3 },
   subline:            { fontSize: 13, color: '#555555' },
   verifiedBadge:      { backgroundColor: '#2F7A4B', borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'center' },
