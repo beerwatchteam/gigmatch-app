@@ -712,22 +712,35 @@ export default function HomeScreen() {
         </View>
 
         {/* ── Footer ──────────────────────────────────────────── */}
-        <View style={[s.footer, { borderTopColor: colors.border }]}>
-          <View style={s.footerLeft}>
-            <Text style={[s.footerLogo, { color: colors.black }]}>Twaylo</Text>
-            <Text style={[s.footerMeta, { color: colors.grey }]}>BETA · MELBOURNE</Text>
+        <View style={[s.footerWrap, { borderTopColor: colors.border }]}>
+          <View style={s.footer}>
+            <View style={s.footerLeft}>
+              <Text style={[s.footerLogo, { color: colors.black }]}>Twaylo</Text>
+              <Text style={[s.footerMeta, { color: colors.grey }]}>BETA · MELBOURNE</Text>
+            </View>
+            <View style={s.footerNav}>
+              {(['Venues', 'Artists', 'Discover', 'Contact'] as const).map(label => (
+                <TouchableOpacity
+                  key={label}
+                  onPress={() => {
+                    if (label === 'Venues')    router.push('/(tabs)/venues');
+                    else if (label === 'Artists') router.push('/(tabs)/musicians');
+                    else if (label === 'Discover') router.push('/(tabs)/discover');
+                  }}
+                >
+                  <Text style={[s.footerNavLink, { color: colors.grey }]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-          <View style={s.footerNav}>
-            {(['Venues', 'Artists', 'Discover', 'Contact'] as const).map(label => (
-              <TouchableOpacity
-                key={label}
-                onPress={() => {
-                  if (label === 'Venues')    router.push('/(tabs)/venues');
-                  else if (label === 'Artists') router.push('/(tabs)/musicians');
-                  else if (label === 'Discover') router.push('/(tabs)/discover');
-                }}
-              >
-                <Text style={[s.footerNavLink, { color: colors.grey }]}>{label}</Text>
+          <View style={[s.footerLegal, { borderTopColor: colors.border }]}>
+            {([
+              { label: 'Terms', route: '/terms' },
+              { label: 'Privacy Policy', route: '/privacy' },
+              { label: 'Support', route: '/support' },
+            ] as const).map(({ label, route }) => (
+              <TouchableOpacity key={route} onPress={() => router.push(route as any)}>
+                <Text style={[s.footerLegalLink, { color: colors.grey }]}>{label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -849,20 +862,26 @@ const s = StyleSheet.create({
   pickASideBtns:    { flexDirection: 'row', gap: 12, flexWrap: 'wrap' as const, justifyContent: 'center' },
 
   // ── Footer ────────────────────────────────────────────────────────
-  footer: {
+  footerWrap: {
     borderTopWidth: 1,
     paddingHorizontal: isWeb ? 40 : 24,
-    paddingVertical: 32,
+    paddingTop: 32,
+    paddingBottom: 32,
+  },
+  footer: {
     flexDirection: isWeb ? 'row' : 'column',
     alignItems: isWeb ? 'center' : 'flex-start',
     justifyContent: 'space-between',
     gap: 16,
+    marginBottom: 20,
   },
   footerLeft:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
   footerLogo:    { fontSize: 17, fontWeight: '800', letterSpacing: -0.5 },
   footerMeta:    { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
   footerNav:     { flexDirection: 'row', gap: 24, flexWrap: 'wrap' as const },
   footerNavLink: { fontSize: 14, fontWeight: '500' },
+  footerLegal:   { flexDirection: 'row', gap: 20, flexWrap: 'wrap' as const, borderTopWidth: 1, paddingTop: 16 },
+  footerLegalLink: { fontSize: 12, fontWeight: '500' },
 
   // ── Enquiry preview ────────────────────────────────────────────
   enquiryPreviewSection: { borderTopWidth: 1, borderBottomWidth: 1, paddingVertical: 64 },

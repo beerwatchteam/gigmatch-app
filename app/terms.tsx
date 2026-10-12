@@ -6,7 +6,7 @@ import { Colors } from '@/constants/colors';
 import { useTheme } from '@/lib/theme-context';
 
 const EFFECTIVE_DATE = '15 September 2026';
-const CONTACT_EMAIL = 'beerbozosupport@gmail.com';
+const CONTACT_EMAIL = 'twaylogigs@gmail.com';
 
 export default function TermsScreen() {
   const router = useRouter();

@@ -67,9 +67,28 @@ export function LandingFooter() {
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', margin: 0 }}>
             &copy; 2026 Twaylo. All rights reserved.
           </p>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.25)', margin: 0 }}>
-            Built for Australian live music.
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            {[
+              { label: 'Terms', href: '/terms' },
+              { label: 'Privacy Policy', href: '/privacy' },
+              { label: 'Support', href: '/support' },
+            ].map(({ label, href }) => (
+              <a
+                key={href}
+                href={href}
+                style={{
+                  fontSize: 13,
+                  color: 'rgba(255,255,255,0.25)',
+                  textDecoration: 'none',
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.55)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.25)')}
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </footer>

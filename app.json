@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "Twaylo",
-    "slug": "gigmatch",
+    "slug": "twaylo",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "gigmatch",
+    "scheme": "twaylo",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -28,7 +28,9 @@
         "backgroundColor": "#1C1C1C"
       },
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "web": {
@@ -69,8 +71,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5d360440-c6a6-4ba9-aafb-ccae3947b67f"
+        "projectId": "b8681aab-5215-4b98-b1dd-506f26d039b0"
       }
-    }
+    },
+    "owner": "beerbozo"
   }
 }
