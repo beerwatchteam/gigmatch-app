@@ -2339,7 +2339,7 @@ function MiniCalendarMonth({ venue, month, year, today, windowStart, windowEnd, 
             slots.some(s => e.requestedSlot?.day === dayName && e.requestedSlot?.time === s.time && inferSlotDate(e) === dateISO)
           );
           const isBookedByMe = hasBooked && userEnquiries.some(e =>
-            e.status === 'accepted' &&
+            (e.status === 'accepted' || e.status === 'confirmed') &&
             slots.some(s => e.requestedSlot?.day === dayName && e.requestedSlot?.time === s.time && inferSlotDate(e) === dateISO)
           );
           return (
@@ -2348,8 +2348,8 @@ function MiniCalendarMonth({ venue, month, year, today, windowStart, windowEnd, 
                 <Text style={[lv.calDayNum, { color: isToday ? '#ffffff' : isOutOfRange ? colors.greyLight : colors.black }]}>{dayNum}</Text>
               </View>
               <View style={lv.calDots}>
-                {!isOutOfRange && hasOpen && !myEnq && <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} />}
-                {!isOutOfRange && !!myEnq && <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#22c55e' }]} />}
+                {!isOutOfRange && hasOpen && <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.orange }]} />}
+                {!isOutOfRange && !!myEnq && !isBookedByMe && <View style={[lv.calDot, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#22c55e' }]} />}
                 {!isOutOfRange && isBookedByMe && <View style={[lv.calDot, { backgroundColor: '#22c55e' }]} />}
                 {!isOutOfRange && hasBooked && !isBookedByMe && <View style={[lv.calDot, { backgroundColor: '#e0e0e0' }]} />}
               </View>
@@ -2450,7 +2450,7 @@ function SlotOverrideModal({ slot, day, dateISO, venueId, allSlots, onClose }: {
         ...slot,
         id: slot.id ? `${slot.id}_${dateISO}` : `override_${dateISO}_${normStr(slot.time)}`,
         date: dateISO,
-        status:         isClosed ? 'closed' : 'open',
+        status:         isClosed ? 'closed' : (['booked', 'pending'].includes(slot.status ?? '') ? slot.status : 'open'),
         time:           time.trim() || slot.time,
         ...(name.trim()            ? { name: name.trim() }                   : {}),
         ...(slotType               ? { slotType }                             : {}),
