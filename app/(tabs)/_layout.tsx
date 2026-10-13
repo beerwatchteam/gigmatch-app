@@ -8,8 +8,25 @@ import { Colors } from '@/constants/colors';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
 import { useInboxBadgeCount, markConfirmedSeen, type Enquiry } from '@/lib/useEnquiries';
-import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { signOut, signInWithEmailAndPassword, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { getDocs, query, collection, where } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+
+const DEMO_ACCOUNTS = {
+  artist: { username: 'twayloartist', password: 'twayloartist' },
+  venue:  { username: 'twaylovenue',  password: 'twaylovenue'  },
+} as const;
+
+async function resolveUsernameToEmail(username: string): Promise<string | null> {
+  const lower = username.toLowerCase();
+  const [bpSnap, uSnap] = await Promise.all([
+    getDocs(query(collection(db, 'bandProfiles'), where('username', '==', lower))),
+    getDocs(query(collection(db, 'users'),        where('username', '==', lower))),
+  ]);
+  if (!bpSnap.empty) return (bpSnap.docs[0].data().email as string) || null;
+  if (!uSnap.empty && uSnap.docs[0].data().email) return uSnap.docs[0].data().email as string;
+  return null;
+}
 
 const isWeb = Platform.OS === 'web';
 export const TOP_TAB_H   = 52;
@@ -23,6 +40,24 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
   const { colors } = useTheme();
   const { user: tabUser, profile: tabProfile } = useAuth();
   const router = useRouter();
+  const [loadingRole, setLoadingRole] = useState<'artist' | 'venue' | null>(null);
+
+  async function handleDemoLogin(role: 'artist' | 'venue') {
+    if (loadingRole) return;
+    setLoadingRole(role);
+    try {
+      const { username, password } = DEMO_ACCOUNTS[role];
+      const email = await resolveUsernameToEmail(username);
+      if (!email) return;
+      await setPersistence(auth, browserSessionPersistence);
+      await signInWithEmailAndPassword(auth, email, password);
+      router.replace('/(tabs)');
+    } catch {
+      // silent
+    } finally {
+      setLoadingRole(null);
+    }
+  }
 
   const BOTTOM_ROUTES = ['venues', 'musicians', 'discover', 'inbox'];
   const LABELS: Record<string, string> = {
@@ -85,9 +120,27 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
           <Text style={wb.myProfileText}>{tabProfile?.type === 'venue' ? 'My Venue' : 'My Profile'}</Text>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={wb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
-          <Text style={wb.loginText}>Log In</Text>
-        </TouchableOpacity>
+        <View style={wb.demoStrip}>
+          <TouchableOpacity
+            style={[wb.demoBtn, loadingRole === 'artist' && wb.demoBtnDim]}
+            onPress={() => handleDemoLogin('artist')}
+            disabled={loadingRole !== null}
+            activeOpacity={0.8}
+          >
+            <Text style={wb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'View as Artist'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[wb.demoBtn, loadingRole === 'venue' && wb.demoBtnDim]}
+            onPress={() => handleDemoLogin('venue')}
+            disabled={loadingRole !== null}
+            activeOpacity={0.8}
+          >
+            <Text style={wb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'View as Venue'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/login')} activeOpacity={0.8}>
+            <Text style={wb.loginLink}>Log In</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -242,6 +295,11 @@ const wb = StyleSheet.create({
   loginText:     { fontSize: 13, fontWeight: '700', color: '#ffffff' },
   myProfileBtn:  { borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
   myProfileText: { fontSize: 13, fontWeight: '600', color: Colors.grey },
+  demoStrip:     { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  demoBtn:       { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  demoBtnDim:    { opacity: 0.5 },
+  demoBtnText:   { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  loginLink:     { fontSize: 13, fontWeight: '600', color: Colors.grey, paddingHorizontal: 4 },
 });
 
 const tb = StyleSheet.create({
