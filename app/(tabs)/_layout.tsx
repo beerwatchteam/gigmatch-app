@@ -127,7 +127,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={wb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'View as Artist'}</Text>
+            <Text style={wb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Demo as Artist'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[wb.demoBtn, loadingRole === 'venue' && wb.demoBtnDim]}
@@ -135,7 +135,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={wb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'View as Venue'}</Text>
+            <Text style={wb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Demo as Venue'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/login')} activeOpacity={0.8}>
             <Text style={wb.loginLink}>Log In</Text>

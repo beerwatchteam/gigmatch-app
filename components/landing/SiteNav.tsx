@@ -146,7 +146,7 @@ export function SiteNav() {
               whiteSpace: 'nowrap',
             }}
           >
-            {loadingRole === 'artist' ? 'Loading...' : 'View as Artist'}
+            {loadingRole === 'artist' ? 'Loading...' : 'Demo as Artist'}
           </button>
           <button
             onClick={() => handleDemoLogin('venue')}
@@ -169,7 +169,7 @@ export function SiteNav() {
               whiteSpace: 'nowrap',
             }}
           >
-            {loadingRole === 'venue' ? 'Loading...' : 'View as Venue'}
+            {loadingRole === 'venue' ? 'Loading...' : 'Demo as Venue'}
           </button>
           <a
             href="/login"
@@ -262,7 +262,7 @@ export function SiteNav() {
               opacity: loadingRole === 'artist' ? 0.6 : 1,
             }}
           >
-            {loadingRole === 'artist' ? 'Loading...' : 'View as Artist'}
+            {loadingRole === 'artist' ? 'Loading...' : 'Demo as Artist'}
           </button>
           <button
             onClick={() => { closeMenu(); handleDemoLogin('venue'); }}
@@ -275,7 +275,7 @@ export function SiteNav() {
               opacity: loadingRole === 'venue' ? 0.6 : 1,
             }}
           >
-            {loadingRole === 'venue' ? 'Loading...' : 'View as Venue'}
+            {loadingRole === 'venue' ? 'Loading...' : 'Demo as Venue'}
           </button>
         </div>
       </div>
