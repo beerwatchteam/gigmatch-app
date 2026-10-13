@@ -127,7 +127,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={wb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Demo as Artist'}</Text>
+            <Text style={wb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Demo Artist'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[wb.demoBtn, loadingRole === 'venue' && wb.demoBtnDim]}
@@ -135,7 +135,7 @@ function WebTabBar({ state, descriptors, navigation, badgeCount, greenTick }: an
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={wb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Demo as Venue'}</Text>
+            <Text style={wb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Demo Venue'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/login')} activeOpacity={0.8}>
             <Text style={wb.loginLink}>Log In</Text>
@@ -190,7 +190,7 @@ function TopTabBar(_props: any) {
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={tb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Demo as Artist'}</Text>
+            <Text style={tb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Demo Artist'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[tb.demoBtn, loadingRole === 'venue' && tb.demoBtnDim]}
@@ -198,7 +198,7 @@ function TopTabBar(_props: any) {
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={tb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Demo as Venue'}</Text>
+            <Text style={tb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Demo Venue'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={tb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
             <Text style={tb.loginText}>Log In</Text>
