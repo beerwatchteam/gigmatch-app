@@ -137,12 +137,12 @@ export function SiteNav() {
               height: 34,
               padding: '0 14px',
               borderRadius: 6,
-              backgroundColor: 'transparent',
-              color: 'rgba(255,255,255,0.75)',
-              border: '1px solid rgba(255,255,255,0.25)',
+              backgroundColor: '#fa830c',
+              color: '#ffffff',
+              border: 'none',
               cursor: loadingRole ? 'default' : 'pointer',
               opacity: loadingRole === 'artist' ? 0.6 : 1,
-              transition: 'all 0.15s',
+              transition: 'background 0.15s',
               whiteSpace: 'nowrap',
             }}
           >
@@ -257,8 +257,8 @@ export function SiteNav() {
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 15, fontWeight: 600, height: 48, borderRadius: 8,
-              backgroundColor: 'transparent', color: 'rgba(255,255,255,0.8)',
-              border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer',
+              backgroundColor: '#fa830c', color: '#ffffff',
+              border: 'none', cursor: 'pointer',
               opacity: loadingRole === 'artist' ? 0.6 : 1,
             }}
           >
