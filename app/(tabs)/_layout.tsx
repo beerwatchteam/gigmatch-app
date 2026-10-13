@@ -153,6 +153,24 @@ function TopTabBar(_props: any) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user: tabUser, profile: tabProfile } = useAuth();
+  const [loadingRole, setLoadingRole] = useState<'artist' | 'venue' | null>(null);
+
+  async function handleDemoLogin(role: 'artist' | 'venue') {
+    if (loadingRole) return;
+    setLoadingRole(role);
+    try {
+      const { username, password } = DEMO_ACCOUNTS[role];
+      const email = await resolveUsernameToEmail(username);
+      if (!email) return;
+      await setPersistence(auth, browserSessionPersistence);
+      await signInWithEmailAndPassword(auth, email, password);
+      router.replace('/(tabs)');
+    } catch {
+      // silent
+    } finally {
+      setLoadingRole(null);
+    }
+  }
 
   return (
     <View style={[tb.bar, { top: insets.top, backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
@@ -165,9 +183,27 @@ function TopTabBar(_props: any) {
           <Text style={tb.myProfileText}>{tabProfile?.type === 'venue' ? 'My Venue' : 'My Profile'}</Text>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={tb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
-          <Text style={tb.loginText}>Log In</Text>
-        </TouchableOpacity>
+        <View style={tb.demoStrip}>
+          <TouchableOpacity
+            style={[tb.demoBtn, loadingRole === 'artist' && tb.demoBtnDim]}
+            onPress={() => handleDemoLogin('artist')}
+            disabled={loadingRole !== null}
+            activeOpacity={0.8}
+          >
+            <Text style={tb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Artist'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[tb.demoBtn, loadingRole === 'venue' && tb.demoBtnDim]}
+            onPress={() => handleDemoLogin('venue')}
+            disabled={loadingRole !== null}
+            activeOpacity={0.8}
+          >
+            <Text style={tb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Venue'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={tb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
+            <Text style={tb.loginText}>Log In</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -321,10 +357,14 @@ const tb = StyleSheet.create({
   labelFocused: { fontWeight: '700' },
   logo:         { position: 'absolute', left: 16 },
   logoImg:      { height: 28, width: 112 },
-  loginBtn:      { position: 'absolute', right: 16, backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
-  loginText:     { fontSize: 13, fontWeight: '700', color: '#ffffff' },
+  loginBtn:      { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  loginText:     { fontSize: 12, fontWeight: '700', color: '#ffffff' },
   myProfileBtn:  { position: 'absolute', right: 16, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
   myProfileText: { fontSize: 13, fontWeight: '600', color: Colors.grey },
+  demoStrip:     { position: 'absolute', right: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  demoBtn:       { backgroundColor: Colors.orange, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  demoBtnDim:    { opacity: 0.5 },
+  demoBtnText:   { fontSize: 12, fontWeight: '700', color: '#ffffff' },
 });
 
 const bb = StyleSheet.create({
