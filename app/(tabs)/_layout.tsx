@@ -190,7 +190,7 @@ function TopTabBar(_props: any) {
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={tb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Artist'}</Text>
+            <Text style={tb.demoBtnText}>{loadingRole === 'artist' ? '...' : 'Demo as Artist'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[tb.demoBtn, loadingRole === 'venue' && tb.demoBtnDim]}
@@ -198,7 +198,7 @@ function TopTabBar(_props: any) {
             disabled={loadingRole !== null}
             activeOpacity={0.8}
           >
-            <Text style={tb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Venue'}</Text>
+            <Text style={tb.demoBtnText}>{loadingRole === 'venue' ? '...' : 'Demo as Venue'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={tb.loginBtn} onPress={() => router.push('/login')} activeOpacity={0.8}>
             <Text style={tb.loginText}>Log In</Text>
