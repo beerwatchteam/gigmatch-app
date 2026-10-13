@@ -419,7 +419,7 @@ export default function LoginScreen() {
           resizeMode="contain"
           accessibilityLabel="Twaylo"
         />
-        <Text style={s.logoSub}>Connect bands with venues</Text>
+        <Text style={s.logoSub}>Enquire. Connect. Book.</Text>
       </View>
 
       {/* Top tabs */}
