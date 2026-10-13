@@ -1,4 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { signInWithEmailAndPassword, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { getDocs, query, collection, where } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
 
 const NAV_LINKS = [
   { label: 'For Artists', href: '#artists' },
@@ -6,9 +9,26 @@ const NAV_LINKS = [
   { label: 'How It Works', href: '#how-it-works' },
 ];
 
+const DEMO_ACCOUNTS = {
+  artist: { username: 'twayloartist', password: 'twayloartist' },
+  venue:  { username: 'twaylovenue',  password: 'twaylovenue'  },
+} as const;
+
+async function resolveUsernameToEmail(username: string): Promise<string | null> {
+  const lower = username.toLowerCase();
+  const [bpSnap, uSnap] = await Promise.all([
+    getDocs(query(collection(db, 'bandProfiles'), where('username', '==', lower))),
+    getDocs(query(collection(db, 'users'),        where('username', '==', lower))),
+  ]);
+  if (!bpSnap.empty) return (bpSnap.docs[0].data().email as string) || null;
+  if (!uSnap.empty && uSnap.docs[0].data().email) return uSnap.docs[0].data().email as string;
+  return null;
+}
+
 export function SiteNav() {
   const navRef = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loadingRole, setLoadingRole] = useState<'artist' | 'venue' | null>(null);
 
   // Attach scroll class directly via DOM ref — no re-renders
   useEffect(() => {
@@ -25,6 +45,23 @@ export function SiteNav() {
 
   function closeMenu() {
     setMenuOpen(false);
+  }
+
+  async function handleDemoLogin(role: 'artist' | 'venue') {
+    if (loadingRole) return;
+    setLoadingRole(role);
+    try {
+      const { username, password } = DEMO_ACCOUNTS[role];
+      const email = await resolveUsernameToEmail(username);
+      if (!email) return;
+      await setPersistence(auth, browserSessionPersistence);
+      await signInWithEmailAndPassword(auth, email, password);
+      window.location.href = '/';
+    } catch {
+      // silent — user stays on landing page
+    } finally {
+      setLoadingRole(null);
+    }
   }
 
   return (
@@ -87,36 +124,59 @@ export function SiteNav() {
         </ul>
 
         {/* Desktop actions */}
-        <div className="lp-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
-          <a
-            href="/login"
-            className="lp-nav-signin"
-            style={{ fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,0.65)', textDecoration: 'none', transition: 'color 0.15s' }}
-          >
-            Sign In
-          </a>
-          <a
-            href="#get-started"
-            className="lp-btn lp-btn-primary"
+        <div className="lp-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button
+            onClick={() => handleDemoLogin('artist')}
+            disabled={loadingRole !== null}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: 13,
               fontWeight: 600,
-              height: 36,
-              padding: '0 16px',
+              height: 34,
+              padding: '0 14px',
+              borderRadius: 6,
+              backgroundColor: 'transparent',
+              color: 'rgba(255,255,255,0.75)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              cursor: loadingRole ? 'default' : 'pointer',
+              opacity: loadingRole === 'artist' ? 0.6 : 1,
+              transition: 'all 0.15s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {loadingRole === 'artist' ? 'Loading...' : 'View as Artist'}
+          </button>
+          <button
+            onClick={() => handleDemoLogin('venue')}
+            disabled={loadingRole !== null}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 13,
+              fontWeight: 600,
+              height: 34,
+              padding: '0 14px',
               borderRadius: 6,
               backgroundColor: '#fa830c',
               color: '#ffffff',
-              textDecoration: 'none',
-              cursor: 'pointer',
               border: 'none',
-              minHeight: 36,
+              cursor: loadingRole ? 'default' : 'pointer',
+              opacity: loadingRole === 'venue' ? 0.6 : 1,
               transition: 'background 0.15s',
+              whiteSpace: 'nowrap',
             }}
           >
-            Get Started
+            {loadingRole === 'venue' ? 'Loading...' : 'View as Venue'}
+          </button>
+          <a
+            href="/login"
+            className="lp-nav-signin"
+            style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s', marginLeft: 4, whiteSpace: 'nowrap' }}
+          >
+            Log In
           </a>
         </div>
 
@@ -169,7 +229,7 @@ export function SiteNav() {
         }}
       >
         <ul role="list" style={{ listStyle: 'none', margin: 0, padding: '8px 0' }}>
-          {[...NAV_LINKS, { label: 'Sign In', href: '/login' }].map(({ label, href }) => (
+          {[...NAV_LINKS, { label: 'Log In', href: '/login' }].map(({ label, href }) => (
             <li key={href}>
               <a
                 href={href}
@@ -190,29 +250,34 @@ export function SiteNav() {
             </li>
           ))}
         </ul>
-        <a
-          href="#get-started"
-          onClick={closeMenu}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 15,
-            fontWeight: 600,
-            height: 48,
-            margin: '8px 28px 24px',
-            borderRadius: 8,
-            backgroundColor: '#fa830c',
-            color: '#ffffff',
-            textDecoration: 'none',
-            cursor: 'pointer',
-            border: 'none',
-            minHeight: 44,
-            transition: 'background 0.15s',
-          }}
-        >
-          Get Started
-        </a>
+        <div style={{ margin: '8px 28px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button
+            onClick={() => { closeMenu(); handleDemoLogin('artist'); }}
+            disabled={loadingRole !== null}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 15, fontWeight: 600, height: 48, borderRadius: 8,
+              backgroundColor: 'transparent', color: 'rgba(255,255,255,0.8)',
+              border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer',
+              opacity: loadingRole === 'artist' ? 0.6 : 1,
+            }}
+          >
+            {loadingRole === 'artist' ? 'Loading...' : 'View as Artist'}
+          </button>
+          <button
+            onClick={() => { closeMenu(); handleDemoLogin('venue'); }}
+            disabled={loadingRole !== null}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 15, fontWeight: 600, height: 48, borderRadius: 8,
+              backgroundColor: '#fa830c', color: '#ffffff',
+              border: 'none', cursor: 'pointer',
+              opacity: loadingRole === 'venue' ? 0.6 : 1,
+            }}
+          >
+            {loadingRole === 'venue' ? 'Loading...' : 'View as Venue'}
+          </button>
+        </div>
       </div>
     </nav>
   );
