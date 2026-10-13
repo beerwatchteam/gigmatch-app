@@ -17,9 +17,9 @@ import { SlidersHorizontal } from 'phosphor-react-native';
 import { TOP_TAB_H } from './_layout';
 
 const GENRES = [
-  'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
-  'Hip-Hop', 'Country', 'Acoustic / Folk', 'Cover Bands',
-  'Original', 'Classical', 'Metal', 'Other',
+  'Rock', 'Indie', 'Pop', 'Punk', 'Metal', 'Jazz', 'Blues',
+  'Soul / R&B', 'Funk', 'Hip-hop', 'Electronic', 'Country',
+  'Folk', 'Reggae', 'Classical', 'Other',
 ];
 
 const FEE_RANGES = [

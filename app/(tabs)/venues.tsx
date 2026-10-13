@@ -19,9 +19,9 @@ import { SlidersHorizontal } from 'phosphor-react-native';
 import { TOP_TAB_H } from './_layout';
 
 const GENRES = [
-  'Rock', 'Jazz', 'Blues', 'Pop', 'Indie', 'Electronic / DJ',
-  'Hip-Hop', 'Country', 'Acoustic / Folk', 'Cover Bands',
-  'Original', 'Classical', 'Metal', 'Other',
+  'Rock', 'Indie', 'Pop', 'Punk', 'Metal', 'Jazz', 'Blues',
+  'Soul / R&B', 'Funk', 'Hip-hop', 'Electronic', 'Country',
+  'Folk', 'Reggae', 'Classical', 'Other',
 ];
 
 const FEE_RANGES = [
@@ -744,7 +744,7 @@ export default function VenuesScreen() {
     }
     // Genre
     if (genres.length > 0) {
-      const vg: string[] = (v as any).genres || v.genre || [];
+      const vg: string[] = (v as any).genrePreferences || (v as any).genres || v.genre || [];
       if (!genres.some(g => vg.includes(g))) return false;
     }
     // Fee ranges
